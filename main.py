@@ -123,7 +123,23 @@ async def verify_webhook(request: Request):
 async def receive_message(request: Request):
     data = await request.json()
 
-    print("Incoming message:", data)
+    try:
+        message = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        text = message["text"]["body"]
 
-    # Temporary response (we'll upgrade this)
-    return {"status": "received"}
+        print("User said:", text)
+
+        # SIMPLE LOGIC (temporary)
+        if "paid" in text.lower():
+            response = "Payment recorded. Thank you."
+        elif "bought" in text.lower():
+            response = "Transaction recorded successfully."
+        else:
+            response = "Hello, I am TiTi. Tell me your sales or payments."
+
+        print("TiTi response:", response)
+
+    except Exception as e:
+        print("Error:", e)
+
+    return {"status": "ok"}
