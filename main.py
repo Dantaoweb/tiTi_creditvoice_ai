@@ -104,3 +104,26 @@ def dashboard():
         "total_outstanding": total_outstanding,
         "total_transactions": len(transactions)
     }
+from fastapi import Request
+
+VERIFY_TOKEN = "creditvoice_verify_123"
+
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return int(challenge)
+
+    return {"error": "Verification failed"}
+
+@app.post("/webhook")
+async def receive_message(request: Request):
+    data = await request.json()
+
+    print("Incoming message:", data)
+
+    # Temporary response (we'll upgrade this)
+    return {"status": "received"}
