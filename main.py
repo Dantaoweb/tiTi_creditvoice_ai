@@ -196,7 +196,33 @@ def dashboard():
 from fastapi import Request
 
 VERIFY_TOKEN = "creditvoice_verify_123"
+#------------------------testing-----------------
+@app.get("/test-ai")
+def test_ai(message: str):
 
+    import json
+
+    ai_response = titi_ai_process(message)
+    parsed = json.loads(ai_response)
+
+    action = parsed.get("action")
+    name = parsed.get("customer_name")
+    amount = parsed.get("amount")
+
+    if action == "create_transaction":
+        txn = create_transaction_internal(name, amount)
+        return {"reply": f"{name} now owes ₦{txn['amount_remaining']}"}
+
+    elif action == "record_payment":
+        txn = record_payment_internal(name, amount)
+
+        if txn:
+            return {"reply": f"{name} paid ₦{amount}. Remaining: ₦{txn['amount_remaining']}"}
+        else:
+            return {"reply": f"No record found for {name}"}
+
+    return {"reply": "Didn't understand"}
+#--------------------test closed---------------------------    
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     mode = request.query_params.get("hub.mode")
