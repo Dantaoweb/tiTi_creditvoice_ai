@@ -1,3 +1,7 @@
+import os
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -32,6 +36,32 @@ def send_whatsapp_message(to, message):
 transactions = {}
 payments = {}
 
+def titi_ai_process(user_text):
+
+    prompt = f"""
+    You are TiTi, a smart assistant for business credit tracking.
+
+    Extract from the message:
+    - action: "create_transaction" or "record_payment"
+    - customer_name
+    - amount
+
+    Message: "{user_text}"
+
+    Return ONLY JSON like:
+    {{
+      "action": "...",
+      "customer_name": "...",
+      "amount": number
+    }}
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return response.choices[0].message.content
 # ---------------- MODELS ----------------
 
 class TransactionCreate(BaseModel):
@@ -141,6 +171,8 @@ async def verify_webhook(request: Request):
 
     return {"error": "Verification failed"}
 
+import json
+
 @app.post("/webhook")
 async def receive_message(request: Request):
     data = await request.json()
@@ -148,18 +180,27 @@ async def receive_message(request: Request):
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
         text = message["text"]["body"]
+        sender = message["from"]
 
         print("User said:", text)
 
-        # SIMPLE LOGIC (temporary)
-        if "paid" in text.lower():
-            response = "Payment recorded. Thank you."
-        elif "bought" in text.lower():
-            response = "Transaction recorded successfully."
-        else:
-            response = "Hello, I am TiTi. Tell me your sales or payments."
+        ai_response = titi_ai_process(text)
+        parsed = json.loads(ai_response)
 
-        print("TiTi response:", response)
+        action = parsed.get("action")
+        name = parsed.get("customer_name")
+        amount = parsed.get("amount")
+
+        if action == "create_transaction":
+            reply = f"Recorded: {name} bought goods worth ₦{amount}"
+
+        elif action == "record_payment":
+            reply = f"Payment of ₦{amount} received from {name}"
+
+        else:
+            reply = "Sorry, I didn't understand. Please repeat."
+
+        send_whatsapp_message(sender, reply)
 
     except Exception as e:
         print("Error:", e)
