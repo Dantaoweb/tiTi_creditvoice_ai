@@ -74,7 +74,44 @@ class TransactionCreate(BaseModel):
 class PaymentCreate(BaseModel):
     transaction_id: str
     amount: float
+#--------------function--------------
 
+def create_transaction_internal(name, amount):
+
+    transaction_id = str(uuid.uuid4())
+
+    transactions[transaction_id] = {
+        "id": transaction_id,
+        "customer_name": name,
+        "item_name": "General goods",
+        "amount_total": amount,
+        "amount_paid": 0,
+        "amount_remaining": amount,
+        "payment_type": "credit",
+        "status": "pending",
+        "created_at": str(datetime.now())
+    }
+
+    return transactions[transaction_id]
+
+
+def record_payment_internal(name, amount):
+
+    for txn_id, txn in transactions.items():
+
+        if txn["customer_name"].lower() == name.lower():
+            txn["amount_paid"] += amount
+            txn["amount_remaining"] -= amount
+
+            if txn["amount_remaining"] <= 0:
+                txn["amount_remaining"] = 0
+                txn["status"] = "paid"
+            else:
+                txn["status"] = "partial"
+
+            return txn
+
+    return None
 # ---------------- ROUTES ----------------
 
 @app.get("/")
@@ -182,8 +219,6 @@ async def receive_message(request: Request):
         text = message["text"]["body"]
         sender = message["from"]
 
-        print("User said:", text)
-
         ai_response = titi_ai_process(text)
         parsed = json.loads(ai_response)
 
@@ -192,13 +227,19 @@ async def receive_message(request: Request):
         amount = parsed.get("amount")
 
         if action == "create_transaction":
-            reply = f"Recorded: {name} bought goods worth ₦{amount}"
+            txn = create_transaction_internal(name, amount)
+            reply = f"{name} now owes ₦{txn['amount_remaining']}"
 
         elif action == "record_payment":
-            reply = f"Payment of ₦{amount} received from {name}"
+            txn = record_payment_internal(name, amount)
+
+            if txn:
+                reply = f"{name} paid ₦{amount}. Remaining: ₦{txn['amount_remaining']}"
+            else:
+                reply = f"No record found for {name}"
 
         else:
-            reply = "Sorry, I didn't understand. Please repeat."
+            reply = "Sorry, I didn't understand."
 
         send_whatsapp_message(sender, reply)
 
