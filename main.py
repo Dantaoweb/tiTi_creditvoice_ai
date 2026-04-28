@@ -1,14 +1,14 @@
-import os
-from openai import OpenAI
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 import uuid
 import requests
-
+import os
+from openai import OpenAI
+processed_messages = set()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 WHATSAPP_TOKEN = "YOUR_ACCESS_TOKEN"
 PHONE_NUMBER_ID = "YOUR_PHONE_NUMBER_ID"
 
@@ -242,6 +242,12 @@ async def receive_message(request: Request):
 
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        message_id = message["id"]
+
+if message_id in processed_messages:
+    return {"status": "duplicate ignored"}
+
+processed_messages.add(message_id)
         text = message["text"]["body"]
         sender = message["from"]
 
