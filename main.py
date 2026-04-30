@@ -37,6 +37,7 @@ app = FastAPI()
 
 # ---------------- GLOBAL ----------------
 processed_messages = set()
+pending_actions = {}
 
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
@@ -196,15 +197,46 @@ async def receive_message(request: Request):
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
 
-        message_id = message["id"]
-
-        if message_id in processed_messages:
-            return {"status": "duplicate ignored"}
-
-        processed_messages.add(message_id)
-
-        text = message["text"]["body"]
         sender = message["from"]
+        text = message["text"]["body"].strip().lower()
+
+        # ---------------- CONFIRMATION HANDLING ----------------
+
+        if sender in pending_actions:
+
+            if text == "yes":
+                action_data = pending_actions.pop(sender)
+
+                if action_data["action"] == "create_transaction":
+                    txn = create_transaction_internal(
+                        action_data["name"],
+                        action_data["amount"]
+                    )
+                    reply = f"✅ Saved. {action_data['name']} owes ₦{txn.amount_remaining}"
+
+                elif action_data["action"] == "record_payment":
+                    txn = record_payment_internal(
+                        action_data["name"],
+                        action_data["amount"]
+                    )
+                    if txn:
+                        reply = f"✅ Payment recorded. Remaining: ₦{txn.amount_remaining}"
+                    else:
+                        reply = "❌ No record found."
+
+                send_whatsapp_message(sender, reply)
+                return {"status": "confirmed"}
+
+            elif text == "edit":
+                pending_actions.pop(sender)
+                send_whatsapp_message(sender, "✏️ Okay, send the correct details.")
+                return {"status": "editing"}
+
+            else:
+                send_whatsapp_message(sender, "⚠️ Reply YES to confirm or EDIT to change.")
+                return {"status": "waiting_confirmation"}
+
+        # ---------------- AI PROCESSING ----------------
 
         ai_response = titi_ai_process(text)
         parsed = json.loads(ai_response)
@@ -213,20 +245,25 @@ async def receive_message(request: Request):
         name = parsed.get("customer_name")
         amount = parsed.get("amount")
 
+        if not action or not name or not amount:
+            send_whatsapp_message(sender, "❌ I didn't understand. Try again.")
+            return {"status": "invalid"}
+
+        # Store pending action
+        pending_actions[sender] = {
+            "action": action,
+            "name": name,
+            "amount": amount
+        }
+
         if action == "create_transaction":
-            txn = create_transaction_internal(name, amount)
-            reply = f"{name} now owes ₦{txn.amount_remaining}"
+            reply = f"Confirm: {name} bought ₦{amount}?\nReply YES or EDIT"
 
         elif action == "record_payment":
-            txn = record_payment_internal(name, amount)
-
-            if txn:
-                reply = f"{name} paid ₦{amount}. Remaining: ₦{int(txn.amount_remaining)}"
-            else:
-                reply = f"No record found for {name}"
+            reply = f"Confirm: {name} paid ₦{amount}?\nReply YES or EDIT"
 
         else:
-            reply = "Sorry, I didn't understand."
+            reply = "❌ Unknown action."
 
         send_whatsapp_message(sender, reply)
 
