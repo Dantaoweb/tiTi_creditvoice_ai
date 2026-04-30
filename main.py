@@ -157,8 +157,13 @@ def home():
 def test_ai(message: str):
 
     ai_response = titi_ai_process(message)
-    try:
-        parsed = json.loads(ai_response)
+ try:
+    parsed = json.loads(ai_response)
+
+    # make sure parsed is valid
+    if not isinstance(parsed, dict):
+        send_whatsapp_message(sender, "⚠️ Unexpected format. Try again.")
+        return
 except Exception as e:
     print("AI RAW RESPONSE:", ai_response)
 
