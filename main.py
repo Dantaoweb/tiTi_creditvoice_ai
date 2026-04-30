@@ -158,7 +158,7 @@ def test_ai(message: str):
 
     ai_response = titi_ai_process(message)
     try:
-    parsed = json.loads(ai_response)
+        parsed = json.loads(ai_response)
 except Exception as e:
     print("AI RAW RESPONSE:", ai_response)
 
