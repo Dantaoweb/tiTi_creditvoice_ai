@@ -1,20 +1,49 @@
-
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 import uuid
 import requests
 import os
+import json
 from openai import OpenAI
-processed_messages = set()
+
+# ---------------- ENV ----------------
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# ---------------- DATABASE ----------------
+from sqlalchemy import create_engine, Column, String, Float
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id = Column(String, primary_key=True)
+    customer_name = Column(String)
+    amount_total = Column(Float)
+    amount_paid = Column(Float)
+    amount_remaining = Column(Float)
+    status = Column(String)
+
+Base.metadata.create_all(bind=engine)
+
+# ---------------- APP ----------------
+app = FastAPI()
+
+# ---------------- GLOBAL ----------------
+processed_messages = set()
+
 WHATSAPP_TOKEN = "YOUR_ACCESS_TOKEN"
 PHONE_NUMBER_ID = "YOUR_PHONE_NUMBER_ID"
+VERIFY_TOKEN = "creditvoice_verify_123"
 
-app = FastAPI()
+# ---------------- WHATSAPP SEND ----------------
 def send_whatsapp_message(to, message):
-
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -30,12 +59,9 @@ def send_whatsapp_message(to, message):
     }
 
     response = requests.post(url, headers=headers, json=payload)
-
     print("WhatsApp response:", response.text)
-# In-memory storage (for now)
-transactions = {}
-payments = {}
 
+# ---------------- AI ----------------
 def titi_ai_process(user_text):
 
     prompt = f"""
@@ -62,8 +88,8 @@ def titi_ai_process(user_text):
     )
 
     return response.choices[0].message.content
-# ---------------- MODELS ----------------
 
+# ---------------- MODELS ----------------
 class TransactionCreate(BaseModel):
     customer_name: str
     item_name: str
@@ -74,133 +100,61 @@ class TransactionCreate(BaseModel):
 class PaymentCreate(BaseModel):
     transaction_id: str
     amount: float
-#--------------function--------------
 
+# ---------------- DATABASE FUNCTIONS ----------------
 def create_transaction_internal(name, amount):
+    db = SessionLocal()
 
-    transaction_id = str(uuid.uuid4())
+    txn = Transaction(
+        id=str(uuid.uuid4()),
+        customer_name=name,
+        amount_total=amount,
+        amount_paid=0,
+        amount_remaining=amount,
+        status="pending"
+    )
 
-    transactions[transaction_id] = {
-        "id": transaction_id,
-        "customer_name": name,
-        "item_name": "General goods",
-        "amount_total": amount,
-        "amount_paid": 0,
-        "amount_remaining": amount,
-        "payment_type": "credit",
-        "status": "pending",
-        "created_at": str(datetime.now())
-    }
+    db.add(txn)
+    db.commit()
+    db.refresh(txn)
+    db.close()
 
-    return transactions[transaction_id]
+    return txn
 
 
 def record_payment_internal(name, amount):
+    db = SessionLocal()
 
-    for txn_id, txn in transactions.items():
+    txn = db.query(Transaction).filter(
+        Transaction.customer_name.ilike(name)
+    ).first()
 
-        if txn["customer_name"].lower() == name.lower():
-            txn["amount_paid"] += amount
-            txn["amount_remaining"] -= amount
+    if not txn:
+        db.close()
+        return None
 
-            if txn["amount_remaining"] <= 0:
-                txn["amount_remaining"] = 0
-                txn["status"] = "paid"
-            else:
-                txn["status"] = "partial"
+    txn.amount_paid += amount
+    txn.amount_remaining -= amount
 
-            return txn
+    if txn.amount_remaining <= 0:
+        txn.amount_remaining = 0
+        txn.status = "paid"
+    else:
+        txn.status = "partial"
 
-    return None
+    db.commit()
+    db.refresh(txn)
+    db.close()
+
+    return txn
+
 # ---------------- ROUTES ----------------
-
 @app.get("/")
 def home():
     return {"message": "CrediVoice TiTi is live 🚀"}
 
-# CREATE TRANSACTION
-@app.post("/transactions")
-def create_transaction(data: TransactionCreate):
-
-    transaction_id = str(uuid.uuid4())
-
-    amount_remaining = data.amount if data.payment_type == "credit" else 0
-    status = "pending" if data.payment_type == "credit" else "paid"
-
-    transactions[transaction_id] = {
-        "id": transaction_id,
-        "customer_name": data.customer_name,
-        "item_name": data.item_name,
-        "amount_total": data.amount,
-        "amount_paid": 0,
-        "amount_remaining": amount_remaining,
-        "payment_type": data.payment_type,
-        "due_date": data.due_date,
-        "status": status,
-        "created_at": str(datetime.now())
-    }
-
-    return {"message": "Transaction recorded", "data": transactions[transaction_id]}
-
-# RECORD PAYMENT
-@app.post("/payments")
-def record_payment(data: PaymentCreate):
-
-    if data.transaction_id not in transactions:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-
-    txn = transactions[data.transaction_id]
-
-    if txn["status"] == "paid":
-        return {"message": "Already fully paid"}
-
-    txn["amount_paid"] += data.amount
-    txn["amount_remaining"] -= data.amount
-
-    if txn["amount_remaining"] <= 0:
-        txn["amount_remaining"] = 0
-        txn["status"] = "paid"
-    else:
-        txn["status"] = "partial"
-
-    payment_id = str(uuid.uuid4())
-
-    payments[payment_id] = {
-        "id": payment_id,
-        "transaction_id": data.transaction_id,
-        "amount": data.amount,
-        "date": str(datetime.now())
-    }
-
-    return {"message": "Payment recorded", "transaction": txn}
-
-# GET ALL TRANSACTIONS
-@app.get("/transactions")
-def get_transactions():
-    return list(transactions.values())
-
-# DASHBOARD
-@app.get("/dashboard")
-def dashboard():
-
-    total_sales = sum(t["amount_total"] for t in transactions.values())
-    total_paid = sum(t["amount_paid"] for t in transactions.values())
-    total_outstanding = sum(t["amount_remaining"] for t in transactions.values())
-
-    return {
-        "total_sales": total_sales,
-        "total_paid": total_paid,
-        "total_outstanding": total_outstanding,
-        "total_transactions": len(transactions)
-    }
-from fastapi import Request
-
-VERIFY_TOKEN = "creditvoice_verify_123"
-#------------------------testing-----------------
 @app.get("/test-ai")
 def test_ai(message: str):
-
-    import json
 
     ai_response = titi_ai_process(message)
     parsed = json.loads(ai_response)
@@ -211,18 +165,19 @@ def test_ai(message: str):
 
     if action == "create_transaction":
         txn = create_transaction_internal(name, amount)
-        return {"reply": f"{name} now owes ₦{txn['amount_remaining']}"}
+        return {"reply": f"{name} now owes ₦{txn.amount_remaining}"}
 
     elif action == "record_payment":
         txn = record_payment_internal(name, amount)
 
         if txn:
-            return {"reply": f"{name} paid ₦{amount}. Remaining: ₦{txn['amount_remaining']}"}
+            return {"reply": f"{name} paid ₦{amount}. Remaining: ₦{txn.amount_remaining}"}
         else:
             return {"reply": f"No record found for {name}"}
 
     return {"reply": "Didn't understand"}
-#--------------------test closed---------------------------    
+
+# ---------------- WEBHOOK VERIFY ----------------
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     mode = request.query_params.get("hub.mode")
@@ -234,20 +189,21 @@ async def verify_webhook(request: Request):
 
     return {"error": "Verification failed"}
 
-import json
-
+# ---------------- WEBHOOK RECEIVE ----------------
 @app.post("/webhook")
 async def receive_message(request: Request):
     data = await request.json()
 
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
+
         message_id = message["id"]
 
-if message_id in processed_messages:
-    return {"status": "duplicate ignored"}
+        if message_id in processed_messages:
+            return {"status": "duplicate ignored"}
 
-processed_messages.add(message_id)
+        processed_messages.add(message_id)
+
         text = message["text"]["body"]
         sender = message["from"]
 
@@ -260,13 +216,13 @@ processed_messages.add(message_id)
 
         if action == "create_transaction":
             txn = create_transaction_internal(name, amount)
-            reply = f"{name} now owes ₦{txn['amount_remaining']}"
+            reply = f"{name} now owes ₦{txn.amount_remaining}"
 
         elif action == "record_payment":
             txn = record_payment_internal(name, amount)
 
             if txn:
-                reply = f"{name} paid ₦{amount}. Remaining: ₦{txn['amount_remaining']}"
+                reply = f"{name} paid ₦{amount}. Remaining: ₦{txn.amount_remaining}"
             else:
                 reply = f"No record found for {name}"
 
