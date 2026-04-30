@@ -3,3 +3,5 @@ uvicorn
 pydantic
 requests
 openai
+sqlalchemy
+psycopg2-binary
