@@ -65,7 +65,7 @@ def send_whatsapp_message(to, message):
 def titi_ai_process(user_text):
 
     prompt = f"""
-    You are TiTi, a smart assistant for business credit tracking.
+    You are TiTi, a strict financial assistant for business credit tracking.
 
     Extract from the message:
     - action: "create_transaction" or "record_payment"
@@ -157,7 +157,17 @@ def home():
 def test_ai(message: str):
 
     ai_response = titi_ai_process(message)
+    try:
     parsed = json.loads(ai_response)
+except Exception as e:
+    print("AI RAW RESPONSE:", ai_response)
+
+    send_whatsapp_message(
+        sender,
+        "⚠️ I couldn't understand that clearly. Please rephrase."
+    )
+
+    return {"status": "ai_error"}
 
     action = parsed.get("action")
     name = parsed.get("customer_name")
@@ -239,7 +249,17 @@ async def receive_message(request: Request):
         # ---------------- AI PROCESSING ----------------
 
         ai_response = titi_ai_process(text)
-        parsed = json.loads(ai_response)
+        try:
+    parsed = json.loads(ai_response)
+except Exception as e:
+    print("AI RAW RESPONSE:", ai_response)
+
+    send_whatsapp_message(
+        sender,
+        "⚠️ I couldn't understand that clearly. Please rephrase."
+    )
+
+    return {"status": "ai_error"}
 
         action = parsed.get("action")
         name = parsed.get("customer_name")
