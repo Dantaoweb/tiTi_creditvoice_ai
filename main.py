@@ -157,8 +157,8 @@ def home():
 def test_ai(message: str):
 
     ai_response = titi_ai_process(message)
- try:
-    parsed = json.loads(ai_response)
+    try:
+        parsed = json.loads(ai_response)
 
     # make sure parsed is valid
     if not isinstance(parsed, dict):
