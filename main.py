@@ -171,7 +171,7 @@ def test_ai(message: str):
         txn = record_payment_internal(name, amount)
 
         if txn:
-            return {"reply": f"{name} paid ₦{amount}. Remaining: ₦{txn.amount_remaining}"}
+            return {"reply": f"{name} paid ₦{amount}. Remaining: ₦{int(txn.amount_remaining)}"}
         else:
             return {"reply": f"No record found for {name}"}
 
@@ -222,7 +222,7 @@ async def receive_message(request: Request):
             txn = record_payment_internal(name, amount)
 
             if txn:
-                reply = f"{name} paid ₦{amount}. Remaining: ₦{txn.amount_remaining}"
+                reply = f"{name} paid ₦{amount}. Remaining: ₦{int(txn.amount_remaining)}"
             else:
                 reply = f"No record found for {name}"
 
