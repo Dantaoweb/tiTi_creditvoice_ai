@@ -42,6 +42,7 @@ pending_actions = {}
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERIFY_TOKEN = "creditvoice_verify_123"
+
 # ---------------- WHATSAPP SEND ----------------
 def send_whatsapp_message(to, message):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -65,29 +66,26 @@ def send_whatsapp_message(to, message):
 def titi_ai_process(user_text):
 
     prompt = f"""
-    You are TiTi, a strict financial assistant for business credit tracking.
+You are TiTi, a strict financial assistant.
 
-    Extract from the message:
-    - action: "create_transaction" or "record_payment"
-    - customer_name
-    - amount
+Return ONLY valid JSON. No explanation.
 
-    Message: "{user_text}"
+Format:
+{{
+  "action": "create_transaction" OR "record_payment",
+  "customer_name": "string",
+  "amount": number
+}}
 
-    Return ONLY JSON like:
-    {{
-      "action": "...",
-      "customer_name": "...",
-      "amount": number
-    }}
-    """
+Message: "{user_text}"
+"""
 
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[{"role": "user", "content": prompt}]
     )
 
-    return response.choices[0].message.content
+    return response.choices[0].message.content.strip()
 
 # ---------------- MODELS ----------------
 class TransactionCreate(BaseModel):
@@ -157,22 +155,16 @@ def home():
 def test_ai(message: str):
 
     ai_response = titi_ai_process(message)
+
     try:
         parsed = json.loads(ai_response)
 
-    # make sure parsed is valid
-    if not isinstance(parsed, dict):
-        send_whatsapp_message(sender, "⚠️ Unexpected format. Try again.")
-        return
-except Exception as e:
-    print("AI RAW RESPONSE:", ai_response)
+        if not isinstance(parsed, dict):
+            return {"reply": "Invalid AI format"}
 
-    send_whatsapp_message(
-        sender,
-        "⚠️ I couldn't understand that clearly. Please rephrase."
-    )
-
-    return {"status": "ai_error"}
+    except Exception as e:
+        print("AI RAW RESPONSE:", ai_response)
+        return {"reply": "AI could not understand"}
 
     action = parsed.get("action")
     name = parsed.get("customer_name")
@@ -215,8 +207,7 @@ async def receive_message(request: Request):
         sender = message["from"]
         text = message["text"]["body"].strip().lower()
 
-        # ---------------- CONFIRMATION HANDLING ----------------
-
+        # ---------------- CONFIRMATION ----------------
         if sender in pending_actions:
 
             if text == "yes":
@@ -244,27 +235,27 @@ async def receive_message(request: Request):
 
             elif text == "edit":
                 pending_actions.pop(sender)
-                send_whatsapp_message(sender, "✏️ Okay, send the correct details.")
+                send_whatsapp_message(sender, "✏️ Send correct details.")
                 return {"status": "editing"}
 
             else:
-                send_whatsapp_message(sender, "⚠️ Reply YES to confirm or EDIT to change.")
-                return {"status": "waiting_confirmation"}
+                send_whatsapp_message(sender, "Reply YES or EDIT")
+                return {"status": "waiting"}
 
-        # ---------------- AI PROCESSING ----------------
-
+        # ---------------- AI ----------------
         ai_response = titi_ai_process(text)
+
         try:
-    parsed = json.loads(ai_response)
-except Exception as e:
-    print("AI RAW RESPONSE:", ai_response)
+            parsed = json.loads(ai_response)
 
-    send_whatsapp_message(
-        sender,
-        "⚠️ I couldn't understand that clearly. Please rephrase."
-    )
+            if not isinstance(parsed, dict):
+                send_whatsapp_message(sender, "⚠️ Invalid format. Try again.")
+                return {"status": "bad_format"}
 
-    return {"status": "ai_error"}
+        except Exception as e:
+            print("AI RAW RESPONSE:", ai_response)
+            send_whatsapp_message(sender, "⚠️ Please rephrase your message.")
+            return {"status": "ai_error"}
 
         action = parsed.get("action")
         name = parsed.get("customer_name")
@@ -274,7 +265,6 @@ except Exception as e:
             send_whatsapp_message(sender, "❌ I didn't understand. Try again.")
             return {"status": "invalid"}
 
-        # Store pending action
         pending_actions[sender] = {
             "action": action,
             "name": name,
@@ -283,12 +273,10 @@ except Exception as e:
 
         if action == "create_transaction":
             reply = f"Confirm: {name} bought ₦{amount}?\nReply YES or EDIT"
-
         elif action == "record_payment":
             reply = f"Confirm: {name} paid ₦{amount}?\nReply YES or EDIT"
-
         else:
-            reply = "❌ Unknown action."
+            reply = "Unknown action"
 
         send_whatsapp_message(sender, reply)
 
