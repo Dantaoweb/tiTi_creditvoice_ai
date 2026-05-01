@@ -15,6 +15,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # ---------------- DATABASE ----------------
 from sqlalchemy import create_engine, Column, String, Float
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import DateTime
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
@@ -98,6 +99,7 @@ class TransactionCreate(BaseModel):
 class PaymentCreate(BaseModel):
     transaction_id: str
     amount: float
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # ---------------- DATABASE FUNCTIONS ----------------
 def create_transaction_internal(name, amount):
@@ -125,7 +127,7 @@ def record_payment_internal(name, amount):
     txn = db.query(Transaction).filter(
         Transaction.customer_name.ilike(name),
         Transaction.amount_remaining > 0
-    ).order_by(Transaction.id.desc()).first()
+    ).order_by(Transaction.created_at.desc()).first()
 
     if not txn:
         db.close()
