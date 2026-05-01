@@ -156,6 +156,11 @@ def test_ai(message: str):
 
     ai_response = titi_ai_process(message)
 
+    # ✅ FIX: Clean markdown from AI
+    if ai_response.startswith("```"):
+        ai_response = ai_response.split("```")[1]
+    ai_response = ai_response.replace("json", "").strip()
+
     try:
         parsed = json.loads(ai_response)
 
@@ -244,6 +249,11 @@ async def receive_message(request: Request):
 
         # ---------------- AI ----------------
         ai_response = titi_ai_process(text)
+
+        # ✅ FIX: Clean markdown from AI
+        if ai_response.startswith("```"):
+            ai_response = ai_response.split("```")[1]
+        ai_response = ai_response.replace("json", "").strip()
 
         try:
             parsed = json.loads(ai_response)
