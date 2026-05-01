@@ -30,6 +30,7 @@ class Transaction(Base):
     amount_paid = Column(Float)
     amount_remaining = Column(Float)
     status = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 Base.metadata.create_all(bind=engine)
 
@@ -97,7 +98,7 @@ class TransactionCreate(BaseModel):
     amount_remaining: float
     status: str
     due_date: Optional[str] = None
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at: Optional[str] = None
     
 
 class PaymentCreate(BaseModel):
