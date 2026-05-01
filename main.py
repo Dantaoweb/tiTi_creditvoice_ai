@@ -36,7 +36,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # ---------------- GLOBAL ----------------
-processed_messages = set()
+processed_messages = set()   # ✅ DUPLICATE PROTECTION
 pending_actions = {}
 
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
@@ -156,7 +156,6 @@ def test_ai(message: str):
 
     ai_response = titi_ai_process(message)
 
-    # ✅ FIX: Clean markdown from AI
     if ai_response.startswith("```"):
         ai_response = ai_response.split("```")[1]
     ai_response = ai_response.replace("json", "").strip()
@@ -209,6 +208,15 @@ async def receive_message(request: Request):
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
 
+        # ✅ DUPLICATE PROTECTION (NEW FIX)
+        message_id = message["id"]
+
+        if message_id in processed_messages:
+            print("Duplicate ignored:", message_id)
+            return {"status": "duplicate"}
+
+        processed_messages.add(message_id)
+
         sender = message["from"]
         text = message["text"]["body"].strip().lower()
 
@@ -250,7 +258,6 @@ async def receive_message(request: Request):
         # ---------------- AI ----------------
         ai_response = titi_ai_process(text)
 
-        # ✅ FIX: Clean markdown from AI
         if ai_response.startswith("```"):
             ai_response = ai_response.split("```")[1]
         ai_response = ai_response.replace("json", "").strip()
@@ -294,3 +301,7 @@ async def receive_message(request: Request):
         print("Error:", e)
 
     return {"status": "ok"}
+
+
+ 
+              
