@@ -118,24 +118,25 @@ def create_transaction_internal(name, amount):
     db.close()
 
     return txn
-
-
 def record_payment_internal(name, amount):
     db = SessionLocal()
 
+    # 🔥 FIX 1: Get latest ACTIVE transaction (not first one)
     txn = db.query(Transaction).filter(
-        Transaction.customer_name.ilike(name)
-    ).first()
+        Transaction.customer_name.ilike(name),
+        Transaction.amount_remaining > 0
+    ).order_by(Transaction.id.desc()).first()
 
     if not txn:
         db.close()
         return None
 
+    # 🔥 FIX 2: Always calculate from DB value
     txn.amount_paid += amount
-    txn.amount_remaining -= amount
+    txn.amount_remaining = max(0, txn.amount_remaining - amount)
 
-    if txn.amount_remaining <= 0:
-        txn.amount_remaining = 0
+    # 🔥 FIX 3: Correct status update
+    if txn.amount_remaining == 0:
         txn.status = "paid"
     else:
         txn.status = "partial"
