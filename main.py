@@ -94,12 +94,16 @@ class TransactionCreate(BaseModel):
     item_name: str
     amount: float
     payment_type: str
+    amount_remaining: float
+    status: str
     due_date: Optional[str] = None
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
 
 class PaymentCreate(BaseModel):
     transaction_id: str
     amount: float
-    created_at = Column(DateTime, default=datetime.utcnow)
+    
 
 # ---------------- DATABASE FUNCTIONS ----------------
 def create_transaction_internal(name, amount):
