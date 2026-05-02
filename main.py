@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -13,9 +13,8 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # ---------------- DATABASE ----------------
-from sqlalchemy import create_engine, Column, String, Float
+from sqlalchemy import create_engine, Column, String, Float, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import DateTime
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
@@ -29,6 +28,7 @@ class Transaction(Base):
     amount_total = Column(Float)
     amount_paid = Column(Float)
     amount_remaining = Column(Float)
+    customer_balance = Column(Float, default=0.0)  # ✅ NEW
     status = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -38,7 +38,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # ---------------- GLOBAL ----------------
-processed_messages = set()   # ✅ DUPLICATE PROTECTION
+processed_messages = set()
 pending_actions = {}
 
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
@@ -61,62 +61,59 @@ def send_whatsapp_message(to, message):
         "text": {"body": message}
     }
 
-    response = requests.post(url, headers=headers, json=payload)
-    print("WhatsApp response:", response.text)
+    requests.post(url, headers=headers, json=payload)
 
 # ---------------- AI ----------------
 def titi_ai_process(user_text):
-
     prompt = f"""
-You are TiTi, a strict financial assistant.
-
-Return ONLY valid JSON. No explanation.
-
-Format:
+Return ONLY JSON:
 {{
   "action": "create_transaction" OR "record_payment",
   "customer_name": "string",
   "amount": number
 }}
-
 Message: "{user_text}"
 """
-
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[{"role": "user", "content": prompt}]
     )
-
     return response.choices[0].message.content.strip()
 
-# ---------------- MODELS ----------------
-class TransactionCreate(BaseModel):
-    customer_name: str
-    item_name: str
-    amount: float
-    payment_type: str
-    amount_remaining: float
-    status: str
-    due_date: Optional[str] = None
-    created_at: Optional[str] = None
-    
+# ---------------- HELPERS ----------------
+def format_money(amount):
+    return f"₦{int(amount):,}"
 
-class PaymentCreate(BaseModel):
-    transaction_id: str
-    amount: float
-    
+def get_customer_latest(db, name):
+    return db.query(Transaction).filter(
+        Transaction.customer_name.ilike(name)
+    ).order_by(Transaction.created_at.desc()).first()
 
-# ---------------- DATABASE FUNCTIONS ----------------
+# ---------------- CORE LOGIC ----------------
 def create_transaction_internal(name, amount):
     db = SessionLocal()
+
+    last = get_customer_latest(db, name)
+    credit = last.customer_balance if last else 0
+
+    # 🔥 USE CREDIT
+    if credit >= amount:
+        remaining = 0
+        paid = amount
+        credit -= amount
+    else:
+        remaining = amount - credit
+        paid = amount - remaining
+        credit = 0
 
     txn = Transaction(
         id=str(uuid.uuid4()),
         customer_name=name,
         amount_total=amount,
-        amount_paid=0,
-        amount_remaining=amount,
-        status="pending"
+        amount_paid=paid,
+        amount_remaining=remaining,
+        customer_balance=credit,
+        status="paid" if remaining == 0 else "pending"
     )
 
     db.add(txn)
@@ -125,10 +122,11 @@ def create_transaction_internal(name, amount):
     db.close()
 
     return txn
+
+
 def record_payment_internal(name, amount):
     db = SessionLocal()
 
-    # 🔥 FIX 1: Get latest ACTIVE transaction (not first one)
     txn = db.query(Transaction).filter(
         Transaction.customer_name.ilike(name),
         Transaction.amount_remaining > 0
@@ -138,15 +136,17 @@ def record_payment_internal(name, amount):
         db.close()
         return None
 
-    # 🔥 FIX 2: Always calculate from DB value
-    txn.amount_paid += amount
-    txn.amount_remaining = max(0, txn.amount_remaining - amount)
-
-    # 🔥 FIX 3: Correct status update
-    if txn.amount_remaining == 0:
-        txn.status = "paid"
+    # 🔥 SMART PAYMENT
+    if amount <= txn.amount_remaining:
+        txn.amount_paid += amount
+        txn.amount_remaining -= amount
     else:
-        txn.status = "partial"
+        extra = amount - txn.amount_remaining
+        txn.amount_paid += txn.amount_remaining
+        txn.amount_remaining = 0
+        txn.customer_balance += extra
+
+    txn.status = "paid" if txn.amount_remaining == 0 else "partial"
 
     db.commit()
     db.refresh(txn)
@@ -154,61 +154,27 @@ def record_payment_internal(name, amount):
 
     return txn
 
+# ---------------- BALANCE ----------------
+def get_balance(db, name):
+    txn = get_customer_latest(db, name)
+    if not txn:
+        return None
+    return txn
+
+# ---------------- STATEMENT ----------------
+def get_statement(db, name):
+    txns = db.query(Transaction).filter(
+        Transaction.customer_name.ilike(name)
+    ).order_by(Transaction.created_at.asc()).all()
+
+    return txns
+
 # ---------------- ROUTES ----------------
 @app.get("/")
 def home():
     return {"message": "CrediVoice TiTi is live 🚀"}
 
-@app.get("/test-ai")
-def test_ai(message: str):
-
-    ai_response = titi_ai_process(message)
-
-    if ai_response.startswith("```"):
-        ai_response = ai_response.split("```")[1]
-    ai_response = ai_response.replace("json", "").strip()
-
-    try:
-        parsed = json.loads(ai_response)
-
-        if not isinstance(parsed, dict):
-            return {"reply": "Invalid AI format"}
-
-    except Exception as e:
-        print("AI RAW RESPONSE:", ai_response)
-        return {"reply": "AI could not understand"}
-
-    action = parsed.get("action")
-    name = parsed.get("customer_name")
-    amount = parsed.get("amount")
-
-    if action == "create_transaction":
-        txn = create_transaction_internal(name, amount)
-        return {"reply": f"{name} now owes ₦{txn.amount_remaining}"}
-
-    elif action == "record_payment":
-        txn = record_payment_internal(name, amount)
-
-        if txn:
-            return {"reply": f"{name} paid ₦{amount}. Remaining: ₦{int(txn.amount_remaining)}"}
-        else:
-            return {"reply": f"No record found for {name}"}
-
-    return {"reply": "Didn't understand"}
-
-# ---------------- WEBHOOK VERIFY ----------------
-@app.get("/webhook")
-async def verify_webhook(request: Request):
-    mode = request.query_params.get("hub.mode")
-    token = request.query_params.get("hub.verify_token")
-    challenge = request.query_params.get("hub.challenge")
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return int(challenge)
-
-    return {"error": "Verification failed"}
-
-# ---------------- WEBHOOK RECEIVE ----------------
+# ---------------- WEBHOOK ----------------
 @app.post("/webhook")
 async def receive_message(request: Request):
     data = await request.json()
@@ -216,19 +182,53 @@ async def receive_message(request: Request):
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
 
-        # ✅ DUPLICATE PROTECTION (NEW FIX)
         message_id = message["id"]
-
         if message_id in processed_messages:
-            print("Duplicate ignored:", message_id)
             return {"status": "duplicate"}
-
         processed_messages.add(message_id)
 
         sender = message["from"]
         text = message["text"]["body"].strip().lower()
 
-        # ---------------- CONFIRMATION ----------------
+        db = SessionLocal()
+
+        # ---------------- BALANCE ----------------
+        if "balance" in text:
+            name = text.replace("balance", "").strip()
+            txn = get_balance(db, name)
+
+            if not txn:
+                send_whatsapp_message(sender, "No record found")
+            else:
+                send_whatsapp_message(
+                    sender,
+                    f"{name.capitalize()} balance:\n"
+                    f"Owes: {format_money(txn.amount_remaining)}\n"
+                    f"Credit: {format_money(txn.customer_balance)}"
+                )
+            db.close()
+            return {"status": "balance"}
+
+        # ---------------- STATEMENT ----------------
+        if "statement" in text:
+            name = text.replace("statement", "").strip()
+            txns = get_statement(db, name)
+
+            if not txns:
+                send_whatsapp_message(sender, "No record found")
+            else:
+                msg = f"{name.capitalize()} statement:\n\n"
+                for t in txns:
+                    msg += f"• Total: {format_money(t.amount_total)} | Paid: {format_money(t.amount_paid)} | Rem: {format_money(t.amount_remaining)}\n"
+
+                msg += f"\nCredit: {format_money(txns[-1].customer_balance)}"
+
+                send_whatsapp_message(sender, msg)
+
+            db.close()
+            return {"status": "statement"}
+
+        # ---------------- CONFIRM ----------------
         if sender in pending_actions:
 
             if text == "yes":
@@ -239,69 +239,44 @@ async def receive_message(request: Request):
                         action_data["name"],
                         action_data["amount"]
                     )
-                    reply = f"✅ Saved. {action_data['name']} owes ₦{txn.amount_remaining}"
+                    reply = f"✅ Saved. {action_data['name']} owes {format_money(txn.amount_remaining)}"
 
-                elif action_data["action"] == "record_payment":
+                else:
                     txn = record_payment_internal(
                         action_data["name"],
                         action_data["amount"]
                     )
-                    if txn:
-                        reply = f"✅ Payment recorded. Remaining: ₦{txn.amount_remaining}"
+                    if txn.customer_balance > 0:
+                        reply = (
+                            f"✅ Payment recorded\n"
+                            f"Remaining: {format_money(txn.amount_remaining)}\n"
+                            f"💰 Credit: {format_money(txn.customer_balance)}"
+                        )
                     else:
-                        reply = "❌ No record found."
+                        reply = f"✅ Payment recorded. Remaining: {format_money(txn.amount_remaining)}"
 
                 send_whatsapp_message(sender, reply)
                 return {"status": "confirmed"}
 
-            elif text == "edit":
-                pending_actions.pop(sender)
-                send_whatsapp_message(sender, "✏️ Send correct details.")
-                return {"status": "editing"}
-
-            else:
-                send_whatsapp_message(sender, "Reply YES or EDIT")
-                return {"status": "waiting"}
-
         # ---------------- AI ----------------
-        ai_response = titi_ai_process(text)
+        ai = titi_ai_process(text)
 
-        if ai_response.startswith("```"):
-            ai_response = ai_response.split("```")[1]
-        ai_response = ai_response.replace("json", "").strip()
+        if ai.startswith("```"):
+            ai = ai.split("```")[1]
+        ai = ai.replace("json", "").strip()
 
-        try:
-            parsed = json.loads(ai_response)
-
-            if not isinstance(parsed, dict):
-                send_whatsapp_message(sender, "⚠️ Invalid format. Try again.")
-                return {"status": "bad_format"}
-
-        except Exception as e:
-            print("AI RAW RESPONSE:", ai_response)
-            send_whatsapp_message(sender, "⚠️ Please rephrase your message.")
-            return {"status": "ai_error"}
-
-        action = parsed.get("action")
-        name = parsed.get("customer_name")
-        amount = parsed.get("amount")
-
-        if not action or not name or not amount:
-            send_whatsapp_message(sender, "❌ I didn't understand. Try again.")
-            return {"status": "invalid"}
+        parsed = json.loads(ai)
 
         pending_actions[sender] = {
-            "action": action,
-            "name": name,
-            "amount": amount
+            "action": parsed["action"],
+            "name": parsed["customer_name"],
+            "amount": float(str(parsed["amount"]).replace(",", ""))
         }
 
-        if action == "create_transaction":
-            reply = f"Confirm: {name} bought ₦{amount}?\nReply YES or EDIT"
-        elif action == "record_payment":
-            reply = f"Confirm: {name} paid ₦{amount}?\nReply YES or EDIT"
+        if parsed["action"] == "create_transaction":
+            reply = f"Confirm: {parsed['customer_name']} bought {format_money(parsed['amount'])}?\nReply YES or EDIT"
         else:
-            reply = "Unknown action"
+            reply = f"Confirm: {parsed['customer_name']} paid {format_money(parsed['amount'])}?\nReply YES or EDIT"
 
         send_whatsapp_message(sender, reply)
 
@@ -309,7 +284,3 @@ async def receive_message(request: Request):
         print("Error:", e)
 
     return {"status": "ok"}
-
-
- 
-              
