@@ -1,242 +1,299 @@
 from fastapi import FastAPI, Request
-import requests
-import os
-import re
-from sqlalchemy import create_engine, Column, String, Float
+import os, re, requests, uuid
+from datetime import datetime
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, ForeignKey
 from sqlalchemy.orm import sessionmaker, declarative_base
-from uuid import uuid4
 
 app = FastAPI()
 
 # ================= DATABASE =================
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise Exception("DATABASE_URL is not set")
+
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
+# ================= MODELS =================
+class User(Base):
+    __tablename__ = "users"
+    id = Column(String, primary_key=True)
+    phone = Column(String, unique=True)
+
+class Customer(Base):
+    __tablename__ = "customers"
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"))
+    name = Column(String)
+
 class Transaction(Base):
     __tablename__ = "transactions"
-
     id = Column(String, primary_key=True)
-    customer_name = Column(String)
-    amount_total = Column(Float)
-    amount_paid = Column(Float)
-    amount_remaining = Column(Float)
-    credit = Column(Float, default=0)
-    status = Column(String)
+    user_id = Column(String)
+    customer_id = Column(String)
+    type = Column(String)  # BUY / PAY
+    amount = Column(Integer)  # ✅ FIXED (no float)
+    description = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    source_message_id = Column(String, unique=True)  # ✅ idempotency
 
 Base.metadata.create_all(bind=engine)
 
 # ================= WHATSAPP =================
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_ID = os.getenv("PHONE_NUMBER_ID")
 
-def send_whatsapp_message(to, message):
-    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "text",
-        "text": {"body": message}
-    }
+def send(to, msg):
+    url = f"https://graph.facebook.com/v18.0/{PHONE_ID}/messages"
+    headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
+    payload = {"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": msg}}
+    r = requests.post(url, headers=headers, json=payload)
+    print("WA:", r.text)
 
-    response = requests.post(url, headers=headers, json=payload)
-    print("WhatsApp:", response.text)
+# ================= SESSION =================
+sessions = {}
 
-# ================= SESSION MEMORY =================
-user_sessions = {}
+# ================= PARSER =================
+def parse(text):
+    text = text.lower().replace(",", "")
+
+    amount_match = re.search(r"\d+", text)
+    if not amount_match:
+        return None
+
+    amount = int(amount_match.group())  # ✅ integer
+
+    action = None
+    if "bought" in text:
+        action = "BUY"
+    elif "paid" in text:
+        action = "PAY"
+
+    if not action:
+        return None
+
+    words = text.split()
+    name = words[0]
+
+    return name, action, amount
 
 # ================= HELPERS =================
-def extract_amount(text):
-    text = text.replace(",", "")
-    match = re.search(r"\d+", text)
-    return float(match.group()) if match else 0
+def get_user(db, phone):
+    user = db.query(User).filter_by(phone=phone).first()
+    if not user:
+        user = User(id=str(uuid.uuid4()), phone=phone)
+        db.add(user)
+        db.commit()
+    return user
 
-def extract_name(text):
-    return text.split()[0].lower()
+def get_customers(db, user_id, name):
+    return db.query(Customer).filter(
+        Customer.user_id == user_id,
+        Customer.name.ilike(name)
+    ).all()
+
+def create_customer(db, user_id, name):
+    c = Customer(id=str(uuid.uuid4()), user_id=user_id, name=name)
+    db.add(c)
+    db.commit()
+    return c
+
+def compute_balance(db, user_id, customer_id):
+    txns = db.query(Transaction).filter_by(
+        user_id=user_id,
+        customer_id=customer_id
+    ).all()
+
+    balance = 0
+    for t in txns:
+        if t.type == "BUY":
+            balance += t.amount
+        else:
+            balance -= t.amount
+
+    return balance
 
 # ================= WEBHOOK =================
 @app.post("/webhook")
-async def webhook(request: Request):
-    data = await request.json()
-    print("Incoming:", data)
-
+async def webhook(req: Request):
+    data = await req.json()
     try:
         value = data["entry"][0]["changes"][0]["value"]
 
         if "messages" not in value:
-            return {"status": "ok"}
+            return {"ok": True}
 
-        message = value["messages"][0]
-        sender = message["from"]
-        text = message["text"]["body"].lower().strip()
+        msg = value["messages"][0]
+        sender = msg["from"]
+        message_id = msg["id"]  # ✅ used for idempotency
+        text = msg["text"]["body"].strip()
 
         db = SessionLocal()
 
-        session = user_sessions.get(sender, {})
+        # ================= IDEMPOTENCY CHECK =================
+        existing = db.query(Transaction).filter_by(source_message_id=message_id).first()
+        if existing:
+            print("Duplicate message ignored")
+            db.close()
+            return {"ok": True}
 
-        # ================= YES =================
-        if text == "yes":
-            if not session:
-                send_whatsapp_message(sender, "Nothing to confirm.")
-                return {"status": "ok"}
+        user = get_user(db, sender)
+        session = sessions.get(sender, {})
 
-            customer = session["customer"]
+        # ================= DUPLICATE FLOW =================
+        if session.get("state") == "duplicate":
+
+            if text.isdigit():
+                idx = int(text) - 1
+
+                if idx < 0 or idx >= len(session["matches"]):  # ✅ FIXED
+                    send(sender, "Invalid selection. Choose a valid number.")
+                    db.close()
+                    return {"ok": True}
+
+                customer = session["matches"][idx]
+
+                sessions[sender] = {
+                    "state": "confirm",
+                    "customer": customer,
+                    "action": session["action"],
+                    "amount": session["amount"]
+                }
+
+                send(sender, f"Confirm: {customer.name} {session['action']} ₦{session['amount']}\nYES or EDIT")
+                db.close()
+                return {"ok": True}
+
+            elif text.lower() == "edit":
+                session["state"] = "rename"
+                send(sender, "Enter new customer name:")
+                db.close()
+                return {"ok": True}
+
+            else:
+                send(sender, "Reply 1, 2 or EDIT")
+                db.close()
+                return {"ok": True}
+
+        # ================= RENAME =================
+        if session.get("state") == "rename":
+            new_name = text
+            sessions[sender] = {
+                "state": "confirm",
+                "new_name": new_name,
+                "action": session["action"],
+                "amount": session["amount"]
+            }
+            send(sender, f"Confirm: {new_name} {session['action']} ₦{session['amount']}\nYES or EDIT")
+            db.close()
+            return {"ok": True}
+
+        # ================= CONFIRM =================
+        if text.lower() == "yes" and session.get("state") == "confirm":
+
+            name = session.get("new_name") or session["customer"].name
+            action = session["action"]
             amount = session["amount"]
-            action = session["type"]
 
-            record = db.query(Transaction).filter_by(customer_name=customer).first()
+            if session.get("new_name"):
+                customer = create_customer(db, user.id, name)
+            else:
+                customer = session["customer"]
 
-            if action == "buy":
-                if not record:
-                    record = Transaction(
-                        id=str(uuid4()),
-                        customer_name=customer,
-                        amount_total=amount,
-                        amount_paid=0,
-                        amount_remaining=amount,
-                        credit=0,
-                        status="pending"
-                    )
-                else:
-                    # apply credit first
-                    if record.credit > 0:
-                        if record.credit >= amount:
-                            record.credit -= amount
-                            amount = 0
-                        else:
-                            amount -= record.credit
-                            record.credit = 0
-
-                    record.amount_total += amount
-                    record.amount_remaining += amount
-
-                db.add(record)
-                db.commit()
-
-                send_whatsapp_message(
-                    sender,
-                    f"Saved. {customer} owes ₦{int(record.amount_remaining)}"
-                )
-
-            elif action == "pay":
-                if not record:
-                    send_whatsapp_message(sender, "Customer not found.")
-                    return {"status": "ok"}
-
-                record.amount_paid += amount
-
-                if amount > record.amount_remaining:
-                    extra = amount - record.amount_remaining
-                    record.credit += extra
-                    record.amount_remaining = 0
-                else:
-                    record.amount_remaining -= amount
-
-                if record.amount_remaining == 0:
-                    record.status = "paid"
-
-                db.commit()
-
-                msg = f"Payment recorded\nRemaining: ₦{int(record.amount_remaining)}"
-                if record.credit > 0:
-                    msg += f"\n💰 Credit: ₦{int(record.credit)}"
-
-                send_whatsapp_message(sender, msg)
-
-            user_sessions[sender] = {}
-
-            return {"status": "ok"}
-
-        # ================= EDIT =================
-        if text == "edit":
-            if not session:
-                send_whatsapp_message(sender, "Nothing to edit.")
-                return {"status": "ok"}
-
-            session["editing"] = True
-            send_whatsapp_message(sender, "Enter new amount:")
-            return {"status": "ok"}
-
-        # ================= HANDLE EDIT INPUT =================
-        if session.get("editing"):
-            amount = extract_amount(text)
-
-            if amount <= 0:
-                send_whatsapp_message(sender, "Enter valid amount.")
-                return {"status": "ok"}
-
-            session["amount"] = amount
-            session["editing"] = False
-
-            send_whatsapp_message(
-                sender,
-                f"Confirm: {session['customer']} {session['type']} ₦{int(amount)}?\nReply YES or EDIT"
+            txn = Transaction(
+                id=str(uuid.uuid4()),
+                user_id=user.id,
+                customer_id=customer.id,
+                type=action,
+                amount=amount,
+                description="",
+                source_message_id=message_id  # ✅ idempotency saved
             )
-            return {"status": "ok"}
 
-        # ================= BALANCE =================
-        if text.startswith("balance"):
-            parts = text.split()
-            if len(parts) < 2:
-                send_whatsapp_message(sender, "Use: balance name")
-                return {"status": "ok"}
+            db.add(txn)
+            db.commit()
 
-            customer = parts[1]
+            balance = compute_balance(db, user.id, customer.id)
 
-            record = db.query(Transaction).filter_by(customer_name=customer).first()
+            send(sender, f"Saved.\n{customer.name} balance: ₦{balance}")
 
-            if not record:
-                send_whatsapp_message(sender, "No record found.")
-                return {"status": "ok"}
+            sessions[sender] = {"last_customer": customer}
 
-            msg = f"{customer} owes ₦{int(record.amount_remaining)}"
-            if record.credit > 0:
-                msg += f"\n💰 Credit: ₦{int(record.credit)}"
+            db.close()
+            return {"ok": True}
 
-            send_whatsapp_message(sender, msg)
-            return {"status": "ok"}
+        # ================= COMMAND =================
+        if text.lower().startswith("balance"):
+            name = text.split(" ")[1]
+            customers = get_customers(db, user.id, name)
 
-        # ================= NORMAL INPUT =================
-        words = text.split()
+            if not customers:
+                send(sender, "No customer found")
+                db.close()
+                return {"ok": True}
 
-        if len(words) < 3:
-            send_whatsapp_message(sender, "Invalid format.")
-            return {"status": "ok"}
+            c = customers[0]
+            bal = compute_balance(db, user.id, c.id)
+            send(sender, f"{c.name} balance: ₦{bal}")
 
-        customer = words[0]
-        action_word = words[1]
-        amount = extract_amount(text)
+            db.close()
+            return {"ok": True}
 
-        if amount <= 0:
-            send_whatsapp_message(sender, "Invalid amount.")
-            return {"status": "ok"}
+        # ================= PARSE =================
+        parsed = parse(text)
 
-        if "buy" in action_word:
-            action = "buy"
-        elif "paid" in action_word or "pay" in action_word:
-            action = "pay"
-        else:
-            send_whatsapp_message(sender, "Use 'bought' or 'paid'")
-            return {"status": "ok"}
+        if not parsed:
+            send(sender, "Try:\nOla bought rice 5000\nOla paid 2000")
+            db.close()
+            return {"ok": True}
 
-        user_sessions[sender] = {
-            "customer": customer,
-            "amount": amount,
-            "type": action
+        name, action, amount = parsed
+
+        matches = get_customers(db, user.id, name)
+
+        if not matches:
+            sessions[sender] = {
+                "state": "confirm",
+                "new_name": name,
+                "action": action,
+                "amount": amount
+            }
+            send(sender, f"Confirm: {name} {action} ₦{amount}\nYES or EDIT")
+            db.close()
+            return {"ok": True}
+
+        if len(matches) == 1:
+            sessions[sender] = {
+                "state": "confirm",
+                "customer": matches[0],
+                "action": action,
+                "amount": amount
+            }
+            send(sender, f"Confirm: {matches[0].name} {action} ₦{amount}\nYES or EDIT")
+            db.close()
+            return {"ok": True}
+
+        msg_text = "Multiple customers found:\n"
+        for i, c in enumerate(matches):
+            bal = compute_balance(db, user.id, c.id)
+            msg_text += f"{i+1}. {c.name} (₦{bal})\n"
+
+        msg_text += "\nReply 1, 2 or EDIT"
+
+        sessions[sender] = {
+            "state": "duplicate",
+            "matches": matches,
+            "action": action,
+            "amount": amount
         }
 
-        send_whatsapp_message(
-            sender,
-            f"Confirm: {customer} {action} ₦{int(amount)}?\nReply YES or EDIT"
-        )
-
-        return {"status": "ok"}
+        send(sender, msg_text)
+        db.close()
+        return {"ok": True}
 
     except Exception as e:
-        print("Error:", str(e))
-        return {"status": "error"}
+        print("ERROR:", e)
+
+    return {"ok": True}
