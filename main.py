@@ -1,5 +1,6 @@
 import os
 import re
+import requests
 from datetime import datetime
 
 from fastapi import FastAPI, Request
@@ -7,12 +8,14 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Foreign
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # =========================
-# 🔐 CONFIG CHECK
+# 🔐 ENV CONFIG
 # =========================
 DATABASE_URL = os.getenv("DATABASE_URL")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL is not set. Fix your environment variables.")
+    raise ValueError("DATABASE_URL not set")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
@@ -28,7 +31,7 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, index=True)
+    name = Column(String, unique=True)
 
 
 class Transaction(Base):
@@ -37,18 +40,18 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True)
     customer_id = Column(Integer, ForeignKey("customers.id"))
     type = Column(String)  # BUY or PAY
-    amount = Column(Integer)  # stored as whole number (no float)
+    amount = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
-    message_id = Column(String, unique=True)  # idempotency
+    message_id = Column(String, unique=True)
 
 
 class PendingAction(Base):
     __tablename__ = "pending_actions"
 
     id = Column(Integer, primary_key=True)
-    phone = Column(String, index=True)
+    phone = Column(String)
     customer_name = Column(String)
-    action = Column(String)  # BUY or PAY
+    action = Column(String)
     amount = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -56,44 +59,53 @@ class PendingAction(Base):
 Base.metadata.create_all(engine)
 
 # =========================
-# 🔧 UTILITIES
+# 📤 WHATSAPP SEND (REAL)
 # =========================
 
 def send_whatsapp_message(to, message):
-    """Replace this with your WhatsApp API call"""
-    print(f"TO {to}: {message}")
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
 
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {
+            "body": message
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=data)
+    print("WhatsApp:", response.text)
+
+# =========================
+# 🧠 PARSER
+# =========================
 
 def parse_message(text):
-    """
-    Parses:
-    - Ola bought rice 5000
-    - Ola bought 5000
-    - Ola paid 2000
-    """
+    text = text.lower().strip()
 
-    text = text.lower()
+    if "balance" in text:
+        return {"type": "BALANCE"}
 
-    # Extract amount (last number in string)
     numbers = re.findall(r"\d+", text)
     if not numbers:
         return None
 
     amount = int(numbers[-1])
 
-    # Detect action
     if "bought" in text or "buy" in text:
         action = "BUY"
     elif "paid" in text or "pay" in text:
         action = "PAY"
-    elif "balance" in text:
-        return {"type": "BALANCE"}
     else:
         return None
 
-    # Extract name (first word)
-    words = text.split()
-    name = words[0]
+    name = text.split()[0]
 
     return {
         "type": "TRANSACTION",
@@ -102,9 +114,11 @@ def parse_message(text):
         "amount": amount
     }
 
+# =========================
+# 💰 BALANCE
+# =========================
 
 def get_balance(db, customer_id):
-    """Compute balance (BUY increases debt, PAY reduces it)"""
     txs = db.query(Transaction).filter(Transaction.customer_id == customer_id).all()
 
     balance = 0
@@ -116,7 +130,6 @@ def get_balance(db, customer_id):
 
     return balance
 
-
 # =========================
 # 🌐 WEBHOOK
 # =========================
@@ -126,13 +139,10 @@ async def webhook(req: Request):
     data = await req.json()
 
     try:
-        entry = data["entry"][0]
-        message = entry["changes"][0]["value"]["messages"][0]
-
+        message = data["entry"][0]["changes"][0]["value"]["messages"][0]
         text = message["text"]["body"]
         phone = message["from"]
         message_id = message["id"]
-
     except:
         return {"status": "ignored"}
 
@@ -140,28 +150,20 @@ async def webhook(req: Request):
 
     try:
         # =========================
-        # 🛑 IDEMPOTENCY CHECK
+        # 🛑 DUPLICATE CHECK
         # =========================
-        existing = db.query(Transaction).filter(Transaction.message_id == message_id).first()
-        if existing:
+        if db.query(Transaction).filter(Transaction.message_id == message_id).first():
             return {"status": "duplicate"}
 
         # =========================
-        # 🔄 CHECK PENDING ACTION
+        # 🔄 PENDING ACTION
         # =========================
         pending = db.query(PendingAction).filter(PendingAction.phone == phone).first()
 
         if pending:
             if text.lower() == "yes":
-                # confirm transaction
 
                 customer = db.query(Customer).filter(Customer.name == pending.customer_name).first()
-
-                if not customer:
-                    send_whatsapp_message(phone, "Customer not found.")
-                    db.delete(pending)
-                    db.commit()
-                    return {"status": "error"}
 
                 tx = Transaction(
                     customer_id=customer.id,
@@ -184,13 +186,14 @@ async def webhook(req: Request):
                 return {"status": "saved"}
 
             elif text.lower() == "edit":
-                send_whatsapp_message(phone, "Enter new transaction (e.g. Ola paid 2000)")
                 db.delete(pending)
                 db.commit()
+
+                send_whatsapp_message(phone, "Enter again (e.g. Ola paid 2000)")
                 return {"status": "edit"}
 
         # =========================
-        # 🧠 PARSE MESSAGE
+        # 🧠 PARSE
         # =========================
         parsed = parse_message(text)
 
@@ -199,15 +202,16 @@ async def webhook(req: Request):
             return {"status": "invalid"}
 
         # =========================
-        # 📊 BALANCE REQUEST
+        # 📊 BALANCE
         # =========================
         if parsed["type"] == "BALANCE":
             name = text.split()[0]
+
             customer = db.query(Customer).filter(Customer.name.ilike(f"%{name}%")).first()
 
             if not customer:
                 send_whatsapp_message(phone, "Customer not found.")
-                return {"status": "not found"}
+                return {"status": "not_found"}
 
             balance = get_balance(db, customer.id)
 
@@ -215,18 +219,17 @@ async def webhook(req: Request):
             return {"status": "balance"}
 
         # =========================
-        # 👤 CUSTOMER RESOLVE
+        # 👤 CUSTOMER
         # =========================
         customer = db.query(Customer).filter(Customer.name.ilike(parsed["name"])).first()
 
         if not customer:
-            # create new customer
             customer = Customer(name=parsed["name"])
             db.add(customer)
             db.commit()
 
         # =========================
-        # 📝 CREATE PENDING
+        # 📝 PENDING CONFIRM
         # =========================
         pending = PendingAction(
             phone=phone,
