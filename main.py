@@ -219,7 +219,7 @@ async def webhook(req: Request):
             return {"status": "error"}
 
         if parsed["type"] == "BALANCE":
-            name = text.replace("balance", "").strip()
+            name = text.replace("balance", "").strip().lower()
 
             customer = db.query(Customer).filter(
                 Customer.name == name,
@@ -242,7 +242,7 @@ async def webhook(req: Request):
 
         if not customer:
             customer = Customer(
-                name=parsed["name"],
+                name=parsed["name"].lower(),
                 owner_phone=phone
             )
             db.add(customer)
@@ -261,7 +261,7 @@ async def webhook(req: Request):
 
         # remember last customer
         db.query(PendingAction).filter(
-            PendingAction.phone == phone
+            PendingAction.phone == phone, PendingAction.action !=None
         ).delete()
 
         memory = PendingAction(
