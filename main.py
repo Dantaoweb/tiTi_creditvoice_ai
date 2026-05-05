@@ -212,13 +212,13 @@ async def webhook(req: Request):
         # =========================
         parsed = parse_message(text)
 
-if parsed and parsed.get("error"):
-    send_whatsapp_message(phone, parsed["error"])
-    return {"status": "error"}
-
-if not parsed:
+    if not parsed:
     send_whatsapp_message(phone, "Invalid format.")
     return {"status": "invalid"}
+
+    if parsed.get("error"):
+    send_whatsapp_message(phone, parsed["error"])
+    return {"status": "error"}
 
         # =========================
         # 📊 BALANCE
