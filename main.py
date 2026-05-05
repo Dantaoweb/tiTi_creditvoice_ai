@@ -207,24 +207,22 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, "Enter again (e.g. Ola paid 2000)")
                 return {"status": "edit"}
 
-        # =========================
-        # 🧠 PARSE
-        # =========================
+        # ==== PARSE=======================
         parsed = parse_message(text)
 
-    if not parsed:
-    send_whatsapp_message(phone, "Invalid format.")
-    return {"status": "invalid"}
+        if not parsed:
+            send_whatsapp_message(phone, "Invalid format.")
+            return {"status": "invalid"}
 
-    if parsed.get("error"):
-    send_whatsapp_message(phone, parsed["error"])
-    return {"status": "error"}
+        if parsed.get("error"):
+            send_whatsapp_message(phone, parsed["error"])
+            return {"status": "error"}
 
         # =========================
         # 📊 BALANCE
         # =========================
         if parsed["type"] == "BALANCE":
-            name = text.replace("balance", ""). strip()
+            name = text.replace("balance", "").strip()
 
             customer = db.query(Customer).filter(Customer.name.ilike(f"%{parsed['name']}%")).first()
 
