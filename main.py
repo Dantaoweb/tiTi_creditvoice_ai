@@ -260,9 +260,6 @@ async def webhook(req: Request):
         db.commit()
 
         # remember last customer
-        db.query(PendingAction).filter(
-            PendingAction.phone == phone, PendingAction.action !=None
-        ).delete()
 
         memory = PendingAction(
             phone=phone,
