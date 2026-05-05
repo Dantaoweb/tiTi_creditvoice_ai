@@ -132,6 +132,7 @@ def get_balance(db, customer_id):
     ).scalar()
 
    total_pay = db.query(
+       
        func.coalesce(func.sum(Transaction.amount), 0)).filter(
      Transaction.customer_id == customer_id,
        Transaction. type == "PAY" 
