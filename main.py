@@ -100,10 +100,10 @@ def parse_message(text):
 
     amount = int(numbers[-1])
 
-    if "bought" in text or "buy" in text:
-        action = "BUY"
-    elif "paid" in text or "pay" in text:
+    if "paid" in text or "pay" in text:
         action = "PAY"
+    elif "bought" in text or "buy" in text:
+        action = "BUY"
     else:
         return None
 
