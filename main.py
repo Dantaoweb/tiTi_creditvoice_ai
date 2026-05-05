@@ -162,7 +162,7 @@ async def webhook(req: Request):
         if db.query(Transaction).filter(Transaction.message_id == message_id).first():
             return {"status": "duplicate"}
 
-        pending = db.query(PendingAction).filter(PendingAction.phone == phone).first()
+        pending = db.query(PendingAction).filter(PendingAction.phone == phone, PendingAction.action != None).first()
 
         if pending:
             if text.lower() == "yes":
@@ -257,16 +257,6 @@ async def webhook(req: Request):
         )
 
         db.add(pending)
-        db.commit()
-
-        # remember last customer
-
-        memory = PendingAction(
-            phone=phone,
-            customer_name=customer.name,
-            last_customer=customer.name
-        )
-        db.add(memory)
         db.commit()
 
         action_word = "bought" if parsed["action"] == "BUY" else "paid"
