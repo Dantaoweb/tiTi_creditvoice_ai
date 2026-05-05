@@ -127,12 +127,14 @@ def get_balance(db, customer_id):
     total_buy =db.query(
         
         func.coalesce(func.sum(Transaction.amount), 0)).filter(
-     Transaction.customer_id == customer_id),Transaction. type == "BUY"
+     Transaction.customer_id == customer_id
+        ,Transaction. type == "BUY"
     ).scalar()
 
    total_pay = db.query(
        func.coalesce(func.sum(Transaction.amount), 0)).filter(
-     Transaction.customer_id == customer_id),Transaction. type == "PAY" 
+     Transaction.customer_id == customer_id,
+       Transaction. type == "PAY" 
     ).scalar()
 
         return total_buy - total_pay
