@@ -88,7 +88,11 @@ def send_whatsapp_message(to, message):
 
 def parse_message(text):
     text = text.lower().strip()
-
+    
+# -------block ambiguous inputs------------------
+    if text.startswith(("he " ,"she ", "they ")):
+        return {"error": "Use customer name (e.g. Ola paid 2000)"}
+        
     if "balance" in text:
         return {"type": "BALANCE"}
 
@@ -119,16 +123,17 @@ def parse_message(text):
 # =========================
 
 def get_balance(db, customer_id):
-    txs = db.query(Transaction).filter(Transaction.customer_id == customer_id).all()
+    from sqlalchemy import func
+    total_buy =
+ db.query(func.coalesce(func.sum(transaction.amount), 0)).filter(
+     Transaction.customer_id == customer_id),transaction. type == "BUY" ). scalar()
 
-    balance = 0
-    for tx in txs:
-        if tx.type == "BUY":
-            balance += tx.amount
-        else:
-            balance -= tx.amount
+   total_pay =
+ db.query(func.coalesce(func.sum(transaction.amount), 0)).filter(
+     Transaction.customer_id == customer_id),transaction. type == "PAY" ). scalar()
 
-    return balance
+        return total_buy - total_pay
+
 
 # =========================
 # 🌐 WEBHOOK
@@ -180,7 +185,7 @@ async def webhook(req: Request):
 
                 send_whatsapp_message(
                     phone,
-                    f"✅ Saved.\n{customer.name} balance: ₦{balance}"
+                    f"✅ Saved.\n{customer.name} balance: ₦{balance:,}"
                 )
 
                 return {"status": "saved"}
@@ -197,6 +202,10 @@ async def webhook(req: Request):
         # =========================
         parsed = parse_message(text)
 
+          if parsed and parsed.get ("error"):
+            send_whatsapp_message(phone, "parsed["error"])
+            return {"status": "error"}
+              
         if not parsed:
             send_whatsapp_message(phone, "Invalid format.")
             return {"status": "invalid"}
@@ -205,9 +214,9 @@ async def webhook(req: Request):
         # 📊 BALANCE
         # =========================
         if parsed["type"] == "BALANCE":
-            name = text.split()[0]
+            name = text.replace("balance", ""). strip()
 
-            customer = db.query(Customer).filter(Customer.name.ilike(f"%{name}%")).first()
+            customer = db.query(Customer).filter(Customer.name.ilike(f"%{parsed['name']}%")).first()
 
             if not customer:
                 send_whatsapp_message(phone, "Customer not found.")
@@ -215,7 +224,7 @@ async def webhook(req: Request):
 
             balance = get_balance(db, customer.id)
 
-            send_whatsapp_message(phone, f"{customer.name} balance: ₦{balance}")
+            send_whatsapp_message(phone, f"{customer.name} balance: ₦{balance:,}")
             return {"status": "balance"}
 
         # =========================
@@ -245,7 +254,7 @@ async def webhook(req: Request):
 
         send_whatsapp_message(
             phone,
-            f"Confirm: {customer.name} {action_word} ₦{parsed['amount']}?\nReply YES or EDIT"
+            f"Confirm: {customer.name} {action_word} ₦{parsed['amount']:,}?\nReply YES or EDIT"
         )
 
         return {"status": "pending"}
