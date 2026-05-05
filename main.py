@@ -121,24 +121,28 @@ def parse_message(text):
 # =========================
 # 💰 BALANCE
 # =========================
-
 def get_balance(db, customer_id):
     from sqlalchemy import func
-    total_buy =db.query(
-        
-        func.coalesce(func.sum(Transaction.amount), 0)).filter(
-     Transaction.customer_id == customer_id
-        ,Transaction. type == "BUY"
+
+    # Total BUY (what customer owes)
+    total_buy = db.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        Transaction.customer_id == customer_id,
+        Transaction.type == "BUY"
     ).scalar()
 
-   total_pay = db.query(
-       
-       func.coalesce(func.sum(Transaction.amount), 0)).filter(
-     Transaction.customer_id == customer_id,
-       Transaction. type == "PAY" 
+    # Total PAY (what customer has paid)
+    total_pay = db.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        Transaction.customer_id == customer_id,
+        Transaction.type == "PAY"
     ).scalar()
 
-        return total_buy - total_pay
+    # Balance = BUY - PAY
+    return total_buy - total_pay
+
 
 
 # =========================
