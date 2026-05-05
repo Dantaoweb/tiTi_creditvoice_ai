@@ -31,7 +31,8 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True)
+    name = Column(String)
+    owner_phone = Column(String)
 
 
 class Transaction(Base):
@@ -39,7 +40,7 @@ class Transaction(Base):
 
     id = Column(Integer, primary_key=True)
     customer_id = Column(Integer, ForeignKey("customers.id"))
-    type = Column(String)  # BUY or PAY
+    type = Column(String)
     amount = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
     message_id = Column(String, unique=True)
@@ -53,6 +54,7 @@ class PendingAction(Base):
     customer_name = Column(String)
     action = Column(String)
     amount = Column(Integer)
+    last_customer = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -88,11 +90,7 @@ def send_whatsapp_message(to, message):
 
 def parse_message(text):
     text = text.lower().strip()
-    
-# -------block ambiguous inputs------------------
-    if text.startswith(("he " ,"she ", "they ")):
-        return {"error": "Use customer name (e.g. Ola paid 2000)"}
-        
+
     if "balance" in text:
         return {"type": "BALANCE"}
 
@@ -109,7 +107,7 @@ def parse_message(text):
     else:
         return None
 
-    name = text.split()[0]
+    name = text.split()[0].lower()
 
     return {
         "type": "TRANSACTION",
@@ -121,10 +119,10 @@ def parse_message(text):
 # =========================
 # 💰 BALANCE
 # =========================
+
 def get_balance(db, customer_id):
     from sqlalchemy import func
 
-    # Total BUY (what customer owes)
     total_buy = db.query(
         func.coalesce(func.sum(Transaction.amount), 0)
     ).filter(
@@ -132,7 +130,6 @@ def get_balance(db, customer_id):
         Transaction.type == "BUY"
     ).scalar()
 
-    # Total PAY (what customer has paid)
     total_pay = db.query(
         func.coalesce(func.sum(Transaction.amount), 0)
     ).filter(
@@ -140,9 +137,7 @@ def get_balance(db, customer_id):
         Transaction.type == "PAY"
     ).scalar()
 
-    # Balance = BUY - PAY
     return total_buy - total_pay
-
 
 
 # =========================
@@ -164,21 +159,18 @@ async def webhook(req: Request):
     db = SessionLocal()
 
     try:
-        # =========================
-        # 🛑 DUPLICATE CHECK
-        # =========================
         if db.query(Transaction).filter(Transaction.message_id == message_id).first():
             return {"status": "duplicate"}
 
-        # =========================
-        # 🔄 PENDING ACTION
-        # =========================
         pending = db.query(PendingAction).filter(PendingAction.phone == phone).first()
 
         if pending:
             if text.lower() == "yes":
 
-                customer = db.query(Customer).filter(Customer.name == pending.customer_name).first()
+                customer = db.query(Customer).filter(
+                    Customer.name == pending.customer_name,
+                    Customer.owner_phone == phone
+                ).first()
 
                 tx = Transaction(
                     customer_id=customer.id,
@@ -207,8 +199,16 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, "Enter again (e.g. Ola paid 2000)")
                 return {"status": "edit"}
 
-        # ==== PARSE=======================
         parsed = parse_message(text)
+
+        # Handle "he paid" or "she paid"
+        if parsed and parsed.get("name") in ["he", "she"]:
+            memory = db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).first()
+
+            if memory and memory.last_customer:
+                parsed["name"] = memory.last_customer
 
         if not parsed:
             send_whatsapp_message(phone, "Invalid format.")
@@ -218,13 +218,13 @@ async def webhook(req: Request):
             send_whatsapp_message(phone, parsed["error"])
             return {"status": "error"}
 
-        # =========================
-        # 📊 BALANCE
-        # =========================
         if parsed["type"] == "BALANCE":
             name = text.replace("balance", "").strip()
 
-            customer = db.query(Customer).filter(Customer.name.ilike(f"%{parsed['name']}%")).first()
+            customer = db.query(Customer).filter(
+                Customer.name == name,
+                Customer.owner_phone == phone
+            ).first()
 
             if not customer:
                 send_whatsapp_message(phone, "Customer not found.")
@@ -235,27 +235,41 @@ async def webhook(req: Request):
             send_whatsapp_message(phone, f"{customer.name} balance: ₦{balance:,}")
             return {"status": "balance"}
 
-        # =========================
-        # 👤 CUSTOMER
-        # =========================
-        customer = db.query(Customer).filter(Customer.name.ilike(parsed["name"])).first()
+        customer = db.query(Customer).filter(
+            Customer.name == parsed["name"],
+            Customer.owner_phone == phone
+        ).first()
 
         if not customer:
-            customer = Customer(name=parsed["name"])
+            customer = Customer(
+                name=parsed["name"],
+                owner_phone=phone
+            )
             db.add(customer)
             db.commit()
 
-        # =========================
-        # 📝 PENDING CONFIRM
-        # =========================
         pending = PendingAction(
             phone=phone,
             customer_name=customer.name,
+            last_customer=customer.name,
             action=parsed["action"],
             amount=parsed["amount"]
         )
 
         db.add(pending)
+        db.commit()
+
+        # remember last customer
+        db.query(PendingAction).filter(
+            PendingAction.phone == phone
+        ).delete()
+
+        memory = PendingAction(
+            phone=phone,
+            customer_name=customer.name,
+            last_customer=customer.name
+        )
+        db.add(memory)
         db.commit()
 
         action_word = "bought" if parsed["action"] == "BUY" else "paid"
