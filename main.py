@@ -204,13 +204,24 @@ async def webhook(req: Request):
         parsed = parse_message(text)
 
         # Handle "he paid" or "she paid"
-        if parsed and parsed.get("name") in ["he", "she"]:
+        # Handle "he paid" or "she paid"
+     if parsed and parsed.get("name") in ["he", "she"]:
+
             memory = db.query(PendingAction).filter(
-                PendingAction.phone == phone, PendingAction.last_customer !=None
+                PendingAction.phone == phone
             ).order_by(PendingAction.created_at.desc()).first()
 
-            if memory and memory.last_customer:
-                parsed["name"] = memory.last_customer
+        if memory and memory.last_customer:
+
+        # replace he/she with actual customer
+        parsed["name"] = memory.last_customer.lower()
+
+        else:
+            send_whatsapp_message(
+            phone,
+            "No previous customer found."
+        )
+        return {"status": "no_memory"}
 
         if not parsed:
             send_whatsapp_message(phone, "Invalid format.")
@@ -269,7 +280,7 @@ async def webhook(req: Request):
 
         send_whatsapp_message(
             phone,
-            f"Confirm: {customer.name} {action_word} ₦{parsed['amount']:,}?\nReply YES or EDIT"
+            f"Confirm: {parsed['name']} {action_word} ₦{parsed['amount']:,}?\nReply YES or EDIT"
         )
 
         return {"status": "pending"}
