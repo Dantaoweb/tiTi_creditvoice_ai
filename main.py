@@ -204,8 +204,8 @@ async def webhook(req: Request):
         # Handle "he paid" or "she paid"
         if parsed and parsed.get("name") in ["he", "she"]:
             memory = db.query(PendingAction).filter(
-                PendingAction.phone == phone
-            ).first()
+                PendingAction.phone == phone, PendingAction.last_customer !=None
+            ).order_by(PendingAction.created_at.desc()).first()
 
             if memory and memory.last_customer:
                 parsed["name"] = memory.last_customer
@@ -239,6 +239,10 @@ async def webhook(req: Request):
             Customer.name == parsed["name"],
             Customer.owner_phone == phone
         ).first()
+
+        if parsed["name"] in ["he", "she"]:
+             send_whatsapp_message(phone, "Please specify customer name.")
+             return {"status": "invalid_pronoun"}
 
         if not customer:
             customer = Customer(
