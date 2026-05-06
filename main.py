@@ -185,10 +185,12 @@ async def webhook(req: Request):
 
                 balance = get_balance(db, customer.id)
 
-                send_whatsapp_message(
-                    phone,
-                    f"✅ Saved.\n{customer.name} balance: ₦{balance:,}"
-                )
+                if balance < 0:
+                    msg = f"✅ Saved.\n{customer.name} credit: ₦{abs(balance):,}"
+                else:
+                    msg = f"✅ Saved.\n{customer.name} balance: ₦{balance:,}"
+
+                send_whatsapp_message(phone, msg)
 
                 return {"status": "saved"}
 
@@ -232,17 +234,17 @@ async def webhook(req: Request):
 
             balance = get_balance(db, customer.id)
 
-            send_whatsapp_message(phone, f"{customer.name} balance: ₦{balance:,}")
-            return {"status": "balance"}
+            if balance < 0:
+                msg = f"{customer.name} credit: ₦{abs(balance):,}"
+            else:
+                msg = f"{customer.name} balance: ₦{balance:,}"
+
+                send_whatsapp_message(phone, msg)
 
         customer = db.query(Customer).filter(
             Customer.name == parsed["name"],
             Customer.owner_phone == phone
         ).first()
-
-        if parsed["name"] in ["he", "she"]:
-             send_whatsapp_message(phone, "Please specify customer name.")
-             return {"status": "invalid_pronoun"}
 
         if not customer:
             customer = Customer(
