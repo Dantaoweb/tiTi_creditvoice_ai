@@ -310,7 +310,7 @@ async def webhook(req: Request):
         # SAVE PENDING ACTION
         # =========================
 
-        db.querry(PendingAction).filter(
+        db.query(PendingAction).filter(
             pendingAction.phone == phone
         ).delete()
 
