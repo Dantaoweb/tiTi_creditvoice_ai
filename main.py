@@ -94,7 +94,7 @@ def parse_message(text):
     if "balance" in text:
         return {"type": "BALANCE"}
         
-    words = text.replace(", "."").split()
+    words = text.replace(", ", "").split()
     amount = None
     for word in words:
         if word.isdigit():
