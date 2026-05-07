@@ -175,7 +175,7 @@ async def webhook(req: Request):
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
             PendingAction.action != None
-        ).order_by(pendingAction.created_at.desc()
+        ).order_by(PendingAction.created_at.desc()
                   ).first()
 
         if pending:
