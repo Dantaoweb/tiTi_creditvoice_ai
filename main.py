@@ -311,7 +311,7 @@ async def webhook(req: Request):
         # =========================
 
         db.query(PendingAction).filter(
-            pendingAction.phone == phone
+            PendingAction.phone == phone
         ).delete()
 
         db.commit()
