@@ -250,8 +250,8 @@ async def webhook(req: Request):
             else:
                 msg = f"{customer.name} balance: ₦{balance:,}"
 
-             send_whatsapp_message(phone, msg)
-              return {"status": "balance"}
+                send_whatsapp_message(phone, msg)
+                return {"status": "balance"}
 
         customer = db.query(Customer).filter(
             Customer.name == parsed["name"],
