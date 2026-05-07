@@ -158,7 +158,7 @@ async def webhook(req: Request):
 
     db = SessionLocal()
 
-    try:
+     try:
         if db.query(Transaction).filter(Transaction.message_id == message_id).first():
             return {"status": "duplicate"}
 
@@ -201,31 +201,31 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, "Enter again (e.g. Ola paid 2000)")
                 return {"status": "edit"}
 
-        parsed = parse_message(text)
+         parsed = parse_message(text)
 
         # Handle "he paid" or "she paid"
-    if parsed and parsed.get("name") in ["he", "she"]:
+              if parsed and parsed.get("name") in ["he", "she"]:
 
-          memory = db.query(PendingAction).filter(
-        PendingAction.phone == phone
-    ).order_by(PendingAction.created_at.desc()).first()
+                    memory = db.query(PendingAction).filter(
+                PendingAction.phone == phone
+             ).order_by(PendingAction.created_at.desc()).first()
 
 
-    if memory and memory.last_customer:
+                    if memory and memory.last_customer:
 
-    # replace he/she with actual customer
-        parsed["name"] = memory.last_customer.lower()
+            # replace he/she with actual customer
+                        parsed["name"] = memory.last_customer.lower()
 
-    else:
-        send_whatsapp_message(
-        phone,
-        "No previous customer found."
-    )
-    return {"status": "no_memory"}
+                    else:
+                         send_whatsapp_message(
+                            phone,
+             "No previous customer found."
+           )
+                        return {"status": "no_memory"}
     
-        if not parsed:
-            send_whatsapp_message(phone, "Invalid format.")
-            return {"status": "invalid"}
+                    if not parsed:
+         send_whatsapp_message(phone, "Invalid format.")
+                        return {"status": "invalid"}
 
         if parsed.get("error"):
             send_whatsapp_message(phone, parsed["error"])
