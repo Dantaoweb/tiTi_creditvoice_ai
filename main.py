@@ -211,10 +211,10 @@ async def webhook(req: Request):
                 PendingAction.phone == phone
             ).order_by(PendingAction.created_at.desc()).first()
 
-        if memory and memory.last_customer:
+       if memory and memory.last_customer:
 
         # replace he/she with actual customer
-        parsed["name"] = memory.last_customer.lower()
+            parsed["name"] = memory.last_customer.lower()
 
         else:
             send_whatsapp_message(
