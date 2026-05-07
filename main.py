@@ -201,7 +201,7 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, "Enter again (e.g. Ola paid 2000)")
                 return {"status": "edit"}
 
-         parsed = parse_message(text)
+        parsed = parse_message(text)
 
         # Handle "he paid" or "she paid"
               if parsed and parsed.get("name") in ["he", "she"]:
