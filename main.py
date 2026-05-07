@@ -212,16 +212,25 @@ async def webhook(req: Request):
             ).order_by(PendingAction.created_at.desc()).first()
 
 
-        if memory and memory.last_customer:
+        # handle he/she references
+    if parsed["name"].lower() in ["he", "she"]:
 
-    # replace he/she with actual customer
-            parsed["name"] = memory.last_customer.lower()
+        memory = db.query(PendingAction).filter(
+        PendingAction.phone == phone
+    ).order_by(
+        PendingAction.created_at.desc()
+    ).first()
 
-        else:
-             send_whatsapp_message(
-          phone,
-        "No previous customer found."
-    )
+    if memory and memory.last_customer:
+
+        # replace he/she with actual customer
+        parsed["name"] = memory.last_customer.lower()
+
+    else:
+        send_whatsapp_message(
+            phone,
+            "No previous customer found."
+        )
         return {"status": "no_memory"}
 
         if not parsed:
