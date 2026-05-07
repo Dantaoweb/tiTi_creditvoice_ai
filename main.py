@@ -94,8 +94,11 @@ def parse_message(text):
     if "balance" in text:
         return {"type": "BALANCE"}
         
-    words = text.replace(", ", "").split()
+    clean_text = text.replace(",", "")
+    words = clean_text.split()
+    
     amount = None
+    
     for word in words:
         if word.isdigit():
             amount = int(word)
@@ -104,9 +107,9 @@ def parse_message(text):
         return None
 
 
-    if "paid" in text or "pay" in text:
+    if "paid" in clean_text or "pay" in clean_text:
         action = "PAY"
-    elif "bought" in text or "buy" in text:
+    elif "bought" in clean_text or "buy" in clean_text:
         action = "BUY"
     else:
         return None
