@@ -103,7 +103,6 @@ def parse_message(text):
     if amount is None:
         return None
 
-    amount = int(numbers[-1])
 
     if "paid" in text or "pay" in text:
         action = "PAY"
