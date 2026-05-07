@@ -204,7 +204,7 @@ async def webhook(req: Request):
         parsed = parse_message(text)
 
         # Handle "he paid" or "she paid"
-              if parsed and parsed.get("name") in ["he", "she"]:
+        if parsed and parsed.get("name") in ["he", "she"]:
 
                     memory = db.query(PendingAction).filter(
                 PendingAction.phone == phone
