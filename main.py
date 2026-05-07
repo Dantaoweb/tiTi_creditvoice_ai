@@ -224,7 +224,7 @@ async def webhook(req: Request):
                     return {"status": "no_memory"}
     
                     if not parsed:
-                    send_whatsapp_message(phone, "Invalid format.")
+                        send_whatsapp_message(phone, "Invalid format.")
                         return {"status": "invalid"}
 
         if parsed.get("error"):
