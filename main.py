@@ -93,8 +93,9 @@ def parse_message(text):
 
     if "balance" in text:
         return {"type": "BALANCE"}
-
-    numbers = re.findall(r"\d+", text)
+        clean_text = text.replace(",",  "")
+        
+    numbers = re.findall(r"\d+", clean_text)
     if not numbers:
         return None
 
