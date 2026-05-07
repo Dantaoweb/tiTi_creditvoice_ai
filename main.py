@@ -158,7 +158,7 @@ async def webhook(req: Request):
 
     db = SessionLocal()
 
-     try:
+    try:
         if db.query(Transaction).filter(Transaction.message_id == message_id).first():
             return {"status": "duplicate"}
 
