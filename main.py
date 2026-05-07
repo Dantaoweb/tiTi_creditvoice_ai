@@ -150,7 +150,7 @@ async def webhook(req: Request):
 
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]
-        text = message["text"]["body"]
+        text = message["text"]["body"].strip()
         phone = message["from"]
         message_id = message["id"]
     except:
@@ -159,12 +159,26 @@ async def webhook(req: Request):
     db = SessionLocal()
 
     try:
-        if db.query(Transaction).filter(Transaction.message_id == message_id).first():
+
+        # Prevent duplicate processing
+        existing_tx = db.query(Transaction).filter(
+            Transaction.message_id == message_id
+        ).first()
+
+        if existing_tx:
             return {"status": "duplicate"}
 
-        pending = db.query(PendingAction).filter(PendingAction.phone == phone, PendingAction.action != None).first()
+        # =========================
+        # CHECK PENDING ACTION
+        # =========================
+
+        pending = db.query(PendingAction).filter(
+            PendingAction.phone == phone,
+            PendingAction.action != None
+        ).first()
 
         if pending:
+
             if text.lower() == "yes":
 
                 customer = db.query(Customer).filter(
@@ -185,6 +199,7 @@ async def webhook(req: Request):
 
                 balance = get_balance(db, customer.id)
 
+                # CREDIT DISPLAY
                 if balance < 0:
                     msg = f"✅ Saved.\n{customer.name} credit: ₦{abs(balance):,}"
                 else:
@@ -195,43 +210,33 @@ async def webhook(req: Request):
                 return {"status": "saved"}
 
             elif text.lower() == "edit":
+
                 db.delete(pending)
                 db.commit()
 
-                send_whatsapp_message(phone, "Enter again (e.g. Ola paid 2000)")
+                send_whatsapp_message(
+                    phone,
+                    "Enter again (e.g. Ola paid 2000)"
+                )
+
                 return {"status": "edit"}
+
+        # =========================
+        # PARSE MESSAGE
+        # =========================
 
         parsed = parse_message(text)
 
-        # Handle "he paid" or "she paid"
-        if parsed and parsed.get("name") in ["he", "she"]:
+        if not parsed:
+            send_whatsapp_message(phone, "Invalid format.")
+            return {"status": "invalid"}
 
-                    memory = db.query(PendingAction).filter(
-                PendingAction.phone == phone
-             ).order_by(PendingAction.created_at.desc()).first()
-
-
-                    if memory and memory.last_customer:
-
-            # replace he/she with actual customer
-                        parsed["name"] = memory.last_customer.lower()
-
-                    else:
-                         send_whatsapp_message(
-                            phone,
-             "No previous customer found."
-           )
-                    return {"status": "no_memory"}
-    
-                    if not parsed:
-                        send_whatsapp_message(phone, "Invalid format.")
-                        return {"status": "invalid"}
-
-        if parsed.get("error"):
-            send_whatsapp_message(phone, parsed["error"])
-            return {"status": "error"}
+        # =========================
+        # BALANCE CHECK
+        # =========================
 
         if parsed["type"] == "BALANCE":
+
             name = text.replace("balance", "").strip().lower()
 
             customer = db.query(Customer).filter(
@@ -250,21 +255,59 @@ async def webhook(req: Request):
             else:
                 msg = f"{customer.name} balance: ₦{balance:,}"
 
-                send_whatsapp_message(phone, msg)
-                return {"status": "balance"}
+            send_whatsapp_message(phone, msg)
+
+            return {"status": "balance"}
+
+        # =========================
+        # HANDLE HE / SHE
+        # =========================
+
+        customer_name = parsed["name"].lower()
+
+        if customer_name in ["he", "she"]:
+
+            memory = db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).order_by(
+                PendingAction.created_at.desc()
+            ).first()
+
+            if memory and memory.last_customer:
+
+                customer_name = memory.last_customer.lower()
+
+            else:
+
+                send_whatsapp_message(
+                    phone,
+                    "No previous customer found."
+                )
+
+                return {"status": "no_memory"}
+
+        # =========================
+        # FIND OR CREATE CUSTOMER
+        # =========================
 
         customer = db.query(Customer).filter(
-            Customer.name == parsed["name"],
+            Customer.name == customer_name,
             Customer.owner_phone == phone
         ).first()
 
         if not customer:
+
             customer = Customer(
-                name=parsed["name"].lower(),
+                name=customer_name,
                 owner_phone=phone
             )
+
             db.add(customer)
             db.commit()
+
+        # =========================
+        # SAVE PENDING ACTION
+        # =========================
 
         pending = PendingAction(
             phone=phone,
@@ -281,7 +324,7 @@ async def webhook(req: Request):
 
         send_whatsapp_message(
             phone,
-            f"Confirm: {parsed['name']} {action_word} ₦{parsed['amount']:,}?\nReply YES or EDIT"
+            f"Confirm: {customer.name} {action_word} ₦{parsed['amount']:,}?\nReply YES or EDIT"
         )
 
         return {"status": "pending"}
