@@ -175,7 +175,8 @@ async def webhook(req: Request):
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
             PendingAction.action != None
-        ).first()
+        ).order_by(pendingAction.created_at.desc()
+                  ).first()
 
         if pending:
 
@@ -309,6 +310,12 @@ async def webhook(req: Request):
         # SAVE PENDING ACTION
         # =========================
 
+        db.querry(PendingAction).filter(
+            pendingAction.phone == phone
+        ).delete()
+
+        db.commit()
+        
         pending = PendingAction(
             phone=phone,
             customer_name=customer.name,
