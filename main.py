@@ -57,7 +57,13 @@ class PendingAction(Base):
     last_customer = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class CustomerMemory(Base):
+    __tablename__ = "customer_memory"
 
+    id = Column(Integer, primary_key=True)
+    phone = Column(String, unique=True)
+    last_customer = Column(String)
+    
 Base.metadata.create_all(engine)
 
 # =========================
@@ -202,6 +208,23 @@ async def webhook(req: Request):
                 )
 
                 db.add(tx)
+                memory =db.query(CustomerMemory).filter(
+                    CustomerMemory.phone == phone
+                ).first()
+
+                #if no memory exists yet
+                if not memory:
+                    memory = CustomerMemory(phone=phone,
+                                            last_customer=customer.name
+                                           )
+                    db.add(memory)
+
+                #update existing memory
+                else:
+                    memory.last_customer = customer.name
+
+                   
+                
                 db.delete(pending)
                 db.commit()
 
@@ -275,12 +298,12 @@ async def webhook(req: Request):
 
         if customer_name in ["he", "she"]:
 
-            memory = db.query(PendingAction).filter(
-                PendingAction.phone == phone
-            ).order_by(
-                PendingAction.created_at.desc()
+            memory = db.query(CustomerMemory).filter(
+                CustomerMemory.phone == phone
             ).first()
 
+            
+            #if memory exists
             if memory and memory.last_customer:
 
                 customer_name = memory.last_customer.lower()
