@@ -128,12 +128,12 @@ def parse_message(text):
 
     for i, word in enumerate(words):
         if word in ["bought", "buy", "paid", "pay"]:
-        action_index = i
-        break
+            action_index = i
+            break
 
     # Stop if no valid action found
     if action_index is None:
-    return None
+        return None
 
     # Everything before action becomes customer name
     name = " ".join(words[:action_index]).lower()
