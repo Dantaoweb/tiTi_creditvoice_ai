@@ -1,7 +1,7 @@
 import os
 import re
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
@@ -99,7 +99,18 @@ def parse_message(text):
 
     if "balance" in text:
         return {"type": "BALANCE"}
-        
+
+    if text == "today sales":
+        return {"type": "TODAY_SALES"}
+
+    if text == "weekly sales":
+        return {"type": "WEEKLY_SALES"}
+
+    
+    if text == "monthly sales":
+        return {"type": "MONTHLY_SALES"}  
+
+  
     clean_text = text.replace(",", "")
     words = clean_text.split()
     
@@ -168,6 +179,54 @@ def get_balance(db, customer_id):
 
     return total_buy - total_pay
 
+# =========================
+# 📊 SALES ANALYTICS
+# =========================
+
+def get_today_sales(db):
+    from sqlalchemy import func
+
+    today = datetime.utcnow().date()
+
+    total = db.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        Transaction.type == "BUY",
+        func.date(Transaction.created_at) == today
+    ).scalar()
+
+    return total
+
+
+def get_weekly_sales(db):
+    from sqlalchemy import func
+
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+
+    total = db.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        Transaction.type == "BUY",
+        Transaction.created_at >= seven_days_ago
+    ).scalar()
+
+    return total
+
+
+def get_monthly_sales(db):
+    from sqlalchemy import func
+
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+
+    total = db.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        Transaction.type == "BUY",
+        Transaction.created_at >= thirty_days_ago
+    ).scalar()
+
+    return total
+
 
 # =========================
 # 🌐 WEBHOOK
@@ -221,6 +280,7 @@ async def webhook(req: Request):
                     type=pending.action,
                     amount=pending.amount,
                     message_id=message_id
+                    create_at=datetime.utcnow()
                 )
 
                 db.add(tx)
@@ -281,8 +341,54 @@ async def webhook(req: Request):
         # =========================
         # BALANCE CHECK
         # =========================
+        # =========================
+        # 📊 TODAY SALES
+        # =========================
 
-        if parsed["type"] == "BALANCE":
+       if parsed["type"] == "TODAY_SALES":
+
+            total = get_today_sales(db)
+
+            send_whatsapp_message(
+                phone,
+               f"📊 Today's sales: ₦{total:,}"
+             )
+
+           return {"status": "today_sales"}
+
+
+       # =========================
+       # 📊 WEEKLY SALES
+       # =========================
+
+       if parsed["type"] == "WEEKLY_SALES":
+
+            total = get_weekly_sales(db)
+
+            send_whatsapp_message(
+                 phone,
+                 f"📊 Weekly sales: ₦{total:,}"
+             )
+
+             return {"status": "weekly_sales"}
+
+
+       # =========================
+       # 📊 MONTHLY SALES
+       # =========================
+
+       if parsed["type"] == "MONTHLY_SALES":
+
+             total = get_monthly_sales(db)
+
+             send_whatsapp_message(
+                  phone,
+                  f"📊 Monthly sales: ₦{total:,}"
+             )
+
+               return {"status": "monthly_sales"}
+
+       if parsed["type"] == "BALANCE":
 
             name = text.replace("balance", "").strip().lower()
 
