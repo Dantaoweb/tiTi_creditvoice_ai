@@ -120,7 +120,23 @@ def parse_message(text):
     else:
         return None
 
-    name = text.split()[0].lower()
+    # Split message into words
+    words = text.split()
+
+    # Find transaction action position
+    action_index = None
+
+    for i, word in enumerate(words):
+        if word in ["bought", "buy", "paid", "pay"]:
+        action_index = i
+        break
+
+    # Stop if no valid action found
+    if action_index is None:
+    return None
+
+    # Everything before action becomes customer name
+    name = " ".join(words[:action_index]).lower()
 
     return {
         "type": "TRANSACTION",
