@@ -461,7 +461,7 @@ async def webhook(req: Request):
 
             
             #if memory exists
-        if memory and memory.last_customer:
+            if memory and memory.last_customer:
 
                 customer_name = memory.last_customer.lower()
 
