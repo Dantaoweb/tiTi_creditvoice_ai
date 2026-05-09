@@ -372,7 +372,7 @@ async def webhook(req: Request):
                f"📊 Today's sales: ₦{total:,}"
              )
 
-           return {"status": "today_sales"}
+            return {"status": "today_sales"}
 
 
         # =========================
@@ -388,7 +388,7 @@ async def webhook(req: Request):
                  f"📊 Weekly sales: ₦{total:,}"
              )
 
-             return {"status": "weekly_sales"}
+            return {"status": "weekly_sales"}
 
 
         # =========================
@@ -404,7 +404,7 @@ async def webhook(req: Request):
                   f"📊 Monthly sales: ₦{total:,}"
              )
 
-               return {"status": "monthly_sales"}
+             return {"status": "monthly_sales"}
 
         # =========================
         # 📊 YEARLY SALES
@@ -419,7 +419,7 @@ async def webhook(req: Request):
                   f"📊 Yearly sales: ₦{total:,}"
              )
 
-               return {"status": "monthly_sales"}
+             return {"status": "monthly_sales"}
 
 
 
