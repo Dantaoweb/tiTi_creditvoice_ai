@@ -110,6 +110,9 @@ def parse_message(text):
     if text == "monthly sales":
         return {"type": "MONTHLY_SALES"}  
 
+    if text == "yearly sales":
+        return {"type": "YEARLY_SALES"}  
+
   
     clean_text = text.replace(",", "")
     words = clean_text.split()
@@ -223,6 +226,21 @@ def get_monthly_sales(db):
     ).filter(
         Transaction.type == "BUY",
         Transaction.created_at >= thirty_days_ago
+    ).scalar()
+
+    return total
+
+
+def get_yearly_sales(db):
+    from sqlalchemy import func
+
+    one_year_ago = datetime.utcnow() - timedelta(days=365)
+
+    total = db.query(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).filter(
+        Transaction.type == "BUY",
+        Transaction.created_at >= one_year_ago
     ).scalar()
 
     return total
@@ -387,6 +405,23 @@ async def webhook(req: Request):
              )
 
                return {"status": "monthly_sales"}
+
+       # =========================
+       # 📊 YEARLY SALES
+       # =========================
+
+       if parsed["type"] == "YEARLY_SALES":
+
+             total = get_yearly_sales(db)
+
+             send_whatsapp_message(
+                  phone,
+                  f"📊 Yearly sales: ₦{total:,}"
+             )
+
+               return {"status": "monthly_sales"}
+
+
 
        if parsed["type"] == "BALANCE":
 
