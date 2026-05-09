@@ -297,8 +297,8 @@ async def webhook(req: Request):
                     customer_id=customer.id,
                     type=pending.action,
                     amount=pending.amount,
-                    message_id=message_id
-                    create_at=datetime.utcnow()
+                    message_id=message_id,
+                    created_at=datetime.utcnow()
                 )
 
                 db.add(tx)
