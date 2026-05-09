@@ -419,7 +419,7 @@ async def webhook(req: Request):
                   f"📊 Yearly sales: ₦{total:,}"
              )
 
-             return {"status": "monthly_sales"}
+             return {"status": "yearly_sales"}
 
 
 
@@ -465,7 +465,7 @@ async def webhook(req: Request):
 
                 customer_name = memory.last_customer.lower()
 
-        else:
+            else:
 
              send_whatsapp_message(
                  phone,
