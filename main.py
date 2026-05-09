@@ -363,7 +363,7 @@ async def webhook(req: Request):
         # 📊 TODAY SALES
         # =========================
 
-       if parsed["type"] == "TODAY_SALES":
+        if parsed["type"] == "TODAY_SALES":
 
             total = get_today_sales(db)
 
@@ -375,11 +375,11 @@ async def webhook(req: Request):
            return {"status": "today_sales"}
 
 
-       # =========================
-       # 📊 WEEKLY SALES
-       # =========================
+        # =========================
+        # 📊 WEEKLY SALES
+        # =========================
 
-       if parsed["type"] == "WEEKLY_SALES":
+        if parsed["type"] == "WEEKLY_SALES":
 
             total = get_weekly_sales(db)
 
@@ -391,11 +391,11 @@ async def webhook(req: Request):
              return {"status": "weekly_sales"}
 
 
-       # =========================
-       # 📊 MONTHLY SALES
-       # =========================
+        # =========================
+        # 📊 MONTHLY SALES
+        # =========================
 
-       if parsed["type"] == "MONTHLY_SALES":
+        if parsed["type"] == "MONTHLY_SALES":
 
              total = get_monthly_sales(db)
 
@@ -406,11 +406,11 @@ async def webhook(req: Request):
 
                return {"status": "monthly_sales"}
 
-       # =========================
-       # 📊 YEARLY SALES
-       # =========================
+        # =========================
+        # 📊 YEARLY SALES
+        # =========================
 
-       if parsed["type"] == "YEARLY_SALES":
+        if parsed["type"] == "YEARLY_SALES":
 
              total = get_yearly_sales(db)
 
@@ -423,7 +423,7 @@ async def webhook(req: Request):
 
 
 
-       if parsed["type"] == "BALANCE":
+        if parsed["type"] == "BALANCE":
 
             name = text.replace("balance", "").strip().lower()
 
@@ -461,18 +461,18 @@ async def webhook(req: Request):
 
             
             #if memory exists
-            if memory and memory.last_customer:
+        if memory and memory.last_customer:
 
                 customer_name = memory.last_customer.lower()
 
-            else:
+        else:
 
-                send_whatsapp_message(
-                    phone,
-                    "No previous customer found."
+             send_whatsapp_message(
+                 phone,
+                 "No previous customer found."
                 )
 
-                return {"status": "no_memory"}
+             return {"status": "no_memory"}
 
         # =========================
         # FIND OR CREATE CUSTOMER
