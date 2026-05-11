@@ -1396,8 +1396,7 @@ async def webhook(req: Request):
         
         if parsed["type"] == "OVERDUE_DEBTORS":
 
-            overdue_list = 
-                get_overdue_debtors(db)
+            overdue_list = get_overdue_debtors(db)
         
 
             if len(overdue_list) == 0:
