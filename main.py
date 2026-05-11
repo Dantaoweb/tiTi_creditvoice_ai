@@ -410,7 +410,7 @@ def parse_message(text):
         words[:action_index]
     ).lower()
 
-    if name.strip() ==:
+    if name.strip() == "":
         return None
 
     return {
