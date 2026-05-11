@@ -1,9 +1,11 @@
 import os
 import re
 import requests
+
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
+
 from sqlalchemy import (
     create_engine,
     Column,
@@ -12,7 +14,11 @@ from sqlalchemy import (
     DateTime,
     ForeignKey
 )
-from sqlalchemy.orm import sessionmaker, declarative_base
+
+from sqlalchemy.orm import (
+    sessionmaker,
+    declarative_base
+)
 
 # =========================
 # 🔐 ENV CONFIG
@@ -38,14 +44,18 @@ app = FastAPI()
 # =========================
 
 class Customer(Base):
+
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True)
+
     name = Column(String)
+
     owner_phone = Column(String)
 
 
 class Transaction(Base):
+
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True)
@@ -76,6 +86,7 @@ class Transaction(Base):
 
 
 class PendingAction(Base):
+
     __tablename__ = "pending_actions"
 
     id = Column(Integer, primary_key=True)
@@ -110,6 +121,7 @@ class PendingAction(Base):
 
 
 class CustomerMemory(Base):
+
     __tablename__ = "customer_memory"
 
     id = Column(Integer, primary_key=True)
@@ -120,6 +132,23 @@ class CustomerMemory(Base):
     )
 
     last_customer = Column(String)
+
+
+class ReminderMemory(Base):
+
+    __tablename__ = "reminder_memory"
+
+    id = Column(Integer, primary_key=True)
+
+    phone = Column(String)
+
+    customer_name = Column(String)
+
+    balance = Column(Integer)
+
+    due_date = Column(DateTime)
+
+    reminder_type = Column(String)
 
 
 Base.metadata.create_all(engine)
@@ -136,7 +165,9 @@ def send_whatsapp_message(to, message):
     )
 
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Authorization": (
+            f"Bearer {WHATSAPP_TOKEN}"
+        ),
         "Content-Type": "application/json"
     }
 
@@ -169,8 +200,8 @@ def parse_message(text):
     # 📊 COMMANDS
     # =========================
 
-    if "balance" in text:
-        return {"type": "BALANCE"}
+    if text.startswith("balance"):
+    return {"type": "BALANCE"}
 
     if text == "today sales":
         return {"type": "TODAY_SALES"}
@@ -184,14 +215,44 @@ def parse_message(text):
     if text == "yearly sales":
         return {"type": "YEARLY_SALES"}
 
-    if text == "unpaid debtors":
-        return {"type": "UNPAID_DEBTORS"}
+    if text in [
+        "unpaid debtors",
+        "unpaid",
+        "debtor",
+        "debtors"
+    ]:
+        return {
+            "type": "UNPAID_DEBTORS"
+        }
 
     if text == "overdue debtors":
-        return {"type": "OVERDUE_DEBTORS"}
+        return {
+            "type": "OVERDUE_DEBTORS"
+        }
 
     if text == "due":
-        return {"type": "DUE_MENU"}
+        return {
+            "type": "DUE_MENU"
+        }
+
+    if text in [
+        "formats",
+        "format",
+        "1"
+    ]:
+        return {
+            "type": "FORMATS"
+        }
+
+    if text.startswith("remind"):
+        return {
+            "type": "REMIND",
+            "text": text
+        }
+
+    # =========================
+    # 🧹 CLEAN TEXT
+    # =========================
 
     clean_text = text.replace(",", "")
 
@@ -214,7 +275,7 @@ def parse_message(text):
     due_date = None
 
     # =========================
-    # 📅 DETECT DUE DATE
+    # 📅 DUE DATE
     # =========================
 
     date_match = re.search(
@@ -302,7 +363,9 @@ def parse_message(text):
             "paid",
             "pay"
         ]:
+
             action_index = i
+
             break
 
     if action_index is None:
@@ -320,6 +383,7 @@ def parse_message(text):
         "paid_amount": paid_amount,
         "due_date": due_date
     }
+
 
 # =========================
 # 💰 BALANCE
@@ -367,7 +431,8 @@ def get_today_sales(db):
             0
         )
     ).filter(
-        Transaction.type == "BUY",
+        Transaction.type == "BUY"
+    ).filter(
         func.date(Transaction.created_at) == today
     ).scalar()
 
@@ -445,9 +510,7 @@ def get_yearly_sales(db):
 
 def get_unpaid_debtors(db):
 
-    customers = db.query(
-        Customer
-    ).all()
+    customers = db.query(Customer).all()
 
     debtors = []
 
@@ -479,9 +542,7 @@ def get_overdue_debtors(db):
 
     overdue_list = []
 
-    customers = db.query(
-        Customer
-    ).all()
+    customers = db.query(Customer).all()
 
     today = datetime.utcnow()
 
@@ -495,12 +556,10 @@ def get_overdue_debtors(db):
         if balance <= 0:
             continue
 
-        latest_tx = db.query(
-            Transaction
-        ).filter(
+        latest_tx = db.query(Transaction).filter(
             Transaction.customer_id == customer.id,
             Transaction.type == "BUY",
-            Transaction.due_date != None
+            Transaction.due_date.isnot(None)
         ).order_by(
             Transaction.due_date.desc()
         ).first()
@@ -525,11 +584,107 @@ def get_overdue_debtors(db):
     return overdue_list
 
 # =========================
+# 📅 DUE TODAY
+# =========================
+
+def get_due_today(db):
+
+    due_today = []
+
+    customers = db.query(Customer).all()
+
+    today = datetime.utcnow().date()
+
+    for customer in customers:
+
+        balance = get_balance(
+            db,
+            customer.id
+        )
+
+        if balance <= 0:
+            continue
+
+        latest_tx = db.query(Transaction).filter(
+            Transaction.customer_id == customer.id,
+            Transaction.type == "BUY",
+            Transaction.due_date.isnot(None)
+        ).order_by(
+            Transaction.due_date.desc()
+        ).first()
+
+        if not latest_tx:
+            continue
+
+        due_date = latest_tx.due_date.date()
+
+        if due_date == today:
+
+            due_today.append({
+                "name": customer.name,
+                "balance": balance,
+                "due_date": latest_tx.due_date
+            })
+
+    return due_today
+
+# =========================
+# 📅 DUE IN 2 DAYS
+# =========================
+
+def get_due_in_2_days(db):
+
+    due_list = []
+
+    customers = db.query(Customer).all()
+
+    target_date = (
+        datetime.utcnow().date()
+        + timedelta(days=2)
+    )
+
+    for customer in customers:
+
+        balance = get_balance(
+            db,
+            customer.id
+        )
+
+        if balance <= 0:
+            continue
+
+        latest_tx = db.query(Transaction).filter(
+            Transaction.customer_id == customer.id,
+            Transaction.type == "BUY",
+            Transaction.due_date.isnot(None)
+        ).order_by(
+            Transaction.due_date.desc()
+        ).first()
+
+        if not latest_tx:
+            continue
+
+        due_date = latest_tx.due_date.date()
+
+        if due_date == target_date:
+
+            due_list.append({
+                "name": customer.name,
+                "balance": balance,
+                "due_date": latest_tx.due_date
+            })
+
+    return due_list
+
+@app.get("/")
+def home():
+    return {"status": "CreditVoice running"}
+
+# =========================
 # 🌐 WEBHOOK
 # =========================
 
 @app.post("/webhook")
-
 async def webhook(req: Request):
 
     data = await req.json()
@@ -559,9 +714,7 @@ async def webhook(req: Request):
         # 🚫 DUPLICATES
         # =========================
 
-        existing_tx = db.query(
-            Transaction
-        ).filter(
+        existing_tx = db.query(Transaction).filter(
             Transaction.message_id == message_id
         ).first()
 
@@ -572,9 +725,7 @@ async def webhook(req: Request):
         # ⏳ PENDING
         # =========================
 
-        pending = db.query(
-            PendingAction
-        ).filter(
+        pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
             PendingAction.action != None
         ).order_by(
@@ -589,12 +740,68 @@ async def webhook(req: Request):
 
             if pending.action == "DUE_MENU":
 
+                # =========================
+                # 📅 DUE IN 2 DAYS
+                # =========================
+
                 if text == "1":
 
-                    send_whatsapp_message(
-                        phone,
-                        "📅 Due in 2 Days feature coming next."
-                    )
+                    due_list = get_due_in_2_days(db)
+
+                    db.query(ReminderMemory).filter(
+                        ReminderMemory.phone == phone
+                    ).delete()
+
+                    db.commit()
+
+                    if len(due_list) == 0:
+
+                        send_whatsapp_message(
+                            phone,
+                            "✅ No debts due in 2 days."
+                        )
+
+                    else:
+
+                        msg = (
+                            "📅 Due in 2 Days\n\n"
+                        )
+
+                        for i, debtor in enumerate(
+                            due_list,
+                            start=1
+                        ):
+
+                            memory = ReminderMemory(
+                                phone=phone,
+                                customer_name=debtor["name"],
+                                balance=debtor["balance"],
+                                due_date=debtor["due_date"],
+                                reminder_type="DUE_2_DAYS"
+                            )
+
+                            db.add(memory)
+
+                            msg += (
+                                f"{i}. "
+                                f"{debtor['name']} "
+                                f"→ ₦{debtor['balance']:,}\n"
+                            )
+
+                        db.commit()
+
+                        msg += (
+                            "\nSend:\n"
+                            "REMIND 1\n"
+                            "or\n"
+                            "REMIND 2\n"
+                            "to generate customer reminder."
+                        )
+
+                        send_whatsapp_message(
+                            phone,
+                            msg
+                        )
 
                     db.delete(pending)
 
@@ -604,12 +811,66 @@ async def webhook(req: Request):
                         "status": "due_2_days"
                     }
 
+                # =========================
+                # 📅 DUE TODAY
+                # =========================
+
                 elif text == "2":
 
-                    send_whatsapp_message(
-                        phone,
-                        "📅 Due Today feature coming next."
-                    )
+                    due_today = get_due_today(db)
+
+                    db.query(ReminderMemory).filter(
+                        ReminderMemory.phone == phone
+                    ).delete()
+
+                    db.commit()
+
+                    if len(due_today) == 0:
+
+                        send_whatsapp_message(
+                            phone,
+                            "✅ No debts due today."
+                        )
+
+                    else:
+
+                        msg = "📅 Due Today\n\n"
+
+                        for i, debtor in enumerate(
+                            due_today,
+                            start=1
+                        ):
+
+                            memory = ReminderMemory(
+                                phone=phone,
+                                customer_name=debtor["name"],
+                                balance=debtor["balance"],
+                                due_date=debtor["due_date"],
+                                reminder_type="DUE_TODAY"
+                            )
+
+                            db.add(memory)
+
+                            msg += (
+                                f"{i}. "
+                                f"{debtor['name']} "
+                                f"→ ₦{debtor['balance']:,}\n"
+                            )
+
+                        db.commit()
+
+                        msg += (
+                            "\nSend:\n"
+                            "REMIND 1\n"
+                            "or\n"
+                            "REMIND 2\n"
+                            "to generate customer reminder."
+                        )
+
+                        send_whatsapp_message(
+                            phone,
+                            msg
+                        )
 
                     db.delete(pending)
 
@@ -618,6 +879,10 @@ async def webhook(req: Request):
                     return {
                         "status": "due_today"
                     }
+
+                # =========================
+                # ⚠️ OVERDUE
+                # =========================
 
                 elif text == "3":
 
@@ -641,10 +906,9 @@ async def webhook(req: Request):
                             start=1
                         ):
 
-                            due_date_text = (
-                                debtor["due_date"]
-                                .strftime("%d/%m/%Y")
-                            )
+                            due_date_text = debtor[
+                                "due_date"
+                            ].strftime("%d/%m/%Y")
 
                             msg += (
                                 f"{i}. "
@@ -654,8 +918,7 @@ async def webhook(req: Request):
                                 f"Due: "
                                 f"{due_date_text}\n"
                                 f"Overdue: "
-                                f"{debtor['overdue_days']} "
-                                f"days\n\n"
+                                f"{debtor['overdue_days']} days\n\n"
                             )
 
                         send_whatsapp_message(
@@ -677,15 +940,13 @@ async def webhook(req: Request):
 
             if text.lower() == "yes":
 
-                customer = db.query(
-                    Customer
-                ).filter(
+                customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
                     Customer.owner_phone == phone
                 ).first()
 
                 # =========================
-                # 💰 BUY
+                # 🛒 BUY
                 # =========================
 
                 if pending.action == "BUY":
@@ -748,9 +1009,7 @@ async def webhook(req: Request):
                 # 🧠 MEMORY
                 # =========================
 
-                memory = db.query(
-                    CustomerMemory
-                ).filter(
+                memory = db.query(CustomerMemory).filter(
                     CustomerMemory.phone == phone
                 ).first()
 
@@ -765,9 +1024,7 @@ async def webhook(req: Request):
 
                 else:
 
-                    memory.last_customer = (
-                        customer.name
-                    )
+                    memory.last_customer = customer.name
 
                 db.delete(pending)
 
@@ -779,7 +1036,7 @@ async def webhook(req: Request):
                 )
 
                 # =========================
-                # 💬 MESSAGE
+                # 💬 FINAL MESSAGE
                 # =========================
 
                 if pending.action == "COMBINED":
@@ -792,8 +1049,7 @@ async def webhook(req: Request):
                             f"₦{pending.buy_amount:,} "
                             f"and paid "
                             f"₦{pending.paid_amount:,}.\n"
-                            f"Credit: "
-                            f"₦{abs(balance):,}"
+                            f"Credit: ₦{abs(balance):,}"
                         )
 
                     else:
@@ -804,8 +1060,7 @@ async def webhook(req: Request):
                             f"₦{pending.buy_amount:,} "
                             f"and paid "
                             f"₦{pending.paid_amount:,}.\n"
-                            f"Balance: "
-                            f"₦{balance:,}"
+                            f"Balance: ₦{balance:,}"
                         )
 
                 else:
@@ -872,14 +1127,138 @@ async def webhook(req: Request):
             return {"status": "invalid"}
 
         # =========================
+        # 📘 FORMATS
+        # =========================
+
+        if parsed["type"] == "FORMATS":
+
+            msg = (
+                "📘 Supported Formats\n\n"
+                "🛒 BUY ONLY\n"
+                "Ade bought rice 5000\n\n"
+                "💵 PAYMENT ONLY\n"
+                "Ade paid 3000\n\n"
+                "🔄 PART PAYMENT\n"
+                "Ade bought rice 5000 paid 2000\n\n"
+                "📅 DUE DATE\n"
+                "Ade bought rice 5000 due 12/2/2026\n\n"
+                "📅 PART PAYMENT + DUE DATE\n"
+                "Ade bought rice 5000 "
+                "paid 2000 due 12/2/2026\n\n"
+                "📌 Date Format:\n"
+                "Use D/M/YYYY\n\n"
+                "Example:\n"
+                "12/2/2026 = 12 February 2026"
+            )
+
+            send_whatsapp_message(
+                phone,
+                msg
+            )
+
+            return {"status": "formats"}
+
+        # =========================
+        # 📨 REMIND
+        # =========================
+
+        if parsed["type"] == "REMIND":
+
+            parts = parsed["text"].split()
+
+            if len(parts) != 2:
+
+                send_whatsapp_message(
+                    phone,
+                    "Use:\nREMIND 1"
+                )
+
+                return {
+                    "status": "invalid_remind"
+                }
+
+            if not parts[1].isdigit():
+
+                send_whatsapp_message(
+                    phone,
+                    "Use:\nREMIND 1"
+                )
+
+                return {
+                    "status": "invalid_remind"
+                }
+
+            index = int(parts[1])
+
+            reminders = db.query(
+                ReminderMemory
+            ).filter(
+                ReminderMemory.phone == phone
+            ).all()
+
+            if (
+                index < 1
+                or index > len(reminders)
+            ):
+
+                send_whatsapp_message(
+                    phone,
+                    "Reminder number not found."
+                )
+
+                return {
+                    "status":
+                    "reminder_not_found"
+                }
+
+            reminder = reminders[index - 1]
+
+            due_date_text = reminder.due_date.strftime(
+                "%d/%m/%Y"
+            )
+
+            if (
+                reminder.reminder_type
+                == "DUE_TODAY"
+            ):
+
+                msg = (
+                    f"Hello "
+                    f"{reminder.customer_name.title()},\n\n"
+                    f"This is a reminder that your "
+                    f"outstanding balance of "
+                    f"₦{reminder.balance:,} "
+                    f"is due today.\n\n"
+                    f"Thank you."
+                )
+
+            else:
+
+                msg = (
+                    f"Hello "
+                    f"{reminder.customer_name.title()},\n\n"
+                    f"This is a reminder that your "
+                    f"outstanding balance of "
+                    f"₦{reminder.balance:,} "
+                    f"will be due on "
+                    f"{due_date_text}.\n\n"
+                    f"Thank you."
+                )
+
+            send_whatsapp_message(
+                phone,
+                msg
+            )
+
+            return {"status": "remind"}
+
+        # =========================
         # 📅 DUE MENU
         # =========================
 
         if parsed["type"] == "DUE_MENU":
 
-            db.query(
-                PendingAction
-            ).filter(
+            db.query(PendingAction).filter(
                 PendingAction.phone == phone
             ).delete()
 
@@ -907,7 +1286,7 @@ async def webhook(req: Request):
             return {"status": "due_menu"}
 
         # =========================
-        # 📊 TODAY SALES
+        # 📊 SALES
         # =========================
 
         if parsed["type"] == "TODAY_SALES":
@@ -921,10 +1300,6 @@ async def webhook(req: Request):
 
             return {"status": "today_sales"}
 
-        # =========================
-        # 📊 WEEKLY SALES
-        # =========================
-
         if parsed["type"] == "WEEKLY_SALES":
 
             total = get_weekly_sales(db)
@@ -936,10 +1311,6 @@ async def webhook(req: Request):
 
             return {"status": "weekly_sales"}
 
-        # =========================
-        # 📊 MONTHLY SALES
-        # =========================
-
         if parsed["type"] == "MONTHLY_SALES":
 
             total = get_monthly_sales(db)
@@ -950,10 +1321,6 @@ async def webhook(req: Request):
             )
 
             return {"status": "monthly_sales"}
-
-        # =========================
-        # 📊 YEARLY SALES
-        # =========================
 
         if parsed["type"] == "YEARLY_SALES":
 
@@ -967,7 +1334,7 @@ async def webhook(req: Request):
             return {"status": "yearly_sales"}
 
         # =========================
-        # 📋 UNPAID DEBTORS
+        # 📋 UNPAID
         # =========================
 
         if parsed["type"] == "UNPAID_DEBTORS":
@@ -1009,61 +1376,8 @@ async def webhook(req: Request):
             )
 
             return {
-                "status": "unpaid_debtors"
-            }
-
-        # =========================
-        # ⚠️ OVERDUE DEBTORS
-        # =========================
-
-        if parsed["type"] == "OVERDUE_DEBTORS":
-
-            overdue_list = (
-                get_overdue_debtors(db)
-            )
-
-            if len(overdue_list) == 0:
-
-                send_whatsapp_message(
-                    phone,
-                    "✅ No overdue debtors."
-                )
-
-                return {"status": "no_overdue"}
-
-            msg = (
-                "⚠️ Overdue Debtors\n\n"
-            )
-
-            for i, debtor in enumerate(
-                overdue_list,
-                start=1
-            ):
-
-                due_date_text = (
-                    debtor["due_date"]
-                    .strftime("%d/%m/%Y")
-                )
-
-                msg += (
-                    f"{i}. "
-                    f"{debtor['name']}\n"
-                    f"Balance: "
-                    f"₦{debtor['balance']:,}\n"
-                    f"Due: "
-                    f"{due_date_text}\n"
-                    f"Overdue: "
-                    f"{debtor['overdue_days']} "
-                    f"days\n\n"
-                )
-
-            send_whatsapp_message(
-                phone,
-                msg
-            )
-
-            return {
-                "status": "overdue_debtors"
+                "status":
+                "unpaid_debtors"
             }
 
         # =========================
@@ -1077,9 +1391,7 @@ async def webhook(req: Request):
                 ""
             ).strip().lower()
 
-            customer = db.query(
-                Customer
-            ).filter(
+            customer = db.query(Customer).filter(
                 Customer.name == name,
                 Customer.owner_phone == phone
             ).first()
@@ -1157,9 +1469,7 @@ async def webhook(req: Request):
         # 👥 CUSTOMER
         # =========================
 
-        customer = db.query(
-            Customer
-        ).filter(
+        customer = db.query(Customer).filter(
             Customer.name == customer_name,
             Customer.owner_phone == phone
         ).first()
@@ -1179,9 +1489,7 @@ async def webhook(req: Request):
         # 🧹 CLEAR PENDING
         # =========================
 
-        db.query(
-            PendingAction
-        ).filter(
+        db.query(PendingAction).filter(
             PendingAction.phone == phone
         ).delete()
 
@@ -1222,8 +1530,7 @@ async def webhook(req: Request):
                     f"Confirm:\n"
                     f"{customer.name} bought "
                     f"₦{parsed['buy_amount']:,}\n"
-                    f"Due: "
-                    f"{due_date_text}\n"
+                    f"Due: {due_date_text}\n"
                     f"Reply YES or EDIT"
                 )
 
