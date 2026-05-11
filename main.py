@@ -201,7 +201,7 @@ def parse_message(text):
     # =========================
 
     if text.startswith("balance"):
-    return {"type": "BALANCE"}
+        return {"type": "BALANCE"}
 
     if text == "today sales":
         return {"type": "TODAY_SALES"}
