@@ -225,7 +225,11 @@ def parse_message(text):
             "type": "UNPAID_DEBTORS"
         }
 
-    if text == "overdue debtors":
+    if text in [
+        "overdue debtors",
+        "overdue",
+        "over due"
+    ]:
         return {
             "type": "OVERDUE_DEBTORS"
         }
@@ -238,7 +242,7 @@ def parse_message(text):
     if text in [
         "formats",
         "format",
-        "1"
+        "F"
     ]:
         return {
             "type": "FORMATS"
@@ -277,11 +281,42 @@ def parse_message(text):
     # =========================
     # 📅 DUE DATE
     # =========================
+    today_phrases = [
+        "due today",
+        "pay today",
+        "balance today",
+        "will pay today",
+        "will balance today"
+    ]
 
-    date_match = re.search(
-        r'(\d{1,2}/\d{1,2}/\d{4})',
-        clean_text
-    )
+    tomorrow_phrases = [
+        "due tomorrow",
+        "pay tomorrow",
+        "balance tomorrow",
+        "will pay tomorrow",
+        "will balance tomorrow"
+    ]
+    if any(
+        phrase in clean_text 
+        for phrase in today_phrases):
+            
+        due_date = datetime.utcnow()
+
+    elif any(
+        phrase in clean_text
+        for phrase in tomorrow_phrases):
+            
+        due_date = (
+            datetime.utcnow() 
+            + timedelta(days=1)
+        )
+
+    else:
+
+         date_match = re.search(
+              r'(\d{1,2}/\d{1,2}/\d{4})',
+              clean_text
+         )
 
     if date_match:
 
@@ -374,6 +409,9 @@ def parse_message(text):
     name = " ".join(
         words[:action_index]
     ).lower()
+
+    if name.strip() ==:
+        return None
 
     return {
         "type": "TRANSACTION",
@@ -977,6 +1015,25 @@ async def webhook(req: Request):
                     )
 
                     db.add(tx)
+                    
+                    # =========================
+                    # UPDATE DUE DATE
+                    # =========================
+                    
+                    if pending.due_date:
+                        latest_buy =
+                        db.query(Transaction).filter(
+                            Transaction.customer_id ==
+                            customer.id,
+                            Transaction.type == "BUY"
+                        ).order_by(
+                        Transaction.created_at.desc()
+                        ).first()
+                        
+                        if latest_buy:
+                            latest_buy.due_date = (
+                                pending.due_date
+                            )
 
                 # =========================
                 # 🔄 COMBINED
@@ -1120,7 +1177,7 @@ async def webhook(req: Request):
                 "Type:\n"
                 "FORMATS\n\n"
                 "or send:\n"
-                "1\n\n"
+                "F\n\n"
                 "to see supported transaction examples."
             )
 
@@ -1332,6 +1389,55 @@ async def webhook(req: Request):
             )
 
             return {"status": "yearly_sales"}
+            
+        # =========================
+        #   OVERDUE DIRECT
+        # =========================
+        
+        if parsed["type"] == "OVERDUE_DEBTORS":
+
+            overdue_list = 
+                get_overdue_debtors(db)
+        
+
+            if len(overdue_list) == 0:
+
+                send_whatsapp_message(
+                    phone,
+                    "✅ No overdue debtors."
+                )
+
+                return {"status": "no_overdue"}
+
+            msg = "📋 Overdue Debtors\n\n"
+
+            for i, debtor in enumerate(
+                overdue_list,
+                start=1
+            ):
+                due_date_text = debtor["due_date"
+                ].strftime("%d/%m/%Y")
+
+                msg += (
+                    f"{i}. "
+                    f"{debtor['name']}\n "
+                    f"Balance: "
+                    f"₦{debtor['balance']:,}\n"
+                    f"Due: "
+                    f"{due_date_text}\n"
+                    f"Overdue: "
+                    f"{debtor['overdue_days']} days\n\n"
+                )
+
+            send_whatsapp_message(
+                phone,
+                msg
+            )
+
+            return {
+                "status":
+                "overdue_direct"
+            }
 
         # =========================
         # 📋 UNPAID
