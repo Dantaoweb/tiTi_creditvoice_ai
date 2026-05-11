@@ -296,6 +296,9 @@ def parse_message(text):
         "will pay tomorrow",
         "will balance tomorrow"
     ]
+    
+    date_match = None
+    
     if any(
         phrase in clean_text 
         for phrase in today_phrases):
