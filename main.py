@@ -1022,7 +1022,7 @@ async def webhook(req: Request):
                     
                     if pending.due_date:
                         latest_buy =
-                        db.query(Transaction).filter(
+                    db.query(Transaction).filter(
                             Transaction.customer_id ==
                             customer.id,
                             Transaction.type == "BUY"
