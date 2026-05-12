@@ -999,7 +999,7 @@ async def webhook(req: Request):
                         "status":
 
                         "invalid_reminder_selection"
-                        )
+                    }
 
                         index = int(text)
                         reminders = db.query(
