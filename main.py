@@ -1034,8 +1034,7 @@ async def webhook(req: Request):
 
                 msg = (
                     f"Hello"
-                f"{reminder.customer_name.title()},
-                \n\n"
+                f"{reminder.customer_name.title()}, \n\n"
                     f"This is a reminder that your"
                     f"outstanding balance of"
                     f"₦{reminder.balance:,}"
