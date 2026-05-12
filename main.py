@@ -242,7 +242,7 @@ def parse_message(text):
     if clean_text in [
         "formats",
         "format",
-        "F"
+        "f"
     ]:
         return {
             "type": "FORMATS"
