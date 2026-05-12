@@ -1008,7 +1008,8 @@ async def webhook(req: Request):
                                 ).all()
 
                 if (
-                   index < 1 or index > len()reminders
+                   index < 1 
+                    or index > len()reminders
                 ):
                      send_whatsapp_message(
                          phone,
