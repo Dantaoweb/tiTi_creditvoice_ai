@@ -1007,17 +1007,17 @@ async def webhook(req: Request):
                         ).filter(ReminderMemory.phone == phone
                                 ).all()
 
-                        if (
-                            index < 1 or index > len()reminders
-                            ):
-                                send_whatsapp_message(phone,
-                                                      "Reminder number not 
-                                                      found."
-                                                     )
-                                return {
-                                    "status":
-                                    "reminder_not_found"
-                                }
+                if (
+                   index < 1 or index > len()reminders
+                ):
+                     send_whatsapp_message(
+                         phone,
+                         "Reminder number not  found."
+                     )
+                return {
+                    "status":
+                    "reminder_not_found"
+                }
 
             reminder = reminders[index - 1]
 
