@@ -1030,7 +1030,7 @@ async def webhook(req: Request):
 
             if (
                 reminder.reminder_type == "DUE_TODAY"
-            )
+            ):
 
                 msg = (
                     f"Hello"
