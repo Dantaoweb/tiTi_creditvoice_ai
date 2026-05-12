@@ -1053,16 +1053,15 @@ async def webhook(req: Request):
                     f"{due_date_text}.\n\n"
                     f"Thank you."
             )
-                send_whatsapp_message(phonr,
-                                      msg
-                                     )
-        db.delete(pending)
+            send_whatsapp_message(phone, msg )
+            
+            db.delete(pending)
 
-        db.commit()
+            db.commit()
 
-        return {
-            "status":
-            "reminder_generated"
+            return {
+                "status":
+                "reminder_generated"
             )
             
                                 
