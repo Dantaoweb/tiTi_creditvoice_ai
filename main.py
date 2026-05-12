@@ -194,28 +194,28 @@ def send_whatsapp_message(to, message):
 
 def parse_message(text):
 
-    text = text.lower().strip()
+    clean_text = text.lower().strip()
 
     # =========================
     # 📊 COMMANDS
     # =========================
 
-    if text.startswith("balance"):
+    if clean_text.startswith("balance"):
         return {"type": "BALANCE"}
 
-    if text == "today sales":
+    if clean_text == "today sales":
         return {"type": "TODAY_SALES"}
 
-    if text == "weekly sales":
+    if clean_text == "weekly sales":
         return {"type": "WEEKLY_SALES"}
 
-    if text == "monthly sales":
+    if clean_text == "monthly sales":
         return {"type": "MONTHLY_SALES"}
 
-    if text == "yearly sales":
+    if clean_text == "yearly sales":
         return {"type": "YEARLY_SALES"}
 
-    if text in [
+    if clean_text in [
         "unpaid debtors",
         "unpaid",
         "debtor",
@@ -225,7 +225,7 @@ def parse_message(text):
             "type": "UNPAID_DEBTORS"
         }
 
-    if text in [
+    if clean_text in [
         "overdue debtors",
         "overdue",
         "over due"
@@ -234,12 +234,12 @@ def parse_message(text):
             "type": "OVERDUE_DEBTORS"
         }
 
-    if text == "due":
+    if clean_text == "due":
         return {
             "type": "DUE_MENU"
         }
 
-    if text in [
+    if clean_text in [
         "formats",
         "format",
         "F"
@@ -248,7 +248,7 @@ def parse_message(text):
             "type": "FORMATS"
         }
 
-    if text.startswith("remind"):
+    if clean_text.startswith("remind"):
         return {
             "type": "REMIND",
             "text": text
@@ -315,13 +315,14 @@ def parse_message(text):
         )
 
     else:
+         due_date = None
 
          date_match = re.search(
               r'(\d{1,2}/\d{1,2}/\d{4})',
               clean_text
          )
 
-    if date_match:
+    if due_date is None and date_match:
 
         try:
 
@@ -608,7 +609,7 @@ def get_overdue_debtors(db):
         if not latest_tx:
             continue
 
-        if latest_tx.due_date < today:
+        if latest_tx.due_date.date() < today.date():
 
             overdue_days = (
                 today.date()
