@@ -1001,8 +1001,8 @@ async def webhook(req: Request):
                         "invalid_reminder_selection"
                     }
 
-                        index = int(text)
-                        reminders = db.query(
+                index = int(text)
+                reminders = db.query(
                             ReminderMemory
                         ).filter(ReminderMemory.phone == phone
                                 ).all()
