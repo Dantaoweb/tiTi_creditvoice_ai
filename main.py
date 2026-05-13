@@ -998,10 +998,12 @@ async def webhook(req: Request):
                     return {
                         "status":
 
-                        "invalid_reminder_selection"
+            "invalid_reminder_selection"
                     }
 
                 index = int(text)
+
+                
                 reminders = db.query(
                             ReminderMemory
                         ).filter(ReminderMemory.phone == phone
