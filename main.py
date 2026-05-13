@@ -1008,10 +1008,10 @@ async def webhook(req: Request):
                                 ).all()
 
                 if (
-                   index < 1 
+                    index < 1 
                     or index > len(reminders)
                 ):
-                     send_whatsapp_message(
+                    send_whatsapp_message(
                          phone,
                          "Reminder number not  found."
                      )
