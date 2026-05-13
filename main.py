@@ -1015,10 +1015,10 @@ async def webhook(req: Request):
                          phone,
                          "Reminder number not  found."
                      )
-                return {
-                    "status":
-                    "reminder_not_found"
-                }
+                    return {
+                        "status":
+                        "reminder_not_found"
+                    }
 
             reminder = reminders[index - 1]
 
