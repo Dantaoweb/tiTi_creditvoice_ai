@@ -983,90 +983,124 @@ async def webhook(req: Request):
                     return {
                         "status": "overdue_menu"
                     }
-                    
-            # =========================
-            # REMINDER SELECTION FLOW
-            #==========================
-            
-            if pending.action == "REMINDER_SELECTION":
 
-                if not text.isdigit():
-                    send_whatsapp_message(
-                        phone,
-                        "Reply with reminder number.\nExampl: 1"
-                    )
-                    return {
-                        "status":
+# =========================
+# 🔔 REMINDER SELECTION FLOW
+# =========================
 
-            "invalid_reminder_selection"
-                    }
+if pending.action == "REMINDER_SELECTION":
 
-                index = int(text)
+    # =========================
+    # 🔢 USER MUST SEND NUMBER
+    # =========================
 
-                
-                reminders = db.query(
-                            ReminderMemory
-                        ).filter(ReminderMemory.phone == phone
-                                ).all()
+    if not text.isdigit():
 
-                if (
-                    index < 1 
-                    or index > len(reminders)
-                ):
-                    send_whatsapp_message(
-                         phone,
-                         "Reminder number not  found."
-                     )
-                    return {
-                        "status":
-                        "reminder_not_found"
-                    }
+        send_whatsapp_message(
+            phone,
+            "Reply with reminder number.\nExample: 1"
+        )
 
-            reminder = reminders[index - 1]
+        return {
+            "status": "invalid_reminder_selection"
+        }
 
-            due_date_text = reminder.due_date.strftime("%d/%m/%Y"
-                                                      )
-            #=============================
-            #  DUE TODAY REMINDER
-            #=============================
+    # =========================
+    # 🔢 CONVERT USER INPUT
+    # =========================
 
-            if (
-                reminder.reminder_type == "DUE_TODAY"
-            ):
+    index = int(text)
 
-                msg = (
-                    f"Hello"
-                f"{reminder.customer_name.title()}, \n\n"
-                    f"This is a reminder that your"
-                    f"outstanding balance of"
-                    f"₦{reminder.balance:,}"
-                    f"is due today.\n\n"
-                    f"Thank you."
-            )
+    # =========================
+    # 📋 LOAD REMINDERS
+    # =========================
 
-            else:
-                   msg = (
-                    f"Hello"
-                f"{reminder.customer_name.title()}, \n\n"
-                    f"This is a reminder that your"
-                    f"outstanding balance of"
-                    f"₦{reminder.balance:,}"
-                    f"will be due on"
-                    f"{due_date_text}.\n\n"
-                    f"Thank you."
-            )
-            send_whatsapp_message(phone, msg )
-            
-            db.delete(pending)
+    reminders = db.query(
+        ReminderMemory
+    ).filter(
+        ReminderMemory.phone == phone
+    ).all()
 
-            db.commit()
+    # =========================
+    # ❌ INVALID REMINDER NUMBER
+    # =========================
 
-            return {
-                "status":
-                "reminder_generated"
-            }
-            
-                                
+    if (
+        index < 1
+        or index > len(reminders)
+    ):
+
+        send_whatsapp_message(
+            phone,
+            "Reminder number not found."
+        )
+
+        return {
+            "status": "reminder_not_found"
+        }
+
+    # =========================
+    # ✅ SELECT REMINDER
+    # =========================
+
+    reminder = reminders[index - 1]
+
+    due_date_text = reminder.due_date.strftime(
+        "%d/%m/%Y"
+    )
+
+    # =========================
+    # 📅 DUE TODAY REMINDER
+    # =========================
+
+    if (
+        reminder.reminder_type
+        == "DUE_TODAY"
+    ):
+
+        msg = (
+            f"Hello "
+            f"{reminder.customer_name.title()},\n\n"
+            f"This is a reminder that your "
+            f"outstanding balance of "
+            f"₦{reminder.balance:,} "
+            f"is due today.\n\n"
+            f"Thank you."
+        )
+
+    # =========================
+    # 📅 FUTURE DUE REMINDER
+    # =========================
+
+    else:
+
+        msg = (
+            f"Hello "
+            f"{reminder.customer_name.title()},\n\n"
+            f"This is a reminder that your "
+            f"outstanding balance of "
+            f"₦{reminder.balance:,} "
+            f"will be due on "
+            f"{due_date_text}.\n\n"
+            f"Thank you."
+        )
+
+    send_whatsapp_message(
+        phone,
+        msg
+    )
+
+    # =========================
+    # 🧹 CLEAR REMINDER STATE
+    # =========================
+
+    db.delete(pending)
+
+    db.commit()
+
+    return {
+        "status": "reminder_generated"
+    }                    
                     
                 
             # =========================
