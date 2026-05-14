@@ -835,7 +835,7 @@ async def webhook(req: Request):
                             phone=phone,
                             action="REMINDER_SELECTION"
                         )
-                        db.add(reminder_pendind)
+                        db.add(reminder_pending)
                         db.commit()
 
                         msg += (
@@ -983,54 +983,55 @@ async def webhook(req: Request):
                     return {
                         "status": "overdue_menu"
                     }
+            
 
-# =========================
-# 🔔 REMINDER SELECTION FLOW
-# =========================
+        # =========================
+        # 🔔 REMINDER SELECTION FLOW
+        # =========================
 
-if pending.action == "REMINDER_SELECTION":
+            if pending.action == "REMINDER_SELECTION":
 
-    # =========================
-    # 🔢 USER MUST SEND NUMBER
-    # =========================
+        # =========================
+        # 🔢 USER MUST SEND NUMBER
+        # =========================
 
-    if not text.isdigit():
+                if not text.isdigit():
 
-        send_whatsapp_message(
-            phone,
-            "Reply with reminder number.\nExample: 1"
+                    send_whatsapp_message(
+                phone,
+                "Reply with reminder number.\nExample: 1"
         )
 
-        return {
+            return {
             "status": "invalid_reminder_selection"
         }
 
-    # =========================
-    # 🔢 CONVERT USER INPUT
-    # =========================
+        # =========================
+        # 🔢 CONVERT USER INPUT
+        # =========================
 
-    index = int(text)
+        index = int(text)
 
-    # =========================
-    # 📋 LOAD REMINDERS
-    # =========================
+        # =========================
+        # 📋 LOAD REMINDERS
+        # =========================
 
-    reminders = db.query(
+        reminders = db.query(
         ReminderMemory
-    ).filter(
+        ).filter(
         ReminderMemory.phone == phone
-    ).all()
+        ).all()
 
-    # =========================
-    # ❌ INVALID REMINDER NUMBER
-    # =========================
+        # =========================
+        # ❌ INVALID REMINDER NUMBER
+        # =========================
 
-    if (
+        if (
         index < 1
         or index > len(reminders)
-    ):
+        ):
 
-        send_whatsapp_message(
+            send_whatsapp_message(
             phone,
             "Reminder number not found."
         )
@@ -1039,26 +1040,26 @@ if pending.action == "REMINDER_SELECTION":
             "status": "reminder_not_found"
         }
 
-    # =========================
-    # ✅ SELECT REMINDER
-    # =========================
+        # =========================
+        # ✅ SELECT REMINDER
+        # =========================
 
-    reminder = reminders[index - 1]
+        reminder = reminders[index - 1]
 
-    due_date_text = reminder.due_date.strftime(
+        due_date_text = reminder.due_date.strftime(
         "%d/%m/%Y"
-    )
+        )
 
-    # =========================
-    # 📅 DUE TODAY REMINDER
-    # =========================
+        # =========================
+        # 📅 DUE TODAY REMINDER
+        # =========================
 
-    if (
+        if (
         reminder.reminder_type
-        == "DUE_TODAY"
-    ):
+            == "DUE_TODAY"
+        ):
 
-        msg = (
+         msg = (
             f"Hello "
             f"{reminder.customer_name.title()},\n\n"
             f"This is a reminder that your "
@@ -1068,13 +1069,13 @@ if pending.action == "REMINDER_SELECTION":
             f"Thank you."
         )
 
-    # =========================
-    # 📅 FUTURE DUE REMINDER
-    # =========================
+        # =========================
+        # 📅 FUTURE DUE REMINDER
+        # =========================
 
-    else:
+        else:
 
-        msg = (
+            msg = (
             f"Hello "
             f"{reminder.customer_name.title()},\n\n"
             f"This is a reminder that your "
@@ -1085,29 +1086,29 @@ if pending.action == "REMINDER_SELECTION":
             f"Thank you."
         )
 
-    send_whatsapp_message(
+        send_whatsapp_message(
         phone,
         msg
-    )
+     )
 
-    # =========================
-    # 🧹 CLEAR REMINDER STATE
-    # =========================
+        # =========================
+        # 🧹 CLEAR REMINDER STATE
+        # =========================
 
-    db.delete(pending)
+        db.delete(pending)
 
-    db.commit()
+        db.commit()
 
-    return {
+        return {
         "status": "reminder_generated"
-    }                    
+     }                    
                     
                 
             # =========================
             # ✅ SAVE
             # =========================
-
-            if text.lower() == "yes":
+            
+        if text.lower() == "yes":
 
                 customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
@@ -1280,7 +1281,7 @@ if pending.action == "REMINDER_SELECTION":
             # ✏️ EDIT
             # =========================
 
-            elif text.lower() == "edit":
+        elif text.lower() == "edit":
 
                 db.delete(pending)
 
@@ -1827,5 +1828,4 @@ if pending.action == "REMINDER_SELECTION":
         return {"status": "pending"}
 
     finally:
-
         db.close()
