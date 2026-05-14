@@ -723,6 +723,22 @@ def home():
     return {"status": "CreditVoice running"}
 
 # =========================
+# ✅ WEBHOOK VERIFICATION
+# =========================
+
+@app.get("/webhook")
+def verify_webhook(request: Request):
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+    
+    verify_token = os.getenv("WEBHOOK_VERIFY_TOKEN", "your_verify_token_here")
+    
+    if token == verify_token:
+        return int(challenge)
+    
+    return {"status": "error"}
+
+# =========================
 # 🌐 WEBHOOK
 # =========================
 
@@ -732,7 +748,6 @@ async def webhook(req: Request):
     data = await req.json()
 
     try:
-
         message = (
             data["entry"][0]
             ["changes"][0]
@@ -752,20 +767,13 @@ async def webhook(req: Request):
 
     try:
 
-        # =========================
-        # 🚫 DUPLICATES
-        # =========================
-
+        # Duplicate check, pending action checks, and rest of webhook logic
         existing_tx = db.query(Transaction).filter(
             Transaction.message_id == message_id
         ).first()
 
         if existing_tx:
             return {"status": "duplicate"}
-
-        # =========================
-        # ⏳ PENDING
-        # =========================
 
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
@@ -775,45 +783,24 @@ async def webhook(req: Request):
         ).first()
 
         if pending:
-
-            # =========================
-            # 📅 DUE MENU
-            # =========================
-
             if pending.action == "DUE_MENU":
-
-                # =========================
-                # 📅 DUE IN 2 DAYS
-                # =========================
-
+                # Handle DUE_MENU responses (1, 2, 3)
                 if text == "1":
-
+                    # Due in 2 days logic
                     due_list = get_due_in_2_days(db)
-
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
-
                     db.commit()
 
                     if len(due_list) == 0:
-
                         send_whatsapp_message(
                             phone,
                             "✅ No debts due in 2 days."
                         )
-
                     else:
-
-                        msg = (
-                            "📅 Due in 2 Days\n\n"
-                        )
-
-                        for i, debtor in enumerate(
-                            due_list,
-                            start=1
-                        ):
-
+                        msg = "📅 Due in 2 Days\n\n"
+                        for i, debtor in enumerate(due_list, start=1):
                             memory = ReminderMemory(
                                 phone=phone,
                                 customer_name=debtor["name"],
@@ -821,15 +808,8 @@ async def webhook(req: Request):
                                 due_date=debtor["due_date"],
                                 reminder_type="DUE_2_DAYS"
                             )
-
                             db.add(memory)
-
-                            msg += (
-                                f"{i}. "
-                                f"{debtor['name']} "
-                                f"→ ₦{debtor['balance']:,}\n"
-                            )
-
+                            msg += f"{i}. {debtor['name']} → ₦{debtor['balance']:,}\n"
                         db.commit()
                         reminder_pending = PendingAction(
                             phone=phone,
@@ -837,56 +817,29 @@ async def webhook(req: Request):
                         )
                         db.add(reminder_pending)
                         db.commit()
-
-                        msg += (
-                            "\nSend:\n"
-                            "1, 2, etc\n"
-                            "to generate customer reminder."
-                        )
-
-                        send_whatsapp_message(
-                            phone,
-                            msg
-                        )
+                        msg += "\nSend:\n1, 2, etc\nto generate customer reminder."
+                        send_whatsapp_message(phone, msg)
 
                     db.delete(pending)
-
                     db.commit()
-
-                    return {
-                        "status": "due_2_days"
-                    }
-
-                # =========================
-                # 📅 DUE TODAY
-                # =========================
+                    return {"status": "due_2_days"}
 
                 elif text == "2":
-
+                    # Due today logic
                     due_today = get_due_today(db)
-
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
-
                     db.commit()
 
                     if len(due_today) == 0:
-
                         send_whatsapp_message(
                             phone,
                             "✅ No debts due today."
                         )
-
                     else:
-
                         msg = "📅 Due Today\n\n"
-
-                        for i, debtor in enumerate(
-                            due_today,
-                            start=1
-                        ):
-
+                        for i, debtor in enumerate(due_today, start=1):
                             memory = ReminderMemory(
                                 phone=phone,
                                 customer_name=debtor["name"],
@@ -894,15 +847,8 @@ async def webhook(req: Request):
                                 due_date=debtor["due_date"],
                                 reminder_type="DUE_TODAY"
                             )
-
                             db.add(memory)
-
-                            msg += (
-                                f"{i}. "
-                                f"{debtor['name']} "
-                                f"→ ₦{debtor['balance']:,}\n"
-                            )
-
+                            msg += f"{i}. {debtor['name']} → ₦{debtor['balance']:,}\n"
                         db.commit()
                         reminder_pending = PendingAction(
                             phone=phone,
@@ -910,217 +856,89 @@ async def webhook(req: Request):
                         )
                         db.add(reminder_pending)
                         db.commit()
-
-                        msg += (
-                            "\nSend:\n"                          
-                            "1, 2, etc\n"
-                            "to generate customer reminder."
-                        )
-
-                        send_whatsapp_message(
-                            phone,
-                            msg
-                        )
+                        msg += "\nSend:\n1, 2, etc\nto generate customer reminder."
+                        send_whatsapp_message(phone, msg)
 
                     db.delete(pending)
-
                     db.commit()
-
-                    return {
-                        "status": "due_today"
-                    }
-
-                # =========================
-                # ⚠️ OVERDUE
-                # =========================
+                    return {"status": "due_today"}
 
                 elif text == "3":
-
+                    # Overdue logic
                     overdue_list = get_overdue_debtors(db)
-
                     if len(overdue_list) == 0:
-
                         send_whatsapp_message(
                             phone,
                             "✅ No overdue debtors."
                         )
-
                     else:
-
-                        msg = (
-                            "⚠️ Overdue Debtors\n\n"
-                        )
-
-                        for i, debtor in enumerate(
-                            overdue_list,
-                            start=1
-                        ):
-
-                            due_date_text = debtor[
-                                "due_date"
-                            ].strftime("%d/%m/%Y")
-
+                        msg = "⚠️ Overdue Debtors\n\n"
+                        for i, debtor in enumerate(overdue_list, start=1):
+                            due_date_text = debtor["due_date"].strftime("%d/%m/%Y")
                             msg += (
-                                f"{i}. "
-                                f"{debtor['name']}\n"
-                                f"Balance: "
-                                f"₦{debtor['balance']:,}\n"
-                                f"Due: "
-                                f"{due_date_text}\n"
-                                f"Overdue: "
-                                f"{debtor['overdue_days']} days\n\n"
+                                f"{i}. {debtor['name']}\n"
+                                f"Balance: ₦{debtor['balance']:,}\n"
+                                f"Due: {due_date_text}\n"
+                                f"Overdue: {debtor['overdue_days']} days\n\n"
                             )
-
-                        send_whatsapp_message(
-                            phone,
-                            msg
-                        )
+                        send_whatsapp_message(phone, msg)
 
                     db.delete(pending)
-
                     db.commit()
+                    return {"status": "overdue_menu"}
 
-                    return {
-                        "status": "overdue_menu"
-                    }
-            
-
-        # =========================
-        # 🔔 REMINDER SELECTION FLOW
-        # =========================
-
-            if pending.action == "REMINDER_SELECTION":
-
-        # =========================
-        # 🔢 USER MUST SEND NUMBER
-        # =========================
-
+            elif pending.action == "REMINDER_SELECTION":
                 if not text.isdigit():
-
                     send_whatsapp_message(
-                phone,
-                "Reply with reminder number.\nExample: 1"
-        )
+                        phone,
+                        "Reply with reminder number.\nExample: 1"
+                    )
+                    return {"status": "invalid_reminder_selection"}
 
-            return {
-            "status": "invalid_reminder_selection"
-        }
+                index = int(text)
+                reminders = db.query(ReminderMemory).filter(
+                    ReminderMemory.phone == phone
+                ).all()
 
-        # =========================
-        # 🔢 CONVERT USER INPUT
-        # =========================
+                if index < 1 or index > len(reminders):
+                    send_whatsapp_message(
+                        phone,
+                        "Reminder number not found."
+                    )
+                    return {"status": "reminder_not_found"}
 
-        index = int(text)
+                reminder = reminders[index - 1]
+                due_date_text = reminder.due_date.strftime("%d/%m/%Y")
 
-        # =========================
-        # 📋 LOAD REMINDERS
-        # =========================
+                if reminder.reminder_type == "DUE_TODAY":
+                    msg = (
+                        f"Hello {reminder.customer_name.title()},\n\n"
+                        f"This is a reminder that your "
+                        f"outstanding balance of ₦{reminder.balance:,} "
+                        f"is due today.\n\n"
+                        f"Thank you."
+                    )
+                else:
+                    msg = (
+                        f"Hello {reminder.customer_name.title()},\n\n"
+                        f"This is a reminder that your "
+                        f"outstanding balance of ₦{reminder.balance:,} "
+                        f"will be due on {due_date_text}.\n\n"
+                        f"Thank you."
+                    )
 
-        reminders = db.query(
-        ReminderMemory
-        ).filter(
-        ReminderMemory.phone == phone
-        ).all()
+                send_whatsapp_message(phone, msg)
+                db.delete(pending)
+                db.commit()
+                return {"status": "reminder_generated"}
 
-        # =========================
-        # ❌ INVALID REMINDER NUMBER
-        # =========================
-
-        if (
-        index < 1
-        or index > len(reminders)
-        ):
-
-            send_whatsapp_message(
-            phone,
-            "Reminder number not found."
-        )
-
-        return {
-            "status": "reminder_not_found"
-        }
-
-        # =========================
-        # ✅ SELECT REMINDER
-        # =========================
-
-        reminder = reminders[index - 1]
-
-        due_date_text = reminder.due_date.strftime(
-        "%d/%m/%Y"
-        )
-
-        # =========================
-        # 📅 DUE TODAY REMINDER
-        # =========================
-
-        if (
-        reminder.reminder_type
-            == "DUE_TODAY"
-        ):
-
-         msg = (
-            f"Hello "
-            f"{reminder.customer_name.title()},\n\n"
-            f"This is a reminder that your "
-            f"outstanding balance of "
-            f"₦{reminder.balance:,} "
-            f"is due today.\n\n"
-            f"Thank you."
-        )
-
-        # =========================
-        # 📅 FUTURE DUE REMINDER
-        # =========================
-
-        else:
-
-            msg = (
-            f"Hello "
-            f"{reminder.customer_name.title()},\n\n"
-            f"This is a reminder that your "
-            f"outstanding balance of "
-            f"₦{reminder.balance:,} "
-            f"will be due on "
-            f"{due_date_text}.\n\n"
-            f"Thank you."
-        )
-
-        send_whatsapp_message(
-        phone,
-        msg
-     )
-
-        # =========================
-        # 🧹 CLEAR REMINDER STATE
-        # =========================
-
-        db.delete(pending)
-
-        db.commit()
-
-        return {
-        "status": "reminder_generated"
-     }                    
-                    
-                
-            # =========================
-            # ✅ SAVE
-            # =========================
-            
-        if text.lower() == "yes":
-
+            elif text.lower() == "yes":
                 customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
                     Customer.owner_phone == phone
                 ).first()
 
-                # =========================
-                # 🛒 BUY
-                # =========================
-
                 if pending.action == "BUY":
-
                     tx = Transaction(
                         customer_id=customer.id,
                         type="BUY",
@@ -1129,15 +947,9 @@ async def webhook(req: Request):
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
-
                     db.add(tx)
 
-                # =========================
-                # 💵 PAY
-                # =========================
-
                 elif pending.action == "PAY":
-
                     tx = Transaction(
                         customer_id=customer.id,
                         type="PAY",
@@ -1145,34 +957,18 @@ async def webhook(req: Request):
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
-
                     db.add(tx)
-                    
-                    # =========================
-                    # UPDATE DUE DATE
-                    # =========================
-                    
                     if pending.due_date:
-                        
                         latest_buy = db.query(Transaction).filter(
-                            Transaction.customer_id ==
-                            customer.id,
+                            Transaction.customer_id == customer.id,
                             Transaction.type == "BUY"
                         ).order_by(
-                        Transaction.created_at.desc()
+                            Transaction.created_at.desc()
                         ).first()
-                        
                         if latest_buy:
-                            latest_buy.due_date = (
-                                pending.due_date
-                            )
-
-                # =========================
-                # 🔄 COMBINED
-                # =========================
+                            latest_buy.due_date = pending.due_date
 
                 elif pending.action == "COMBINED":
-
                     buy_tx = Transaction(
                         customer_id=customer.id,
                         type="BUY",
@@ -1181,7 +977,6 @@ async def webhook(req: Request):
                         message_id=f"{message_id}_buy",
                         created_at=datetime.utcnow()
                     )
-
                     db.add(buy_tx)
 
                     pay_tx = Transaction(
@@ -1191,550 +986,248 @@ async def webhook(req: Request):
                         message_id=f"{message_id}_pay",
                         created_at=datetime.utcnow()
                     )
-
                     db.add(pay_tx)
-
-                # =========================
-                # 🧠 MEMORY
-                # =========================
 
                 memory = db.query(CustomerMemory).filter(
                     CustomerMemory.phone == phone
                 ).first()
 
                 if not memory:
-
                     memory = CustomerMemory(
                         phone=phone,
                         last_customer=customer.name
                     )
-
                     db.add(memory)
-
                 else:
-
                     memory.last_customer = customer.name
 
                 db.delete(pending)
-
                 db.commit()
 
-                balance = get_balance(
-                    db,
-                    customer.id
-                )
-
-                # =========================
-                # 💬 FINAL MESSAGE
-                # =========================
+                balance = get_balance(db, customer.id)
 
                 if pending.action == "COMBINED":
-
                     if balance < 0:
-
                         msg = (
                             f"✅ Saved.\n"
-                            f"{customer.name} bought "
-                            f"₦{pending.buy_amount:,} "
-                            f"and paid "
-                            f"₦{pending.paid_amount:,}.\n"
+                            f"{customer.name} bought ₦{pending.buy_amount:,} "
+                            f"and paid ₦{pending.paid_amount:,}.\n"
                             f"Credit: ₦{abs(balance):,}"
                         )
-
                     else:
-
                         msg = (
                             f"✅ Saved.\n"
-                            f"{customer.name} bought "
-                            f"₦{pending.buy_amount:,} "
-                            f"and paid "
-                            f"₦{pending.paid_amount:,}.\n"
+                            f"{customer.name} bought ₦{pending.buy_amount:,} "
+                            f"and paid ₦{pending.paid_amount:,}.\n"
                             f"Balance: ₦{balance:,}"
                         )
-
                 else:
-
                     if balance < 0:
-
-                        msg = (
-                            f"✅ Saved.\n"
-                            f"{customer.name} credit: "
-                            f"₦{abs(balance):,}"
-                        )
-
+                        msg = f"✅ Saved.\n{customer.name} credit: ₦{abs(balance):,}"
                     else:
+                        msg = f"✅ Saved.\n{customer.name} balance: ₦{balance:,}"
 
-                        msg = (
-                            f"✅ Saved.\n"
-                            f"{customer.name} balance: "
-                            f"₦{balance:,}"
-                        )
-
-                send_whatsapp_message(
-                    phone,
-                    msg
-                )
-
+                send_whatsapp_message(phone, msg)
                 return {"status": "saved"}
 
-            # =========================
-            # ✏️ EDIT
-            # =========================
-
-        elif text.lower() == "edit":
-
+            elif text.lower() == "edit":
                 db.delete(pending)
-
                 db.commit()
-
                 send_whatsapp_message(
                     phone,
-                    "Enter again "
-                    "(e.g. Ola paid 2000)"
+                    "Enter again (e.g. Ola paid 2000)"
                 )
-
                 return {"status": "edit"}
 
-        # =========================
-        # 🧠 PARSE
-        # =========================
-
+        # Parse message
         parsed = parse_message(text)
 
         if not parsed:
-
             send_whatsapp_message(
                 phone,
                 "❌ Message not understood.\n\n"
-                "Type:\n"
-                "FORMATS\n\n"
-                "or send:\n"
-                "F\n\n"
+                "Type:\nFORMATS\n\nor send:\nF\n\n"
                 "to see supported transaction examples."
             )
-
             return {"status": "invalid"}
 
-        # =========================
-        # 📘 FORMATS
-        # =========================
-
         if parsed["type"] == "FORMATS":
-
             msg = (
                 "📘 Supported Formats\n\n"
-                "🛒 BUY ONLY\n"
-                "Ade bought rice 5000\n\n"
-                "💵 PAYMENT ONLY\n"
-                "Ade paid 3000\n\n"
-                "🔄 PART PAYMENT\n"
-                "Ade bought rice 5000 paid 2000\n\n"
-                "📅 DUE DATE\n"
-                "Ade bought rice 5000 due 12/2/2026\n\n"
+                "🛒 BUY ONLY\nAde bought rice 5000\n\n"
+                "💵 PAYMENT ONLY\nAde paid 3000\n\n"
+                "🔄 PART PAYMENT\nAde bought rice 5000 paid 2000\n\n"
+                "📅 DUE DATE\nAde bought rice 5000 due 12/2/2026\n\n"
                 "📅 PART PAYMENT + DUE DATE\n"
-                "Ade bought rice 5000 "
-                "paid 2000 due 12/2/2026\n\n"
-                "📌 Date Format:\n"
-                "Use D/M/YYYY\n\n"
-                "Example:\n"
+                "Ade bought rice 5000 paid 2000 due 12/2/2026\n\n"
+                "📌 Date Format:\nUse D/M/YYYY\n\nExample:\n"
                 "12/2/2026 = 12 February 2026"
             )
-
-            send_whatsapp_message(
-                phone,
-                msg
-            )
-
+            send_whatsapp_message(phone, msg)
             return {"status": "formats"}
 
-        # =========================
-        # 📨 REMIND
-        # =========================
-
         if parsed["type"] == "REMIND":
-
             parts = parsed["text"].split()
-
-            if len(parts) != 2:
-
-                send_whatsapp_message(
-                    phone,
-                    "Use:\nREMIND 1"
-                )
-
-                return {
-                    "status": "invalid_remind"
-                }
-
-            if not parts[1].isdigit():
-
-                send_whatsapp_message(
-                    phone,
-                    "Use:\nREMIND 1"
-                )
-
-                return {
-                    "status": "invalid_remind"
-                }
+            if len(parts) != 2 or not parts[1].isdigit():
+                send_whatsapp_message(phone, "Use:\nREMIND 1")
+                return {"status": "invalid_remind"}
 
             index = int(parts[1])
-
-            reminders = db.query(
-                ReminderMemory
-            ).filter(
+            reminders = db.query(ReminderMemory).filter(
                 ReminderMemory.phone == phone
             ).all()
 
-            if (
-                index < 1
-                or index > len(reminders)
-            ):
-
-                send_whatsapp_message(
-                    phone,
-                    "Reminder number not found."
-                )
-
-                return {
-                    "status":
-                    "reminder_not_found"
-                }
+            if index < 1 or index > len(reminders):
+                send_whatsapp_message(phone, "Reminder number not found.")
+                return {"status": "reminder_not_found"}
 
             reminder = reminders[index - 1]
+            due_date_text = reminder.due_date.strftime("%d/%m/%Y")
 
-            due_date_text = reminder.due_date.strftime(
-                "%d/%m/%Y"
-            )
-
-            if (
-                reminder.reminder_type
-                == "DUE_TODAY"
-            ):
-
+            if reminder.reminder_type == "DUE_TODAY":
                 msg = (
-                    f"Hello "
-                    f"{reminder.customer_name.title()},\n\n"
-                    f"This is a reminder that your "
-                    f"outstanding balance of "
-                    f"₦{reminder.balance:,} "
-                    f"is due today.\n\n"
-                    f"Thank you."
+                    f"Hello {reminder.customer_name.title()},\n\n"
+                    f"This is a reminder that your outstanding balance of "
+                    f"₦{reminder.balance:,} is due today.\n\nThank you."
                 )
-
             else:
-
                 msg = (
-                    f"Hello "
-                    f"{reminder.customer_name.title()},\n\n"
-                    f"This is a reminder that your "
-                    f"outstanding balance of "
-                    f"₦{reminder.balance:,} "
-                    f"will be due on "
-                    f"{due_date_text}.\n\n"
+                    f"Hello {reminder.customer_name.title()},\n\n"
+                    f"This is a reminder that your outstanding balance of "
+                    f"₦{reminder.balance:,} will be due on {due_date_text}.\n\n"
                     f"Thank you."
                 )
 
-            send_whatsapp_message(
-                phone,
-                msg
-            )
-
+            send_whatsapp_message(phone, msg)
             return {"status": "remind"}
 
-        # =========================
-        # 📅 DUE MENU
-        # =========================
-
         if parsed["type"] == "DUE_MENU":
-
             db.query(PendingAction).filter(
                 PendingAction.phone == phone
             ).delete()
-
             db.commit()
 
             menu_pending = PendingAction(
                 phone=phone,
                 action="DUE_MENU"
             )
-
             db.add(menu_pending)
-
             db.commit()
 
             send_whatsapp_message(
                 phone,
                 "📅 Debt Reminder Menu\n\n"
-                "1. Due in 2 Days\n"
-                "2. Due Today\n"
-                "3. Overdue Debtors\n\n"
-                "Reply with:\n"
-                "1, 2, or 3"
+                "1. Due in 2 Days\n2. Due Today\n3. Overdue Debtors\n\n"
+                "Reply with:\n1, 2, or 3"
             )
-
             return {"status": "due_menu"}
 
-        # =========================
-        # 📊 SALES
-        # =========================
-
         if parsed["type"] == "TODAY_SALES":
-
             total = get_today_sales(db)
-
-            send_whatsapp_message(
-                phone,
-                f"📊 Today's sales: ₦{total:,}"
-            )
-
+            send_whatsapp_message(phone, f"📊 Today's sales: ₦{total:,}")
             return {"status": "today_sales"}
 
         if parsed["type"] == "WEEKLY_SALES":
-
             total = get_weekly_sales(db)
-
-            send_whatsapp_message(
-                phone,
-                f"📊 Weekly sales: ₦{total:,}"
-            )
-
+            send_whatsapp_message(phone, f"📊 Weekly sales: ₦{total:,}")
             return {"status": "weekly_sales"}
 
         if parsed["type"] == "MONTHLY_SALES":
-
             total = get_monthly_sales(db)
-
-            send_whatsapp_message(
-                phone,
-                f"📊 Monthly sales: ₦{total:,}"
-            )
-
+            send_whatsapp_message(phone, f"📊 Monthly sales: ₦{total:,}")
             return {"status": "monthly_sales"}
 
         if parsed["type"] == "YEARLY_SALES":
-
             total = get_yearly_sales(db)
-
-            send_whatsapp_message(
-                phone,
-                f"📊 Yearly sales: ₦{total:,}"
-            )
-
+            send_whatsapp_message(phone, f"📊 Yearly sales: ₦{total:,}")
             return {"status": "yearly_sales"}
-            
-        # =========================
-        #   OVERDUE DIRECT
-        # =========================
-        
+
         if parsed["type"] == "OVERDUE_DEBTORS":
-
             overdue_list = get_overdue_debtors(db)
-        
-
             if len(overdue_list) == 0:
-
-                send_whatsapp_message(
-                    phone,
-                    "✅ No overdue debtors."
-                )
-
+                send_whatsapp_message(phone, "✅ No overdue debtors.")
                 return {"status": "no_overdue"}
 
             msg = "📋 Overdue Debtors\n\n"
-
-            for i, debtor in enumerate(
-                overdue_list,
-                start=1
-            ):
-                due_date_text = debtor["due_date"
-                ].strftime("%d/%m/%Y")
-
+            for i, debtor in enumerate(overdue_list, start=1):
+                due_date_text = debtor["due_date"].strftime("%d/%m/%Y")
                 msg += (
-                    f"{i}. "
-                    f"{debtor['name']}\n "
-                    f"Balance: "
-                    f"₦{debtor['balance']:,}\n"
-                    f"Due: "
-                    f"{due_date_text}\n"
-                    f"Overdue: "
-                    f"{debtor['overdue_days']} days\n\n"
+                    f"{i}. {debtor['name']}\n"
+                    f"Balance: ₦{debtor['balance']:,}\n"
+                    f"Due: {due_date_text}\n"
+                    f"Overdue: {debtor['overdue_days']} days\n\n"
                 )
 
-            send_whatsapp_message(
-                phone,
-                msg
-            )
-
-            return {
-                "status":
-                "overdue_direct"
-            }
-
-        # =========================
-        # 📋 UNPAID
-        # =========================
+            send_whatsapp_message(phone, msg)
+            return {"status": "overdue_direct"}
 
         if parsed["type"] == "UNPAID_DEBTORS":
-
-            debtors, total_outstanding = (
-                get_unpaid_debtors(db)
-            )
-
+            debtors, total_outstanding = get_unpaid_debtors(db)
             if len(debtors) == 0:
-
-                send_whatsapp_message(
-                    phone,
-                    "✅ No unpaid debtors."
-                )
-
+                send_whatsapp_message(phone, "✅ No unpaid debtors.")
                 return {"status": "no_debtors"}
 
             msg = "📋 Unpaid Debtors\n\n"
+            for i, debtor in enumerate(debtors, start=1):
+                msg += f"{i}. {debtor['name']} → ₦{debtor['balance']:,}\n"
 
-            for i, debtor in enumerate(
-                debtors,
-                start=1
-            ):
-
-                msg += (
-                    f"{i}. "
-                    f"{debtor['name']} "
-                    f"→ ₦{debtor['balance']:,}\n"
-                )
-
-            msg += (
-                f"\n💰 Total Outstanding: "
-                f"₦{total_outstanding:,}"
-            )
-
-            send_whatsapp_message(
-                phone,
-                msg
-            )
-
-            return {
-                "status":
-                "unpaid_debtors"
-            }
-
-        # =========================
-        # 💰 BALANCE
-        # =========================
+            msg += f"\n💰 Total Outstanding: ₦{total_outstanding:,}"
+            send_whatsapp_message(phone, msg)
+            return {"status": "unpaid_debtors"}
 
         if parsed["type"] == "BALANCE":
-
-            name = text.replace(
-                "balance",
-                ""
-            ).strip().lower()
-
+            name = text.replace("balance", "").strip().lower()
             customer = db.query(Customer).filter(
                 Customer.name == name,
                 Customer.owner_phone == phone
             ).first()
 
             if not customer:
-
-                send_whatsapp_message(
-                    phone,
-                    "Customer not found."
-                )
-
+                send_whatsapp_message(phone, "Customer not found.")
                 return {"status": "not_found"}
 
-            balance = get_balance(
-                db,
-                customer.id
-            )
-
+            balance = get_balance(db, customer.id)
             if balance < 0:
-
-                msg = (
-                    f"{customer.name} credit: "
-                    f"₦{abs(balance):,}"
-                )
-
+                msg = f"{customer.name} credit: ₦{abs(balance):,}"
             else:
+                msg = f"{customer.name} balance: ₦{balance:,}"
 
-                msg = (
-                    f"{customer.name} balance: "
-                    f"₦{balance:,}"
-                )
-
-            send_whatsapp_message(
-                phone,
-                msg
-            )
-
+            send_whatsapp_message(phone, msg)
             return {"status": "balance"}
 
-        # =========================
-        # 👤 MEMORY
-        # =========================
+        # Handle pronoun references
+        customer_name = parsed["name"].lower()
 
-        customer_name = (
-            parsed["name"].lower()
-        )
-
-        if customer_name in [
-            "he",
-            "she"
-        ]:
-
-            memory = db.query(
-                CustomerMemory
-            ).filter(
+        if customer_name in ["he", "she"]:
+            memory = db.query(CustomerMemory).filter(
                 CustomerMemory.phone == phone
             ).first()
 
             if memory and memory.last_customer:
-
-                customer_name = (
-                    memory.last_customer.lower()
-                )
-
+                customer_name = memory.last_customer.lower()
             else:
-
-                send_whatsapp_message(
-                    phone,
-                    "No previous customer found."
-                )
-
+                send_whatsapp_message(phone, "No previous customer found.")
                 return {"status": "no_memory"}
 
-        # =========================
-        # 👥 CUSTOMER
-        # =========================
-
+        # Get or create customer
         customer = db.query(Customer).filter(
             Customer.name == customer_name,
             Customer.owner_phone == phone
         ).first()
 
         if not customer:
-
             customer = Customer(
                 name=customer_name,
                 owner_phone=phone
             )
-
             db.add(customer)
-
             db.commit()
 
-        # =========================
-        # 🧹 CLEAR PENDING
-        # =========================
-
+        # Clear pending and save new pending
         db.query(PendingAction).filter(
             PendingAction.phone == phone
         ).delete()
-
         db.commit()
-
-        # =========================
-        # ⏳ SAVE PENDING
-        # =========================
 
         pending = PendingAction(
             phone=phone,
@@ -1747,84 +1240,43 @@ async def webhook(req: Request):
         )
 
         db.add(pending)
-
         db.commit()
 
-        # =========================
-        # 🧾 CONFIRMATION
-        # =========================
-
+        # Send confirmation
         if parsed["action"] == "BUY":
-
             if parsed["due_date"]:
-
-                due_date_text = (
-                    parsed["due_date"]
-                    .strftime("%d/%m/%Y")
-                )
-
+                due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 confirm_msg = (
-                    f"Confirm:\n"
-                    f"{customer.name} bought "
-                    f"₦{parsed['buy_amount']:,}\n"
-                    f"Due: {due_date_text}\n"
-                    f"Reply YES or EDIT"
+                    f"Confirm:\n{customer.name} bought ₦{parsed['buy_amount']:,}\n"
+                    f"Due: {due_date_text}\nReply YES or EDIT"
                 )
-
             else:
-
                 confirm_msg = (
-                    f"Confirm:\n"
-                    f"{customer.name} bought "
-                    f"₦{parsed['buy_amount']:,}?\n"
+                    f"Confirm:\n{customer.name} bought ₦{parsed['buy_amount']:,}?\n"
                     f"Reply YES or EDIT"
                 )
 
         elif parsed["action"] == "PAY":
-
             confirm_msg = (
-                f"Confirm:\n"
-                f"{customer.name} paid "
-                f"₦{parsed['paid_amount']:,}?\n"
+                f"Confirm:\n{customer.name} paid ₦{parsed['paid_amount']:,}?\n"
                 f"Reply YES or EDIT"
             )
 
         elif parsed["action"] == "COMBINED":
-
             if parsed["due_date"]:
-
-                due_date_text = (
-                    parsed["due_date"]
-                    .strftime("%d/%m/%Y")
-                )
-
+                due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 confirm_msg = (
-                    f"Confirm:\n"
-                    f"{customer.name} bought "
-                    f"₦{parsed['buy_amount']:,} "
-                    f"and paid "
-                    f"₦{parsed['paid_amount']:,}\n"
-                    f"Balance due on: "
-                    f"{due_date_text}\n"
-                    f"Reply YES or EDIT"
+                    f"Confirm:\n{customer.name} bought ₦{parsed['buy_amount']:,} "
+                    f"and paid ₦{parsed['paid_amount']:,}\n"
+                    f"Balance due on: {due_date_text}\nReply YES or EDIT"
                 )
-
             else:
-
                 confirm_msg = (
-                    f"Confirm:\n"
-                    f"{customer.name} bought "
-                    f"₦{parsed['buy_amount']:,} "
-                    f"and paid "
-                    f"₦{parsed['paid_amount']:,}?\n"
-                    f"Reply YES or EDIT"
+                    f"Confirm:\n{customer.name} bought ₦{parsed['buy_amount']:,} "
+                    f"and paid ₦{parsed['paid_amount']:,}?\nReply YES or EDIT"
                 )
 
-        send_whatsapp_message(
-            phone,
-            confirm_msg
-        )
-
+        send_whatsapp_message(phone, confirm_msg)
         return {"status": "pending"}
 
     finally:
