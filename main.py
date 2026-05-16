@@ -1393,7 +1393,7 @@ async def webhook(req: Request):
                 # Handle DUE_MENU responses (1, 2, 3)
                 if text == "1":
                     # Due in 2 days logic
-                    due_list = get_due_in_2_days(db)
+                    due_list = get_due_in_2_days(db, phone)
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
@@ -1425,7 +1425,8 @@ async def webhook(req: Request):
                         )
                         db.add(reminder_pending)
                         db.commit()
-                        msg += "\nSend:\n1, 2, etc to preview the reminder before sending to customer."
+                        numbers = ", ".join(str(i) for i in range(1, len(due_list) + 1))
+                        msg += f"\nSend:\n{numbers} to preview the reminder before sending to customer."
                         send_whatsapp_message(phone, msg)
 
                     db.delete(pending)
@@ -1434,7 +1435,7 @@ async def webhook(req: Request):
 
                 elif text == "2":
                     # Due today logic
-                    due_today = get_due_today(db)
+                    due_today = get_due_today(db, phone)
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
@@ -1466,7 +1467,8 @@ async def webhook(req: Request):
                         )
                         db.add(reminder_pending)
                         db.commit()
-                        msg += "\nSend:\n1, 2, etc to preview the reminder before sending to customer."
+                        numbers = ", ".join(str(i) for i in range(1, len(due_today) + 1))
+                        msg += f"\nSend:\n{numbers} to preview the reminder before sending to customer."
                         send_whatsapp_message(phone, msg)
 
                     db.delete(pending)
@@ -1480,7 +1482,7 @@ async def webhook(req: Request):
                     ).delete()
                     db.commit()
 
-                    overdue_list = get_overdue_debtors(db)
+                    overdue_list = get_overdue_debtors(db, phone)
                     if len(overdue_list) == 0:
                         send_whatsapp_message(
                             phone,
@@ -1513,7 +1515,8 @@ async def webhook(req: Request):
                         )
                         db.add(reminder_pending)
                         db.commit()
-                        msg += "\nSend:\n1, 2, etc to preview the reminder before sending to customer."
+                        numbers = ", ".join(str(i) for i in range(1, len(overdue_list) + 1))
+                        msg += f"\nSend:\n{numbers} to preview the reminder before sending to customer."
                         send_whatsapp_message(phone, msg)
 
                     db.delete(pending)
@@ -1541,24 +1544,27 @@ async def webhook(req: Request):
                     return {"status": "reminder_not_found"}
 
                 reminder = reminders[index - 1]
-
-                if not reminder.customer_phone:
-                    send_whatsapp_message(
-                        phone,
-                        f"Customer phone not set for {reminder.customer_name.title()}.\n"
-                        f"Set it with: {reminder.customer_name} phone 08012345678"
-                    )
-                    db.delete(pending)
-                    db.commit()
-                    return {"status": "customer_phone_missing"}
-
+                
+                # Show preview regardless of phone being set
                 preview = build_reminder_text(reminder)
-                confirm_msg = (
-                    f"Preview reminder for {reminder.customer_name.title()}:\n\n"
-                    f"{preview}\n\n"
-                    f"Reply YES to send this reminder to {reminder.customer_name.title()} "
-                    f"at {reminder.customer_phone}, or EDIT to cancel."
-                )
+                
+                # Build confirmation message based on whether phone is set
+                if reminder.customer_phone:
+                    confirm_msg = (
+                        f"Preview reminder for {reminder.customer_name.title()}:\n\n"
+                        f"{preview}\n\n"
+                        f"Reply YES to send this reminder to {reminder.customer_name.title()} "
+                        f"at {reminder.customer_phone}, or EDIT to cancel."
+                    )
+                else:
+                    confirm_msg = (
+                        f"Preview reminder for {reminder.customer_name.title()}:\n\n"
+                        f"{preview}\n\n"
+                        f"⚠️ Customer phone not set!\n"
+                        f"To send this reminder, please set the phone first:\n\n"
+                        f"{reminder.customer_name} phone 08012345678\n\n"
+                        f"Then reply YES to send, or EDIT to cancel."
+                    )
 
                 pending.action = "REMINDER_CONFIRM"
                 pending.reminder_id = reminder.id
@@ -1582,13 +1588,16 @@ async def webhook(req: Request):
                         return {"status": "reminder_missing"}
 
                     if not reminder.customer_phone:
+                        # Instead of failing, prompt user to set phone first
                         send_whatsapp_message(
                             phone,
-                            f"Customer phone not set for {reminder.customer_name.title()}."
+                            f"⚠️ Customer phone not set for {reminder.customer_name.title()}.\n\n"
+                            f"Please set it using:\n"
+                            f"{reminder.customer_name} phone 08012345678\n\n"
+                            f"After setting, reply YES again to send the reminder."
                         )
-                        db.delete(pending)
-                        db.commit()
-                        return {"status": "customer_phone_missing"}
+                        # Keep the pending action so they can retry after setting phone
+                        return {"status": "waiting_for_phone"}
 
                     reminder_text = build_reminder_text(reminder)
                     send_whatsapp_message(reminder.customer_phone, reminder_text)
@@ -1766,10 +1775,35 @@ async def webhook(req: Request):
                 customer.customer_phone = parsed["customer_phone"]
 
             db.commit()
+            
+            # Also update phone in ReminderMemory if there's a pending reminder for this customer
+            reminders_to_update = db.query(ReminderMemory).filter(
+                ReminderMemory.phone == phone,
+                ReminderMemory.customer_name == parsed["name"]
+            ).all()
+            
+            for reminder in reminders_to_update:
+                reminder.customer_phone = parsed["customer_phone"]
+            
+            db.commit()
+            
             send_whatsapp_message(
                 phone,
                 f"Saved phone for {customer.name.title()}: {customer.customer_phone}"
             )
+            
+            # If there's a pending REMINDER_CONFIRM action, prompt them to retry
+            pending_reminder = db.query(PendingAction).filter(
+                PendingAction.phone == phone,
+                PendingAction.action == "REMINDER_CONFIRM"
+            ).first()
+            
+            if pending_reminder:
+                send_whatsapp_message(
+                    phone,
+                    f"Phone set! Now reply YES to send the reminder to {customer.name.title()}."
+                )
+            
             return {"status": "set_phone"}
 
         if parsed["type"] == "REMIND":
@@ -2039,7 +2073,7 @@ async def webhook(req: Request):
             return {"status": "customer_transactions"}
 
         if parsed["type"] == "OVERDUE_DEBTORS":
-            overdue_list = get_overdue_debtors(db)
+            overdue_list = get_overdue_debtors(db, phone)
             if len(overdue_list) == 0:
                 send_whatsapp_message(phone, "✅ No overdue debtors.")
                 return {"status": "no_overdue"}
@@ -2058,7 +2092,7 @@ async def webhook(req: Request):
             return {"status": "overdue_direct"}
 
         if parsed["type"] == "UNPAID_DEBTORS":
-            debtors, total_outstanding = get_unpaid_debtors(db)
+            debtors, total_outstanding = get_unpaid_debtors(db, phone)
             if len(debtors) == 0:
                 send_whatsapp_message(phone, "✅ No unpaid debtors.")
                 return {"status": "no_debtors"}
