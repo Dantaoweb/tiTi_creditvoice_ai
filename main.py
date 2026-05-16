@@ -3,8 +3,11 @@ import re
 import requests
 
 from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 from sqlalchemy import (
     create_engine,
@@ -61,6 +64,24 @@ class Customer(Base):
     )
 
 
+class User(Base):
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+
+    name = Column(String)
+
+    phone = Column(String, unique=True)
+
+    role = Column(String, default="user")
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+
 class Transaction(Base):
 
     __tablename__ = "transactions"
@@ -109,6 +130,8 @@ class PendingAction(Base):
     phone = Column(String)
 
     customer_name = Column(String)
+
+    customer_phone = Column(String, nullable=True)
 
     action = Column(String)
 
@@ -170,6 +193,18 @@ class ReminderMemory(Base):
     due_date = Column(DateTime)
 
     reminder_type = Column(String)
+
+
+class UserCreate(BaseModel):
+    name: str
+    phone: str
+    role: Optional[str] = "user"
+
+
+class CustomerCreate(BaseModel):
+    owner_phone: str
+    name: str
+    customer_phone: Optional[str] = None
 
 
 Base.metadata.create_all(engine)
@@ -242,6 +277,39 @@ def extract_item_details(text):
     }
 
 
+def parse_amount_token(token):
+    token = token.lower().replace(",", "").strip()
+    if token.endswith("k"):
+        multiplier = 1000
+        token = token[:-1]
+    elif token.endswith("m"):
+        multiplier = 1000000
+        token = token[:-1]
+    else:
+        multiplier = 1
+
+    token = token.replace(" ", "")
+    if token == "":
+        return None
+
+    try:
+        if "." in token:
+            return int(float(token) * multiplier)
+        return int(token) * multiplier
+    except ValueError:
+        return None
+
+
+def extract_amounts(text):
+    matches = re.findall(r"(?<![\d/])\d[\d,\.]*\s*[kKmM]?(?![\d/])", text)
+    amounts = []
+    for match in matches:
+        parsed = parse_amount_token(match)
+        if parsed is not None:
+            amounts.append(parsed)
+    return amounts
+
+
 def build_reminder_text(reminder):
     due_date_text = reminder.due_date.strftime("%d/%m/%Y")
 
@@ -277,6 +345,44 @@ def parse_period_phrase(text):
 def parse_date_phrase(text):
     match = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", text)
     return match.group(1) if match else None
+
+
+def extract_customer_onboarding(text):
+    clean = text.lower().strip()
+
+    # Reject transaction-like text unless there is an explicit onboarding cue.
+    transaction_terms = ["bought", "buy", "paid", "pay", "due", "balance", "sale", "sales"]
+    if any(term in clean for term in transaction_terms):
+        if not re.search(r"\b(add|save|contact|customer|phone|number|shop|store)\b", clean):
+            return None
+
+    phone_match = re.search(r"(\+?\d[\d ]{7,14}\d)", clean)
+    if not phone_match:
+        return None
+
+    phone = phone_match.group(1).replace(" ", "")
+    if len(re.sub(r"\D", "", phone)) < 7:
+        return None
+
+    before = clean[:phone_match.start()].strip()
+    if not before:
+        return None
+
+    before = re.sub(
+        r"\b(add|save|customer|contact|mobile|phone|number|my|as|to|for|please|pls|shop|store)\b",
+        "",
+        before
+    ).strip()
+
+    name_parts = [word for word in before.split() if word]
+    if not name_parts:
+        return None
+
+    name = " ".join(name_parts)
+    return {
+        "name": name,
+        "customer_phone": phone
+    }
 
 
 # =========================
@@ -339,11 +445,22 @@ def parse_message(text):
         "daily transactions",
         "today transactions",
         "transactions today",
-        "transactions for today"
+        "transactions for today",
+        "total transactions today",
+        "transactions total today"
     ]:
         return {
             "type": "PERIOD_TRANSACTIONS",
             "period": "TODAY"
+        }
+
+    if clean_text in [
+        "total transactions",
+        "transactions total"
+    ]:
+        return {
+            "type": "PERIOD_TRANSACTIONS",
+            "period": None
         }
 
     if clean_text in [
@@ -515,6 +632,41 @@ def parse_message(text):
         }
 
     if clean_text in [
+        "paid users",
+        "paid customers",
+        "customers paid"
+    ] or ("paid" in clean_text and "users" in clean_text):
+        return {
+            "type": "PAID_CUSTOMERS",
+            "period": parse_period_phrase(clean_text)
+        }
+
+    if clean_text in [
+        "new users",
+        "new customers",
+        "customers added"
+    ] or ("new" in clean_text and "users" in clean_text):
+        return {
+            "type": "NEW_CUSTOMERS",
+            "period": parse_period_phrase(clean_text)
+        }
+
+    if clean_text in [
+        "dashboard summary",
+        "dashboard stats",
+        "business summary",
+        "business stats",
+        "stats",
+        "dashboard"
+    ] or ("dashboard" in clean_text and "summary" in clean_text) or (
+        "dashboard" in clean_text and "stats" in clean_text
+    ):
+        return {
+            "type": "DASHBOARD_SUMMARY",
+            "period": parse_period_phrase(clean_text)
+        }
+
+    if clean_text in [
         "total customers this month",
         "customers this month"
     ]:
@@ -600,8 +752,16 @@ def parse_message(text):
             "text": text
         }
 
+    onboarding = extract_customer_onboarding(text)
+    if onboarding:
+        return {
+            "type": "SET_PHONE",
+            "name": onboarding["name"].strip().lower(),
+            "customer_phone": onboarding["customer_phone"]
+        }
+
     phone_match = re.match(
-        r"(?P<name>[a-zA-Z ]+?)\s+(?:phone|number)\s+(?P<phone>[+\d ]+)$",
+        r"(?P<name>[a-zA-Z'’\- ]+?)\s+(?:phone|number)\s+(?P<phone>[+\d ]+)$",
         clean_text
     )
 
@@ -620,12 +780,7 @@ def parse_message(text):
 
     words = clean_text.split()
 
-    amounts = []
-
-    for word in words:
-
-        if word.isdigit():
-            amounts.append(int(word))
+    amounts = extract_amounts(clean_text)
 
     if len(amounts) == 0:
         return None
@@ -701,15 +856,11 @@ def parse_message(text):
     # 🧠 DETECT TYPE
     # =========================
 
-    has_buy = (
-        "bought" in clean_text
-        or "buy" in clean_text
-    )
+    buy_keywords = ["bought", "buy", "owes", "owe", "owing", "purchased"]
+    pay_keywords = ["paid", "pay", "settled", "gave"]
 
-    has_pay = (
-        "paid" in clean_text
-        or "pay" in clean_text
-    )
+    has_buy = bool(re.search(r"\b(" + "|".join(buy_keywords) + r")\b", clean_text))
+    has_pay = bool(re.search(r"\b(" + "|".join(pay_keywords) + r")\b", clean_text))
 
     # =========================
     # 🔄 COMBINED
@@ -992,11 +1143,39 @@ def get_customer_count(db, owner_phone=None, period=None):
         query = query.filter(Customer.owner_phone == owner_phone)
     if period:
         start, end = get_period_range(period)
-        query = query.join(Transaction, Transaction.customer_id == Customer.id).filter(
-            Transaction.created_at >= start,
-            Transaction.created_at < end
-        )
+        if start and end:
+            query = query.filter(
+                Customer.created_at >= start,
+                Customer.created_at < end
+            )
+    return query.count()
+
+
+def get_new_customer_count(db, owner_phone=None, period=None):
+    return get_customer_count(db, owner_phone, period)
+
+
+def get_paid_customer_count(db, owner_phone=None, period=None):
+    query = db.query(Customer).join(
+        Transaction,
+        Transaction.customer_id == Customer.id
+    ).filter(
+        Transaction.type == "PAY"
+    )
+    if owner_phone:
+        query = query.filter(Customer.owner_phone == owner_phone)
+    if period:
+        start, end = get_period_range(period)
+        if start and end:
+            query = query.filter(
+                Transaction.created_at >= start,
+                Transaction.created_at < end
+            )
     return query.distinct(Customer.id).count()
+
+
+def get_total_transaction_count(db, owner_phone=None, period=None):
+    return get_owner_transaction_query(db, owner_phone, period).count()
 
 
 def list_customers(db, owner_phone=None):
@@ -1329,6 +1508,169 @@ def home():
     return {"status": "CreditVoice running"}
 
 # =========================
+# 🧑‍💼 USER ONBOARDING
+# =========================
+
+@app.post("/onboard/user")
+def onboard_user(user_data: UserCreate):
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.phone == user_data.phone).first()
+        if existing:
+            return {
+                "status": "exists",
+                "message": "User already onboarded",
+                "user": {
+                    "id": existing.id,
+                    "name": existing.name,
+                    "phone": existing.phone,
+                    "role": existing.role,
+                    "created_at": existing.created_at.isoformat()
+                }
+            }
+
+        user = User(
+            name=user_data.name,
+            phone=user_data.phone,
+            role=user_data.role
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "status": "success",
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "phone": user.phone,
+                "role": user.role,
+                "created_at": user.created_at.isoformat()
+            }
+        }
+    finally:
+        db.close()
+
+
+@app.post("/onboard/customer")
+def onboard_customer(customer_data: CustomerCreate):
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.phone == customer_data.owner_phone).first()
+        if not owner:
+            return {
+                "status": "owner_not_found",
+                "message": "Owner phone is not registered. Please onboard the user first."
+            }
+
+        customer = db.query(Customer).filter(
+            Customer.name == customer_data.name,
+            Customer.owner_phone == customer_data.owner_phone
+        ).first()
+
+        if customer:
+            if customer_data.customer_phone:
+                customer.customer_phone = customer_data.customer_phone
+                db.commit()
+            return {
+                "status": "exists",
+                "message": "Customer already onboarded",
+                "customer": {
+                    "id": customer.id,
+                    "name": customer.name,
+                    "owner_phone": customer.owner_phone,
+                    "customer_phone": customer.customer_phone,
+                    "created_at": customer.created_at.isoformat()
+                }
+            }
+
+        customer = Customer(
+            name=customer_data.name,
+            owner_phone=customer_data.owner_phone,
+            customer_phone=customer_data.customer_phone
+        )
+        db.add(customer)
+        db.commit()
+        db.refresh(customer)
+
+        return {
+            "status": "success",
+            "customer": {
+                "id": customer.id,
+                "name": customer.name,
+                "owner_phone": customer.owner_phone,
+                "customer_phone": customer.customer_phone,
+                "created_at": customer.created_at.isoformat()
+            }
+        }
+    finally:
+        db.close()
+
+
+@app.get("/dashboard")
+def dashboard(owner_phone: Optional[str] = None, period: Optional[str] = None):
+    db = SessionLocal()
+    try:
+        period_key = period.upper() if period else None
+        stats = get_transaction_stats(db, owner_phone, period_key)
+        return {
+            "total_customers": get_customer_count(db, owner_phone, None),
+            "new_customers": get_new_customer_count(db, owner_phone, period_key),
+            "paid_customers": get_paid_customer_count(db, owner_phone, period_key),
+            "total_transactions": get_total_transaction_count(db, owner_phone, period_key),
+            "total_buy_amount": stats["total_buy"],
+            "total_pay_amount": stats["total_pay"]
+        }
+    finally:
+        db.close()
+
+
+@app.get("/dashboard/ui", response_class=HTMLResponse)
+def dashboard_ui(owner_phone: Optional[str] = None, period: Optional[str] = None):
+    db = SessionLocal()
+    try:
+        period_key = period.upper() if period else None
+        stats = get_transaction_stats(db, owner_phone, period_key)
+        total_customers = get_customer_count(db, owner_phone, None)
+        new_customers = get_new_customer_count(db, owner_phone, period_key)
+        paid_customers = get_paid_customer_count(db, owner_phone, period_key)
+        total_transactions = get_total_transaction_count(db, owner_phone, period_key)
+        period_label = period_key.lower() if period_key else "all time"
+        owner_label = owner_phone or "all owners"
+        html = f"""
+        <html>
+            <head>
+                <title>CreditVoice Dashboard</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 24px; }}
+                    .card {{ border: 1px solid #ddd; border-radius: 10px; padding: 18px; margin-bottom: 16px; max-width: 600px; }}
+                    .title {{ font-size: 24px; margin-bottom: 8px; }}
+                    .metric {{ font-size: 20px; margin: 8px 0; }}
+                    .label {{ color: #555; }}
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <div class="title">CreditVoice Dashboard</div>
+                    <div class="metric"><span class="label">Owner:</span> {owner_label}</div>
+                    <div class="metric"><span class="label">Period:</span> {period_label}</div>
+                    <hr />
+                    <div class="metric"><strong>Total customers:</strong> {total_customers:,}</div>
+                    <div class="metric"><strong>New customers:</strong> {new_customers:,}</div>
+                    <div class="metric"><strong>Paid customers:</strong> {paid_customers:,}</div>
+                    <div class="metric"><strong>Total transactions:</strong> {total_transactions:,}</div>
+                    <div class="metric"><strong>Total sales:</strong> ₦{stats['total_buy']:,}</div>
+                    <div class="metric"><strong>Total received:</strong> ₦{stats['total_pay']:,}</div>
+                </div>
+            </body>
+        </html>
+        """
+        return html
+    finally:
+        db.close()
+
+
+# =========================
 # ✅ WEBHOOK VERIFICATION
 # =========================
 
@@ -1381,12 +1723,119 @@ async def webhook(req: Request):
         if existing_tx:
             return {"status": "duplicate"}
 
+        user = db.query(User).filter(User.phone == phone).first()
+
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
             PendingAction.action != None
         ).order_by(
             PendingAction.created_at.desc()
         ).first()
+
+        if not user:
+            if pending and pending.action == "ONBOARD_USER":
+                full_name = text.strip()
+                if full_name == "":
+                    send_whatsapp_message(
+                        phone,
+                        "Please send the name you want to use so I can register you."
+                    )
+                    return {"status": "onboarding_name_required"}
+
+                if full_name.lower() in ["continue", "start", "yes", "ok"]:
+                    send_whatsapp_message(
+                        phone,
+                        "Please reply with the name you want to use so I can register you."
+                    )
+                    return {"status": "onboarding_name_required"}
+
+                new_user = User(
+                    name=full_name,
+                    phone=phone,
+                    role="user"
+                )
+                db.add(new_user)
+                db.delete(pending)
+                db.commit()
+
+                send_whatsapp_message(
+                    phone,
+                    f"Welcome {full_name.title()}! I am TITI, your CreditVoice assistant.\n\n"
+                    "You are now registered.\n\n"
+                    "To add a customer, send: John 08012345678\n"
+                    "Then you can record transactions for that customer."
+                )
+                return {"status": "user_onboarded"}
+
+            if text.lower() in ["continue", "start", "yes", "ok"]:
+                if pending and pending.action != "ONBOARD_USER":
+                    db.delete(pending)
+                    db.commit()
+
+                onboarding = PendingAction(
+                    phone=phone,
+                    action="ONBOARD_USER"
+                )
+                db.add(onboarding)
+                db.commit()
+
+                send_whatsapp_message(
+                    phone,
+                    "Hello! I am TITI, the CreditVoice assistant.\n\n"
+                    "Please reply with the name you want to use here — it can be your personal name, nickname, or business name."
+                )
+                return {"status": "onboarding_started"}
+
+            send_whatsapp_message(
+                phone,
+                "Welcome to CreditVoice! I am TITI.\n\n"
+                "Reply CONTINUE to begin onboarding."
+            )
+            return {"status": "welcome_sent"}
+
+        if pending and pending.action == "ONBOARD_CUSTOMER":
+            normalized = text.lower().strip()
+            if normalized in ["yes", "1", "save"]:
+                customer = db.query(Customer).filter(
+                    Customer.name == pending.customer_name,
+                    Customer.owner_phone == phone
+                ).first()
+
+                if not customer:
+                    customer = Customer(
+                        name=pending.customer_name,
+                        owner_phone=phone,
+                        customer_phone=pending.customer_phone
+                    )
+                    db.add(customer)
+                else:
+                    customer.customer_phone = pending.customer_phone
+
+                db.delete(pending)
+                db.commit()
+
+                send_whatsapp_message(
+                    phone,
+                    f"✅ Customer saved: {customer.name.title()} → {customer.customer_phone}.\n"
+                    "You can now record transactions for this customer."
+                )
+                return {"status": "customer_onboarded"}
+
+            if normalized in ["edit", "2", "change"]:
+                db.delete(pending)
+                db.commit()
+
+                send_whatsapp_message(
+                    phone,
+                    "Okay, please send the customer again like:\nJohn 08012345678"
+                )
+                return {"status": "customer_onboarded_edit"}
+
+            send_whatsapp_message(
+                phone,
+                "I found a customer ready to save. Reply YES or 1 to confirm, EDIT or 2 to send it again."
+            )
+            return {"status": "customer_onboarded_confirm"}
 
         if pending:
             if pending.action == "DUE_MENU":
@@ -1624,7 +2073,8 @@ async def webhook(req: Request):
                 )
                 return {"status": "reminder_confirm_prompt"}
 
-            elif text.lower() == "yes":
+            normalized = text.lower().strip()
+            if normalized in ["yes", "1", "save"]:
                 customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
                     Customer.owner_phone == phone
@@ -1722,7 +2172,7 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, msg)
                 return {"status": "saved"}
 
-            elif text.lower() == "edit":
+            elif normalized in ["edit", "2", "change"]:
                 db.delete(pending)
                 db.commit()
                 send_whatsapp_message(
@@ -1759,52 +2209,39 @@ async def webhook(req: Request):
             return {"status": "formats"}
 
         if parsed["type"] == "SET_PHONE":
-            customer = db.query(Customer).filter(
+            existing_customer = db.query(Customer).filter(
                 Customer.name == parsed["name"],
                 Customer.owner_phone == phone
             ).first()
 
-            if not customer:
-                customer = Customer(
-                    name=parsed["name"],
-                    owner_phone=phone,
-                    customer_phone=parsed["customer_phone"]
-                )
-                db.add(customer)
-            else:
-                customer.customer_phone = parsed["customer_phone"]
-
-            db.commit()
-            
-            # Also update phone in ReminderMemory if there's a pending reminder for this customer
-            reminders_to_update = db.query(ReminderMemory).filter(
-                ReminderMemory.phone == phone,
-                ReminderMemory.customer_name == parsed["name"]
-            ).all()
-            
-            for reminder in reminders_to_update:
-                reminder.customer_phone = parsed["customer_phone"]
-            
-            db.commit()
-            
-            send_whatsapp_message(
-                phone,
-                f"Saved phone for {customer.name.title()}: {customer.customer_phone}"
-            )
-            
-            # If there's a pending REMINDER_CONFIRM action, prompt them to retry
-            pending_reminder = db.query(PendingAction).filter(
+            db.query(PendingAction).filter(
                 PendingAction.phone == phone,
-                PendingAction.action == "REMINDER_CONFIRM"
-            ).first()
-            
-            if pending_reminder:
+                PendingAction.action == "ONBOARD_CUSTOMER"
+            ).delete()
+            db.commit()
+
+            pending_customer = PendingAction(
+                phone=phone,
+                customer_name=parsed["name"],
+                customer_phone=parsed["customer_phone"],
+                action="ONBOARD_CUSTOMER"
+            )
+            db.add(pending_customer)
+            db.commit()
+
+            if existing_customer:
                 send_whatsapp_message(
                     phone,
-                    f"Phone set! Now reply YES to send the reminder to {customer.name.title()}."
+                    f"I found an existing customer {parsed['name'].title()} with phone {existing_customer.customer_phone or 'no phone'}.\n"
+                    f"Change the phone to {parsed['customer_phone']}? Reply YES or 1 to update, EDIT or 2 to send it again."
                 )
-            
-            return {"status": "set_phone"}
+            else:
+                send_whatsapp_message(
+                    phone,
+                    f"I found customer {parsed['name'].title()} with phone {parsed['customer_phone']}.\n"
+                    "Reply YES or 1 to save, EDIT or 2 to send it again."
+                )
+            return {"status": "confirm_onboard_customer"}
 
         if parsed["type"] == "REMIND":
             parts = parsed["text"].split()
@@ -1987,9 +2424,48 @@ async def webhook(req: Request):
             period_label = period.lower() if period else "all time"
             send_whatsapp_message(
                 phone,
-                f"👥 Total customers {period_label}: {count:,}"
+                f"👥 Customers {period_label}: {count:,}"
             )
             return {"status": "customer_count"}
+
+        if parsed["type"] == "NEW_CUSTOMERS":
+            period = parsed.get("period")
+            count = get_new_customer_count(db, phone, period)
+            period_label = period.lower() if period else "all time"
+            send_whatsapp_message(
+                phone,
+                f"🆕 New customers {period_label}: {count:,}"
+            )
+            return {"status": "new_customers"}
+
+        if parsed["type"] == "PAID_CUSTOMERS":
+            period = parsed.get("period")
+            count = get_paid_customer_count(db, phone, period)
+            period_label = period.lower() if period else "all time"
+            send_whatsapp_message(
+                phone,
+                f"✅ Paid customers {period_label}: {count:,}"
+            )
+            return {"status": "paid_customers"}
+
+        if parsed["type"] == "DASHBOARD_SUMMARY":
+            period = parsed.get("period")
+            period_label = period.lower() if period else "all time"
+            total_customers = get_customer_count(db, phone, period)
+            new_customers = get_new_customer_count(db, phone, period)
+            paid_customers = get_paid_customer_count(db, phone, period)
+            stats = get_transaction_stats(db, phone, period)
+            send_whatsapp_message(
+                phone,
+                f"📊 Dashboard {period_label}:\n"
+                f"Total customers: {total_customers:,}\n"
+                f"New customers: {new_customers:,}\n"
+                f"Paid customers: {paid_customers:,}\n"
+                f"Transactions: {stats['transaction_count']:,}\n"
+                f"Sales: ₦{stats['total_buy']:,}\n"
+                f"Received: ₦{stats['total_pay']:,}"
+            )
+            return {"status": "dashboard_summary"}
 
         if parsed["type"] == "BIGGEST_DEBTOR":
             debtor = get_biggest_debtor(db, phone)
@@ -2183,29 +2659,29 @@ async def webhook(req: Request):
                     due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                     confirm_msg = (
                         f"Confirm:\n{customer.name} bought {item_line}\n"
-                        f"Due: {due_date_text}\nReply YES or EDIT"
+                        f"Due: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
                     )
                 else:
                     confirm_msg = (
                         f"Confirm:\n{customer.name} bought {item_line}\n"
-                        f"Reply YES or EDIT"
+                        f"Reply YES or 1 to save, EDIT or 2 to change."
                     )
             elif parsed["due_date"]:
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 confirm_msg = (
                     f"Confirm:\n{customer.name} bought ₦{parsed['buy_amount']:,}\n"
-                    f"Due: {due_date_text}\nReply YES or EDIT"
+                    f"Due: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             else:
                 confirm_msg = (
                     f"Confirm:\n{customer.name} bought ₦{parsed['buy_amount']:,}?\n"
-                    f"Reply YES or EDIT"
+                    f"Reply YES or 1 to save, EDIT or 2 to change."
                 )
 
         elif parsed["action"] == "PAY":
             confirm_msg = (
                 f"Confirm:\n{customer.name} paid ₦{parsed['paid_amount']:,}?\n"
-                f"Reply YES or EDIT"
+                f"Reply YES or 1 to save, EDIT or 2 to change."
             )
 
         elif parsed["action"] == "COMBINED":
@@ -2221,12 +2697,13 @@ async def webhook(req: Request):
                 confirm_msg = (
                     f"Confirm:\n{customer.name} bought {item_line} "
                     f"and paid ₦{parsed['paid_amount']:,}\n"
-                    f"Balance due on: {due_date_text}\nReply YES or EDIT"
+                    f"Balance due on: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             else:
                 confirm_msg = (
                     f"Confirm:\n{customer.name} bought {item_line} "
-                    f"and paid ₦{parsed['paid_amount']:,}?\nReply YES or EDIT"
+                    f"and paid ₦{parsed['paid_amount']:,}?\n"
+                    f"Reply YES or 1 to save, EDIT or 2 to change."
                 )
 
         send_whatsapp_message(phone, confirm_msg)
