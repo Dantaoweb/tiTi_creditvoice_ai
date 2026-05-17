@@ -76,6 +76,8 @@ class User(Base):
 
     role = Column(String, default="user")
 
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     created_at = Column(
         DateTime,
         default=datetime.utcnow
@@ -104,6 +106,8 @@ class Transaction(Base):
     unit = Column(String, nullable=True)
 
     unit_price = Column(Integer, nullable=True)
+
+    recorded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -158,6 +162,17 @@ class PendingAction(Base):
         DateTime,
         default=datetime.utcnow
     )
+
+
+class ProcessedMessage(Base):
+
+    __tablename__ = "processed_messages"
+
+    id = Column(Integer, primary_key=True)
+
+    message_id = Column(String, unique=True, index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class CustomerMemory(Base):
@@ -250,22 +265,26 @@ def send_whatsapp_message(to, message):
 
 
 def extract_item_details(text):
+    # Matches numbers with optional k/m suffixes (e.g., 5000, 5k, 5.5m)
+    amount_pattern = r"\d[\d,\.]*\s*[kKmM]?"
+
     clean = text.lower().replace(",", "")
 
     match = re.search(
         r"(?P<quantity>\d+)\s+"
-        r"(?P<unit>\w+)\s+(?:of\s+)?"
-        r"(?P<product>[a-z ]+?)\s+at\s+(?P<unit_price>\d+)",
+        r"(?P<unit>[a-z/]+)\s+(?:of\s+)?"
+        r"(?P<product>[a-z ]+?)\s+at\s+(?P<unit_price>" + amount_pattern + ")",
         clean
     )
 
     if not match:
         return None
 
-    quantity = int(match.group("quantity"))
+    # Parse quantity and unit price safely, supporting k/m suffixes for the price
+    quantity = parse_amount_token(match.group("quantity")) or 0
     unit = match.group("unit")
     product = match.group("product").strip()
-    unit_price = int(match.group("unit_price"))
+    unit_price = parse_amount_token(match.group("unit_price")) or 0
     total = quantity * unit_price
 
     return {
@@ -301,7 +320,13 @@ def parse_amount_token(token):
 
 
 def extract_amounts(text):
-    matches = re.findall(r"(?<![\d/])\d[\d,\.]*\s*[kKmM]?(?![\d/])", text)
+    # Improved regex to identify amounts with k/m suffixes.
+    # Uses negative lookahead to ensure k/m aren't part of a larger unit word (like kg, ml, etc.)
+    # or immediately followed by other letters that suggest a unit context (like meter).
+    matches = re.findall(
+        r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![\d/])", 
+        text
+    )
     amounts = []
     for match in matches:
         parsed = parse_amount_token(match)
@@ -604,14 +629,14 @@ def parse_message(text):
             "date": parse_date_phrase(clean_text)
         }
 
-    if clean_text in [
-        "list customers",
-        "customer list",
-        "customers"
-    ]:
-        return {
-            "type": "CUSTOMER_LIST"
-        }
+    # Matches "list customers", "customers today", "customer list this week", etc.
+    if any(cmd in clean_text for cmd in ["list customers", "customer list"]) or clean_text.startswith("customers"):
+        # Ensure we don't accidentally catch "customers count" or "total customers"
+        if "count" not in clean_text and "total" not in clean_text:
+            return {
+                "type": "CUSTOMER_LIST",
+                "period": parse_period_phrase(clean_text)
+            }
 
     if clean_text in [
         "total customers today",
@@ -737,6 +762,41 @@ def parse_message(text):
             "type": "FORMATS"
         }
 
+    if clean_text.startswith("add staff"):
+        # Matches "add staff 080... Name"
+        match = re.search(r"add staff (\+?\d+) (.+)", clean_text)
+        if match:
+            return {
+                "type": "ADD_STAFF",
+                "phone": match.group(1).replace(" ", ""),
+                "name": match.group(2).strip()
+            }
+
+    if clean_text.startswith("remove staff"):
+        # Matches "remove staff 080..."
+        match = re.search(r"remove staff (\+?\d+)", clean_text)
+        if match:
+            return {
+                "type": "REMOVE_STAFF",
+                "phone": match.group(1).replace(" ", "")
+            }
+
+    if clean_text in [
+        "staff menu",
+        "admin menu",
+        "list staff",
+        "my staff"
+    ]:
+        return {"type": "STAFF_MENU"}
+
+    if clean_text in [
+        "reonboard",
+        "change name",
+        "update name",
+        "update business name"
+    ]:
+        return {"type": "REONBOARD"}
+
     if clean_text in [
         "formats",
         "format",
@@ -750,6 +810,13 @@ def parse_message(text):
         return {
             "type": "REMIND",
             "text": text
+        }
+
+    if "no longer working with" in clean_text:
+        business = clean_text.split("working with")[-1].strip()
+        return {
+            "type": "RESIGN_REQUEST",
+            "business_name": business
         }
 
     onboarding = extract_customer_onboarding(text)
@@ -1178,10 +1245,19 @@ def get_total_transaction_count(db, owner_phone=None, period=None):
     return get_owner_transaction_query(db, owner_phone, period).count()
 
 
-def list_customers(db, owner_phone=None):
+def list_customers(db, owner_phone=None, period=None):
     query = db.query(Customer)
     if owner_phone:
         query = query.filter(Customer.owner_phone == owner_phone)
+
+    if period:
+        start, end = get_period_range(period)
+        if start and end:
+            query = query.filter(
+                Customer.created_at >= start,
+                Customer.created_at < end
+            )
+
     customers = query.all()
     result = []
     for customer in customers:
@@ -1706,6 +1782,7 @@ async def webhook(req: Request):
 
         phone = message["from"]
 
+        message_type = message.get("type", "text")
         message_id = message["id"]
 
     except:
@@ -1714,16 +1791,86 @@ async def webhook(req: Request):
     db = SessionLocal()
 
     try:
+        # Only process actual text messages to avoid responding to 
+        # reactions, locations, or media without context
+        if message_type != "text":
+            return {"status": "ignored_non_text"}
 
-        # Duplicate check, pending action checks, and rest of webhook logic
-        existing_tx = db.query(Transaction).filter(
-            Transaction.message_id == message_id
+        # 1. Global Idempotency Check (Prevents Meta Retries)
+        already_processed = db.query(ProcessedMessage).filter(
+            ProcessedMessage.message_id == message_id
         ).first()
 
-        if existing_tx:
+        if already_processed:
             return {"status": "duplicate"}
 
+        # Log this message ID immediately
+        log_msg = ProcessedMessage(message_id=message_id)
+        db.add(log_msg)
+        try:
+            db.commit()
+        except:
+            return {"status": "duplicate_race_condition"}
+
+        # =========================
+        # 🔍 USER & CONTEXT IDENTIFICATION
+        # =========================
         user = db.query(User).filter(User.phone == phone).first()
+
+        # Determine the "Business Owner Context"
+        # This ensures delegates see the Admin's customers and data
+        business_owner_phone = phone
+        business_name = "your business"
+        
+        if user:
+            if user.role in ["delegate", "delegate_pending"] and user.parent_id:
+                admin = db.query(User).filter(User.id == user.parent_id).first()
+                if admin:
+                    business_owner_phone = admin.phone
+                    business_name = admin.name
+            else:
+                business_name = user.name
+
+        # Logic for Pending Invitations
+        if user and user.role == "delegate_pending":
+            normalized = text.strip()
+            if normalized == "1":
+                user.role = "delegate"
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    f"✅ Access Accepted!\n\nYou are now an authorized staff member for *{business_name.title()}*. You can start recording transactions immediately."
+                )
+                # Notify Admin
+                send_whatsapp_message(
+                    business_owner_phone,
+                    f"📢 Notification: {user.name.title()} has ACCEPTED your staff invitation."
+                )
+                return {"status": "delegate_accepted"}
+            elif normalized == "2":
+                user.role = "user"
+                user.parent_id = None
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    f"❌ Invitation Declined.\n\nYou are no longer associated with {business_name.title()}."
+                )
+                # Notify Admin
+                send_whatsapp_message(
+                    business_owner_phone,
+                    f"📢 Notification: {user.name.title()} has DECLINED your staff invitation."
+                )
+                return {"status": "delegate_declined"}
+            else:
+                send_whatsapp_message(
+                    phone,
+                    f"Hello {user.name.title()}! *{business_name.title()}* has added you as a staff member.\n\n"
+                    "Do you accept this invitation?\n\n1. Yes, Accept\n2. No, Decline"
+                )
+                return {"status": "delegate_invitation_pending"}
+
+        # Use the business_owner_phone for all lookups instead of the raw sender 'phone'
+        # From this point forward, use business_owner_phone for DB queries
 
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
@@ -1732,42 +1879,79 @@ async def webhook(req: Request):
             PendingAction.created_at.desc()
         ).first()
 
-        if not user:
-            if pending and pending.action == "ONBOARD_USER":
-                full_name = text.strip()
-                if full_name == "":
-                    send_whatsapp_message(
-                        phone,
-                        "Please send the name you want to use so I can register you."
-                    )
-                    return {"status": "onboarding_name_required"}
+        # =========================
+        # 👤 USER ONBOARDING / PROFILE UPDATE (CONFIRMATION)
+        # =========================
 
-                if full_name.lower() in ["continue", "start", "yes", "ok"]:
-                    send_whatsapp_message(
-                        phone,
-                        "Please reply with the name you want to use so I can register you."
-                    )
-                    return {"status": "onboarding_name_required"}
-
-                new_user = User(
-                    name=full_name,
-                    phone=phone,
-                    role="user"
-                )
-                db.add(new_user)
-                db.delete(pending)
-                db.commit()
-
+        if pending and pending.action == "ONBOARD_USER":
+            full_name = text.strip()
+            if full_name == "" or full_name.lower() in ["continue", "start", "yes", "ok", "1"]:
                 send_whatsapp_message(
                     phone,
-                    f"Welcome {full_name.title()}! I am TITI, your CreditVoice assistant.\n\n"
-                    "You are now registered.\n\n"
-                    "To add a customer, send: John 08012345678\n"
-                    "Then you can record transactions for that customer."
+                    "Please reply with the name you want to use."
                 )
-                return {"status": "user_onboarded"}
+                return {"status": "onboarding_name_required"}
 
-            if text.lower() in ["continue", "start", "yes", "ok"]:
+            # Save name temporarily in pending and move to confirmation step
+            pending.action = "ONBOARD_USER_CONFIRM"
+            pending.customer_name = full_name  # Reuse field for temporary storage
+            db.commit()
+
+            send_whatsapp_message(
+                phone,
+                f"Confirm name: *{full_name.title()}*?\n\n"
+                "Reply YES or 1 to save, EDIT or 2 to change."
+            )
+            return {"status": "onboarding_confirm_sent"}
+
+        if pending and pending.action == "ONBOARD_USER_CONFIRM":
+            normalized = text.lower().strip()
+            if normalized in ["yes", "1", "save"]:
+                name_to_save = pending.customer_name
+                
+                if user:
+                    # Update existing user (Business Name update)
+                    user.name = name_to_save
+                    msg = f"✅ Profile updated! Your business name is now *{name_to_save.title()}*."
+                else:
+                    # Register new user
+                    new_user = User(
+                        name=name_to_save,
+                        phone=phone,
+                        role="user"
+                    )
+                    db.add(new_user)
+                    msg = (
+                        f"✅ Registration Successful!\n\n"
+                        f"Welcome {name_to_save.title()}, you are now set up on CreditVoice. I am TITI, your assistant.\n\n"
+                        "You can now start managing your debts and payments. To add your first customer, send their name and phone number like this:\n\n"
+                        "*John 08012345678*"
+                    )
+
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, msg)
+                return {"status": "user_saved"}
+
+            if normalized in ["edit", "2", "change"]:
+                pending.action = "ONBOARD_USER"
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "No problem! Please reply with the name you want to use."
+                )
+                return {"status": "onboarding_restart"}
+
+            send_whatsapp_message(
+                phone,
+                f"Confirm name: *{pending.customer_name}*?\n\n"
+                "Reply YES or 1 to save, EDIT or 2 to change."
+            )
+            return {"status": "waiting_onboarding_confirmation"}
+
+        if not user:
+
+            if text.lower() in ["continue", "start", "yes", "ok", "1"]:
                 if pending and pending.action != "ONBOARD_USER":
                     db.delete(pending)
                     db.commit()
@@ -1781,30 +1965,79 @@ async def webhook(req: Request):
 
                 send_whatsapp_message(
                     phone,
-                    "Hello! I am TITI, the CreditVoice assistant.\n\n"
-                    "Please reply with the name you want to use here — it can be your personal name, nickname, or business name."
+                    "Great! To finish your registration, please reply with your name or business name."
                 )
                 return {"status": "onboarding_started"}
 
+            # Only send the welcome message if the user actually tried to 
+            # engage with a greeting or a start command.
+            onboarding_triggers = ["hello", "hi", "hey", "start", "onboard", "titi", "begin", "1", "continue"]
+            if text.lower().strip() in onboarding_triggers:
+                send_whatsapp_message(
+                    phone,
+                    "Welcome to CreditVoice! I am TITI.\n\n"
+                    "Reply CONTINUE or 1 to begin onboarding."
+                )
+                return {"status": "welcome_sent"}
+            
+            return {"status": "ignored_unrecognized_sender"}
+
+        # Special Greeting for a Delegate's first time or on 'hello'
+        if user.role == "delegate" and text.lower().strip() in ["hello", "hi", "titi"]:
             send_whatsapp_message(
                 phone,
-                "Welcome to CreditVoice! I am TITI.\n\n"
-                "Reply CONTINUE to begin onboarding."
+                f"Hello {user.name.title()}! 👋\n\n"
+                f"You are logged in as a staff member for *{business_name.title()}*.\n\n"
+                "You can record transactions or check balances for the business here."
             )
-            return {"status": "welcome_sent"}
+            return {"status": "delegate_greeted"}
+
+        if pending and pending.action == "RESIGN_CONFIRM":
+            normalized = text.strip()
+            if normalized in ["1", "yes"]:
+                # Save admin phone for notification before clearing association
+                admin_notify_phone = business_owner_phone
+
+                user.role = "user"
+                user.parent_id = None
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    f"✅ You have successfully resigned. You no longer have access to {business_name.title()}'s data."
+                )
+                # Notify Admin
+                if admin_notify_phone != phone:
+                    send_whatsapp_message(
+                        admin_notify_phone,
+                        f"📢 Notification: {user.name.title()} has RESIGNED as your staff member."
+                    )
+                return {"status": "resigned_success"}
+            
+            if normalized in ["2", "no", "edit"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Resignation cancelled. You are still staff.")
+                return {"status": "resigned_cancelled"}
+            
+            send_whatsapp_message(
+                phone,
+                f"Are you sure you want to stop working with *{business_name.title()}*?\n\n1. Yes, Confirm\n2. No, Cancel"
+            )
+            return {"status": "resigned_confirm_waiting"}
 
         if pending and pending.action == "ONBOARD_CUSTOMER":
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
                 customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
-                    Customer.owner_phone == phone
+                    Customer.owner_phone == business_owner_phone
                 ).first()
 
                 if not customer:
                     customer = Customer(
                         name=pending.customer_name,
-                        owner_phone=phone,
+                        owner_phone=business_owner_phone,
                         customer_phone=pending.customer_phone
                     )
                     db.add(customer)
@@ -1842,7 +2075,7 @@ async def webhook(req: Request):
                 # Handle DUE_MENU responses (1, 2, 3)
                 if text == "1":
                     # Due in 2 days logic
-                    due_list = get_due_in_2_days(db, phone)
+                    due_list = get_due_in_2_days(db, business_owner_phone)
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
@@ -1884,7 +2117,7 @@ async def webhook(req: Request):
 
                 elif text == "2":
                     # Due today logic
-                    due_today = get_due_today(db, phone)
+                    due_today = get_due_today(db, business_owner_phone)
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
@@ -1931,7 +2164,7 @@ async def webhook(req: Request):
                     ).delete()
                     db.commit()
 
-                    overdue_list = get_overdue_debtors(db, phone)
+                    overdue_list = get_overdue_debtors(db, business_owner_phone)
                     if len(overdue_list) == 0:
                         send_whatsapp_message(
                             phone,
@@ -2080,12 +2313,38 @@ async def webhook(req: Request):
                     Customer.owner_phone == phone
                 ).first()
 
+                # 2. Recent Transaction Guard (Prevents User Manual Retries)
+                # Check if an identical transaction was saved in the last 2 minutes
+                check_amount = pending.buy_amount if pending.action in ["BUY", "COMBINED"] else pending.paid_amount
+                check_type = "BUY" if pending.action == "COMBINED" else pending.action
+                
+                recent_tx = db.query(Transaction).filter(
+                    Transaction.customer_id == customer.id,
+                    Transaction.type == check_type,
+                    Transaction.amount == check_amount,
+                    Transaction.created_at >= datetime.utcnow() - timedelta(minutes=2)
+                ).first()
+
+                if recent_tx:
+                    send_whatsapp_message(
+                        phone,
+                        f"⚠️ Hold on! A similar transaction for {customer.name.title()} "
+                        f"was already recorded just a moment ago.\n\n"
+                        f"If this was a mistake, you can ignore this. If you really want to "
+                        f"add it again, please wait a minute or change the amount slightly."
+                    )
+                    db.delete(pending)
+                    db.commit()
+                    return {"status": "duplicate_manual_prevention"}
+
+                # Proceed with saving
                 if pending.action == "BUY":
                     tx = Transaction(
                         customer_id=customer.id,
                         type="BUY",
                         amount=pending.buy_amount,
                         due_date=pending.due_date,
+                        recorded_by_id=user.id,
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
@@ -2096,6 +2355,7 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="PAY",
                         amount=pending.paid_amount,
+                        recorded_by_id=user.id,
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
@@ -2116,6 +2376,7 @@ async def webhook(req: Request):
                         type="BUY",
                         amount=pending.buy_amount,
                         due_date=pending.due_date,
+                        recorded_by_id=user.id,
                         message_id=f"{message_id}_buy",
                         created_at=datetime.utcnow()
                     )
@@ -2125,6 +2386,7 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="PAY",
                         amount=pending.paid_amount,
+                        recorded_by_id=user.id,
                         message_id=f"{message_id}_pay",
                         created_at=datetime.utcnow()
                     )
@@ -2185,6 +2447,12 @@ async def webhook(req: Request):
         parsed = parse_message(text)
 
         if not parsed:
+            # Ignore simple pleasantries or short messages from registered users 
+            # so we don't spam them with "Message not understood"
+            pleasantries = ["thanks", "thank you", "ok", "okay", "done", "bye", "good", "nice", "👍"]
+            if text.lower().strip() in pleasantries or len(text) < 2:
+                return {"status": "ignored_pleasantry"}
+
             send_whatsapp_message(
                 phone,
                 "❌ Message not understood.\n\n"
@@ -2204,9 +2472,152 @@ async def webhook(req: Request):
                 "Ade bought rice 5000 paid 2000 due 12/2/2026\n\n"
                 "📌 Date Format:\nUse D/M/YYYY\n\nExample:\n"
                 "12/2/2026 = 12 February 2026"
+                "\n\n⚙️ SETTINGS\n"
+                "To update your business name for better reports and branding, send:\n"
+                "*CHANGE NAME*"
             )
             send_whatsapp_message(phone, msg)
             return {"status": "formats"}
+
+        if parsed["type"] == "STAFF_MENU":
+            # Only primary admins (business owners) should see this menu
+            if user.role != "user" or user.parent_id is not None:
+                send_whatsapp_message(phone, "❌ Only business owners can view the staff management menu.")
+                return {"status": "unauthorized_staff_menu"}
+
+            staff_members = db.query(User).filter(User.parent_id == user.id).all()
+            
+            if not staff_members:
+                send_whatsapp_message(
+                    phone, 
+                    "You have no staff members registered yet.\n\n"
+                    "To add staff, send:\n*ADD STAFF [phone] [name]*"
+                )
+                return {"status": "staff_menu_empty"}
+
+            from sqlalchemy import func
+            msg = "👥 Staff Management\n\n"
+            for i, member in enumerate(staff_members, start=1):
+                status = "✅ Active" if member.role == "delegate" else "⏳ Pending Invitation"
+                
+                # Calculate totals recorded by this specific staff member
+                sales = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+                    Transaction.recorded_by_id == member.id,
+                    Transaction.type == "BUY"
+                ).scalar()
+                
+                payments = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+                    Transaction.recorded_by_id == member.id,
+                    Transaction.type == "PAY"
+                ).scalar()
+
+                msg += (
+                    f"{i}. *{member.name.title()}*\n"
+                    f"   Status: {status}\n"
+                    f"   Recorded: ₦{sales:,} (Sales), ₦{payments:,} (Payments)\n\n"
+                )
+            
+            send_whatsapp_message(phone, msg)
+            return {"status": "staff_menu_sent"}
+
+        if parsed["type"] == "REMOVE_STAFF":
+            if user.role != "user" and user.parent_id:
+                 send_whatsapp_message(phone, "❌ Only business owners can remove staff.")
+                 return {"status": "unauthorized_remove_staff"}
+            
+            staff_phone = parsed["phone"]
+            staff_user = db.query(User).filter(
+                User.phone == staff_phone,
+                User.parent_id == user.id
+            ).first()
+
+            if not staff_user:
+                send_whatsapp_message(
+                    phone, 
+                    f"❌ Staff member with phone {staff_phone} not found in your business list."
+                )
+                return {"status": "staff_not_found"}
+
+            staff_name = staff_user.name
+            # Reset the staff member to a regular user
+            staff_user.role = "user"
+            staff_user.parent_id = None
+            db.commit()
+
+            send_whatsapp_message(phone, f"✅ Access revoked for {staff_name.title()} ({staff_phone}).")
+            # Notify the removed staff member
+            send_whatsapp_message(staff_phone, f"📢 Notification: Your access to *{user.name.title()}*'s business data has been revoked.")
+            return {"status": "staff_removed"}
+
+        if parsed["type"] == "ADD_STAFF":
+            if user.role != "user" and user.parent_id:
+                 send_whatsapp_message(phone, "❌ Only business owners can add staff.")
+                 return {"status": "unauthorized_add_staff"}
+            
+            staff_phone = parsed["phone"]
+            staff_name = parsed["name"]
+            
+            # Check if staff user exists
+            staff_user = db.query(User).filter(User.phone == staff_phone).first()
+            if staff_user:
+                staff_user.role = "delegate_pending"
+                staff_user.parent_id = user.id
+                staff_user.name = staff_name
+            else:
+                staff_user = User(
+                    phone=staff_phone,
+                    name=staff_name,
+                    role="delegate_pending",
+                    parent_id=user.id
+                )
+                db.add(staff_user)
+            
+            db.commit()
+            send_whatsapp_message(
+                phone,
+                f"✅ Invitation sent to {staff_name} ({staff_phone}).\n\n"
+                "They will be asked to accept the invitation when they next message TITI."
+            )
+            return {"status": "staff_invited"}
+
+        if parsed["type"] == "RESIGN_REQUEST":
+            if user.role != "delegate":
+                send_whatsapp_message(phone, "You are not currently registered as staff for any business.")
+                return {"status": "resign_not_applicable"}
+            
+            # Setup confirmation
+            res_pending = PendingAction(
+                phone=phone,
+                action="RESIGN_CONFIRM"
+            )
+            db.add(res_pending)
+            db.commit()
+            
+            send_whatsapp_message(
+                phone,
+                f"I received your request to stop working with *{business_name.title()}*.\n\n"
+                "Are you sure? This will remove your access to their records.\n\n1. Yes, Confirm\n2. No, Cancel"
+            )
+            return {"status": "resign_confirm_sent"}
+
+        if parsed["type"] == "REONBOARD":
+            # Clear any existing pending actions for this user
+            db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+            
+            # Create a new onboarding pending action
+            onboarding = PendingAction(
+                phone=phone,
+                action="ONBOARD_USER"
+            )
+            db.add(onboarding)
+            db.commit()
+
+            send_whatsapp_message(
+                phone,
+                "No problem! Let's update your profile.\n\n"
+                "Please reply with the *Business Name* you want to use. This name will appear on your reports and customer reminders."
+            )
+            return {"status": "onboarding_restarted"}
 
         if parsed["type"] == "SET_PHONE":
             existing_customer = db.query(Customer).filter(
@@ -2405,11 +2816,15 @@ async def webhook(req: Request):
             return {"status": "product_sales_by_date"}
 
         if parsed["type"] == "CUSTOMER_LIST":
-            customers = list_customers(db, phone)
+            period = parsed.get("period")
+            customers = list_customers(db, phone, period)
             if not customers:
-                send_whatsapp_message(phone, "No customers found.")
+                label = f" for {period.lower()}" if period else ""
+                send_whatsapp_message(phone, f"No customers found{label}.")
                 return {"status": "customer_list_empty"}
-            msg = "👥 Customers\n\n"
+            
+            period_header = f" ({period.title()})" if period else ""
+            msg = f"👥 Customers{period_header}\n\n"
             for i, customer in enumerate(customers, start=1):
                 msg += (
                     f"{i}. {customer['name'].title()}"
