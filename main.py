@@ -6,6 +6,11 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -29,14 +34,18 @@ from sqlalchemy.orm import (
 # 🔐 ENV CONFIG
 # =========================
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+if load_dotenv:
+    load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./creditvoice.db")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL not set")
+engine_kwargs = {}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 SessionLocal = sessionmaker(bind=engine)
 
