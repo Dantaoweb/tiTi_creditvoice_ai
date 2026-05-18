@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+import traceback
 import uuid
 
 from datetime import datetime, timedelta
@@ -1714,6 +1715,10 @@ def verify_webhook(request: Request):
 @app.post("/webhook")
 async def webhook(req: Request):
     print("Webhook received", flush=True)
+    try:
+        print("Webhook content-type:", req.headers.get("content-type"), flush=True)
+    except Exception:
+        pass
 
     data = await req.json()
 
