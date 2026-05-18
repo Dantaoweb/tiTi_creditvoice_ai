@@ -37,15 +37,14 @@ from sqlalchemy.orm import (
 if load_dotenv:
     load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./creditvoice.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
-engine_kwargs = {}
-if DATABASE_URL.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL not set")
 
-engine = create_engine(DATABASE_URL, **engine_kwargs)
+engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(bind=engine)
 
@@ -242,7 +241,8 @@ Base.metadata.create_all(engine)
 def send_whatsapp_message(to, message):
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
         print(
-            "WhatsApp send skipped: WHATSAPP_TOKEN or PHONE_NUMBER_ID is missing"
+            "WhatsApp send skipped: WHATSAPP_TOKEN or PHONE_NUMBER_ID is missing",
+            flush=True
         )
         return False
 
@@ -275,10 +275,10 @@ def send_whatsapp_message(to, message):
             timeout=15
         )
     except requests.RequestException as exc:
-        print("WhatsApp send failed:", repr(exc))
+        print("WhatsApp send failed:", repr(exc), flush=True)
         return False
 
-    print("WhatsApp:", response.status_code, response.text)
+    print("WhatsApp:", response.status_code, response.text, flush=True)
     return response.ok
 
 # =========================
@@ -1713,6 +1713,7 @@ def verify_webhook(request: Request):
 
 @app.post("/webhook")
 async def webhook(req: Request):
+    print("Webhook received", flush=True)
 
     data = await req.json()
 
