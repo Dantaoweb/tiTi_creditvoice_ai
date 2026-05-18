@@ -16,7 +16,8 @@ from sqlalchemy import (
     Integer,
     String,
     DateTime,
-    ForeignKey
+    ForeignKey,
+    func
 )
 
 from sqlalchemy.orm import (
@@ -764,8 +765,8 @@ def parse_message(text):
         }
 
     if clean_text.startswith("add staff"):
-        # Matches "add staff 080... Name"
-        match = re.search(r"add staff (\+?\d+) (.+)", clean_text)
+        # Matches "add staff 080... Name" (allows spaces in phone)
+        match = re.search(r"add staff (\+?[\d ]{7,15}) (.+)", clean_text)
         if match:
             return {
                 "type": "ADD_STAFF",
@@ -1064,90 +1065,24 @@ def get_balance(db, customer_id):
 # 📊 SALES ANALYTICS
 # =========================
 
-def get_today_sales(db):
-
-    from sqlalchemy import func
-
-    today = datetime.utcnow().date()
-
-    total = db.query(
-        func.coalesce(
-            func.sum(Transaction.amount),
-            0
-        )
-    ).filter(
-        Transaction.type == "BUY"
-    ).filter(
-        func.date(Transaction.created_at) == today
-    ).scalar()
-
-    return total
+def get_today_sales(db, owner_phone=None):
+    stats = get_transaction_stats(db, owner_phone, "TODAY")
+    return stats["total_buy"]
 
 
-def get_weekly_sales(db):
-
-    from sqlalchemy import func
-
-    seven_days_ago = (
-        datetime.utcnow()
-        - timedelta(days=7)
-    )
-
-    total = db.query(
-        func.coalesce(
-            func.sum(Transaction.amount),
-            0
-        )
-    ).filter(
-        Transaction.type == "BUY",
-        Transaction.created_at >= seven_days_ago
-    ).scalar()
-
-    return total
+def get_weekly_sales(db, owner_phone=None):
+    stats = get_transaction_stats(db, owner_phone, "WEEK")
+    return stats["total_buy"]
 
 
-def get_monthly_sales(db):
-
-    from sqlalchemy import func
-
-    thirty_days_ago = (
-        datetime.utcnow()
-        - timedelta(days=30)
-    )
-
-    total = db.query(
-        func.coalesce(
-            func.sum(Transaction.amount),
-            0
-        )
-    ).filter(
-        Transaction.type == "BUY",
-        Transaction.created_at >= thirty_days_ago
-    ).scalar()
-
-    return total
+def get_monthly_sales(db, owner_phone=None):
+    stats = get_transaction_stats(db, owner_phone, "MONTH")
+    return stats["total_buy"]
 
 
-def get_yearly_sales(db):
-
-    from sqlalchemy import func
-
-    one_year_ago = (
-        datetime.utcnow()
-        - timedelta(days=365)
-    )
-
-    total = db.query(
-        func.coalesce(
-            func.sum(Transaction.amount),
-            0
-        )
-    ).filter(
-        Transaction.type == "BUY",
-        Transaction.created_at >= one_year_ago
-    ).scalar()
-
-    return total
+def get_yearly_sales(db, owner_phone=None):
+    stats = get_transaction_stats(db, owner_phone, "YEAR")
+    return stats["total_buy"]
 
 
 def get_period_range(period):
@@ -1183,8 +1118,6 @@ def get_owner_transaction_query(db, owner_phone, period=None):
 
 
 def get_transaction_stats(db, owner_phone, period=None):
-    from sqlalchemy import func
-
     query = get_owner_transaction_query(db, owner_phone, period)
     total_buy = query.filter(Transaction.type == "BUY").with_entities(
         func.coalesce(func.sum(Transaction.amount), 0)
@@ -1283,8 +1216,6 @@ def get_debtor_leaderboard(db, owner_phone=None, limit=10):
 
 
 def get_customer_summary(db, owner_phone, name):
-    from sqlalchemy import func
-
     customer = db.query(Customer).filter(
         Customer.owner_phone == owner_phone,
         Customer.name == name
@@ -1319,8 +1250,6 @@ def search_customers(db, owner_phone, query_text):
 
 
 def get_product_sales_by_period(db, owner_phone=None, period=None):
-    from sqlalchemy import func
-
     query = db.query(
         Transaction.product,
         func.coalesce(func.sum(Transaction.quantity), 0).label("total_quantity"),
@@ -1349,8 +1278,6 @@ def get_most_sold_product(db, owner_phone=None, period=None):
 
 
 def get_product_sales_by_date(db, owner_phone, date_text):
-    from sqlalchemy import func
-
     try:
         report_date = datetime.strptime(date_text, "%d/%m/%Y").date()
     except ValueError:
@@ -1374,8 +1301,6 @@ def get_product_sales_by_date(db, owner_phone, date_text):
 
 
 def get_total_paid_today(db, owner_phone=None):
-    from sqlalchemy import func
-
     today = datetime.utcnow().date()
     query = db.query(func.coalesce(func.sum(Transaction.amount), 0)).join(Customer, Transaction.customer_id == Customer.id)
     if owner_phone:
@@ -1407,13 +1332,9 @@ def get_unpaid_debtors(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(
-            db,
-            customer.id
-        )
+        balance = get_balance(db, customer.id)
 
         if balance > 0:
-
             debtors.append({
                 "name": customer.name,
                 "balance": balance
@@ -1440,10 +1361,7 @@ def get_overdue_debtors(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(
-            db,
-            customer.id
-        )
+        balance = get_balance(db, customer.id)
 
         if balance <= 0:
             continue
@@ -1494,10 +1412,7 @@ def get_due_today(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(
-            db,
-            customer.id
-        )
+        balance = get_balance(db, customer.id)
 
         if balance <= 0:
             continue
@@ -1547,10 +1462,7 @@ def get_due_in_2_days(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(
-            db,
-            customer.id
-        )
+        balance = get_balance(db, customer.id)
 
         if balance <= 0:
             continue
@@ -2574,10 +2486,19 @@ async def webhook(req: Request):
                 db.add(staff_user)
             
             db.commit()
+
+            # Notify the Staff Member proactively
+            send_whatsapp_message(
+                staff_phone,
+                f"Hello {staff_name.title()}! *{user.name.title()}* has added you as a staff member on CreditVoice.\n\n"
+                "Please reply to this message to view and accept your invitation."
+            )
+
+            # Notify the Admin (Business Owner)
             send_whatsapp_message(
                 phone,
-                f"✅ Invitation sent to {staff_name} ({staff_phone}).\n\n"
-                "They will be asked to accept the invitation when they next message TITI."
+                f"✅ Staff invitation for *{staff_name.title()}* ({staff_phone}) has been initiated.\n\n"
+                f"I have sent an alert to them. We are now waiting for their interaction. You can continue with other tasks, and I will notify you once they accept."
             )
             return {"status": "staff_invited"}
 
@@ -2959,8 +2880,6 @@ async def webhook(req: Request):
             return {"status": "customer_summary"}
 
         if parsed["type"] == "CUSTOMER_TRANSACTIONS":
-            from sqlalchemy import func
-
             customer = db.query(Customer).filter(
                 Customer.name == parsed.get("name", ""),
                 Customer.owner_phone == business_owner_phone
