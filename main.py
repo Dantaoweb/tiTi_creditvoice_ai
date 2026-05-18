@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+import uuid
 
 from datetime import datetime, timedelta
 from typing import Optional
@@ -50,7 +51,7 @@ class Customer(Base):
 
     __tablename__ = "customers"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     name = Column(String)
 
@@ -68,7 +69,7 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     name = Column(String)
 
@@ -76,7 +77,7 @@ class User(Base):
 
     role = Column(String, default="user")
 
-    parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    parent_id = Column(String, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -88,10 +89,10 @@ class Transaction(Base):
 
     __tablename__ = "transactions"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     customer_id = Column(
-        Integer,
+        String,
         ForeignKey("customers.id")
     )
 
@@ -107,7 +108,7 @@ class Transaction(Base):
 
     unit_price = Column(Integer, nullable=True)
 
-    recorded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -129,7 +130,7 @@ class PendingAction(Base):
 
     __tablename__ = "pending_actions"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     phone = Column(String)
 
@@ -139,7 +140,7 @@ class PendingAction(Base):
 
     action = Column(String)
 
-    reminder_id = Column(Integer, nullable=True)
+    reminder_id = Column(String, nullable=True)
 
     buy_amount = Column(
         Integer,
@@ -168,7 +169,7 @@ class ProcessedMessage(Base):
 
     __tablename__ = "processed_messages"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     message_id = Column(String, unique=True, index=True)
 
@@ -179,7 +180,7 @@ class CustomerMemory(Base):
 
     __tablename__ = "customer_memory"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     phone = Column(
         String,
@@ -193,11 +194,11 @@ class ReminderMemory(Base):
 
     __tablename__ = "reminder_memory"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     phone = Column(String)
 
-    customer_id = Column(Integer, nullable=True)
+    customer_id = Column(String, nullable=True)
 
     customer_name = Column(String)
 
@@ -2620,10 +2621,34 @@ async def webhook(req: Request):
             return {"status": "onboarding_restarted"}
 
         if parsed["type"] == "SET_PHONE":
+            target_name = parsed["name"].lower().strip()
+            target_phone = parsed["customer_phone"].strip()
+
             existing_customer = db.query(Customer).filter(
-                Customer.name == parsed["name"],
-                Customer.owner_phone == phone
+                Customer.name == target_name,
+                Customer.owner_phone == business_owner_phone
             ).first()
+
+            if existing_customer:
+                # Update the phone number immediately
+                existing_customer.customer_phone = target_phone
+                
+                # Update any ReminderMemory for this sender and customer
+                db.query(ReminderMemory).filter(
+                    ReminderMemory.phone == phone,
+                    ReminderMemory.customer_name == target_name
+                ).update({ReminderMemory.customer_phone: target_phone})
+                
+                db.commit()
+
+                # If we were in a reminder flow, keep the current flow but inform user
+                if pending and pending.action in ["REMINDER_SELECTION", "REMINDER_CONFIRM"]:
+                    send_whatsapp_message(
+                        phone,
+                        f"✅ Saved phone for {existing_customer.name.title()}: {target_phone}\n\n"
+                        "Phone set! Now reply *YES* to send the reminder."
+                    )
+                    return {"status": "reminder_phone_updated"}
 
             db.query(PendingAction).filter(
                 PendingAction.phone == phone,
@@ -2633,8 +2658,8 @@ async def webhook(req: Request):
 
             pending_customer = PendingAction(
                 phone=phone,
-                customer_name=parsed["name"],
-                customer_phone=parsed["customer_phone"],
+                customer_name=target_name,
+                customer_phone=target_phone,
                 action="ONBOARD_CUSTOMER"
             )
             db.add(pending_customer)
@@ -2643,13 +2668,13 @@ async def webhook(req: Request):
             if existing_customer:
                 send_whatsapp_message(
                     phone,
-                    f"I found an existing customer {parsed['name'].title()} with phone {existing_customer.customer_phone or 'no phone'}.\n"
-                    f"Change the phone to {parsed['customer_phone']}? Reply YES or 1 to update, EDIT or 2 to send it again."
+                    f"I found an existing customer {target_name.title()} with phone {target_phone}.\n"
+                    f"Change the phone to {target_phone}? Reply YES or 1 to update, EDIT or 2 to send it again."
                 )
             else:
                 send_whatsapp_message(
                     phone,
-                    f"I found customer {parsed['name'].title()} with phone {parsed['customer_phone']}.\n"
+                    f"I found customer {target_name.title()} with phone {target_phone}.\n"
                     "Reply YES or 1 to save, EDIT or 2 to send it again."
                 )
             return {"status": "confirm_onboard_customer"}
@@ -2711,27 +2736,27 @@ async def webhook(req: Request):
             return {"status": "due_menu"}
 
         if parsed["type"] == "TODAY_SALES":
-            total = get_today_sales(db)
+            total = get_today_sales(db, business_owner_phone)
             send_whatsapp_message(phone, f"📊 Today's sales: ₦{total:,}")
             return {"status": "today_sales"}
 
         if parsed["type"] == "WEEKLY_SALES":
-            total = get_weekly_sales(db)
+            total = get_weekly_sales(db, business_owner_phone)
             send_whatsapp_message(phone, f"📊 Weekly sales: ₦{total:,}")
             return {"status": "weekly_sales"}
 
         if parsed["type"] == "MONTHLY_SALES":
-            total = get_monthly_sales(db)
+            total = get_monthly_sales(db, business_owner_phone)
             send_whatsapp_message(phone, f"📊 Monthly sales: ₦{total:,}")
             return {"status": "monthly_sales"}
 
         if parsed["type"] == "YEARLY_SALES":
-            total = get_yearly_sales(db)
+            total = get_yearly_sales(db, business_owner_phone)
             send_whatsapp_message(phone, f"📊 Yearly sales: ₦{total:,}")
             return {"status": "yearly_sales"}
 
         if parsed["type"] == "PERIOD_TRANSACTIONS":
-            stats = get_transaction_stats(db, phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
             period_name = parsed.get("period", "ALL TIME").title()
             send_whatsapp_message(
                 phone,
@@ -2742,24 +2767,24 @@ async def webhook(req: Request):
             return {"status": "period_transactions"}
 
         if parsed["type"] == "PERIOD_TOTAL_RECEIVED":
-            stats = get_transaction_stats(db, phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
             label = parsed.get("period", "all time")
             send_whatsapp_message(phone, f"📥 Total received {label}: ₦{stats['total_pay']:,}")
             return {"status": "period_total_received"}
 
         if parsed["type"] == "PERIOD_TOTAL_PAID":
-            stats = get_transaction_stats(db, phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
             label = parsed.get("period", "all time")
             send_whatsapp_message(phone, f"📤 Total paid {label}: ₦{stats['total_pay']:,}")
             return {"status": "period_total_paid"}
 
         if parsed["type"] == "OUTSTANDING_BALANCE":
-            total = get_outstanding_balance(db, phone)
+            total = get_outstanding_balance(db, business_owner_phone)
             send_whatsapp_message(phone, f"💰 Total outstanding balance: ₦{total:,}")
             return {"status": "outstanding_balance"}
 
         if parsed["type"] == "PERIOD_CASH_CREDIT":
-            stats = get_transaction_stats(db, phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
             measure = parsed.get("measure")
             if measure == "CASH":
                 send_whatsapp_message(
@@ -2774,7 +2799,7 @@ async def webhook(req: Request):
             return {"status": "period_cash_credit"}
 
         if parsed["type"] == "MOST_SOLD_PRODUCT":
-            product = get_most_sold_product(db, phone)
+            product = get_most_sold_product(db, business_owner_phone)
             if not product:
                 send_whatsapp_message(phone, "No product sales data available yet.")
                 return {"status": "no_product_sales"}
@@ -2787,7 +2812,7 @@ async def webhook(req: Request):
             return {"status": "most_sold_product"}
 
         if parsed["type"] == "PRODUCT_LEADERBOARD":
-            results = get_product_sales_by_period(db, phone)
+            results = get_product_sales_by_period(db, business_owner_phone)
             if not results:
                 send_whatsapp_message(phone, "No product sales data available yet.")
                 return {"status": "product_leaderboard_empty"}
@@ -2803,7 +2828,7 @@ async def webhook(req: Request):
             if not parsed.get("date"):
                 send_whatsapp_message(phone, "Send product sales by date DD/MM/YYYY")
                 return {"status": "product_sales_by_date_missing"}
-            results = get_product_sales_by_date(db, phone, parsed["date"])
+            results = get_product_sales_by_date(db, business_owner_phone, parsed["date"])
             if not results:
                 send_whatsapp_message(phone, f"No product sales found for {parsed['date']}")
                 return {"status": "product_sales_by_date_empty"}
@@ -2817,7 +2842,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "CUSTOMER_LIST":
             period = parsed.get("period")
-            customers = list_customers(db, phone, period)
+            customers = list_customers(db, business_owner_phone, period)
             if not customers:
                 label = f" for {period.lower()}" if period else ""
                 send_whatsapp_message(phone, f"No customers found{label}.")
@@ -2835,7 +2860,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "CUSTOMER_COUNT":
             period = parsed.get("period")
-            count = get_customer_count(db, phone, period)
+            count = get_customer_count(db, business_owner_phone, period)
             period_label = period.lower() if period else "all time"
             send_whatsapp_message(
                 phone,
@@ -2845,7 +2870,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "NEW_CUSTOMERS":
             period = parsed.get("period")
-            count = get_new_customer_count(db, phone, period)
+            count = get_new_customer_count(db, business_owner_phone, period)
             period_label = period.lower() if period else "all time"
             send_whatsapp_message(
                 phone,
@@ -2855,7 +2880,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "PAID_CUSTOMERS":
             period = parsed.get("period")
-            count = get_paid_customer_count(db, phone, period)
+            count = get_paid_customer_count(db, business_owner_phone, period)
             period_label = period.lower() if period else "all time"
             send_whatsapp_message(
                 phone,
@@ -2866,10 +2891,10 @@ async def webhook(req: Request):
         if parsed["type"] == "DASHBOARD_SUMMARY":
             period = parsed.get("period")
             period_label = period.lower() if period else "all time"
-            total_customers = get_customer_count(db, phone, period)
-            new_customers = get_new_customer_count(db, phone, period)
-            paid_customers = get_paid_customer_count(db, phone, period)
-            stats = get_transaction_stats(db, phone, period)
+            total_customers = get_customer_count(db, business_owner_phone, period)
+            new_customers = get_new_customer_count(db, business_owner_phone, period)
+            paid_customers = get_paid_customer_count(db, business_owner_phone, period)
+            stats = get_transaction_stats(db, business_owner_phone, period)
             send_whatsapp_message(
                 phone,
                 f"📊 Dashboard {period_label}:\n"
@@ -2883,7 +2908,7 @@ async def webhook(req: Request):
             return {"status": "dashboard_summary"}
 
         if parsed["type"] == "BIGGEST_DEBTOR":
-            debtor = get_biggest_debtor(db, phone)
+            debtor = get_biggest_debtor(db, business_owner_phone)
             if not debtor:
                 send_whatsapp_message(phone, "No debtors found.")
                 return {"status": "biggest_debtor_empty"}
@@ -2894,7 +2919,7 @@ async def webhook(req: Request):
             return {"status": "biggest_debtor"}
 
         if parsed["type"] == "DEBTOR_LEADERBOARD":
-            leaderboard = get_debtor_leaderboard(db, phone)
+            leaderboard = get_debtor_leaderboard(db, business_owner_phone)
             if not leaderboard:
                 send_whatsapp_message(phone, "No debtors found.")
                 return {"status": "debtor_leaderboard_empty"}
@@ -2905,7 +2930,7 @@ async def webhook(req: Request):
             return {"status": "debtor_leaderboard"}
 
         if parsed["type"] == "SEARCH_CUSTOMER":
-            customers = search_customers(db, phone, parsed.get("query", ""))
+            customers = search_customers(db, business_owner_phone, parsed.get("query", ""))
             if not customers:
                 send_whatsapp_message(phone, "Customer not found.")
                 return {"status": "search_customer_empty"}
@@ -2916,7 +2941,7 @@ async def webhook(req: Request):
             return {"status": "search_customer"}
 
         if parsed["type"] == "CUSTOMER_SUMMARY":
-            summary = get_customer_summary(db, phone, parsed.get("name", ""))
+            summary = get_customer_summary(db, business_owner_phone, parsed.get("name", ""))
             if not summary:
                 send_whatsapp_message(phone, "Customer not found.")
                 return {"status": "customer_summary_not_found"}
@@ -2938,7 +2963,7 @@ async def webhook(req: Request):
 
             customer = db.query(Customer).filter(
                 Customer.name == parsed.get("name", ""),
-                Customer.owner_phone == phone
+                Customer.owner_phone == business_owner_phone
             ).first()
             if not customer:
                 send_whatsapp_message(phone, "Customer not found.")
@@ -2964,7 +2989,7 @@ async def webhook(req: Request):
             return {"status": "customer_transactions"}
 
         if parsed["type"] == "OVERDUE_DEBTORS":
-            overdue_list = get_overdue_debtors(db, phone)
+            overdue_list = get_overdue_debtors(db, business_owner_phone)
             if len(overdue_list) == 0:
                 send_whatsapp_message(phone, "✅ No overdue debtors.")
                 return {"status": "no_overdue"}
@@ -2983,7 +3008,7 @@ async def webhook(req: Request):
             return {"status": "overdue_direct"}
 
         if parsed["type"] == "UNPAID_DEBTORS":
-            debtors, total_outstanding = get_unpaid_debtors(db, phone)
+            debtors, total_outstanding = get_unpaid_debtors(db, business_owner_phone)
             if len(debtors) == 0:
                 send_whatsapp_message(phone, "✅ No unpaid debtors.")
                 return {"status": "no_debtors"}
@@ -3000,7 +3025,7 @@ async def webhook(req: Request):
             name = text.replace("balance", "").strip().lower()
             customer = db.query(Customer).filter(
                 Customer.name == name,
-                Customer.owner_phone == phone
+                Customer.owner_phone == business_owner_phone
             ).first()
 
             if not customer:
@@ -3033,13 +3058,13 @@ async def webhook(req: Request):
         # Get or create customer
         customer = db.query(Customer).filter(
             Customer.name == customer_name,
-            Customer.owner_phone == phone
+            Customer.owner_phone == business_owner_phone
         ).first()
 
         if not customer:
             customer = Customer(
                 name=customer_name,
-                owner_phone=phone
+                owner_phone=business_owner_phone
             )
             db.add(customer)
             db.commit()
