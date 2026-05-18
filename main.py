@@ -265,6 +265,15 @@ def send_whatsapp_message(to, message):
 # 🧠 HELPERS
 # =========================
 
+def normalize_phone(phone_str):
+    """Converts local Nigerian numbers to international format for Meta API."""
+    if not phone_str:
+        return None
+    clean = re.sub(r"\D", "", phone_str)
+    if clean.startswith("0") and len(clean) == 11:
+        return "234" + clean[1:]
+    return clean
+
 
 def extract_item_details(text):
     # Matches numbers with optional k/m suffixes (e.g., 5000, 5k, 5.5m)
@@ -387,7 +396,7 @@ def extract_customer_onboarding(text):
     if not phone_match:
         return None
 
-    phone = phone_match.group(1).replace(" ", "")
+    phone = normalize_phone(phone_match.group(1))
     if len(re.sub(r"\D", "", phone)) < 7:
         return None
 
@@ -770,7 +779,7 @@ def parse_message(text):
         if match:
             return {
                 "type": "ADD_STAFF",
-                "phone": match.group(1).replace(" ", ""),
+                "phone": normalize_phone(match.group(1)),
                 "name": match.group(2).strip()
             }
 
@@ -780,7 +789,7 @@ def parse_message(text):
         if match:
             return {
                 "type": "REMOVE_STAFF",
-                "phone": match.group(1).replace(" ", "")
+                "phone": normalize_phone(match.group(1))
             }
 
     if clean_text in [
@@ -826,7 +835,7 @@ def parse_message(text):
         return {
             "type": "SET_PHONE",
             "name": onboarding["name"].strip().lower(),
-            "customer_phone": onboarding["customer_phone"]
+            "customer_phone": normalize_phone(onboarding["customer_phone"])
         }
 
     phone_match = re.match(
@@ -838,7 +847,7 @@ def parse_message(text):
         return {
             "type": "SET_PHONE",
             "name": phone_match.group("name").strip().lower(),
-            "customer_phone": phone_match.group("phone").strip()
+            "customer_phone": normalize_phone(phone_match.group("phone"))
         }
 
     # =========================
@@ -1785,6 +1794,10 @@ async def webhook(req: Request):
         # Use the business_owner_phone for all lookups instead of the raw sender 'phone'
         # From this point forward, use business_owner_phone for DB queries
 
+        # Parse message early to check if it's an explicit command
+        parsed = parse_message(text)
+        is_command = parsed and parsed["type"] != "TRANSACTION"
+
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
             PendingAction.action != None
@@ -1796,7 +1809,7 @@ async def webhook(req: Request):
         # 👤 USER ONBOARDING / PROFILE UPDATE (CONFIRMATION)
         # =========================
 
-        if pending and pending.action == "ONBOARD_USER":
+        if pending and pending.action == "ONBOARD_USER" and not is_command:
             full_name = text.strip()
             if full_name == "" or full_name.lower() in ["continue", "start", "yes", "ok", "1"]:
                 send_whatsapp_message(
@@ -1817,7 +1830,7 @@ async def webhook(req: Request):
             )
             return {"status": "onboarding_confirm_sent"}
 
-        if pending and pending.action == "ONBOARD_USER_CONFIRM":
+        if pending and pending.action == "ONBOARD_USER_CONFIRM" and not is_command:
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
                 name_to_save = pending.customer_name
@@ -1905,7 +1918,7 @@ async def webhook(req: Request):
             )
             return {"status": "delegate_greeted"}
 
-        if pending and pending.action == "RESIGN_CONFIRM":
+        if pending and pending.action == "RESIGN_CONFIRM" and not is_command:
             normalized = text.strip()
             if normalized in ["1", "yes"]:
                 # Save admin phone for notification before clearing association
@@ -1939,7 +1952,7 @@ async def webhook(req: Request):
             )
             return {"status": "resigned_confirm_waiting"}
 
-        if pending and pending.action == "ONBOARD_CUSTOMER":
+        if pending and pending.action == "ONBOARD_CUSTOMER" and not is_command:
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
                 customer = db.query(Customer).filter(
@@ -1983,7 +1996,7 @@ async def webhook(req: Request):
             )
             return {"status": "customer_onboarded_confirm"}
 
-        if pending:
+        if pending and not is_command:
             if pending.action == "DUE_MENU":
                 # Handle DUE_MENU responses (1, 2, 3)
                 if text == "1":
@@ -2355,9 +2368,6 @@ async def webhook(req: Request):
                     "Enter again (e.g. Ola paid 2000)"
                 )
                 return {"status": "edit"}
-
-        # Parse message
-        parsed = parse_message(text)
 
         if not parsed:
             # Ignore simple pleasantries or short messages from registered users 
