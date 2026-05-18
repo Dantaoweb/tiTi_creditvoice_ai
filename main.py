@@ -240,6 +240,11 @@ Base.metadata.create_all(engine)
 # =========================
 
 def send_whatsapp_message(to, message):
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        print(
+            "WhatsApp send skipped: WHATSAPP_TOKEN or PHONE_NUMBER_ID is missing"
+        )
+        return False
 
     url = (
         f"https://graph.facebook.com/v18.0/"
@@ -262,13 +267,19 @@ def send_whatsapp_message(to, message):
         }
     }
 
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data
-    )
+    try:
+        response = requests.post(
+            url,
+            headers=headers,
+            json=data,
+            timeout=15
+        )
+    except requests.RequestException as exc:
+        print("WhatsApp send failed:", repr(exc))
+        return False
 
-    print("WhatsApp:", response.text)
+    print("WhatsApp:", response.status_code, response.text)
+    return response.ok
 
 # =========================
 # 🧠 HELPERS
@@ -437,6 +448,9 @@ def extract_customer_onboarding(text):
 def parse_message(text):
 
     clean_text = text.lower().strip()
+
+    if clean_text in ["menu", "help", "start", "hi", "hello"]:
+        return {"type": "FORMATS"}
 
     # =========================
     # 📊 COMMANDS
