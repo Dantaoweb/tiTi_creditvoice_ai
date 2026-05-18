@@ -1719,6 +1719,8 @@ async def webhook(req: Request):
         print("Webhook content-type:", req.headers.get("content-type"), flush=True)
     except Exception:
         pass
+    body = await req.json()
+    print("Webhook body keys:", list(body.keys()), flush=True)
 
     data = await req.json()
 
@@ -1737,6 +1739,7 @@ async def webhook(req: Request):
         message_id = message["id"]
 
     except:
+        print("Webhook ignored before reply", flush=True)
         return {"status": "ignored"}
 
     db = SessionLocal()
