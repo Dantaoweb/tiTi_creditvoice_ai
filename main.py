@@ -1721,6 +1721,36 @@ async def webhook(req: Request):
         pass
     body = await req.json()
     print("Webhook body keys:", list(body.keys()), flush=True)
+    try:
+        value = body.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {})
+        print("Webhook value keys:", list(value.keys()), flush=True)
+
+        messages = value.get("messages") or []
+        if not messages:
+            print("Webhook contains no messages; likely status/delivery event", flush=True)
+        else:
+            message = messages[0]
+            phone = message.get("from")
+            text = (message.get("text") or {}).get("body", "").strip()
+            print(f"Webhook parsed message from {phone}: {text}", flush=True)
+
+            if phone and text.lower() in ["menu", "help", "start", "hi", "hello"]:
+                send_whatsapp_message(
+                    phone,
+                    "CreditVoice Menu\n\n"
+                    "Record sales and payments:\n"
+                    "Ade bought rice 5000\n"
+                    "Ade paid 3000\n"
+                    "Ade bought rice 5000 paid 2000\n\n"
+                    "Reports:\n"
+                    "today sales\n"
+                    "unpaid debtors\n"
+                    "due\n"
+                    "dashboard"
+                )
+                return {"status": "menu"}
+    except Exception as exc:
+        print("Webhook early parse error:", repr(exc), flush=True)
 
     data = await req.json()
 
