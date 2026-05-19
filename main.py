@@ -463,7 +463,7 @@ def parse_slash_date(text):
         return None
 
 
-def get_period_range(period, target_date=None):
+def get_customer_period_range(period, target_date=None):
     now = datetime.utcnow()
     today = datetime(now.year, now.month, now.day)
 
@@ -537,7 +537,7 @@ def build_customer_account_summary(db, owner_phone, customer_name, period=None, 
     if not customer:
         return f"Customer not found: {customer_name.title()}"
 
-    start, end, period_label = get_period_range(period, target_date)
+    start, end, period_label = get_customer_period_range(period, target_date)
 
     tx_query = db.query(Transaction).filter(
         Transaction.customer_id == customer.id
@@ -1974,6 +1974,15 @@ async def webhook(req: Request):
                     ).order_by(
                         PendingAction.created_at.desc()
                     ).first()
+
+                    if pending and text.lower().strip() in ["exit", "cancel", "done", "back", "stop"]:
+                        debug_db.delete(pending)
+                        debug_db.commit()
+                        send_whatsapp_message(
+                            phone,
+                            "Closed. You can continue recording transactions."
+                        )
+                        return {"status": "pending_cancelled"}
 
                     if pending and pending.action in ["CUSTOMER_SUMMARY_MENU", "CUSTOMER_SUMMARY_DATE"]:
                         print(f"Customer summary follow-up reached: {text}", flush=True)
