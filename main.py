@@ -343,6 +343,18 @@ def normalize_phone(phone_str):
     return clean
 
 
+def get_recorded_by_id(user):
+    """Return a recorder id only when it can fit the production integer column."""
+    try:
+        return int(user.id)
+    except (TypeError, ValueError):
+        print(
+            f"Skipping recorded_by_id because user.id is not an integer: {user.id}",
+            flush=True
+        )
+        return None
+
+
 def extract_item_details(text):
     # Matches numbers with optional k/m suffixes (e.g., 5000, 5k, 5.5m)
     amount_pattern = r"\d[\d,\.]*\s*[kKmM]?"
@@ -2511,7 +2523,7 @@ async def webhook(req: Request):
                         type="BUY",
                         amount=pending.buy_amount,
                         due_date=pending.due_date,
-                        recorded_by_id=user.id,
+                        recorded_by_id=get_recorded_by_id(user),
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
@@ -2522,7 +2534,7 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="PAY",
                         amount=pending.paid_amount,
-                        recorded_by_id=user.id,
+                        recorded_by_id=get_recorded_by_id(user),
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
@@ -2543,7 +2555,7 @@ async def webhook(req: Request):
                         type="BUY",
                         amount=pending.buy_amount,
                         due_date=pending.due_date,
-                        recorded_by_id=user.id,
+                        recorded_by_id=get_recorded_by_id(user),
                         message_id=f"{message_id}_buy",
                         created_at=datetime.utcnow()
                     )
@@ -2553,7 +2565,7 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="PAY",
                         amount=pending.paid_amount,
-                        recorded_by_id=user.id,
+                        recorded_by_id=get_recorded_by_id(user),
                         message_id=f"{message_id}_pay",
                         created_at=datetime.utcnow()
                     )
