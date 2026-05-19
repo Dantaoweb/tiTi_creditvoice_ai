@@ -451,6 +451,151 @@ def parse_date_phrase(text):
     return match.group(1) if match else None
 
 
+def parse_slash_date(text):
+    match = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    if not match:
+        return None
+
+    day, month, year = map(int, match.groups())
+    try:
+        return datetime(year, month, day)
+    except ValueError:
+        return None
+
+
+def get_period_range(period, target_date=None):
+    now = datetime.utcnow()
+    today = datetime(now.year, now.month, now.day)
+
+    if period == "TODAY":
+        return today, today + timedelta(days=1), "Today"
+
+    if period == "WEEK":
+        start = today - timedelta(days=today.weekday())
+        return start, start + timedelta(days=7), "This Week"
+
+    if period == "MONTH":
+        start = datetime(today.year, today.month, 1)
+        if today.month == 12:
+            end = datetime(today.year + 1, 1, 1)
+        else:
+            end = datetime(today.year, today.month + 1, 1)
+        return start, end, "This Month"
+
+    if period == "YEAR":
+        start = datetime(today.year, 1, 1)
+        return start, datetime(today.year + 1, 1, 1), "This Year"
+
+    if period == "DATE" and target_date:
+        start = datetime(target_date.year, target_date.month, target_date.day)
+        return start, start + timedelta(days=1), start.strftime("%d/%m/%Y")
+
+    return None, None, "All Time"
+
+
+def parse_customer_account_request(text):
+    clean = text.lower().strip()
+    if clean.startswith("customer summary") or clean.startswith("customer balance summary"):
+        return None
+
+    for keyword in [" account", " balance", " summary"]:
+        if keyword in clean:
+            name, _, tail = clean.partition(keyword)
+            name = name.strip()
+            tail = tail.strip()
+            if not name:
+                return None
+            if name in ["outstanding", "total outstanding", "total", "customer"]:
+                return None
+
+            target_date = parse_slash_date(tail)
+            if target_date:
+                return {
+                    "name": name,
+                    "period": "DATE",
+                    "target_date": target_date
+                }
+
+            return {
+                "name": name,
+                "period": parse_period_phrase(tail),
+                "target_date": None
+            }
+
+    return None
+
+
+def find_customer_by_name(db, owner_phone, name):
+    return db.query(Customer).filter(
+        Customer.owner_phone == owner_phone,
+        func.lower(Customer.name) == name.lower()
+    ).first()
+
+
+def build_customer_account_summary(db, owner_phone, customer_name, period=None, target_date=None, include_menu=False):
+    customer = find_customer_by_name(db, owner_phone, customer_name)
+    if not customer:
+        return f"Customer not found: {customer_name.title()}"
+
+    start, end, period_label = get_period_range(period, target_date)
+
+    tx_query = db.query(Transaction).filter(
+        Transaction.customer_id == customer.id
+    )
+    if start and end:
+        tx_query = tx_query.filter(
+            Transaction.created_at >= start,
+            Transaction.created_at < end
+        )
+
+    total_buy = tx_query.filter(Transaction.type == "BUY").with_entities(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).scalar()
+    total_paid = tx_query.filter(Transaction.type == "PAY").with_entities(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).scalar()
+
+    balance = total_buy - total_paid
+    tx_count = tx_query.count()
+
+    if balance < 0:
+        balance_line = f"Credit: ₦{abs(balance):,}"
+    else:
+        balance_line = f"Balance: ₦{balance:,}"
+
+    msg = (
+        f"{customer.name.title()} Account Summary\n"
+        f"Period: {period_label}\n\n"
+        f"Bought: ₦{total_buy:,}\n"
+        f"Paid: ₦{total_paid:,}\n"
+        f"{balance_line}\n"
+        f"Transactions: {tx_count}"
+    )
+
+    recent_transactions = tx_query.order_by(
+        Transaction.created_at.desc()
+    ).limit(5).all()
+
+    if recent_transactions:
+        msg += "\n\nRecent Transactions\n"
+        for tx in recent_transactions:
+            tx_date = tx.created_at.strftime("%d/%m/%Y")
+            msg += f"{tx_date} - {tx.type}: ₦{tx.amount:,}\n"
+
+    if include_menu:
+        msg += (
+            "\nSend:\n"
+            "1. Today\n"
+            "2. This week\n"
+            "3. This month\n"
+            "4. This year\n"
+            "5. All time\n"
+            "6. By date"
+        )
+
+    return msg.strip()
+
+
 def extract_customer_onboarding(text):
     clean = text.lower().strip()
 
@@ -1829,6 +1974,112 @@ async def webhook(req: Request):
                     ).order_by(
                         PendingAction.created_at.desc()
                     ).first()
+
+                    if pending and pending.action in ["CUSTOMER_SUMMARY_MENU", "CUSTOMER_SUMMARY_DATE"]:
+                        print(f"Customer summary follow-up reached: {text}", flush=True)
+
+                        business_owner_phone = sender_exists.phone
+                        if sender_exists.parent_id:
+                            owner = debug_db.query(User).filter(
+                                User.id == sender_exists.parent_id
+                            ).first()
+                            if owner:
+                                business_owner_phone = owner.phone
+
+                        normalized = text.lower().strip()
+                        period_map = {
+                            "1": "TODAY",
+                            "today": "TODAY",
+                            "2": "WEEK",
+                            "week": "WEEK",
+                            "this week": "WEEK",
+                            "3": "MONTH",
+                            "month": "MONTH",
+                            "this month": "MONTH",
+                            "4": "YEAR",
+                            "year": "YEAR",
+                            "this year": "YEAR",
+                            "5": None,
+                            "all": None,
+                            "all time": None,
+                        }
+
+                        if pending.action == "CUSTOMER_SUMMARY_MENU" and normalized in ["6", "date", "by date"]:
+                            pending.action = "CUSTOMER_SUMMARY_DATE"
+                            debug_db.commit()
+                            send_whatsapp_message(
+                                phone,
+                                f"Send date for {pending.customer_name.title()} like:\n19/05/2026"
+                            )
+                            return {"status": "customer_summary_date_prompt"}
+
+                        target_date = None
+                        if pending.action == "CUSTOMER_SUMMARY_DATE":
+                            target_date = parse_slash_date(normalized)
+                            if not target_date:
+                                send_whatsapp_message(
+                                    phone,
+                                    "Invalid date. Send date like:\n19/05/2026"
+                                )
+                                return {"status": "invalid_customer_summary_date"}
+                            period = "DATE"
+                        else:
+                            if normalized not in period_map:
+                                send_whatsapp_message(
+                                    phone,
+                                    "Reply with 1, 2, 3, 4, 5, or 6."
+                                )
+                                return {"status": "invalid_customer_summary_option"}
+                            period = period_map[normalized]
+
+                        msg = build_customer_account_summary(
+                            debug_db,
+                            business_owner_phone,
+                            pending.customer_name,
+                            period=period,
+                            target_date=target_date,
+                            include_menu=True
+                        )
+                        pending.action = "CUSTOMER_SUMMARY_MENU"
+                        debug_db.commit()
+                        send_whatsapp_message(phone, msg)
+                        return {"status": "customer_summary_followup"}
+
+                    account_request = parse_customer_account_request(text)
+                    if account_request:
+                        print("Customer account direct handler reached", flush=True)
+
+                        business_owner_phone = sender_exists.phone
+                        if sender_exists.parent_id:
+                            owner = debug_db.query(User).filter(
+                                User.id == sender_exists.parent_id
+                            ).first()
+                            if owner:
+                                business_owner_phone = owner.phone
+
+                        debug_db.query(PendingAction).filter(
+                            PendingAction.phone == phone
+                        ).delete()
+                        debug_db.add(
+                            PendingAction(
+                                phone=phone,
+                                customer_name=account_request["name"],
+                                action="CUSTOMER_SUMMARY_MENU",
+                                last_customer=account_request["name"]
+                            )
+                        )
+                        debug_db.commit()
+
+                        msg = build_customer_account_summary(
+                            debug_db,
+                            business_owner_phone,
+                            account_request["name"],
+                            period=account_request["period"],
+                            target_date=account_request["target_date"],
+                            include_menu=True
+                        )
+                        send_whatsapp_message(phone, msg)
+                        return {"status": "customer_summary_menu"}
 
                     if text.lower().strip() == "due":
                         print("Due direct handler reached", flush=True)
