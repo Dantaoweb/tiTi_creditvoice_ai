@@ -23,7 +23,8 @@ from sqlalchemy import (
     String,
     DateTime,
     ForeignKey,
-    func
+    func,
+    inspect
 )
 
 from sqlalchemy.orm import (
@@ -231,6 +232,52 @@ class CustomerCreate(BaseModel):
     owner_phone: str
     name: str
     customer_phone: Optional[str] = None
+
+
+@app.get("/debug/schema")
+def debug_schema(token: str):
+    expected_token = os.getenv("WEBHOOK_VERIFY_TOKEN")
+    if not expected_token or token != expected_token:
+        return {"status": "unauthorized"}
+
+    inspector = inspect(engine)
+    models = [
+        Customer,
+        User,
+        Transaction,
+        PendingAction,
+        ProcessedMessage,
+        CustomerMemory,
+        ReminderMemory,
+    ]
+
+    result = {}
+    for model in models:
+        table_name = model.__tablename__
+        db_columns = {
+            column["name"]: str(column["type"])
+            for column in inspector.get_columns(table_name)
+        }
+        model_columns = {
+            column.name: str(column.type)
+            for column in model.__table__.columns
+        }
+        mismatches = {}
+        for column_name, model_type in model_columns.items():
+            db_type = db_columns.get(column_name)
+            if db_type and db_type.lower() != model_type.lower():
+                mismatches[column_name] = {
+                    "model": model_type,
+                    "database": db_type,
+                }
+
+        result[table_name] = {
+            "model": model_columns,
+            "database": db_columns,
+            "mismatches": mismatches,
+        }
+
+    return result
 
 
 Base.metadata.create_all(engine)
