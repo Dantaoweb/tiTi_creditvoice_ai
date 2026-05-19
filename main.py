@@ -1769,17 +1769,25 @@ async def webhook(req: Request):
                         )
                         return {"status": "unregistered"}
 
-                    if text.lower() == "due":
-                        debug_db.query(PendingAction).filter(
-                            PendingAction.phone == phone
-                        ).delete()
-                        debug_db.add(
-                            PendingAction(
-                                phone=phone,
-                                action="DUE_MENU"
+                    if text.lower().strip() == "due":
+                        print("Due direct handler reached", flush=True)
+                        try:
+                            debug_db.query(PendingAction).filter(
+                                PendingAction.phone == phone
+                            ).delete()
+                            debug_db.add(
+                                PendingAction(
+                                    phone=phone,
+                                    customer_name="",
+                                    action="DUE_MENU",
+                                    last_customer=""
+                                )
                             )
-                        )
-                        debug_db.commit()
+                            debug_db.commit()
+                        except Exception as exc:
+                            debug_db.rollback()
+                            print("Due pending action failed:", repr(exc), flush=True)
+
                         send_whatsapp_message(
                             phone,
                             "Due Reminder Menu\n\n"
