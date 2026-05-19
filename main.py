@@ -1768,6 +1768,27 @@ async def webhook(req: Request):
                             "onboard it as a business owner or add it as staff first."
                         )
                         return {"status": "unregistered"}
+
+                    if text.lower() == "due":
+                        debug_db.query(PendingAction).filter(
+                            PendingAction.phone == phone
+                        ).delete()
+                        debug_db.add(
+                            PendingAction(
+                                phone=phone,
+                                action="DUE_MENU"
+                            )
+                        )
+                        debug_db.commit()
+                        send_whatsapp_message(
+                            phone,
+                            "Due Reminder Menu\n\n"
+                            "1. Debts due in 2 days\n"
+                            "2. Debts due today\n"
+                            "3. Overdue debtors\n\n"
+                            "Reply with 1, 2, or 3."
+                        )
+                        return {"status": "due_menu"}
                 finally:
                     debug_db.close()
     except Exception as exc:
