@@ -831,6 +831,14 @@ def parse_message(text):
             "name": name
         }
 
+    if clean_text.endswith(" balance") or clean_text.endswith(" account"):
+        name = clean_text.rsplit(" ", 1)[0].strip()
+        if name and name not in ["outstanding", "total outstanding"]:
+            return {
+                "type": "CUSTOMER_SUMMARY",
+                "name": name
+            }
+
     if clean_text.endswith("transactions"):
         candidate = clean_text.replace("transactions", "").replace("customer", "").strip()
         if candidate:
