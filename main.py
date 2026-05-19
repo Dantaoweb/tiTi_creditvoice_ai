@@ -2659,7 +2659,6 @@ async def webhook(req: Request):
                 )
                 return {"status": "staff_menu_empty"}
 
-            from sqlalchemy import func
             msg = "👥 Staff Management\n\n"
             for i, member in enumerate(staff_members, start=1):
                 status = "✅ Active" if member.role == "delegate" else "⏳ Pending Invitation"
