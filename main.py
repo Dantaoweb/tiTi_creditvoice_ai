@@ -1769,6 +1769,12 @@ async def webhook(req: Request):
                         )
                         return {"status": "unregistered"}
 
+                    pending = debug_db.query(PendingAction).filter(
+                        PendingAction.phone == phone
+                    ).order_by(
+                        PendingAction.created_at.desc()
+                    ).first()
+
                     if text.lower().strip() == "due":
                         print("Due direct handler reached", flush=True)
                         try:
@@ -1797,6 +1803,82 @@ async def webhook(req: Request):
                             "Reply with 1, 2, or 3."
                         )
                         return {"status": "due_menu"}
+
+                    if pending and pending.action == "DUE_MENU" and text.strip() in ["1", "2", "3"]:
+                        print(f"Due menu selection reached: {text}", flush=True)
+
+                        business_owner_phone = sender_exists.phone
+                        if sender_exists.parent_id:
+                            owner = debug_db.query(User).filter(
+                                User.id == sender_exists.parent_id
+                            ).first()
+                            if owner:
+                                business_owner_phone = owner.phone
+
+                        debug_db.query(ReminderMemory).filter(
+                            ReminderMemory.phone == phone
+                        ).delete()
+                        debug_db.delete(pending)
+
+                        if text.strip() == "1":
+                            due_list = get_due_in_2_days(debug_db, business_owner_phone)
+                            title = "Due in 2 Days"
+                            empty_msg = "No debts due in 2 days."
+                            reminder_type = "DUE_2_DAYS"
+                        elif text.strip() == "2":
+                            due_list = get_due_today(debug_db, business_owner_phone)
+                            title = "Due Today"
+                            empty_msg = "No debts due today."
+                            reminder_type = "DUE_TODAY"
+                        else:
+                            due_list = get_overdue_debtors(debug_db, business_owner_phone)
+                            title = "Overdue Debtors"
+                            empty_msg = "No overdue debtors."
+                            reminder_type = "OVERDUE"
+
+                        if not due_list:
+                            debug_db.commit()
+                            send_whatsapp_message(phone, f"✅ {empty_msg}")
+                            return {"status": "due_menu_empty"}
+
+                        msg = f"{title}\n\n"
+                        for i, debtor in enumerate(due_list, start=1):
+                            memory = ReminderMemory(
+                                phone=phone,
+                                customer_id=debtor.get("customer_id"),
+                                customer_name=debtor["name"],
+                                customer_phone=debtor.get("customer_phone"),
+                                balance=debtor["balance"],
+                                due_date=debtor["due_date"],
+                                reminder_type=reminder_type
+                            )
+                            debug_db.add(memory)
+
+                            if text.strip() == "3":
+                                due_date_text = debtor["due_date"].strftime("%d/%m/%Y")
+                                msg += (
+                                    f"{i}. {debtor['name']}\n"
+                                    f"Balance: ₦{debtor['balance']:,}\n"
+                                    f"Due: {due_date_text}\n"
+                                    f"Overdue: {debtor.get('overdue_days', 0)} days\n\n"
+                                )
+                            else:
+                                msg += f"{i}. {debtor['name']} → ₦{debtor['balance']:,}\n"
+
+                        debug_db.add(
+                            PendingAction(
+                                phone=phone,
+                                customer_name="",
+                                action="REMINDER_SELECTION",
+                                last_customer=""
+                            )
+                        )
+                        debug_db.commit()
+
+                        numbers = ", ".join(str(i) for i in range(1, len(due_list) + 1))
+                        msg += f"\nSend:\n{numbers} to preview the reminder before sending to customer."
+                        send_whatsapp_message(phone, msg)
+                        return {"status": "due_menu_selection"}
                 finally:
                     debug_db.close()
     except Exception as exc:
