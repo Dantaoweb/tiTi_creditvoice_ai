@@ -80,7 +80,7 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     name = Column(String)
 
@@ -88,7 +88,7 @@ class User(Base):
 
     role = Column(String, default="user")
 
-    parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    parent_id = Column(String, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -119,7 +119,7 @@ class Transaction(Base):
 
     unit_price = Column(Integer, nullable=True)
 
-    recorded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -341,18 +341,6 @@ def normalize_phone(phone_str):
     if clean.startswith("0") and len(clean) == 11:
         return "234" + clean[1:]
     return clean
-
-
-def get_recorded_by_id(user):
-    """Return a recorder id only when it can fit the production integer column."""
-    try:
-        return int(user.id)
-    except (TypeError, ValueError):
-        print(
-            f"Skipping recorded_by_id because user.id is not an integer: {user.id}",
-            flush=True
-        )
-        return None
 
 
 def extract_item_details(text):
@@ -2523,7 +2511,7 @@ async def webhook(req: Request):
                         type="BUY",
                         amount=pending.buy_amount,
                         due_date=pending.due_date,
-                        recorded_by_id=get_recorded_by_id(user),
+                        recorded_by_id=user.id,
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
@@ -2534,7 +2522,7 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="PAY",
                         amount=pending.paid_amount,
-                        recorded_by_id=get_recorded_by_id(user),
+                        recorded_by_id=user.id,
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
@@ -2555,7 +2543,7 @@ async def webhook(req: Request):
                         type="BUY",
                         amount=pending.buy_amount,
                         due_date=pending.due_date,
-                        recorded_by_id=get_recorded_by_id(user),
+                        recorded_by_id=user.id,
                         message_id=f"{message_id}_buy",
                         created_at=datetime.utcnow()
                     )
@@ -2565,7 +2553,7 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="PAY",
                         amount=pending.paid_amount,
-                        recorded_by_id=get_recorded_by_id(user),
+                        recorded_by_id=user.id,
                         message_id=f"{message_id}_pay",
                         created_at=datetime.utcnow()
                     )
