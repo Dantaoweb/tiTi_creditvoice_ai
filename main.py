@@ -590,7 +590,8 @@ def build_customer_account_summary(db, owner_phone, customer_name, period=None, 
             "3. This month\n"
             "4. This year\n"
             "5. All time\n"
-            "6. By date"
+            "6. By date\n\n"
+            "Send exit, back, done, or cancel to close this view."
         )
 
     return msg.strip()
@@ -1975,7 +1976,7 @@ async def webhook(req: Request):
                         PendingAction.created_at.desc()
                     ).first()
 
-                    if pending and text.lower().strip() in ["exit", "cancel", "done", "back", "stop"]:
+                    if pending and text.lower().strip() in ["exit", "exist", "cancel", "done", "back", "stop", "close", "quit", "end"]:
                         debug_db.delete(pending)
                         debug_db.commit()
                         send_whatsapp_message(
@@ -1994,6 +1995,24 @@ async def webhook(req: Request):
                             ).first()
                             if owner:
                                 business_owner_phone = owner.phone
+
+                        replacement_account_request = parse_customer_account_request(text)
+                        if replacement_account_request:
+                            pending.customer_name = replacement_account_request["name"]
+                            pending.action = "CUSTOMER_SUMMARY_MENU"
+                            pending.last_customer = replacement_account_request["name"]
+                            debug_db.commit()
+
+                            msg = build_customer_account_summary(
+                                debug_db,
+                                business_owner_phone,
+                                replacement_account_request["name"],
+                                period=replacement_account_request["period"],
+                                target_date=replacement_account_request["target_date"],
+                                include_menu=True
+                            )
+                            send_whatsapp_message(phone, msg)
+                            return {"status": "customer_summary_replaced"}
 
                         normalized = text.lower().strip()
                         period_map = {
@@ -2036,7 +2055,16 @@ async def webhook(req: Request):
                             if normalized not in period_map:
                                 send_whatsapp_message(
                                     phone,
-                                    "Reply with 1, 2, 3, 4, 5, or 6."
+                                    "Choose an account view:\n"
+                                    "1. Today\n"
+                                    "2. This week\n"
+                                    "3. This month\n"
+                                    "4. This year\n"
+                                    "5. All time\n"
+                                    "6. By date\n\n"
+                                    "You can also send another customer, like:\n"
+                                    "Ade account\n\n"
+                                    "Send exit, back, done, or cancel to close."
                                 )
                                 return {"status": "invalid_customer_summary_option"}
                             period = period_map[normalized]
