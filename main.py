@@ -61,7 +61,7 @@ class Customer(Base):
 
     __tablename__ = "customers"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
     name = Column(String)
 
@@ -79,7 +79,7 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
     name = Column(String)
 
@@ -87,7 +87,7 @@ class User(Base):
 
     role = Column(String, default="user")
 
-    parent_id = Column(String, ForeignKey("users.id"), nullable=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -99,10 +99,10 @@ class Transaction(Base):
 
     __tablename__ = "transactions"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
     customer_id = Column(
-        String,
+        Integer,
         ForeignKey("customers.id")
     )
 
@@ -118,7 +118,7 @@ class Transaction(Base):
 
     unit_price = Column(Integer, nullable=True)
 
-    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    recorded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -150,7 +150,7 @@ class PendingAction(Base):
 
     action = Column(String)
 
-    reminder_id = Column(String, nullable=True)
+    reminder_id = Column(Integer, nullable=True)
 
     buy_amount = Column(
         Integer,
@@ -179,7 +179,7 @@ class ProcessedMessage(Base):
 
     __tablename__ = "processed_messages"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
     message_id = Column(String, unique=True, index=True)
 
@@ -190,7 +190,7 @@ class CustomerMemory(Base):
 
     __tablename__ = "customer_memory"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
     phone = Column(
         String,
@@ -208,7 +208,7 @@ class ReminderMemory(Base):
 
     phone = Column(String)
 
-    customer_id = Column(String, nullable=True)
+    customer_id = Column(Integer, nullable=True)
 
     customer_name = Column(String)
 
