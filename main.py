@@ -1749,6 +1749,27 @@ async def webhook(req: Request):
                     "dashboard"
                 )
                 return {"status": "menu"}
+
+            if phone and text:
+                debug_db = SessionLocal()
+                try:
+                    sender_exists = debug_db.query(User).filter(
+                        User.phone == phone
+                    ).first()
+                    print(
+                        f"Webhook sender registered: {bool(sender_exists)}",
+                        flush=True
+                    )
+                    if not sender_exists:
+                        send_whatsapp_message(
+                            phone,
+                            "Welcome to CreditVoice.\n\n"
+                            "This WhatsApp number is not registered yet. Please "
+                            "onboard it as a business owner or add it as staff first."
+                        )
+                        return {"status": "unregistered"}
+                finally:
+                    debug_db.close()
     except Exception as exc:
         print("Webhook early parse error:", repr(exc), flush=True)
 
