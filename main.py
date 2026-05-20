@@ -857,8 +857,17 @@ def parse_message(text):
             "date": parse_date_phrase(clean_text)
         }
 
-    # Matches "list customers", "customers today", "customer list this week", etc.
-    if any(cmd in clean_text for cmd in ["list customers", "customer list"]) or clean_text.startswith("customers"):
+    # Matches "list customers", "my customers", "customer list this week", etc.
+    customer_list_phrases = [
+        "list customers",
+        "list customer",
+        "list my customers",
+        "list my customer",
+        "list of customers",
+        "customer list",
+        "my customers",
+    ]
+    if any(clean_text == cmd or clean_text.startswith(f"{cmd} ") for cmd in customer_list_phrases) or clean_text.startswith("customers"):
         # Ensure we don't accidentally catch "customers count" or "total customers"
         if "count" not in clean_text and "total" not in clean_text:
             return {
