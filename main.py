@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import requests
 import traceback
 import uuid
@@ -19,12 +20,15 @@ from pydantic import BaseModel
 from sqlalchemy import (
     create_engine,
     Column,
+    Boolean,
     Integer,
     String,
     DateTime,
     ForeignKey,
     func,
-    inspect
+    or_,
+    inspect,
+    text
 )
 
 from sqlalchemy.orm import (
@@ -90,6 +94,14 @@ class User(Base):
 
     parent_id = Column(String, ForeignKey("users.id"), nullable=True)
 
+    can_view_all_transactions = Column(Boolean, default=False)
+
+    subscription_plan = Column(String, default="BASIC")
+
+    subscription_status = Column(String, default="ACTIVE")
+
+    subscription_expires_at = Column(DateTime, nullable=True)
+
     created_at = Column(
         DateTime,
         default=datetime.utcnow
@@ -104,7 +116,8 @@ class Transaction(Base):
 
     customer_id = Column(
         Integer,
-        ForeignKey("customers.id")
+        ForeignKey("customers.id"),
+        nullable=True
     )
 
     type = Column(String)
@@ -137,6 +150,48 @@ class Transaction(Base):
     )
 
 
+class TransactionItem(Base):
+
+    __tablename__ = "transaction_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    transaction_id = Column(Integer, ForeignKey("transactions.id"))
+
+    product = Column(String)
+
+    quantity = Column(Integer, default=1)
+
+    unit = Column(String, nullable=True)
+
+    unit_price = Column(Integer)
+
+    total = Column(Integer)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+
+class TransactionNote(Base):
+
+    __tablename__ = "transaction_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    transaction_id = Column(Integer, ForeignKey("transactions.id"))
+
+    author_user_id = Column(String, ForeignKey("users.id"))
+
+    note = Column(String)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+
 class PendingAction(Base):
 
     __tablename__ = "pending_actions"
@@ -162,6 +217,16 @@ class PendingAction(Base):
         Integer,
         default=0
     )
+
+    product = Column(String, nullable=True)
+
+    quantity = Column(Integer, nullable=True)
+
+    unit = Column(String, nullable=True)
+
+    unit_price = Column(Integer, nullable=True)
+
+    items_json = Column(String, nullable=True)
 
     last_customer = Column(String)
 
@@ -245,6 +310,8 @@ def debug_schema(token: str):
         Customer,
         User,
         Transaction,
+        TransactionItem,
+        TransactionNote,
         PendingAction,
         ProcessedMessage,
         CustomerMemory,
@@ -281,6 +348,73 @@ def debug_schema(token: str):
 
 
 Base.metadata.create_all(engine)
+
+
+def ensure_schema_updates():
+    inspector = inspect(engine)
+    user_columns = {
+        column["name"]
+        for column in inspector.get_columns("users")
+    }
+
+    if "can_view_all_transactions" not in user_columns:
+        default_value = "FALSE" if engine.dialect.name == "postgresql" else "0"
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    f"ADD COLUMN can_view_all_transactions BOOLEAN DEFAULT {default_value}"
+                )
+            )
+
+    user_updates = {
+        "subscription_plan": "VARCHAR DEFAULT 'BASIC'",
+        "subscription_status": "VARCHAR DEFAULT 'ACTIVE'",
+        "subscription_expires_at": "TIMESTAMP"
+    }
+    with engine.begin() as connection:
+        for column_name, column_type in user_updates.items():
+            if column_name not in user_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
+    pending_columns = {
+        column["name"]
+        for column in inspector.get_columns("pending_actions")
+    }
+    pending_updates = {
+        "product": "VARCHAR",
+        "quantity": "INTEGER",
+        "unit": "VARCHAR",
+        "unit_price": "INTEGER",
+        "items_json": "VARCHAR"
+    }
+    with engine.begin() as connection:
+        for column_name, column_type in pending_updates.items():
+            if column_name not in pending_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE pending_actions ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
+    if engine.dialect.name == "postgresql":
+        transaction_columns = {
+            column["name"]: column
+            for column in inspector.get_columns("transactions")
+        }
+        customer_id_column = transaction_columns.get("customer_id")
+        if customer_id_column and not customer_id_column.get("nullable", True):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE transactions ALTER COLUMN customer_id DROP NOT NULL")
+                )
+
+
+ensure_schema_updates()
 
 # =========================
 # 📤 WHATSAPP SEND
@@ -350,9 +484,9 @@ def extract_item_details(text):
     clean = text.lower().replace(",", "")
 
     match = re.search(
-        r"(?P<quantity>\d+)\s+"
+        r"(?P<quantity>\d+)\s*"
         r"(?P<unit>[a-z/]+)\s+(?:of\s+)?"
-        r"(?P<product>[a-z ]+?)\s+at\s+(?P<unit_price>" + amount_pattern + ")",
+        r"(?P<product>[a-z ]+?)\s+(?:at|for)\s+(?P<unit_price>" + amount_pattern + ")",
         clean
     )
 
@@ -373,6 +507,201 @@ def extract_item_details(text):
         "unit_price": unit_price,
         "total": total
     }
+
+
+def extract_direct_sale_details(text):
+    clean = text.lower().replace(",", "").strip()
+    clean = re.sub(r"^(?:i\s+)?(?:sold|sell|supply|supplied)\s+", "", clean).strip()
+    clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean).strip()
+
+    amount_matches = list(re.finditer(
+        r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![a-zA-Z\d/])",
+        clean
+    ))
+    if not amount_matches:
+        return None
+
+    amount_match = amount_matches[-1]
+    unit_price = parse_amount_token(amount_match.group())
+    if unit_price is None:
+        return None
+
+    item_text = clean[:amount_match.start()].strip()
+    item_text = re.sub(r"\b(for|at)\s*$", "", item_text).strip()
+    if not item_text:
+        return None
+
+    quantity = 1
+    unit = None
+    product = item_text
+
+    quantity_match = re.match(r"(?P<quantity>\d+)\s+(?P<rest>.+)$", item_text)
+    if quantity_match:
+        quantity = int(quantity_match.group("quantity"))
+        rest = quantity_match.group("rest").strip()
+        rest = re.sub(r"\s+of\s+", " ", rest, count=1)
+
+        unit_phrases = [
+            "truck loads",
+            "truck load",
+            "bags",
+            "bag",
+            "cartons",
+            "carton",
+            "pieces",
+            "piece",
+            "units",
+            "unit",
+            "loads",
+            "load",
+            "tons",
+            "ton",
+            "litres",
+            "litre",
+            "liters",
+            "liter",
+            "crates",
+            "crate",
+            "dozens",
+            "dozen",
+            "rolls",
+            "roll",
+            "kg",
+            "g",
+            "ml",
+            "l",
+        ]
+        for unit_phrase in unit_phrases:
+            if rest == unit_phrase or rest.startswith(f"{unit_phrase} "):
+                unit = unit_phrase
+                product = rest[len(unit_phrase):].strip()
+                break
+
+        if unit is None:
+            product = rest
+
+    product = product.strip()
+    if not product:
+        return None
+
+    total = quantity * unit_price
+    return {
+        "quantity": quantity,
+        "unit": unit,
+        "product": product,
+        "unit_price": unit_price,
+        "total": total
+    }
+
+
+def parse_invoice_item(item_text):
+    clean = item_text.lower().replace(",", "").strip()
+    clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean).strip()
+
+    amount_matches = list(re.finditer(
+        r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![a-zA-Z\d/])",
+        clean
+    ))
+    if not amount_matches:
+        return None
+
+    amount_match = amount_matches[-1]
+    unit_price = parse_amount_token(amount_match.group())
+    if unit_price is None:
+        return None
+
+    item_body = clean[:amount_match.start()].strip()
+    item_body = re.sub(r"\b(for|at)\s*$", "", item_body).strip()
+    if not item_body:
+        return None
+
+    quantity = 1
+    unit = None
+    product = item_body
+
+    quantity_match = re.match(r"(?P<quantity>\d+)\s+(?P<rest>.+)$", item_body)
+    if quantity_match:
+        quantity = int(quantity_match.group("quantity"))
+        rest = re.sub(r"\s+of\s+", " ", quantity_match.group("rest").strip(), count=1)
+
+        unit_phrases = [
+            "truck loads", "truck load", "bags", "bag", "cartons", "carton",
+            "pieces", "piece", "units", "unit", "loads", "load", "tons", "ton",
+            "litres", "litre", "liters", "liter", "crates", "crate",
+            "dozens", "dozen", "rolls", "roll", "kg", "g", "ml", "l"
+        ]
+        for unit_phrase in unit_phrases:
+            if rest == unit_phrase or rest.startswith(f"{unit_phrase} "):
+                unit = unit_phrase
+                product = rest[len(unit_phrase):].strip()
+                break
+
+        if unit is None:
+            product = rest
+
+    product = product.strip()
+    if not product:
+        return None
+
+    total = quantity * unit_price
+    return {
+        "product": product,
+        "quantity": quantity,
+        "unit": unit,
+        "unit_price": unit_price,
+        "total": total
+    }
+
+
+def parse_invoice_items(items_text):
+    parts = [
+        part.strip()
+        for part in re.split(r"\s*,\s*|\s*;\s*", items_text)
+        if part.strip()
+    ]
+    if len(parts) < 2:
+        return None
+
+    items = []
+    for part in parts:
+        item = parse_invoice_item(part)
+        if not item:
+            return None
+        items.append(item)
+
+    return {
+        "items": items,
+        "total": sum(item["total"] for item in items)
+    }
+
+
+def format_invoice_items(items):
+    lines = []
+    for index, item in enumerate(items, start=1):
+        if item.get("unit"):
+            label = f"{item['quantity']} {item['unit']} of {item['product']}"
+        elif item.get("quantity", 1) > 1:
+            label = f"{item['quantity']} {item['product']}"
+        else:
+            label = item["product"]
+        lines.append(
+            f"{index}. {label.title()} - N{item['total']:,}"
+        )
+    return "\n".join(lines)
+
+
+def add_transaction_items(db, transaction_id, items):
+    for item in items or []:
+        db.add(
+            TransactionItem(
+                transaction_id=transaction_id,
+                product=item["product"],
+                quantity=item.get("quantity") or 1,
+                unit=item.get("unit"),
+                unit_price=item.get("unit_price") or 0,
+                total=item.get("total") or 0
+            )
+        )
 
 
 def parse_amount_token(token):
@@ -402,9 +731,11 @@ def extract_amounts(text):
     # Improved regex to identify amounts with k/m suffixes.
     # Uses negative lookahead to ensure k/m aren't part of a larger unit word (like kg, ml, etc.)
     # or immediately followed by other letters that suggest a unit context (like meter).
+    unit_pattern = r"kg|g|gram|grams|bag|bags|carton|cartons|unit|units|pcs|piece|pieces|litre|litres|liter|liters|l|ml|ton|tons"
+    amount_text = re.sub(rf"\b\d+\s*(?:{unit_pattern})\b", "", text, flags=re.IGNORECASE)
     matches = re.findall(
-        r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![\d/])", 
-        text
+        r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![a-zA-Z\d/])",
+        amount_text
     )
     amounts = []
     for match in matches:
@@ -532,7 +863,7 @@ def find_customer_by_name(db, owner_phone, name):
     ).first()
 
 
-def build_customer_account_summary(db, owner_phone, customer_name, period=None, target_date=None, include_menu=False):
+def build_customer_account_summary(db, owner_phone, customer_name, period=None, target_date=None, include_menu=False, recorded_by_id=None):
     customer = find_customer_by_name(db, owner_phone, customer_name)
     if not customer:
         return f"Customer not found: {customer_name.title()}"
@@ -542,6 +873,8 @@ def build_customer_account_summary(db, owner_phone, customer_name, period=None, 
     tx_query = db.query(Transaction).filter(
         Transaction.customer_id == customer.id
     )
+    if recorded_by_id:
+        tx_query = tx_query.filter(Transaction.recorded_by_id == recorded_by_id)
     if start and end:
         tx_query = tx_query.filter(
             Transaction.created_at >= start,
@@ -557,6 +890,8 @@ def build_customer_account_summary(db, owner_phone, customer_name, period=None, 
 
     balance = total_buy - total_paid
     tx_count = tx_query.count()
+    if recorded_by_id and tx_count == 0:
+        return f"Customer not found: {customer_name.title()}"
 
     if balance < 0:
         balance_line = f"Credit: ₦{abs(balance):,}"
@@ -922,10 +1257,42 @@ def parse_message(text):
         "dashboard"
     ] or ("dashboard" in clean_text and "summary" in clean_text) or (
         "dashboard" in clean_text and "stats" in clean_text
+    ) or clean_text.startswith("dashboard ") or clean_text.startswith("stats ") or (
+        clean_text.startswith("business summary ")
+    ) or (
+        clean_text.startswith("business stats ")
     ):
         return {
             "type": "DASHBOARD_SUMMARY",
             "period": parse_period_phrase(clean_text)
+        }
+
+    if clean_text in [
+        "my plan",
+        "plan",
+        "subscription",
+        "my subscription"
+    ]:
+        return {"type": "MY_PLAN"}
+
+    if clean_text in [
+        "upgrade",
+        "pricing",
+        "plans",
+        "subscription plans"
+    ]:
+        return {"type": "UPGRADE_MENU"}
+
+    activation_match = re.search(
+        r"^(?:activate|set)\s+plan\s+(basic|go|pro)\s+(?:for\s+)?(\+?[\d ]{7,15})(?:\s+(\d+)\s+days?)?$",
+        clean_text
+    )
+    if activation_match:
+        return {
+            "type": "ACTIVATE_PLAN",
+            "plan": activation_match.group(1).upper(),
+            "phone": normalize_phone(activation_match.group(2)),
+            "days": int(activation_match.group(3)) if activation_match.group(3) else None
         }
 
     if clean_text in [
@@ -994,6 +1361,26 @@ def parse_message(text):
                 "name": name
             }
 
+    permission_match = re.search(
+        r"^(grant|allow|give)\s+staff\s+(\+?[\d ]{7,15})\s+(?:view\s+all|view\s+all\s+transactions|all\s+transactions)$",
+        clean_text
+    )
+    if permission_match:
+        return {
+            "type": "GRANT_STAFF_VIEW_ALL",
+            "phone": normalize_phone(permission_match.group(2))
+        }
+
+    permission_match = re.search(
+        r"^(revoke|remove|disable)\s+staff\s+(\+?[\d ]{7,15})\s+(?:view\s+all|view\s+all\s+transactions|all\s+transactions)$",
+        clean_text
+    )
+    if permission_match:
+        return {
+            "type": "REVOKE_STAFF_VIEW_ALL",
+            "phone": normalize_phone(permission_match.group(2))
+        }
+
     if clean_text.endswith("transactions"):
         candidate = clean_text.replace("transactions", "").replace("customer", "").strip()
         if candidate:
@@ -1001,6 +1388,27 @@ def parse_message(text):
                 "type": "CUSTOMER_TRANSACTIONS",
                 "name": candidate
             }
+
+    note_match = re.search(
+        r"^(?:add\s+)?note\s+(?:transaction|tx)\s+#?(?P<transaction_id>\d+)\s+(?P<note>.+)$",
+        clean_text
+    )
+    if note_match:
+        return {
+            "type": "ADD_TRANSACTION_NOTE",
+            "transaction_id": int(note_match.group("transaction_id")),
+            "note": note_match.group("note").strip()
+        }
+
+    note_match = re.search(
+        r"^(?:transaction|tx)\s+#?(?P<transaction_id>\d+)\s+notes?$",
+        clean_text
+    )
+    if note_match:
+        return {
+            "type": "TRANSACTION_NOTES",
+            "transaction_id": int(note_match.group("transaction_id"))
+        }
 
     if "partial payment" in clean_text or "part payment" in clean_text:
         return {
@@ -1088,6 +1496,7 @@ def parse_message(text):
     # 🧹 CLEAN TEXT
     # =========================
 
+    invoice_clean_text = text.lower().strip()
     clean_text = text.replace(",", "")
 
     words = clean_text.split()
@@ -1098,6 +1507,7 @@ def parse_message(text):
         return None
 
     item_details = extract_item_details(text)
+    direct_sale_details = extract_direct_sale_details(text)
 
     buy_amount = 0
     paid_amount = 0
@@ -1170,9 +1580,102 @@ def parse_message(text):
 
     buy_keywords = ["bought", "buy", "owes", "owe", "owing", "purchased"]
     pay_keywords = ["paid", "pay", "settled", "gave"]
+    sale_keywords = ["sold", "sell", "supply", "supplied"]
 
     has_buy = bool(re.search(r"\b(" + "|".join(buy_keywords) + r")\b", clean_text))
     has_pay = bool(re.search(r"\b(" + "|".join(pay_keywords) + r")\b", clean_text))
+    has_direct_sale = bool(re.match(r"^(?:i\s+)?(" + "|".join(sale_keywords) + r")\b", clean_text.lower()))
+
+    if has_direct_sale:
+        sale_body = re.sub(
+            r"^(?:i\s+)?(?:sold|sell|supply|supplied)\s+",
+            "",
+            invoice_clean_text,
+            count=1
+        ).strip()
+        invoice = parse_invoice_items(sale_body)
+        if invoice:
+            return {
+                "type": "TRANSACTION",
+                "name": "",
+                "action": "SALE",
+                "buy_amount": invoice["total"],
+                "paid_amount": 0,
+                "quantity": None,
+                "unit": None,
+                "product": None,
+                "unit_price": None,
+                "invoice_items": invoice["items"],
+                "total": invoice["total"],
+                "due_date": None
+            }
+
+    if has_direct_sale:
+        if not direct_sale_details:
+            return None
+
+        return {
+            "type": "TRANSACTION",
+            "name": "",
+            "action": "SALE",
+            "buy_amount": direct_sale_details["total"],
+            "paid_amount": 0,
+            "quantity": direct_sale_details["quantity"],
+            "unit": direct_sale_details["unit"],
+            "product": direct_sale_details["product"],
+            "unit_price": direct_sale_details["unit_price"],
+            "invoice_items": None,
+            "total": direct_sale_details["total"],
+            "due_date": None
+        }
+
+    customer_invoice_match = re.match(
+        r"(?P<name>.+?)\s+(?:bought|buy|purchased)\s+(?P<items>.+)",
+        invoice_clean_text
+    )
+    if customer_invoice_match and has_pay:
+        payment_split = re.search(
+            r"\b(?:paid|pay|settled|gave)\b(?P<payment>.+)$",
+            customer_invoice_match.group("items")
+        )
+        if payment_split:
+            items_text = customer_invoice_match.group("items")[:payment_split.start()].strip()
+            items_text = re.sub(r"[\s,;]+$", "", items_text).strip()
+            payment_amounts = extract_amounts(payment_split.group("payment"))
+            invoice = parse_invoice_items(items_text)
+            if invoice and payment_amounts:
+                return {
+                    "type": "TRANSACTION",
+                    "name": customer_invoice_match.group("name").strip(),
+                    "action": "COMBINED",
+                    "buy_amount": invoice["total"],
+                    "paid_amount": payment_amounts[0],
+                    "quantity": None,
+                    "unit": None,
+                    "product": None,
+                    "unit_price": None,
+                    "invoice_items": invoice["items"],
+                    "total": invoice["total"],
+                    "due_date": due_date
+                }
+
+    if customer_invoice_match and not has_pay:
+        invoice = parse_invoice_items(customer_invoice_match.group("items"))
+        if invoice:
+            return {
+                "type": "TRANSACTION",
+                "name": customer_invoice_match.group("name").strip(),
+                "action": "BUY",
+                "buy_amount": invoice["total"],
+                "paid_amount": 0,
+                "quantity": None,
+                "unit": None,
+                "product": None,
+                "unit_price": None,
+                "invoice_items": invoice["items"],
+                "total": invoice["total"],
+                "due_date": due_date
+            }
 
     # =========================
     # 🔄 COMBINED
@@ -1180,7 +1683,7 @@ def parse_message(text):
 
     if has_buy and has_pay:
 
-        if item_details and len(amounts) >= 3:
+        if item_details and len(amounts) >= 2:
             buy_amount = item_details["total"]
             quantity = item_details["quantity"]
             unit = item_details["unit"]
@@ -1269,6 +1772,7 @@ def parse_message(text):
         "unit": unit,
         "product": product,
         "unit_price": unit_price,
+        "invoice_items": None,
         "total": total if total is not None else buy_amount,
         "due_date": due_date
     }
@@ -1278,11 +1782,288 @@ def parse_message(text):
 # 💰 BALANCE
 # =========================
 
-def get_balance(db, customer_id):
+def is_staff_user(user):
+    return bool(user and user.role == "delegate" and user.parent_id)
+
+
+def can_view_all_business_transactions(user):
+    if not user:
+        return False
+    if user.role == "user" and not user.parent_id:
+        return True
+    return is_staff_user(user) and bool(user.can_view_all_transactions)
+
+
+def visibility_recorded_by_id(user):
+    if is_staff_user(user) and not can_view_all_business_transactions(user):
+        return user.id
+    return None
+
+
+PLAN_BASIC = "BASIC"
+PLAN_GO = "GO"
+PLAN_PRO = "PRO"
+
+PLAN_ORDER = {
+    PLAN_BASIC: 1,
+    PLAN_GO: 2,
+    PLAN_PRO: 3
+}
+
+PLAN_LIMITS = {
+    PLAN_BASIC: {
+        "customers": 50,
+        "monthly_transactions": 100,
+        "staff": 0
+    },
+    PLAN_GO: {
+        "customers": None,
+        "monthly_transactions": None,
+        "staff": 0
+    },
+    PLAN_PRO: {
+        "customers": None,
+        "monthly_transactions": None,
+        "staff": 10
+    }
+}
+
+FEATURE_MIN_PLAN = {
+    "DIRECT_SALE": PLAN_GO,
+    "INVOICE": PLAN_GO,
+    "TRANSACTION_NOTES": PLAN_GO,
+    "ADVANCED_REPORTS": PLAN_GO,
+    "DUE_REMINDERS": PLAN_GO,
+    "STAFF": PLAN_PRO,
+    "STAFF_PERMISSION": PLAN_PRO,
+    "VOICE_TEXT": PLAN_GO,
+    "MULTILINGUAL_VOICE": PLAN_PRO,
+    "VOICE_REPLY": PLAN_PRO
+}
+
+
+def normalize_plan(plan):
+    plan = (plan or PLAN_BASIC).upper().strip()
+    if plan in PLAN_ORDER:
+        return plan
+    return PLAN_BASIC
+
+
+def get_business_owner_user(db, user):
+    if not user:
+        return None
+    if user.parent_id:
+        owner = db.query(User).filter(User.id == user.parent_id).first()
+        if owner:
+            return owner
+    return user
+
+
+def get_business_subscription(db, user):
+    owner = get_business_owner_user(db, user)
+    plan = normalize_plan(getattr(owner, "subscription_plan", PLAN_BASIC))
+    status = (getattr(owner, "subscription_status", None) or "ACTIVE").upper()
+    expires_at = getattr(owner, "subscription_expires_at", None)
+
+    if expires_at and expires_at < datetime.utcnow():
+        status = "EXPIRED"
+
+    if status not in ["ACTIVE", "TRIAL"]:
+        plan = PLAN_BASIC
+
+    return {
+        "owner": owner,
+        "plan": plan,
+        "status": status,
+        "expires_at": expires_at,
+        "limits": PLAN_LIMITS[plan]
+    }
+
+
+def plan_allows_feature(plan, feature):
+    required_plan = FEATURE_MIN_PLAN.get(feature, PLAN_BASIC)
+    return PLAN_ORDER[normalize_plan(plan)] >= PLAN_ORDER[required_plan]
+
+
+def format_upgrade_message(current_plan, required_plan, feature_label):
+    return (
+        f"{feature_label} is available on {required_plan}.\n\n"
+        f"Your current plan: {normalize_plan(current_plan)}\n\n"
+        "Send UPGRADE to see plans."
+    )
+
+
+def ensure_feature_allowed(db, user, feature, feature_label):
+    subscription = get_business_subscription(db, user)
+    required_plan = FEATURE_MIN_PLAN.get(feature, PLAN_BASIC)
+    if plan_allows_feature(subscription["plan"], feature):
+        return True, None
+    return False, format_upgrade_message(
+        subscription["plan"],
+        required_plan,
+        feature_label
+    )
+
+
+def get_month_start():
+    now = datetime.utcnow()
+    return datetime(now.year, now.month, 1)
+
+
+def check_customer_limit(db, owner_phone, subscription):
+    limit = subscription["limits"].get("customers")
+    if limit is None:
+        return True, None
+
+    count = db.query(Customer).filter(
+        Customer.owner_phone == owner_phone
+    ).count()
+    if count < limit:
+        return True, None
+
+    return False, (
+        f"Basic plan customer limit reached ({limit}).\n\n"
+        "Send UPGRADE to move to Go for unlimited customers."
+    )
+
+
+def check_monthly_transaction_limit(db, owner_phone, subscription, planned_rows=1):
+    limit = subscription["limits"].get("monthly_transactions")
+    if limit is None:
+        return True, None
+
+    current_count = get_owner_transaction_query(
+        db,
+        owner_phone
+    ).filter(
+        Transaction.created_at >= get_month_start()
+    ).count()
+    if current_count + planned_rows <= limit:
+        return True, None
+
+    return False, (
+        f"Basic plan monthly transaction limit reached ({limit}).\n\n"
+        "Send UPGRADE to move to Go for unlimited transactions."
+    )
+
+
+def check_staff_limit(db, owner, subscription):
+    limit = subscription["limits"].get("staff")
+    if limit is None:
+        return True, None
+
+    count = db.query(User).filter(User.parent_id == owner.id).count()
+    if count < limit:
+        return True, None
+
+    return False, (
+        f"Your {subscription['plan']} plan allows {limit} staff.\n\n"
+        "Send UPGRADE to see team options."
+    )
+
+
+def build_plan_message(subscription):
+    plan = subscription["plan"]
+    status = subscription["status"]
+    expires_at = subscription["expires_at"]
+    expiry_line = (
+        f"Expires: {expires_at.strftime('%d/%m/%Y')}\n"
+        if expires_at else
+        "Expires: No expiry set\n"
+    )
+    limits = subscription["limits"]
+    customer_limit = limits["customers"] if limits["customers"] is not None else "Unlimited"
+    transaction_limit = limits["monthly_transactions"] if limits["monthly_transactions"] is not None else "Unlimited"
+    staff_limit = limits["staff"] if limits["staff"] is not None else "Unlimited"
+
+    return (
+        "Your Subscription\n\n"
+        f"Plan: {plan}\n"
+        f"Status: {status}\n"
+        f"{expiry_line}"
+        f"Customers: {customer_limit}\n"
+        f"Monthly transactions: {transaction_limit}\n"
+        f"Staff: {staff_limit}"
+    )
+
+
+def build_upgrade_message():
+    return (
+        "CreditVoice Plans\n\n"
+        "BASIC - Free\n"
+        "1 user, 50 customers, 100 monthly transactions, basic debt tracking.\n\n"
+        "GO\n"
+        "For one-owner businesses. Unlimited customers, unlimited transactions, invoices, direct sales, reports, reminders, and notes.\n\n"
+        "PRO\n"
+        "Everything in Go plus staff, staff permissions, team notes, and future multilingual voice.\n\n"
+        "Send MY PLAN to see your current plan."
+    )
+
+
+def is_subscription_admin(phone):
+    admin_phones = [
+        normalize_phone(value.strip())
+        for value in os.getenv("SUBSCRIPTION_ADMIN_PHONES", "").split(",")
+        if value.strip()
+    ]
+    return normalize_phone(phone) in admin_phones
+
+
+def get_visible_transaction(db, owner_phone, transaction_id, recorded_by_id=None):
+    transaction = get_owner_transaction_query(
+        db,
+        owner_phone,
+        recorded_by_id=recorded_by_id
+    ).filter(
+        Transaction.id == transaction_id
+    ).first()
+    if not transaction:
+        return None
+
+    customer = None
+    if transaction.customer_id:
+        customer = db.query(Customer).filter(Customer.id == transaction.customer_id).first()
+    return transaction, customer
+
+
+def get_transaction_notes(db, owner_phone, transaction_id, recorded_by_id=None):
+    visible_tx = get_visible_transaction(db, owner_phone, transaction_id, recorded_by_id)
+    if not visible_tx:
+        return None, []
+
+    notes = db.query(TransactionNote, User).outerjoin(
+        User,
+        TransactionNote.author_user_id == User.id
+    ).filter(
+        TransactionNote.transaction_id == transaction_id
+    ).order_by(
+        TransactionNote.created_at.asc()
+    ).all()
+    return visible_tx, notes
+
+
+def format_transaction_note_thread(transaction, customer, notes):
+    customer_name = customer.name.title() if customer else "Direct Sale"
+    msg = (
+        f"Transaction #{transaction.id} notes\n"
+        f"{customer_name} {transaction.type}: N{transaction.amount:,}\n\n"
+    )
+
+    if not notes:
+        return msg + "No notes yet."
+
+    for i, (note, author) in enumerate(notes, start=1):
+        author_name = author.name.title() if author and author.name else "Unknown"
+        note_date = note.created_at.strftime("%d/%m/%Y %H:%M")
+        msg += f"{i}. {author_name} ({note_date})\n{note.note}\n\n"
+    return msg.strip()
+
+
+def get_balance(db, customer_id, recorded_by_id=None):
 
     from sqlalchemy import func
 
-    total_buy = db.query(
+    buy_query = db.query(
         func.coalesce(
             func.sum(Transaction.amount),
             0
@@ -1290,9 +2071,9 @@ def get_balance(db, customer_id):
     ).filter(
         Transaction.customer_id == customer_id,
         Transaction.type == "BUY"
-    ).scalar()
+    )
 
-    total_pay = db.query(
+    pay_query = db.query(
         func.coalesce(
             func.sum(Transaction.amount),
             0
@@ -1300,7 +2081,14 @@ def get_balance(db, customer_id):
     ).filter(
         Transaction.customer_id == customer_id,
         Transaction.type == "PAY"
-    ).scalar()
+    )
+
+    if recorded_by_id:
+        buy_query = buy_query.filter(Transaction.recorded_by_id == recorded_by_id)
+        pay_query = pay_query.filter(Transaction.recorded_by_id == recorded_by_id)
+
+    total_buy = buy_query.scalar()
+    total_pay = pay_query.scalar()
 
     return total_buy - total_pay
 
@@ -1308,24 +2096,24 @@ def get_balance(db, customer_id):
 # 📊 SALES ANALYTICS
 # =========================
 
-def get_today_sales(db, owner_phone=None):
-    stats = get_transaction_stats(db, owner_phone, "TODAY")
-    return stats["total_buy"]
+def get_today_sales(db, owner_phone=None, recorded_by_id=None):
+    stats = get_transaction_stats(db, owner_phone, "TODAY", recorded_by_id)
+    return stats["total_sales"]
 
 
-def get_weekly_sales(db, owner_phone=None):
-    stats = get_transaction_stats(db, owner_phone, "WEEK")
-    return stats["total_buy"]
+def get_weekly_sales(db, owner_phone=None, recorded_by_id=None):
+    stats = get_transaction_stats(db, owner_phone, "WEEK", recorded_by_id)
+    return stats["total_sales"]
 
 
-def get_monthly_sales(db, owner_phone=None):
-    stats = get_transaction_stats(db, owner_phone, "MONTH")
-    return stats["total_buy"]
+def get_monthly_sales(db, owner_phone=None, recorded_by_id=None):
+    stats = get_transaction_stats(db, owner_phone, "MONTH", recorded_by_id)
+    return stats["total_sales"]
 
 
-def get_yearly_sales(db, owner_phone=None):
-    stats = get_transaction_stats(db, owner_phone, "YEAR")
-    return stats["total_buy"]
+def get_yearly_sales(db, owner_phone=None, recorded_by_id=None):
+    stats = get_transaction_stats(db, owner_phone, "YEAR", recorded_by_id)
+    return stats["total_sales"]
 
 
 def get_period_range(period):
@@ -1346,10 +2134,27 @@ def get_period_range(period):
     return None, None
 
 
-def get_owner_transaction_query(db, owner_phone, period=None):
-    query = db.query(Transaction).join(Customer, Transaction.customer_id == Customer.id).filter(
-        Customer.owner_phone == owner_phone
-    )
+def get_owner_transaction_query(db, owner_phone, period=None, recorded_by_id=None):
+    query = db.query(Transaction).outerjoin(Customer, Transaction.customer_id == Customer.id)
+    if owner_phone:
+        business_user_ids = []
+        admin_user = db.query(User).filter(User.phone == owner_phone).first()
+        if admin_user:
+            business_user_ids.append(admin_user.id)
+            staff_ids = [
+                row.id for row in db.query(User.id).filter(User.parent_id == admin_user.id).all()
+            ]
+            business_user_ids.extend(staff_ids)
+
+        business_filter = Customer.owner_phone == owner_phone
+        if business_user_ids:
+            business_filter = or_(
+                business_filter,
+                Transaction.recorded_by_id.in_(business_user_ids)
+            )
+        query = query.filter(business_filter)
+    if recorded_by_id:
+        query = query.filter(Transaction.recorded_by_id == recorded_by_id)
     if period:
         start, end = get_period_range(period)
         if start and end:
@@ -1360,9 +2165,12 @@ def get_owner_transaction_query(db, owner_phone, period=None):
     return query
 
 
-def get_transaction_stats(db, owner_phone, period=None):
-    query = get_owner_transaction_query(db, owner_phone, period)
+def get_transaction_stats(db, owner_phone, period=None, recorded_by_id=None):
+    query = get_owner_transaction_query(db, owner_phone, period, recorded_by_id)
     total_buy = query.filter(Transaction.type == "BUY").with_entities(
+        func.coalesce(func.sum(Transaction.amount), 0)
+    ).scalar()
+    direct_sales = query.filter(Transaction.type == "SALE").with_entities(
         func.coalesce(func.sum(Transaction.amount), 0)
     ).scalar()
     total_pay = query.filter(Transaction.type == "PAY").with_entities(
@@ -1371,35 +2179,168 @@ def get_transaction_stats(db, owner_phone, period=None):
     transaction_count = query.count()
     return {
         "total_buy": total_buy,
+        "credit_sales": total_buy,
+        "direct_sales": direct_sales,
+        "total_sales": total_buy + direct_sales,
         "total_pay": total_pay,
         "transaction_count": transaction_count
     }
 
 
-def get_total_outstanding(db, owner_phone=None):
-    debtors, total_outstanding = get_unpaid_debtors(db, owner_phone)
+def get_dashboard_summary(db, owner_phone=None, period=None, recorded_by_id=None):
+    stats = get_transaction_stats(db, owner_phone, period, recorded_by_id)
+    return {
+        "total_customers": get_customer_count(db, owner_phone, None, recorded_by_id),
+        "new_customers": get_new_customer_count(db, owner_phone, period, recorded_by_id),
+        "paid_customers": get_paid_customer_count(db, owner_phone, period, recorded_by_id),
+        "total_transactions": stats["transaction_count"],
+        "credit_sales_amount": stats["credit_sales"],
+        "direct_sales_amount": stats["direct_sales"],
+        "total_sales_amount": stats["total_sales"],
+        "total_buy_amount": stats["total_sales"],
+        "total_pay_amount": stats["total_pay"]
+    }
+
+
+def dashboard_period_label(period):
+    labels = {
+        "TODAY": "today",
+        "WEEK": "this week",
+        "MONTH": "this month",
+        "YEAR": "this year"
+    }
+    return labels.get(period, "all time")
+
+
+def build_dashboard_summary_message(summary, period=None):
+    period_label = dashboard_period_label(period)
+    return (
+        f"Dashboard {period_label}:\n"
+        f"Total customers: {summary['total_customers']:,}\n"
+        f"New customers: {summary['new_customers']:,}\n"
+        f"Paid customers: {summary['paid_customers']:,}\n"
+        f"Transactions: {summary['total_transactions']:,}\n"
+        f"Credit sales: N{summary['credit_sales_amount']:,}\n"
+        f"Direct sales: N{summary['direct_sales_amount']:,}\n"
+        f"Total sales: N{summary['total_sales_amount']:,}\n"
+        f"Payments received: N{summary['total_pay_amount']:,}"
+    )
+
+
+def build_dashboard_menu_message():
+    return (
+        "Dashboard Menu\n\n"
+        "1. Today dashboard\n"
+        "2. This week dashboard\n"
+        "3. This month dashboard\n"
+        "4. This year dashboard\n"
+        "5. All-time dashboard\n"
+        "6. Customer count\n"
+        "7. Customer list\n"
+        "8. Unpaid debtors\n"
+        "9. Product leaderboard\n\n"
+        "Reply with 1-9.\n"
+        "You can also send commands like:\n"
+        "dashboard today\n"
+        "list customers\n"
+        "unpaid debtors\n\n"
+        "Send exit, back, done, or cancel to close."
+    )
+
+
+def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id=None):
+    period_options = {
+        "1": "TODAY",
+        "2": "WEEK",
+        "3": "MONTH",
+        "4": "YEAR",
+        "5": None
+    }
+
+    if selection in period_options:
+        period = period_options[selection]
+        summary = get_dashboard_summary(db, owner_phone, period, recorded_by_id)
+        return "dashboard_summary", build_dashboard_summary_message(summary, period)
+
+    if selection == "6":
+        count = get_customer_count(db, owner_phone, None, recorded_by_id)
+        return "dashboard_customer_count", f"Customers all time: {count:,}"
+
+    if selection == "7":
+        customers = list_customers(db, owner_phone, None, recorded_by_id)
+        if not customers:
+            return "dashboard_customer_list_empty", "No customers found."
+
+        msg = "Customers\n\n"
+        for i, customer in enumerate(customers, start=1):
+            msg += (
+                f"{i}. {customer['name'].title()}"
+                f" ({customer['phone'] or 'no phone'}) -> N{customer['balance']:,}\n"
+            )
+        return "dashboard_customer_list", msg
+
+    if selection == "8":
+        debtors, total_outstanding = get_unpaid_debtors(db, owner_phone, recorded_by_id)
+        if not debtors:
+            return "dashboard_unpaid_empty", "No unpaid debtors found."
+
+        msg = f"Unpaid Debtors\nTotal outstanding: N{total_outstanding:,}\n\n"
+        for i, debtor in enumerate(debtors, start=1):
+            msg += f"{i}. {debtor['name'].title()} -> N{debtor['balance']:,}\n"
+        return "dashboard_unpaid_debtors", msg
+
+    if selection == "9":
+        results = get_product_sales_by_period(db, owner_phone, recorded_by_id=recorded_by_id)
+        if not results:
+            return "dashboard_products_empty", "No product sales data available yet."
+
+        msg = "Product Leaderboard\n\n"
+        for i, row in enumerate(results[:10], start=1):
+            msg += (
+                f"{i}. {row.product.title()} -> "
+                f"{row.total_quantity:,} units, N{row.total_amount:,}\n"
+            )
+        return "dashboard_product_leaderboard", msg
+
+    return None, None
+
+
+def get_total_outstanding(db, owner_phone=None, recorded_by_id=None):
+    debtors, total_outstanding = get_unpaid_debtors(db, owner_phone, recorded_by_id)
     return total_outstanding
 
 
-def get_customer_count(db, owner_phone=None, period=None):
+def get_customer_count(db, owner_phone=None, period=None, recorded_by_id=None):
     query = db.query(Customer)
+    if recorded_by_id:
+        query = query.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        )
     if owner_phone:
         query = query.filter(Customer.owner_phone == owner_phone)
     if period:
         start, end = get_period_range(period)
         if start and end:
-            query = query.filter(
-                Customer.created_at >= start,
-                Customer.created_at < end
-            )
+            if recorded_by_id:
+                query = query.filter(
+                    Transaction.created_at >= start,
+                    Transaction.created_at < end
+                )
+            else:
+                query = query.filter(
+                    Customer.created_at >= start,
+                    Customer.created_at < end
+                )
+    if recorded_by_id:
+        return query.distinct(Customer.id).count()
     return query.count()
 
 
-def get_new_customer_count(db, owner_phone=None, period=None):
-    return get_customer_count(db, owner_phone, period)
+def get_new_customer_count(db, owner_phone=None, period=None, recorded_by_id=None):
+    return get_customer_count(db, owner_phone, period, recorded_by_id)
 
 
-def get_paid_customer_count(db, owner_phone=None, period=None):
+def get_paid_customer_count(db, owner_phone=None, period=None, recorded_by_id=None):
     query = db.query(Customer).join(
         Transaction,
         Transaction.customer_id == Customer.id
@@ -1408,6 +2349,8 @@ def get_paid_customer_count(db, owner_phone=None, period=None):
     )
     if owner_phone:
         query = query.filter(Customer.owner_phone == owner_phone)
+    if recorded_by_id:
+        query = query.filter(Transaction.recorded_by_id == recorded_by_id)
     if period:
         start, end = get_period_range(period)
         if start and end:
@@ -1418,22 +2361,35 @@ def get_paid_customer_count(db, owner_phone=None, period=None):
     return query.distinct(Customer.id).count()
 
 
-def get_total_transaction_count(db, owner_phone=None, period=None):
-    return get_owner_transaction_query(db, owner_phone, period).count()
+def get_total_transaction_count(db, owner_phone=None, period=None, recorded_by_id=None):
+    return get_owner_transaction_query(db, owner_phone, period, recorded_by_id).count()
 
 
-def list_customers(db, owner_phone=None, period=None):
+def list_customers(db, owner_phone=None, period=None, recorded_by_id=None):
     query = db.query(Customer)
+    if recorded_by_id:
+        query = query.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        )
     if owner_phone:
         query = query.filter(Customer.owner_phone == owner_phone)
 
     if period:
         start, end = get_period_range(period)
         if start and end:
-            query = query.filter(
-                Customer.created_at >= start,
-                Customer.created_at < end
-            )
+            if recorded_by_id:
+                query = query.filter(
+                    Transaction.created_at >= start,
+                    Transaction.created_at < end
+                )
+            else:
+                query = query.filter(
+                    Customer.created_at >= start,
+                    Customer.created_at < end
+                )
+
+    if recorded_by_id:
+        query = query.distinct(Customer.id)
 
     customers = query.all()
     result = []
@@ -1441,86 +2397,129 @@ def list_customers(db, owner_phone=None, period=None):
         result.append({
             "name": customer.name,
             "phone": customer.customer_phone,
-            "balance": get_balance(db, customer.id)
+            "balance": get_balance(db, customer.id, recorded_by_id)
         })
     return result
 
 
-def get_biggest_debtor(db, owner_phone=None):
-    debtors, _ = get_unpaid_debtors(db, owner_phone)
+def get_biggest_debtor(db, owner_phone=None, recorded_by_id=None):
+    debtors, _ = get_unpaid_debtors(db, owner_phone, recorded_by_id)
     if not debtors:
         return None
     return max(debtors, key=lambda item: item["balance"])
 
 
-def get_debtor_leaderboard(db, owner_phone=None, limit=10):
-    debtors, _ = get_unpaid_debtors(db, owner_phone)
+def get_debtor_leaderboard(db, owner_phone=None, limit=10, recorded_by_id=None):
+    debtors, _ = get_unpaid_debtors(db, owner_phone, recorded_by_id)
     return sorted(debtors, key=lambda item: item["balance"], reverse=True)[:limit]
 
 
-def get_customer_summary(db, owner_phone, name):
+def get_customer_summary(db, owner_phone, name, recorded_by_id=None):
     customer = db.query(Customer).filter(
         Customer.owner_phone == owner_phone,
         Customer.name == name
     ).first()
     if not customer:
         return None
-    total_buy = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+    buy_query = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.customer_id == customer.id,
         Transaction.type == "BUY"
-    ).scalar()
-    total_pay = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+    )
+    pay_query = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.customer_id == customer.id,
         Transaction.type == "PAY"
-    ).scalar()
-    transaction_count = db.query(Transaction).filter(
+    )
+    tx_query = db.query(Transaction).filter(
         Transaction.customer_id == customer.id
-    ).count()
+    )
+    if recorded_by_id:
+        buy_query = buy_query.filter(Transaction.recorded_by_id == recorded_by_id)
+        pay_query = pay_query.filter(Transaction.recorded_by_id == recorded_by_id)
+        tx_query = tx_query.filter(Transaction.recorded_by_id == recorded_by_id)
+
+    transaction_count = tx_query.count()
+    if recorded_by_id and transaction_count == 0:
+        return None
+
     return {
         "name": customer.name,
-        "balance": get_balance(db, customer.id),
-        "total_buy": total_buy,
-        "total_pay": total_pay,
+        "balance": get_balance(db, customer.id, recorded_by_id),
+        "total_buy": buy_query.scalar(),
+        "total_pay": pay_query.scalar(),
         "transaction_count": transaction_count
     }
 
 
-def search_customers(db, owner_phone, query_text):
-    return db.query(Customer).filter(
+def search_customers(db, owner_phone, query_text, recorded_by_id=None):
+    query = db.query(Customer)
+    if recorded_by_id:
+        query = query.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        )
+    return query.filter(
         Customer.owner_phone == owner_phone,
         Customer.name.ilike(f"%{query_text}%")
-    ).all()
+    ).distinct(Customer.id).all()
 
 
-def get_product_sales_by_period(db, owner_phone=None, period=None):
-    query = db.query(
-        Transaction.product,
-        func.coalesce(func.sum(Transaction.quantity), 0).label("total_quantity"),
-        func.coalesce(func.sum(Transaction.amount), 0).label("total_amount")
-    ).join(Customer, Transaction.customer_id == Customer.id).filter(
-        Transaction.type == "BUY",
-        Transaction.product.isnot(None)
+class ProductSalesRow:
+    def __init__(self, product, total_quantity, total_amount):
+        self.product = product
+        self.total_quantity = total_quantity
+        self.total_amount = total_amount
+
+
+def build_product_sales_rows(transactions, item_rows):
+    item_transaction_ids = {row.transaction_id for row in item_rows}
+    totals = {}
+
+    for row in item_rows:
+        if row.product not in totals:
+            totals[row.product] = {"quantity": 0, "amount": 0}
+        totals[row.product]["quantity"] += row.quantity or 0
+        totals[row.product]["amount"] += row.total or 0
+
+    for tx in transactions:
+        if tx.id in item_transaction_ids or not tx.product:
+            continue
+        if tx.product not in totals:
+            totals[tx.product] = {"quantity": 0, "amount": 0}
+        totals[tx.product]["quantity"] += tx.quantity or 1
+        totals[tx.product]["amount"] += tx.amount or 0
+
+    return sorted(
+        [
+            ProductSalesRow(product, values["quantity"], values["amount"])
+            for product, values in totals.items()
+        ],
+        key=lambda row: row.total_quantity,
+        reverse=True
     )
-    if owner_phone:
-        query = query.filter(Customer.owner_phone == owner_phone)
-    if period:
-        start, end = get_period_range(period)
-        query = query.filter(
-            Transaction.created_at >= start,
-            Transaction.created_at < end
-        )
-    query = query.group_by(Transaction.product).order_by(func.sum(Transaction.quantity).desc())
-    return query.all()
 
 
-def get_most_sold_product(db, owner_phone=None, period=None):
-    results = get_product_sales_by_period(db, owner_phone, period)
+def get_product_sales_by_period(db, owner_phone=None, period=None, recorded_by_id=None):
+    query = get_owner_transaction_query(db, owner_phone, period, recorded_by_id).filter(
+        Transaction.type.in_(["BUY", "SALE"])
+    )
+    transactions = query.all()
+    transaction_ids = [tx.id for tx in transactions]
+    if not transaction_ids:
+        return []
+
+    item_rows = db.query(TransactionItem).filter(
+        TransactionItem.transaction_id.in_(transaction_ids)
+    ).all()
+    return build_product_sales_rows(transactions, item_rows)
+
+
+def get_most_sold_product(db, owner_phone=None, period=None, recorded_by_id=None):
+    results = get_product_sales_by_period(db, owner_phone, period, recorded_by_id)
     if not results:
         return None
     return results[0]
 
 
-def get_product_sales_by_date(db, owner_phone, date_text):
+def get_product_sales_by_date(db, owner_phone, date_text, recorded_by_id=None):
     try:
         report_date = datetime.strptime(date_text, "%d/%m/%Y").date()
     except ValueError:
@@ -1528,26 +2527,29 @@ def get_product_sales_by_date(db, owner_phone, date_text):
     start = datetime(report_date.year, report_date.month, report_date.day)
     end = start + timedelta(days=1)
 
-    results = db.query(
-        Transaction.product,
-        func.coalesce(func.sum(Transaction.quantity), 0).label("total_quantity"),
-        func.coalesce(func.sum(Transaction.amount), 0).label("total_amount")
-    ).join(Customer, Transaction.customer_id == Customer.id).filter(
-        Customer.owner_phone == owner_phone,
-        Transaction.type == "BUY",
-        Transaction.product.isnot(None),
+    query = get_owner_transaction_query(db, owner_phone, recorded_by_id=recorded_by_id).filter(
+        Transaction.type.in_(["BUY", "SALE"]),
         Transaction.created_at >= start,
         Transaction.created_at < end
-    ).group_by(Transaction.product).order_by(func.sum(Transaction.quantity).desc()).all()
+    )
+    transactions = query.all()
+    transaction_ids = [tx.id for tx in transactions]
+    if not transaction_ids:
+        return []
 
-    return results
+    item_rows = db.query(TransactionItem).filter(
+        TransactionItem.transaction_id.in_(transaction_ids)
+    ).all()
+    return build_product_sales_rows(transactions, item_rows)
 
 
-def get_total_paid_today(db, owner_phone=None):
+def get_total_paid_today(db, owner_phone=None, recorded_by_id=None):
     today = datetime.utcnow().date()
     query = db.query(func.coalesce(func.sum(Transaction.amount), 0)).join(Customer, Transaction.customer_id == Customer.id)
     if owner_phone:
         query = query.filter(Customer.owner_phone == owner_phone)
+    if recorded_by_id:
+        query = query.filter(Transaction.recorded_by_id == recorded_by_id)
     total = query.filter(
         Transaction.type == "PAY",
         func.date(Transaction.created_at) == today
@@ -1555,16 +2557,20 @@ def get_total_paid_today(db, owner_phone=None):
     return total
 
 
-def get_outstanding_balance(db, owner_phone=None):
-    return get_total_outstanding(db, owner_phone)
+def get_outstanding_balance(db, owner_phone=None, recorded_by_id=None):
+    return get_total_outstanding(db, owner_phone, recorded_by_id)
 
 # =========================
 # 📋 UNPAID DEBTORS
 # =========================
 
-def get_unpaid_debtors(db, owner_phone=None):
+def get_unpaid_debtors(db, owner_phone=None, recorded_by_id=None):
 
     customers = db.query(Customer)
+    if recorded_by_id:
+        customers = customers.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        ).distinct(Customer.id)
     if owner_phone:
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
@@ -1575,7 +2581,7 @@ def get_unpaid_debtors(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(db, customer.id)
+        balance = get_balance(db, customer.id, recorded_by_id)
 
         if balance > 0:
             debtors.append({
@@ -1591,11 +2597,15 @@ def get_unpaid_debtors(db, owner_phone=None):
 # ⚠️ OVERDUE DEBTORS
 # =========================
 
-def get_overdue_debtors(db, owner_phone=None):
+def get_overdue_debtors(db, owner_phone=None, recorded_by_id=None):
 
     overdue_list = []
 
     customers = db.query(Customer)
+    if recorded_by_id:
+        customers = customers.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        ).distinct(Customer.id)
     if owner_phone:
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
@@ -1604,7 +2614,7 @@ def get_overdue_debtors(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(db, customer.id)
+        balance = get_balance(db, customer.id, recorded_by_id)
 
         if balance <= 0:
             continue
@@ -1613,7 +2623,10 @@ def get_overdue_debtors(db, owner_phone=None):
             Transaction.customer_id == customer.id,
             Transaction.type == "BUY",
             Transaction.due_date.isnot(None)
-        ).order_by(
+        )
+        if recorded_by_id:
+            latest_tx = latest_tx.filter(Transaction.recorded_by_id == recorded_by_id)
+        latest_tx = latest_tx.order_by(
             Transaction.due_date.desc()
         ).first()
 
@@ -1642,11 +2655,15 @@ def get_overdue_debtors(db, owner_phone=None):
 # 📅 DUE TODAY
 # =========================
 
-def get_due_today(db, owner_phone=None):
+def get_due_today(db, owner_phone=None, recorded_by_id=None):
 
     due_today = []
 
     customers = db.query(Customer)
+    if recorded_by_id:
+        customers = customers.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        ).distinct(Customer.id)
     if owner_phone:
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
@@ -1655,7 +2672,7 @@ def get_due_today(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(db, customer.id)
+        balance = get_balance(db, customer.id, recorded_by_id)
 
         if balance <= 0:
             continue
@@ -1664,7 +2681,10 @@ def get_due_today(db, owner_phone=None):
             Transaction.customer_id == customer.id,
             Transaction.type == "BUY",
             Transaction.due_date.isnot(None)
-        ).order_by(
+        )
+        if recorded_by_id:
+            latest_tx = latest_tx.filter(Transaction.recorded_by_id == recorded_by_id)
+        latest_tx = latest_tx.order_by(
             Transaction.due_date.desc()
         ).first()
 
@@ -1689,11 +2709,15 @@ def get_due_today(db, owner_phone=None):
 # 📅 DUE IN 2 DAYS
 # =========================
 
-def get_due_in_2_days(db, owner_phone=None):
+def get_due_in_2_days(db, owner_phone=None, recorded_by_id=None):
 
     due_list = []
 
     customers = db.query(Customer)
+    if recorded_by_id:
+        customers = customers.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        ).distinct(Customer.id)
     if owner_phone:
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
@@ -1705,7 +2729,7 @@ def get_due_in_2_days(db, owner_phone=None):
 
     for customer in customers:
 
-        balance = get_balance(db, customer.id)
+        balance = get_balance(db, customer.id, recorded_by_id)
 
         if balance <= 0:
             continue
@@ -1714,7 +2738,10 @@ def get_due_in_2_days(db, owner_phone=None):
             Transaction.customer_id == customer.id,
             Transaction.type == "BUY",
             Transaction.due_date.isnot(None)
-        ).order_by(
+        )
+        if recorded_by_id:
+            latest_tx = latest_tx.filter(Transaction.recorded_by_id == recorded_by_id)
+        latest_tx = latest_tx.order_by(
             Transaction.due_date.desc()
         ).first()
 
@@ -1844,15 +2871,7 @@ def dashboard(owner_phone: Optional[str] = None, period: Optional[str] = None):
     db = SessionLocal()
     try:
         period_key = period.upper() if period else None
-        stats = get_transaction_stats(db, owner_phone, period_key)
-        return {
-            "total_customers": get_customer_count(db, owner_phone, None),
-            "new_customers": get_new_customer_count(db, owner_phone, period_key),
-            "paid_customers": get_paid_customer_count(db, owner_phone, period_key),
-            "total_transactions": get_total_transaction_count(db, owner_phone, period_key),
-            "total_buy_amount": stats["total_buy"],
-            "total_pay_amount": stats["total_pay"]
-        }
+        return get_dashboard_summary(db, owner_phone, period_key)
     finally:
         db.close()
 
@@ -1862,12 +2881,19 @@ def dashboard_ui(owner_phone: Optional[str] = None, period: Optional[str] = None
     db = SessionLocal()
     try:
         period_key = period.upper() if period else None
-        stats = get_transaction_stats(db, owner_phone, period_key)
-        total_customers = get_customer_count(db, owner_phone, None)
-        new_customers = get_new_customer_count(db, owner_phone, period_key)
-        paid_customers = get_paid_customer_count(db, owner_phone, period_key)
-        total_transactions = get_total_transaction_count(db, owner_phone, period_key)
-        period_label = period_key.lower() if period_key else "all time"
+        summary = get_dashboard_summary(db, owner_phone, period_key)
+        period_label = dashboard_period_label(period_key)
+        total_customers = summary["total_customers"]
+        new_customers = summary["new_customers"]
+        paid_customers = summary["paid_customers"]
+        total_transactions = summary["total_transactions"]
+        credit_sales = summary["credit_sales_amount"]
+        direct_sales = summary["direct_sales_amount"]
+        total_sales = summary["total_sales_amount"]
+        stats = {
+            "total_buy": summary["total_buy_amount"],
+            "total_pay": summary["total_pay_amount"]
+        }
         owner_label = owner_phone or "all owners"
         html = f"""
         <html>
@@ -1891,8 +2917,10 @@ def dashboard_ui(owner_phone: Optional[str] = None, period: Optional[str] = None
                     <div class="metric"><strong>New customers:</strong> {new_customers:,}</div>
                     <div class="metric"><strong>Paid customers:</strong> {paid_customers:,}</div>
                     <div class="metric"><strong>Total transactions:</strong> {total_transactions:,}</div>
-                    <div class="metric"><strong>Total sales:</strong> ₦{stats['total_buy']:,}</div>
-                    <div class="metric"><strong>Total received:</strong> ₦{stats['total_pay']:,}</div>
+                    <div class="metric"><strong>Credit sales:</strong> ₦{credit_sales:,}</div>
+                    <div class="metric"><strong>Direct sales:</strong> ₦{direct_sales:,}</div>
+                    <div class="metric"><strong>Total sales:</strong> ₦{total_sales:,}</div>
+                    <div class="metric"><strong>Payments received:</strong> ₦{stats['total_pay']:,}</div>
                 </div>
             </body>
         </html>
@@ -1979,6 +3007,8 @@ async def webhook(req: Request):
                         )
                         return {"status": "unregistered"}
 
+                    early_visible_recorded_by_id = visibility_recorded_by_id(sender_exists)
+
                     pending = debug_db.query(PendingAction).filter(
                         PendingAction.phone == phone
                     ).order_by(
@@ -2018,7 +3048,8 @@ async def webhook(req: Request):
                                 replacement_account_request["name"],
                                 period=replacement_account_request["period"],
                                 target_date=replacement_account_request["target_date"],
-                                include_menu=True
+                                include_menu=True,
+                                recorded_by_id=early_visible_recorded_by_id
                             )
                             send_whatsapp_message(phone, msg)
                             return {"status": "customer_summary_replaced"}
@@ -2084,7 +3115,8 @@ async def webhook(req: Request):
                             pending.customer_name,
                             period=period,
                             target_date=target_date,
-                            include_menu=True
+                            include_menu=True,
+                            recorded_by_id=early_visible_recorded_by_id
                         )
                         pending.action = "CUSTOMER_SUMMARY_MENU"
                         debug_db.commit()
@@ -2122,13 +3154,24 @@ async def webhook(req: Request):
                             account_request["name"],
                             period=account_request["period"],
                             target_date=account_request["target_date"],
-                            include_menu=True
+                            include_menu=True,
+                            recorded_by_id=early_visible_recorded_by_id
                         )
                         send_whatsapp_message(phone, msg)
                         return {"status": "customer_summary_menu"}
 
                     if text.lower().strip() == "due":
                         print("Due direct handler reached", flush=True)
+                        allowed, upgrade_msg = ensure_feature_allowed(
+                            debug_db,
+                            sender_exists,
+                            "DUE_REMINDERS",
+                            "Debt reminders"
+                        )
+                        if not allowed:
+                            send_whatsapp_message(phone, upgrade_msg)
+                            return {"status": "due_menu_plan_blocked"}
+
                         try:
                             debug_db.query(PendingAction).filter(
                                 PendingAction.phone == phone
@@ -2173,17 +3216,17 @@ async def webhook(req: Request):
                         debug_db.delete(pending)
 
                         if text.strip() == "1":
-                            due_list = get_due_in_2_days(debug_db, business_owner_phone)
+                            due_list = get_due_in_2_days(debug_db, business_owner_phone, early_visible_recorded_by_id)
                             title = "Due in 2 Days"
                             empty_msg = "No debts due in 2 days."
                             reminder_type = "DUE_2_DAYS"
                         elif text.strip() == "2":
-                            due_list = get_due_today(debug_db, business_owner_phone)
+                            due_list = get_due_today(debug_db, business_owner_phone, early_visible_recorded_by_id)
                             title = "Due Today"
                             empty_msg = "No debts due today."
                             reminder_type = "DUE_TODAY"
                         else:
-                            due_list = get_overdue_debtors(debug_db, business_owner_phone)
+                            due_list = get_overdue_debtors(debug_db, business_owner_phone, early_visible_recorded_by_id)
                             title = "Overdue Debtors"
                             empty_msg = "No overdue debtors."
                             reminder_type = "OVERDUE"
@@ -2318,6 +3361,7 @@ async def webhook(req: Request):
             elif normalized == "2":
                 user.role = "user"
                 user.parent_id = None
+                user.can_view_all_transactions = False
                 db.commit()
                 send_whatsapp_message(
                     phone,
@@ -2343,6 +3387,8 @@ async def webhook(req: Request):
         # Parse message early to check if it's an explicit command
         parsed = parse_message(text)
         is_command = parsed and parsed["type"] != "TRANSACTION"
+        visible_recorded_by_id = visibility_recorded_by_id(user)
+        subscription = get_business_subscription(db, user)
 
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
@@ -2472,6 +3518,7 @@ async def webhook(req: Request):
 
                 user.role = "user"
                 user.parent_id = None
+                user.can_view_all_transactions = False
                 db.delete(pending)
                 db.commit()
                 send_whatsapp_message(
@@ -2501,6 +3548,47 @@ async def webhook(req: Request):
         if pending and pending.action == "ONBOARD_CUSTOMER" and not is_command:
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
+                if pending.action == "SALE":
+                    recent_tx = db.query(Transaction).filter(
+                        Transaction.type == "SALE",
+                        Transaction.amount == pending.buy_amount,
+                        Transaction.product == pending.product,
+                        Transaction.recorded_by_id == user.id,
+                        Transaction.created_at >= datetime.utcnow() - timedelta(minutes=2)
+                    ).first()
+
+                    if recent_tx:
+                        send_whatsapp_message(
+                            phone,
+                            "A similar direct sale was already recorded just a moment ago."
+                        )
+                        db.delete(pending)
+                        db.commit()
+                        return {"status": "duplicate_sale_prevention"}
+
+                    tx = Transaction(
+                        customer_id=None,
+                        type="SALE",
+                        amount=pending.buy_amount,
+                        product=pending.product,
+                        quantity=pending.quantity,
+                        unit=pending.unit,
+                        unit_price=pending.unit_price,
+                        recorded_by_id=user.id,
+                        message_id=message_id,
+                        created_at=datetime.utcnow()
+                    )
+                    db.add(tx)
+                    db.delete(pending)
+                    db.commit()
+
+                    send_whatsapp_message(
+                        phone,
+                        f"✅ Direct sale saved.\n"
+                        f"{pending.product.title()}: ₦{pending.buy_amount:,}"
+                    )
+                    return {"status": "direct_sale_saved"}
+
                 customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
                     Customer.owner_phone == business_owner_phone
@@ -2543,11 +3631,50 @@ async def webhook(req: Request):
             return {"status": "customer_onboarded_confirm"}
 
         if pending and not is_command:
+            if pending.action == "DASHBOARD_MENU":
+                normalized = text.strip().lower()
+                dashboard_aliases = {
+                    "today": "1",
+                    "this week": "2",
+                    "week": "2",
+                    "this month": "3",
+                    "month": "3",
+                    "this year": "4",
+                    "year": "4",
+                    "all": "5",
+                    "all time": "5",
+                    "customers": "6",
+                    "customer count": "6",
+                    "customer list": "7",
+                    "list customers": "7",
+                    "debtors": "8",
+                    "unpaid": "8",
+                    "unpaid debtors": "8",
+                    "products": "9",
+                    "product leaderboard": "9"
+                }
+                selection = dashboard_aliases.get(normalized, normalized)
+                status, msg = build_dashboard_selection_message(
+                    db,
+                    business_owner_phone,
+                    selection,
+                    visible_recorded_by_id
+                )
+
+                if not msg:
+                    send_whatsapp_message(phone, build_dashboard_menu_message())
+                    return {"status": "invalid_dashboard_menu_option"}
+
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, msg)
+                return {"status": status}
+
             if pending.action == "DUE_MENU":
                 # Handle DUE_MENU responses (1, 2, 3)
                 if text == "1":
                     # Due in 2 days logic
-                    due_list = get_due_in_2_days(db, business_owner_phone)
+                    due_list = get_due_in_2_days(db, business_owner_phone, visible_recorded_by_id)
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
@@ -2589,7 +3716,7 @@ async def webhook(req: Request):
 
                 elif text == "2":
                     # Due today logic
-                    due_today = get_due_today(db, business_owner_phone)
+                    due_today = get_due_today(db, business_owner_phone, visible_recorded_by_id)
                     db.query(ReminderMemory).filter(
                         ReminderMemory.phone == phone
                     ).delete()
@@ -2636,7 +3763,7 @@ async def webhook(req: Request):
                     ).delete()
                     db.commit()
 
-                    overdue_list = get_overdue_debtors(db, business_owner_phone)
+                    overdue_list = get_overdue_debtors(db, business_owner_phone, visible_recorded_by_id)
                     if len(overdue_list) == 0:
                         send_whatsapp_message(
                             phone,
@@ -2780,9 +3907,64 @@ async def webhook(req: Request):
 
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
+                pending_items = json.loads(pending.items_json or "[]")
+
+                if pending.action == "SALE":
+                    recent_tx = db.query(Transaction).filter(
+                        Transaction.type == "SALE",
+                        Transaction.amount == pending.buy_amount,
+                        Transaction.product == pending.product,
+                        Transaction.recorded_by_id == user.id,
+                        Transaction.created_at >= datetime.utcnow() - timedelta(minutes=2)
+                    ).first()
+
+                    if recent_tx:
+                        send_whatsapp_message(
+                            phone,
+                            "A similar direct sale was already recorded just a moment ago."
+                        )
+                        db.delete(pending)
+                        db.commit()
+                        return {"status": "duplicate_sale_prevention"}
+
+                    tx = Transaction(
+                        customer_id=None,
+                        type="SALE",
+                        amount=pending.buy_amount,
+                        product=pending.product,
+                        quantity=pending.quantity,
+                        unit=pending.unit,
+                        unit_price=pending.unit_price,
+                        recorded_by_id=user.id,
+                        message_id=message_id,
+                        created_at=datetime.utcnow()
+                    )
+                    db.add(tx)
+                    db.flush()
+                    if pending_items:
+                        add_transaction_items(db, tx.id, pending_items)
+                    elif pending.product:
+                        add_transaction_items(db, tx.id, [{
+                            "product": pending.product,
+                            "quantity": pending.quantity or 1,
+                            "unit": pending.unit,
+                            "unit_price": pending.unit_price or pending.buy_amount,
+                            "total": pending.buy_amount
+                        }])
+
+                    db.delete(pending)
+                    db.commit()
+
+                    send_whatsapp_message(
+                        phone,
+                        f"✅ Direct sale saved.\n"
+                        f"Total: ₦{pending.buy_amount:,}"
+                    )
+                    return {"status": "direct_sale_saved"}
+
                 customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
-                    Customer.owner_phone == phone
+                    Customer.owner_phone == business_owner_phone
                 ).first()
 
                 # 2. Recent Transaction Guard (Prevents User Manual Retries)
@@ -2815,12 +3997,27 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="BUY",
                         amount=pending.buy_amount,
+                        product=pending.product,
+                        quantity=pending.quantity,
+                        unit=pending.unit,
+                        unit_price=pending.unit_price,
                         due_date=pending.due_date,
                         recorded_by_id=user.id,
                         message_id=message_id,
                         created_at=datetime.utcnow()
                     )
                     db.add(tx)
+                    db.flush()
+                    if pending_items:
+                        add_transaction_items(db, tx.id, pending_items)
+                    elif pending.product:
+                        add_transaction_items(db, tx.id, [{
+                            "product": pending.product,
+                            "quantity": pending.quantity or 1,
+                            "unit": pending.unit,
+                            "unit_price": pending.unit_price or pending.buy_amount,
+                            "total": pending.buy_amount
+                        }])
 
                 elif pending.action == "PAY":
                     tx = Transaction(
@@ -2847,12 +4044,27 @@ async def webhook(req: Request):
                         customer_id=customer.id,
                         type="BUY",
                         amount=pending.buy_amount,
+                        product=pending.product,
+                        quantity=pending.quantity,
+                        unit=pending.unit,
+                        unit_price=pending.unit_price,
                         due_date=pending.due_date,
                         recorded_by_id=user.id,
                         message_id=f"{message_id}_buy",
                         created_at=datetime.utcnow()
                     )
                     db.add(buy_tx)
+                    db.flush()
+                    if pending_items:
+                        add_transaction_items(db, buy_tx.id, pending_items)
+                    elif pending.product:
+                        add_transaction_items(db, buy_tx.id, [{
+                            "product": pending.product,
+                            "quantity": pending.quantity or 1,
+                            "unit": pending.unit,
+                            "unit_price": pending.unit_price or pending.buy_amount,
+                            "total": pending.buy_amount
+                        }])
 
                     pay_tx = Transaction(
                         customer_id=customer.id,
@@ -2880,7 +4092,7 @@ async def webhook(req: Request):
                 db.delete(pending)
                 db.commit()
 
-                balance = get_balance(db, customer.id)
+                balance = get_balance(db, customer.id, visible_recorded_by_id)
 
                 if pending.action == "COMBINED":
                     if balance < 0:
@@ -2948,11 +4160,58 @@ async def webhook(req: Request):
             send_whatsapp_message(phone, msg)
             return {"status": "formats"}
 
+        if parsed["type"] == "MY_PLAN":
+            send_whatsapp_message(phone, build_plan_message(subscription))
+            return {"status": "my_plan"}
+
+        if parsed["type"] == "UPGRADE_MENU":
+            send_whatsapp_message(phone, build_upgrade_message())
+            return {"status": "upgrade_menu"}
+
+        if parsed["type"] == "ACTIVATE_PLAN":
+            if not is_subscription_admin(phone):
+                send_whatsapp_message(phone, "Only subscription admins can activate plans.")
+                return {"status": "unauthorized_plan_activation"}
+
+            target_user = db.query(User).filter(
+                User.phone == parsed["phone"]
+            ).first()
+            if not target_user:
+                send_whatsapp_message(phone, "User not found for that phone number.")
+                return {"status": "plan_target_not_found"}
+
+            target_owner = get_business_owner_user(db, target_user)
+            target_owner.subscription_plan = normalize_plan(parsed["plan"])
+            target_owner.subscription_status = "ACTIVE"
+            if parsed.get("days"):
+                target_owner.subscription_expires_at = datetime.utcnow() + timedelta(days=parsed["days"])
+            else:
+                target_owner.subscription_expires_at = None
+            db.commit()
+
+            updated_subscription = get_business_subscription(db, target_owner)
+            send_whatsapp_message(
+                phone,
+                f"Plan updated for {target_owner.name.title()}.\n\n"
+                f"{build_plan_message(updated_subscription)}"
+            )
+            if target_owner.phone != phone:
+                send_whatsapp_message(
+                    target_owner.phone,
+                    f"Your CreditVoice plan is now {target_owner.subscription_plan}."
+                )
+            return {"status": "plan_activated"}
+
         if parsed["type"] == "STAFF_MENU":
             # Only primary admins (business owners) should see this menu
             if user.role != "user" or user.parent_id is not None:
                 send_whatsapp_message(phone, "❌ Only business owners can view the staff management menu.")
                 return {"status": "unauthorized_staff_menu"}
+
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "STAFF", "Staff management")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "staff_plan_blocked"}
 
             staff_members = db.query(User).filter(User.parent_id == user.id).all()
             
@@ -2967,6 +4226,7 @@ async def webhook(req: Request):
             msg = "👥 Staff Management\n\n"
             for i, member in enumerate(staff_members, start=1):
                 status = "✅ Active" if member.role == "delegate" else "⏳ Pending Invitation"
+                access = "Can view all transactions" if member.can_view_all_transactions else "Own records only"
                 
                 # Calculate totals recorded by this specific staff member
                 sales = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
@@ -2982,17 +4242,67 @@ async def webhook(req: Request):
                 msg += (
                     f"{i}. *{member.name.title()}*\n"
                     f"   Status: {status}\n"
+                    f"   Access: {access}\n"
                     f"   Recorded: ₦{sales:,} (Sales), ₦{payments:,} (Payments)\n\n"
                 )
+
+            msg += (
+                "Permission commands:\n"
+                "GRANT STAFF [phone] VIEW ALL\n"
+                "REVOKE STAFF [phone] VIEW ALL"
+            )
             
             send_whatsapp_message(phone, msg)
             return {"status": "staff_menu_sent"}
 
+        if parsed["type"] in ["GRANT_STAFF_VIEW_ALL", "REVOKE_STAFF_VIEW_ALL"]:
+            if user.role != "user" or user.parent_id is not None:
+                send_whatsapp_message(phone, "Only business owners can change staff permissions.")
+                return {"status": "unauthorized_staff_permission"}
+
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "STAFF_PERMISSION", "Staff permissions")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "staff_permission_plan_blocked"}
+
+            staff_phone = parsed["phone"]
+            staff_user = db.query(User).filter(
+                User.phone == staff_phone,
+                User.parent_id == user.id
+            ).first()
+
+            if not staff_user:
+                send_whatsapp_message(
+                    phone,
+                    f"Staff member with phone {staff_phone} not found in your business list."
+                )
+                return {"status": "staff_not_found"}
+
+            grant_access = parsed["type"] == "GRANT_STAFF_VIEW_ALL"
+            staff_user.can_view_all_transactions = grant_access
+            db.commit()
+
+            permission_text = "can now view all business transactions" if grant_access else "can now view only their own records"
+            send_whatsapp_message(
+                phone,
+                f"Updated {staff_user.name.title()}: {permission_text}."
+            )
+            send_whatsapp_message(
+                staff_phone,
+                f"Your CreditVoice access for *{user.name.title()}* was updated. You {permission_text}."
+            )
+            return {"status": "staff_permission_updated"}
+
         if parsed["type"] == "REMOVE_STAFF":
-            if user.role != "user" and user.parent_id:
+            if user.role != "user" or user.parent_id is not None:
                  send_whatsapp_message(phone, "❌ Only business owners can remove staff.")
                  return {"status": "unauthorized_remove_staff"}
-            
+
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "STAFF", "Staff management")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "remove_staff_plan_blocked"}
+
             staff_phone = parsed["phone"]
             staff_user = db.query(User).filter(
                 User.phone == staff_phone,
@@ -3010,6 +4320,7 @@ async def webhook(req: Request):
             # Reset the staff member to a regular user
             staff_user.role = "user"
             staff_user.parent_id = None
+            staff_user.can_view_all_transactions = False
             db.commit()
 
             send_whatsapp_message(phone, f"✅ Access revoked for {staff_name.title()} ({staff_phone}).")
@@ -3018,10 +4329,20 @@ async def webhook(req: Request):
             return {"status": "staff_removed"}
 
         if parsed["type"] == "ADD_STAFF":
-            if user.role != "user" and user.parent_id:
+            if user.role != "user" or user.parent_id is not None:
                  send_whatsapp_message(phone, "❌ Only business owners can add staff.")
                  return {"status": "unauthorized_add_staff"}
-            
+
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "STAFF", "Adding staff")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "add_staff_plan_blocked"}
+
+            staff_allowed, staff_limit_msg = check_staff_limit(db, user, subscription)
+            if not staff_allowed:
+                send_whatsapp_message(phone, staff_limit_msg)
+                return {"status": "staff_limit_reached"}
+
             staff_phone = parsed["phone"]
             staff_name = parsed["name"]
             
@@ -3031,12 +4352,14 @@ async def webhook(req: Request):
                 staff_user.role = "delegate_pending"
                 staff_user.parent_id = user.id
                 staff_user.name = staff_name
+                staff_user.can_view_all_transactions = False
             else:
                 staff_user = User(
                     phone=staff_phone,
                     name=staff_name,
                     role="delegate_pending",
-                    parent_id=user.id
+                    parent_id=user.id,
+                    can_view_all_transactions=False
                 )
                 db.add(staff_user)
             
@@ -3156,6 +4479,11 @@ async def webhook(req: Request):
             return {"status": "confirm_onboard_customer"}
 
         if parsed["type"] == "REMIND":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "DUE_REMINDERS", "Debt reminders")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "reminder_plan_blocked"}
+
             parts = parsed["text"].split()
             if len(parts) != 2 or not parts[1].isdigit():
                 send_whatsapp_message(phone, "Use:\nREMIND 1")
@@ -3191,6 +4519,11 @@ async def webhook(req: Request):
             return {"status": "remind"}
 
         if parsed["type"] == "DUE_MENU":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "DUE_REMINDERS", "Debt reminders")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "due_menu_plan_blocked"}
+
             db.query(PendingAction).filter(
                 PendingAction.phone == phone
             ).delete()
@@ -3212,55 +4545,57 @@ async def webhook(req: Request):
             return {"status": "due_menu"}
 
         if parsed["type"] == "TODAY_SALES":
-            total = get_today_sales(db, business_owner_phone)
+            total = get_today_sales(db, business_owner_phone, visible_recorded_by_id)
             send_whatsapp_message(phone, f"📊 Today's sales: ₦{total:,}")
             return {"status": "today_sales"}
 
         if parsed["type"] == "WEEKLY_SALES":
-            total = get_weekly_sales(db, business_owner_phone)
+            total = get_weekly_sales(db, business_owner_phone, visible_recorded_by_id)
             send_whatsapp_message(phone, f"📊 Weekly sales: ₦{total:,}")
             return {"status": "weekly_sales"}
 
         if parsed["type"] == "MONTHLY_SALES":
-            total = get_monthly_sales(db, business_owner_phone)
+            total = get_monthly_sales(db, business_owner_phone, visible_recorded_by_id)
             send_whatsapp_message(phone, f"📊 Monthly sales: ₦{total:,}")
             return {"status": "monthly_sales"}
 
         if parsed["type"] == "YEARLY_SALES":
-            total = get_yearly_sales(db, business_owner_phone)
+            total = get_yearly_sales(db, business_owner_phone, visible_recorded_by_id)
             send_whatsapp_message(phone, f"📊 Yearly sales: ₦{total:,}")
             return {"status": "yearly_sales"}
 
         if parsed["type"] == "PERIOD_TRANSACTIONS":
-            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"), visible_recorded_by_id)
             period_name = parsed.get("period", "ALL TIME").title()
             send_whatsapp_message(
                 phone,
                 f"📊 {period_name} transactions: {stats['transaction_count']:,}\n"
-                f"Total sales: ₦{stats['total_buy']:,}\n"
-                f"Total received: ₦{stats['total_pay']:,}"
+                f"Credit sales: ₦{stats['credit_sales']:,}\n"
+                f"Direct sales: ₦{stats['direct_sales']:,}\n"
+                f"Total sales: ₦{stats['total_sales']:,}\n"
+                f"Payments received: ₦{stats['total_pay']:,}"
             )
             return {"status": "period_transactions"}
 
         if parsed["type"] == "PERIOD_TOTAL_RECEIVED":
-            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"), visible_recorded_by_id)
             label = parsed.get("period", "all time")
             send_whatsapp_message(phone, f"📥 Total received {label}: ₦{stats['total_pay']:,}")
             return {"status": "period_total_received"}
 
         if parsed["type"] == "PERIOD_TOTAL_PAID":
-            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"), visible_recorded_by_id)
             label = parsed.get("period", "all time")
             send_whatsapp_message(phone, f"📤 Total paid {label}: ₦{stats['total_pay']:,}")
             return {"status": "period_total_paid"}
 
         if parsed["type"] == "OUTSTANDING_BALANCE":
-            total = get_outstanding_balance(db, business_owner_phone)
+            total = get_outstanding_balance(db, business_owner_phone, visible_recorded_by_id)
             send_whatsapp_message(phone, f"💰 Total outstanding balance: ₦{total:,}")
             return {"status": "outstanding_balance"}
 
         if parsed["type"] == "PERIOD_CASH_CREDIT":
-            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"))
+            stats = get_transaction_stats(db, business_owner_phone, parsed.get("period"), visible_recorded_by_id)
             measure = parsed.get("measure")
             if measure == "CASH":
                 send_whatsapp_message(
@@ -3275,7 +4610,12 @@ async def webhook(req: Request):
             return {"status": "period_cash_credit"}
 
         if parsed["type"] == "MOST_SOLD_PRODUCT":
-            product = get_most_sold_product(db, business_owner_phone)
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "ADVANCED_REPORTS", "Product reports")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "product_report_plan_blocked"}
+
+            product = get_most_sold_product(db, business_owner_phone, recorded_by_id=visible_recorded_by_id)
             if not product:
                 send_whatsapp_message(phone, "No product sales data available yet.")
                 return {"status": "no_product_sales"}
@@ -3288,7 +4628,12 @@ async def webhook(req: Request):
             return {"status": "most_sold_product"}
 
         if parsed["type"] == "PRODUCT_LEADERBOARD":
-            results = get_product_sales_by_period(db, business_owner_phone)
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "ADVANCED_REPORTS", "Product reports")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "product_report_plan_blocked"}
+
+            results = get_product_sales_by_period(db, business_owner_phone, recorded_by_id=visible_recorded_by_id)
             if not results:
                 send_whatsapp_message(phone, "No product sales data available yet.")
                 return {"status": "product_leaderboard_empty"}
@@ -3301,10 +4646,15 @@ async def webhook(req: Request):
             return {"status": "product_leaderboard"}
 
         if parsed["type"] == "PRODUCT_SALES_BY_DATE":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "ADVANCED_REPORTS", "Product reports")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "product_report_plan_blocked"}
+
             if not parsed.get("date"):
                 send_whatsapp_message(phone, "Send product sales by date DD/MM/YYYY")
                 return {"status": "product_sales_by_date_missing"}
-            results = get_product_sales_by_date(db, business_owner_phone, parsed["date"])
+            results = get_product_sales_by_date(db, business_owner_phone, parsed["date"], visible_recorded_by_id)
             if not results:
                 send_whatsapp_message(phone, f"No product sales found for {parsed['date']}")
                 return {"status": "product_sales_by_date_empty"}
@@ -3318,7 +4668,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "CUSTOMER_LIST":
             period = parsed.get("period")
-            customers = list_customers(db, business_owner_phone, period)
+            customers = list_customers(db, business_owner_phone, period, visible_recorded_by_id)
             if not customers:
                 label = f" for {period.lower()}" if period else ""
                 send_whatsapp_message(phone, f"No customers found{label}.")
@@ -3336,7 +4686,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "CUSTOMER_COUNT":
             period = parsed.get("period")
-            count = get_customer_count(db, business_owner_phone, period)
+            count = get_customer_count(db, business_owner_phone, period, visible_recorded_by_id)
             period_label = period.lower() if period else "all time"
             send_whatsapp_message(
                 phone,
@@ -3346,7 +4696,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "NEW_CUSTOMERS":
             period = parsed.get("period")
-            count = get_new_customer_count(db, business_owner_phone, period)
+            count = get_new_customer_count(db, business_owner_phone, period, visible_recorded_by_id)
             period_label = period.lower() if period else "all time"
             send_whatsapp_message(
                 phone,
@@ -3356,7 +4706,7 @@ async def webhook(req: Request):
 
         if parsed["type"] == "PAID_CUSTOMERS":
             period = parsed.get("period")
-            count = get_paid_customer_count(db, business_owner_phone, period)
+            count = get_paid_customer_count(db, business_owner_phone, period, visible_recorded_by_id)
             period_label = period.lower() if period else "all time"
             send_whatsapp_message(
                 phone,
@@ -3366,6 +4716,33 @@ async def webhook(req: Request):
 
         if parsed["type"] == "DASHBOARD_SUMMARY":
             period = parsed.get("period")
+            if period is None and text.lower().strip() in [
+                "dashboard",
+                "stats",
+                "dashboard summary",
+                "dashboard stats",
+                "business summary",
+                "business stats"
+            ]:
+                db.query(PendingAction).filter(
+                    PendingAction.phone == phone
+                ).delete()
+                db.add(
+                    PendingAction(
+                        phone=phone,
+                        customer_name="",
+                        action="DASHBOARD_MENU",
+                        last_customer=""
+                    )
+                )
+                db.commit()
+                send_whatsapp_message(phone, build_dashboard_menu_message())
+                return {"status": "dashboard_menu"}
+
+            summary = get_dashboard_summary(db, business_owner_phone, period, visible_recorded_by_id)
+            send_whatsapp_message(phone, build_dashboard_summary_message(summary, period))
+            return {"status": "dashboard_summary"}
+
             period_label = period.lower() if period else "all time"
             total_customers = get_customer_count(db, business_owner_phone, period)
             new_customers = get_new_customer_count(db, business_owner_phone, period)
@@ -3384,7 +4761,7 @@ async def webhook(req: Request):
             return {"status": "dashboard_summary"}
 
         if parsed["type"] == "BIGGEST_DEBTOR":
-            debtor = get_biggest_debtor(db, business_owner_phone)
+            debtor = get_biggest_debtor(db, business_owner_phone, visible_recorded_by_id)
             if not debtor:
                 send_whatsapp_message(phone, "No debtors found.")
                 return {"status": "biggest_debtor_empty"}
@@ -3395,7 +4772,7 @@ async def webhook(req: Request):
             return {"status": "biggest_debtor"}
 
         if parsed["type"] == "DEBTOR_LEADERBOARD":
-            leaderboard = get_debtor_leaderboard(db, business_owner_phone)
+            leaderboard = get_debtor_leaderboard(db, business_owner_phone, recorded_by_id=visible_recorded_by_id)
             if not leaderboard:
                 send_whatsapp_message(phone, "No debtors found.")
                 return {"status": "debtor_leaderboard_empty"}
@@ -3406,7 +4783,7 @@ async def webhook(req: Request):
             return {"status": "debtor_leaderboard"}
 
         if parsed["type"] == "SEARCH_CUSTOMER":
-            customers = search_customers(db, business_owner_phone, parsed.get("query", ""))
+            customers = search_customers(db, business_owner_phone, parsed.get("query", ""), visible_recorded_by_id)
             if not customers:
                 send_whatsapp_message(phone, "Customer not found.")
                 return {"status": "search_customer_empty"}
@@ -3417,7 +4794,7 @@ async def webhook(req: Request):
             return {"status": "search_customer"}
 
         if parsed["type"] == "CUSTOMER_SUMMARY":
-            summary = get_customer_summary(db, business_owner_phone, parsed.get("name", ""))
+            summary = get_customer_summary(db, business_owner_phone, parsed.get("name", ""), visible_recorded_by_id)
             if not summary:
                 send_whatsapp_message(phone, "Customer not found.")
                 return {"status": "customer_summary_not_found"}
@@ -3434,6 +4811,60 @@ async def webhook(req: Request):
             )
             return {"status": "customer_summary"}
 
+        if parsed["type"] == "ADD_TRANSACTION_NOTE":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "TRANSACTION_NOTES", "Transaction notes")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "transaction_notes_plan_blocked"}
+
+            visible_tx = get_visible_transaction(
+                db,
+                business_owner_phone,
+                parsed["transaction_id"],
+                visible_recorded_by_id
+            )
+            if not visible_tx:
+                send_whatsapp_message(phone, "Transaction not found.")
+                return {"status": "transaction_note_not_found"}
+
+            transaction, customer = visible_tx
+            note = TransactionNote(
+                transaction_id=transaction.id,
+                author_user_id=user.id,
+                note=parsed["note"]
+            )
+            db.add(note)
+            db.commit()
+            transaction_name = customer.name.title() if customer else "direct sale"
+            send_whatsapp_message(
+                phone,
+                f"Note added to transaction #{transaction.id} for {transaction_name}."
+            )
+            return {"status": "transaction_note_added"}
+
+        if parsed["type"] == "TRANSACTION_NOTES":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "TRANSACTION_NOTES", "Transaction notes")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "transaction_notes_plan_blocked"}
+
+            visible_tx, notes = get_transaction_notes(
+                db,
+                business_owner_phone,
+                parsed["transaction_id"],
+                visible_recorded_by_id
+            )
+            if not visible_tx:
+                send_whatsapp_message(phone, "Transaction not found.")
+                return {"status": "transaction_notes_not_found"}
+
+            transaction, customer = visible_tx
+            send_whatsapp_message(
+                phone,
+                format_transaction_note_thread(transaction, customer, notes)
+            )
+            return {"status": "transaction_notes"}
+
         if parsed["type"] == "CUSTOMER_TRANSACTIONS":
             customer = db.query(Customer).filter(
                 Customer.name == parsed.get("name", ""),
@@ -3442,28 +4873,49 @@ async def webhook(req: Request):
             if not customer:
                 send_whatsapp_message(phone, "Customer not found.")
                 return {"status": "customer_transactions_not_found"}
-            total_buy = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+            buy_query = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
                 Transaction.customer_id == customer.id,
                 Transaction.type == "BUY"
-            ).scalar()
-            total_pay = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+            )
+            pay_query = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
                 Transaction.customer_id == customer.id,
                 Transaction.type == "PAY"
-            ).scalar()
-            tx_count = db.query(Transaction).filter(
+            )
+            tx_query = db.query(Transaction).filter(
                 Transaction.customer_id == customer.id
-            ).count()
+            )
+            if visible_recorded_by_id:
+                buy_query = buy_query.filter(Transaction.recorded_by_id == visible_recorded_by_id)
+                pay_query = pay_query.filter(Transaction.recorded_by_id == visible_recorded_by_id)
+                tx_query = tx_query.filter(Transaction.recorded_by_id == visible_recorded_by_id)
+            tx_count = tx_query.count()
+            if visible_recorded_by_id and tx_count == 0:
+                send_whatsapp_message(phone, "Customer not found.")
+                return {"status": "customer_transactions_not_found"}
+            total_buy = buy_query.scalar()
+            total_pay = pay_query.scalar()
+            recent_transactions = tx_query.order_by(
+                Transaction.created_at.desc()
+            ).limit(5).all()
+            recent_lines = ""
+            if recent_transactions:
+                recent_lines = "\n\nRecent transactions\n"
+                for tx in recent_transactions:
+                    tx_date = tx.created_at.strftime("%d/%m/%Y")
+                    recent_lines += f"#{tx.id} {tx_date} {tx.type}: N{tx.amount:,}\n"
+                recent_lines += "\nAdd note:\nnote transaction 12 customer promised Friday"
             send_whatsapp_message(
                 phone,
                 f"📊 {customer.name.title()} transactions\n"
                 f"Total: {tx_count:,}\n"
                 f"Bought: ₦{total_buy:,}\n"
                 f"Paid: ₦{total_pay:,}"
+                f"{recent_lines}"
             )
             return {"status": "customer_transactions"}
 
         if parsed["type"] == "OVERDUE_DEBTORS":
-            overdue_list = get_overdue_debtors(db, business_owner_phone)
+            overdue_list = get_overdue_debtors(db, business_owner_phone, visible_recorded_by_id)
             if len(overdue_list) == 0:
                 send_whatsapp_message(phone, "✅ No overdue debtors.")
                 return {"status": "no_overdue"}
@@ -3482,7 +4934,7 @@ async def webhook(req: Request):
             return {"status": "overdue_direct"}
 
         if parsed["type"] == "UNPAID_DEBTORS":
-            debtors, total_outstanding = get_unpaid_debtors(db, business_owner_phone)
+            debtors, total_outstanding = get_unpaid_debtors(db, business_owner_phone, visible_recorded_by_id)
             if len(debtors) == 0:
                 send_whatsapp_message(phone, "✅ No unpaid debtors.")
                 return {"status": "no_debtors"}
@@ -3506,7 +4958,15 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, "Customer not found.")
                 return {"status": "not_found"}
 
-            balance = get_balance(db, customer.id)
+            balance = get_balance(db, customer.id, visible_recorded_by_id)
+            if visible_recorded_by_id:
+                has_customer_access = db.query(Transaction).filter(
+                    Transaction.customer_id == customer.id,
+                    Transaction.recorded_by_id == visible_recorded_by_id
+                ).first()
+                if not has_customer_access:
+                    send_whatsapp_message(phone, "Customer not found.")
+                    return {"status": "not_found"}
             if balance < 0:
                 msg = f"{customer.name} credit: ₦{abs(balance):,}"
             else:
@@ -3516,6 +4976,67 @@ async def webhook(req: Request):
             return {"status": "balance"}
 
         # Handle pronoun references
+        if parsed["action"] == "SALE":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "DIRECT_SALE", "Direct sales")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "direct_sale_plan_blocked"}
+
+            transaction_allowed, transaction_limit_msg = check_monthly_transaction_limit(
+                db,
+                business_owner_phone,
+                subscription,
+                planned_rows=1
+            )
+            if not transaction_allowed:
+                send_whatsapp_message(phone, transaction_limit_msg)
+                return {"status": "transaction_limit_reached"}
+
+            db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).delete()
+            db.commit()
+
+            pending = PendingAction(
+                phone=phone,
+                customer_name="",
+                last_customer="",
+                action="SALE",
+                buy_amount=parsed["buy_amount"],
+                product=parsed.get("product"),
+                quantity=parsed.get("quantity"),
+                unit=parsed.get("unit"),
+                unit_price=parsed.get("unit_price"),
+                items_json=json.dumps(parsed.get("invoice_items") or [])
+            )
+            db.add(pending)
+            db.commit()
+
+            if parsed.get("invoice_items"):
+                item_line = (
+                    f"{format_invoice_items(parsed['invoice_items'])}\n\n"
+                    f"Total: ₦{parsed['total']:,}"
+                )
+            elif parsed.get("quantity") and parsed.get("unit"):
+                item_line = (
+                    f"{parsed['quantity']} {parsed['unit']} of {parsed['product']} "
+                    f"at ₦{parsed['unit_price']:,}, total: ₦{parsed['total']:,}"
+                )
+            elif parsed.get("quantity") and parsed["quantity"] > 1:
+                item_line = (
+                    f"{parsed['quantity']} {parsed['product']} "
+                    f"at ₦{parsed['unit_price']:,}, total: ₦{parsed['total']:,}"
+                )
+            else:
+                item_line = f"{parsed['product']} - ₦{parsed['total']:,}"
+
+            send_whatsapp_message(
+                phone,
+                f"Confirm direct sale:\n{item_line}\n"
+                f"Reply YES or 1 to save, EDIT or 2 to change."
+            )
+            return {"status": "confirm_direct_sale"}
+
         customer_name = parsed["name"].lower()
 
         if customer_name in ["he", "she"]:
@@ -3529,6 +5050,12 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, "No previous customer found.")
                 return {"status": "no_memory"}
 
+        if parsed.get("invoice_items"):
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVOICE", "Invoice-style multi-item sales")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "invoice_plan_blocked"}
+
         # Get or create customer
         customer = db.query(Customer).filter(
             Customer.name == customer_name,
@@ -3536,12 +5063,32 @@ async def webhook(req: Request):
         ).first()
 
         if not customer:
+            customer_allowed, customer_limit_msg = check_customer_limit(
+                db,
+                business_owner_phone,
+                subscription
+            )
+            if not customer_allowed:
+                send_whatsapp_message(phone, customer_limit_msg)
+                return {"status": "customer_limit_reached"}
+
             customer = Customer(
                 name=customer_name,
                 owner_phone=business_owner_phone
             )
             db.add(customer)
             db.commit()
+
+        planned_rows = 2 if parsed["action"] == "COMBINED" else 1
+        transaction_allowed, transaction_limit_msg = check_monthly_transaction_limit(
+            db,
+            business_owner_phone,
+            subscription,
+            planned_rows=planned_rows
+        )
+        if not transaction_allowed:
+            send_whatsapp_message(phone, transaction_limit_msg)
+            return {"status": "transaction_limit_reached"}
 
         # Clear pending and save new pending
         db.query(PendingAction).filter(
@@ -3556,6 +5103,11 @@ async def webhook(req: Request):
             action=parsed["action"],
             buy_amount=parsed["buy_amount"],
             paid_amount=parsed["paid_amount"],
+            product=parsed.get("product"),
+            quantity=parsed.get("quantity"),
+            unit=parsed.get("unit"),
+            unit_price=parsed.get("unit_price"),
+            items_json=json.dumps(parsed.get("invoice_items") or []),
             due_date=parsed["due_date"]
         )
 
@@ -3564,7 +5116,23 @@ async def webhook(req: Request):
 
         # Send confirmation
         if parsed["action"] == "BUY":
-            if parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
+            if parsed.get("invoice_items"):
+                item_line = (
+                    f"{format_invoice_items(parsed['invoice_items'])}\n\n"
+                    f"Total: ₦{parsed['total']:,}"
+                )
+                if parsed["due_date"]:
+                    due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
+                    confirm_msg = (
+                        f"Confirm invoice for {customer.name}:\n{item_line}\n"
+                        f"Due: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
+                    )
+                else:
+                    confirm_msg = (
+                        f"Confirm invoice for {customer.name}:\n{item_line}\n"
+                        f"Reply YES or 1 to save, EDIT or 2 to change."
+                    )
+            elif parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
                 item_line = (
                     f"{parsed['quantity']} {parsed['unit']} of {parsed['product']} "
                     f"at ₦{parsed['unit_price']:,} each, total: ₦{parsed['total']:,}"
@@ -3599,7 +5167,12 @@ async def webhook(req: Request):
             )
 
         elif parsed["action"] == "COMBINED":
-            if parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
+            if parsed.get("invoice_items"):
+                item_line = (
+                    f"\n{format_invoice_items(parsed['invoice_items'])}\n\n"
+                    f"Total bought: ₦{parsed['buy_amount']:,}"
+                )
+            elif parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
                 item_line = (
                     f"{parsed['quantity']} {parsed['unit']} of {parsed['product']} at ₦{parsed['unit_price']:,} each, total: ₦{parsed['total']:,}"
                 )
@@ -3609,13 +5182,13 @@ async def webhook(req: Request):
             if parsed["due_date"]:
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 confirm_msg = (
-                    f"Confirm:\n{customer.name} bought {item_line} "
+                    f"Confirm:\n{customer.name} bought {item_line}\n"
                     f"and paid ₦{parsed['paid_amount']:,}\n"
                     f"Balance due on: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             else:
                 confirm_msg = (
-                    f"Confirm:\n{customer.name} bought {item_line} "
+                    f"Confirm:\n{customer.name} bought {item_line}\n"
                     f"and paid ₦{parsed['paid_amount']:,}?\n"
                     f"Reply YES or 1 to save, EDIT or 2 to change."
                 )
