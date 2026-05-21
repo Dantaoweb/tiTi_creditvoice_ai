@@ -821,6 +821,156 @@ def extract_direct_sale_details(text):
     }
 
 
+def extract_due_date_from_text(text):
+    clean_text = text.lower()
+    today_phrases = [
+        "due today",
+        "pay today",
+        "balance today",
+        "will pay today",
+        "will balance today"
+    ]
+    tomorrow_phrases = [
+        "due tomorrow",
+        "due tommorrow",
+        "pay tomorrow",
+        "pay tommorrow",
+        "balance tomorrow",
+        "balance tommorrow",
+        "will pay tomorrow",
+        "will pay tommorrow",
+        "will balance tomorrow",
+        "will balance tommorrow"
+    ]
+
+    if any(phrase in clean_text for phrase in today_phrases):
+        return datetime.utcnow()
+
+    if any(phrase in clean_text for phrase in tomorrow_phrases):
+        return datetime.utcnow() + timedelta(days=1)
+
+    date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", clean_text)
+    if not date_match:
+        return None
+
+    try:
+        return datetime.strptime(date_match.group(1), "%d/%m/%Y")
+    except ValueError:
+        return None
+
+
+def extract_artisan_transaction(text):
+    clean = text.lower().replace(",", "").strip()
+    amounts = extract_amounts(clean)
+    if not amounts:
+        return None
+    due_date = extract_due_date_from_text(clean)
+
+    balance_match = re.search(
+        r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays|pay\s+me|paid\s+me)\s+"
+        r"(?P<paid>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+"
+        r"(?:balance|bal|remaining|remain)\s+"
+        r"(?P<balance>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)",
+        clean
+    )
+    if balance_match:
+        paid_amount = parse_amount_token(balance_match.group("paid"))
+        balance_amount = parse_amount_token(balance_match.group("balance"))
+        if paid_amount is None or balance_amount is None:
+            return None
+        total_amount = paid_amount + balance_amount
+        return {
+            "type": "TRANSACTION",
+            "name": balance_match.group("name").strip(),
+            "action": "COMBINED",
+            "buy_amount": total_amount,
+            "paid_amount": paid_amount,
+            "quantity": None,
+            "unit": None,
+            "product": "service/job",
+            "unit_price": total_amount,
+            "invoice_items": None,
+            "total": total_amount,
+            "due_date": due_date,
+            "artisan_note": f"Paid N{paid_amount:,}, balance N{balance_amount:,}"
+        }
+
+    receive_match = re.search(
+        r"^(?:i\s+)?(?:receive|received|collect|collected)\s+"
+        r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)"
+        r"(?:\s+from\s+(?P<name>.+?))?"
+        r"(?:\s+for\s+(?P<description>.+))?$",
+        clean
+    )
+    if receive_match:
+        amount = parse_amount_token(receive_match.group("amount"))
+        if amount is None:
+            return None
+        description = (receive_match.group("description") or "service/work").strip()
+        customer_name = (receive_match.group("name") or "").strip()
+        product = description
+        if customer_name:
+            product = f"{description} - {customer_name}"
+        return {
+            "type": "TRANSACTION",
+            "name": "",
+            "action": "SALE",
+            "buy_amount": amount,
+            "paid_amount": 0,
+            "quantity": 1,
+            "unit": None,
+            "product": product,
+            "unit_price": amount,
+            "invoice_items": None,
+            "total": amount,
+            "due_date": None,
+            "artisan_note": "Service income, no customer debt"
+        }
+
+    paid_me_for_match = re.search(
+        r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays)\s+(?:me\s+)?"
+        r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+for\s+(?P<description>.+)$",
+        clean
+    )
+    if paid_me_for_match:
+        amount = parse_amount_token(paid_me_for_match.group("amount"))
+        if amount is None:
+            return None
+        return {
+            "type": "TRANSACTION",
+            "name": "",
+            "action": "SALE",
+            "buy_amount": amount,
+            "paid_amount": 0,
+            "quantity": 1,
+            "unit": None,
+            "product": f"{paid_me_for_match.group('description').strip()} - {paid_me_for_match.group('name').strip()}",
+            "unit_price": amount,
+            "invoice_items": None,
+            "total": amount,
+            "due_date": None,
+            "artisan_note": "Service income, no customer debt"
+        }
+
+    ambiguous_match = re.search(
+        r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays)\s+me\s+"
+        r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)$",
+        clean
+    )
+    if ambiguous_match:
+        amount = parse_amount_token(ambiguous_match.group("amount"))
+        if amount is None:
+            return None
+        return {
+            "type": "ARTISAN_PAYMENT_CHOICE",
+            "name": ambiguous_match.group("name").strip(),
+            "amount": amount,
+            "description": "service/work"
+        }
+
+    return None
+
+
 def parse_invoice_item(item_text):
     clean = item_text.lower().replace(",", "").strip()
     clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean).strip()
@@ -1170,7 +1320,20 @@ def extract_customer_onboarding(text):
 
     phone_match = re.search(r"(\+?\d[\d ]{7,14}\d)", clean)
     if not phone_match:
-        return None
+        if not re.search(r"^(?:add|save)\s+customer\s+", clean):
+            return None
+        name = re.sub(
+            r"^(?:add|save)\s+customer\s+",
+            "",
+            clean
+        ).strip()
+        name = re.sub(r"\b(please|pls)\b", "", name).strip()
+        if not name or len(name) < 2:
+            return None
+        return {
+            "name": name,
+            "customer_phone": None
+        }
 
     phone = normalize_phone(phone_match.group(1))
     if len(re.sub(r"\D", "", phone)) < 7:
@@ -1205,7 +1368,7 @@ def parse_message(text):
 
     clean_text = text.lower().strip()
 
-    if clean_text in ["menu", "help", "start", "hi", "hello"]:
+    if clean_text in ["formats", "format", "f"]:
         return {"type": "FORMATS"}
 
     # =========================
@@ -1778,6 +1941,15 @@ def parse_message(text):
             "text": text
         }
 
+    artisan = extract_artisan_transaction(text)
+    if artisan:
+        return artisan
+
+    if clean_text in ["resign", "stop working", "leave staff", "leave business", "remove me as staff"]:
+        return {
+            "type": "RESIGN_REQUEST"
+        }
+
     if "no longer working with" in clean_text:
         business = clean_text.split("working with")[-1].strip()
         return {
@@ -1844,10 +2016,15 @@ def parse_message(text):
 
     tomorrow_phrases = [
         "due tomorrow",
+        "due tommorrow",
         "pay tomorrow",
+        "pay tommorrow",
         "balance tomorrow",
+        "balance tommorrow",
         "will pay tomorrow",
-        "will balance tomorrow"
+        "will pay tommorrow",
+        "will balance tomorrow",
+        "will balance tommorrow"
     ]
     
     date_match = None
@@ -2574,6 +2751,144 @@ def build_post_onboarding_menu(business_name):
     )
 
 
+def build_owner_home_menu(user, subscription):
+    if subscription["plan"] == PLAN_PRO:
+        extra_lines = "\n5. Staff menu\n6. Help formats"
+    else:
+        extra_lines = "\n5. Help formats"
+    return (
+        f"Hello {user.name.title()}.\n\n"
+        "What would you like to do?\n"
+        "1. Record transaction\n"
+        "2. Add customer\n"
+        "3. Dashboard\n"
+        "4. Upgrade / My plan"
+        f"{extra_lines}"
+    )
+
+
+def build_staff_home_menu(user, business_name):
+    access = "Can view all business transactions" if can_view_all_business_transactions(user) else "Own records only"
+    return (
+        f"Hello {user.name.title()}.\n\n"
+        f"You are staff under {business_name.title()}.\n"
+        f"Access: {access}\n\n"
+        "You can:\n"
+        "1. Record transaction\n"
+        "2. View customers you handled\n"
+        "3. Dashboard\n"
+        "4. Resign"
+    )
+
+
+def build_invalid_message():
+    return (
+        "I could not understand that yet.\n\n"
+        "Try:\n"
+        "Ade bought rice 5000\n"
+        "Ade paid 3000\n"
+        "dashboard\n"
+        "upgrade\n\n"
+        "Send FORMATS for more examples."
+    )
+
+
+def build_supported_formats_message():
+    return (
+        "Supported Formats\n\n"
+        "Customer debt/sales\n"
+        "Ade bought rice 5000\n"
+        "Ade bought 3kg cement for 5000\n"
+        "Ade bought rice 4000, beans 3000 paid 2000\n\n"
+        "Payment\n"
+        "Ade paid 3000\n"
+        "Alhaji pay 4000 balance 6000 due tomorrow\n\n"
+        "Due date\n"
+        "Ade bought rice 5000 due 12/2/2026\n"
+        "Ade bought rice 5000 paid 2000 due tomorrow\n\n"
+        "Direct sale/service income\n"
+        "I sold phone 45k\n"
+        "I supply 1 truck load of sand 60000\n"
+        "I received 1000 for doing chair\n\n"
+        "Customer setup\n"
+        "John 08012345678\n"
+        "add customer John\n"
+        "John phone 08012345678\n\n"
+        "Other commands\n"
+        "dashboard\n"
+        "my plan\n"
+        "upgrade\n"
+        "change name"
+    )
+
+
+def build_projected_balance_line(db, customer_id, parsed, recorded_by_id=None):
+    current_balance = get_balance(db, customer_id, recorded_by_id)
+    buy_amount = parsed.get("buy_amount") or 0
+    paid_amount = parsed.get("paid_amount") or 0
+    projected = current_balance + buy_amount - paid_amount
+    if projected < 0:
+        return f"Credit after save: N{abs(projected):,}"
+    return f"Balance after save: N{projected:,}"
+
+
+def pending_transaction_summary(pending, customer=None):
+    if pending.action == "SALE":
+        label = pending.product.title() if pending.product else "Service/direct income"
+        return (
+            "Saved as service/direct income.\n"
+            f"{label}: N{pending.buy_amount:,}\n"
+            "No customer debt was recorded."
+        )
+
+    customer_name = customer.name.title() if customer else pending.customer_name.title()
+    if pending.action == "COMBINED":
+        return (
+            f"{customer_name} transaction saved.\n"
+            f"Charge: N{pending.buy_amount:,}\n"
+            f"Paid: N{pending.paid_amount:,}"
+        )
+    if pending.action == "BUY":
+        return (
+            f"{customer_name} charge saved.\n"
+            f"Amount: N{pending.buy_amount:,}"
+        )
+    if pending.action == "PAY":
+        return (
+            f"{customer_name} payment saved.\n"
+            f"Paid: N{pending.paid_amount:,}"
+        )
+    return "Saved."
+
+
+def balance_status_line(balance):
+    if balance < 0:
+        return f"Credit: N{abs(balance):,}"
+    return f"Balance: N{balance:,}"
+
+
+def edit_prompt_for_pending(pending):
+    if pending.action == "SALE":
+        return (
+            "No problem. Send the corrected service income.\n"
+            "Example: I received 1000 for doing chair"
+        )
+    if pending.action == "PAY":
+        return (
+            "No problem. Send the corrected payment.\n"
+            "Example: Ade paid 3000"
+        )
+    if pending.action == "COMBINED":
+        return (
+            "No problem. Send the corrected transaction.\n"
+            "Example: Ade bought rice 5000 paid 2000"
+        )
+    return (
+        "No problem. Send the corrected transaction.\n"
+        "Example: Ade bought rice 5000"
+    )
+
+
 def build_onboarding_start_message():
     return (
         "Welcome to CreditVoice.\n\n"
@@ -3153,11 +3468,12 @@ def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id
         if not results:
             return "dashboard_products_empty", "No product sales data available yet."
 
-        msg = "Product Leaderboard\n\n"
+        msg = "Product Leaderboard by Quantity\n\n"
         for i, row in enumerate(results[:10], start=1):
+            unit_label = "unit" if row.total_quantity == 1 else "units"
             msg += (
                 f"{i}. {row.product.title()} -> "
-                f"{row.total_quantity:,} units, N{row.total_amount:,}\n"
+                f"{row.total_quantity:,} {unit_label}, N{row.total_amount:,}\n"
             )
         return "dashboard_product_leaderboard", msg
 
@@ -3831,22 +4147,6 @@ async def webhook(req: Request):
             text = (message.get("text") or {}).get("body", "").strip()
             print(f"Webhook parsed message from {phone}: {text}", flush=True)
 
-            if phone and text.lower() in ["menu", "help", "start", "hi", "hello"]:
-                send_whatsapp_message(
-                    phone,
-                    "CreditVoice Menu\n\n"
-                    "Record sales and payments:\n"
-                    "Ade bought rice 5000\n"
-                    "Ade paid 3000\n"
-                    "Ade bought rice 5000 paid 2000\n\n"
-                    "Reports:\n"
-                    "today sales\n"
-                    "unpaid debtors\n"
-                    "due\n"
-                    "dashboard"
-                )
-                return {"status": "menu"}
-
             if phone and text:
                 debug_db = SessionLocal()
                 try:
@@ -4219,27 +4519,35 @@ async def webhook(req: Request):
             )
             return {"status": "unregistered_voice"}
 
+        voice_transcript_text = None
+
         # Parse early so unregistered app/subscription admins can use admin commands.
         parsed = parse_message(text) if message_type == "text" else None
         is_command = parsed and parsed["type"] != "TRANSACTION"
+        admin_command_allowed = False
+        app_admin_command_types = [
+            "APP_ADMIN_DASHBOARD",
+            "APP_ADMIN_USERS_BY_PLAN",
+            "MANAGE_APP_ADMIN_ROLE",
+            "LIST_APP_ADMIN_ROLES"
+        ]
+        subscription_admin_command_types = [
+            "PENDING_SUBSCRIPTIONS",
+            "APPROVE_SUBSCRIPTION",
+            "REJECT_SUBSCRIPTION",
+            "ACTIVATE_PLAN"
+        ]
+        admin_command_requested = bool(
+            parsed and parsed["type"] in app_admin_command_types + subscription_admin_command_types
+        )
 
         if not user and parsed:
             admin_command_allowed = (
-                parsed["type"] in [
-                    "APP_ADMIN_DASHBOARD",
-                    "APP_ADMIN_USERS_BY_PLAN",
-                    "MANAGE_APP_ADMIN_ROLE",
-                    "LIST_APP_ADMIN_ROLES"
-                ] and is_app_admin(phone, db)
+                parsed["type"] in app_admin_command_types and is_app_admin(phone, db)
             ) or (
-                parsed["type"] in [
-                    "PENDING_SUBSCRIPTIONS",
-                    "APPROVE_SUBSCRIPTION",
-                    "REJECT_SUBSCRIPTION",
-                    "ACTIVATE_PLAN"
-                ] and is_subscription_admin(phone, db)
+                parsed["type"] in subscription_admin_command_types and is_subscription_admin(phone, db)
             )
-            if not admin_command_allowed:
+            if not admin_command_allowed and not admin_command_requested:
                 parsed = None
                 is_command = False
 
@@ -4300,6 +4608,7 @@ async def webhook(req: Request):
                 return {"status": "voice_transcription_failed"}
 
             text = transcribed_text
+            voice_transcript_text = transcribed_text
             message_type = "text"
             print(f"Voice transcript for {phone}: {text}", flush=True)
 
@@ -4310,12 +4619,44 @@ async def webhook(req: Request):
         visible_recorded_by_id = visibility_recorded_by_id(user)
         subscription = get_business_subscription(db, user)
 
+        if user and text.lower().strip() in ["hello", "hi", "hey", "titi", "start", "menu", "home", "help"]:
+            if user.role == "delegate":
+                db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+                db.add(PendingAction(phone=phone, action="STAFF_HOME_MENU"))
+                db.commit()
+                send_whatsapp_message(phone, build_staff_home_menu(user, business_name))
+                return {"status": "delegate_home_menu"}
+            if user.role == "user" and user.parent_id is None:
+                db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+                db.add(PendingAction(phone=phone, action="OWNER_HOME_MENU"))
+                db.commit()
+                send_whatsapp_message(phone, build_owner_home_menu(user, subscription))
+                return {"status": "owner_home_menu"}
+
         pending = db.query(PendingAction).filter(
             PendingAction.phone == phone,
             PendingAction.action != None
         ).order_by(
             PendingAction.created_at.desc()
         ).first()
+
+        if (
+            not user
+            and pending
+            and pending.action == "APP_ADMIN_DASHBOARD"
+            and message_type == "text"
+            and is_app_admin(phone, db)
+        ):
+            normalized = text.strip().lower()
+            status, msg = build_app_admin_selection_message(db, normalized)
+            if status == "app_admin_unknown":
+                send_whatsapp_message(phone, msg)
+                return {"status": "invalid_app_admin_dashboard_option"}
+
+            db.delete(pending)
+            db.commit()
+            send_whatsapp_message(phone, msg)
+            return {"status": status}
 
         if message_type != "text":
             if message_type in ["image", "document"] and pending and pending.action == "SUBSCRIPTION_PAYMENT_PENDING":
@@ -4337,6 +4678,11 @@ async def webhook(req: Request):
                     return {"status": "subscription_receipt_received"}
 
             return {"status": "ignored_non_text"}
+
+        evidence_text = bool(re.search(
+            r"\b(receipt|ref|reference|transfer|payment|sent|paid)\b",
+            text.lower()
+        ))
 
         if pending and pending.action == "UPGRADE_MENU" and not is_command:
             normalized = text.lower().strip()
@@ -4360,20 +4706,69 @@ async def webhook(req: Request):
 
             if normalized in ["4", "cancel", "exit", "back"]:
                 db.delete(pending)
-                db.add(
-                    PendingAction(
-                        phone=phone,
-                        customer_name=name_to_save,
-                        action="POST_ONBOARDING_MENU",
-                        last_customer=name_to_save
+                if not user:
+                    db.add(
+                        PendingAction(
+                            phone=phone,
+                            customer_name=name_to_save,
+                            action="POST_ONBOARDING_MENU",
+                            last_customer=name_to_save
+                        )
                     )
-                )
                 db.commit()
                 send_whatsapp_message(phone, "Upgrade cancelled.")
                 return {"status": "upgrade_cancelled"}
 
             send_whatsapp_message(phone, build_upgrade_message())
             return {"status": "upgrade_menu_waiting"}
+
+        if pending and pending.action == "UPGRADE_PLAN_SELECTED" and not is_command:
+            normalized = text.lower().strip()
+            if normalized in ["cancel", "exit", "back", "stop"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Upgrade request closed.")
+                return {"status": "upgrade_plan_cancelled"}
+
+            if evidence_text or normalized in ["paid", "done", "i have paid", "i paid"]:
+                plan = normalize_plan(pending.customer_name)
+                payment = create_subscription_payment_request(db, user, plan)
+                pending.action = "SUBSCRIPTION_PAYMENT_PENDING"
+                pending.customer_name = plan
+                pending.reminder_id = payment.id
+                pending.last_customer = plan
+
+                owner = get_business_owner_user(db, user)
+                has_evidence = evidence_text and normalized not in ["paid", f"paid {plan.lower()}"]
+                if has_evidence:
+                    payment.evidence_type = "TEXT"
+                    payment.evidence_ref = text[:500]
+
+                db.commit()
+                notify_subscription_admins(db, payment, owner, evidence_received=has_evidence)
+
+                if has_evidence:
+                    send_whatsapp_message(
+                        phone,
+                        "Payment evidence received. Your subscription request is waiting for admin confirmation."
+                        f"{support_line()}"
+                    )
+                    return {"status": "subscription_text_evidence_received"}
+
+                send_whatsapp_message(
+                    phone,
+                    f"Thank you. Your {plan} subscription request has been received.\n\n"
+                    "Please send your payment receipt screenshot or payment reference here. An admin will confirm and activate your plan."
+                    f"{support_line()}"
+                )
+                return {"status": "subscription_payment_pending"}
+
+            send_whatsapp_message(
+                phone,
+                "After payment, send PAID GO or PAID PRO.\n"
+                "You can also send your receipt screenshot or payment reference here."
+            )
+            return {"status": "upgrade_plan_waiting_for_payment"}
 
         evidence_text = bool(re.search(
             r"\b(receipt|ref|reference|transfer|payment|sent|paid)\b",
@@ -4409,20 +4804,16 @@ async def webhook(req: Request):
             if normalized in ["1", "formats", "format", "f"]:
                 db.delete(pending)
                 db.commit()
-                send_whatsapp_message(
-                    phone,
-                    "Supported Formats\n\n"
-                    "BUY ONLY\nAde bought rice 5000\n\n"
-                    "PAYMENT ONLY\nAde paid 3000\n\n"
-                    "PART PAYMENT\nAde bought rice 5000 paid 2000\n\n"
-                    "INVOICE\nAde bought rice 4000, beans 3000 paid 2000"
-                )
+                send_whatsapp_message(phone, build_supported_formats_message())
                 return {"status": "post_onboarding_formats"}
 
             if normalized in ["2", "add customer", "customer"]:
                 send_whatsapp_message(
                     phone,
-                    "To add a customer, send their name and phone number like:\nJohn 08012345678"
+                    "To add a customer, send their name and phone number like:\n"
+                    "John 08012345678\n\n"
+                    "You can also save only the name:\n"
+                    "add customer John"
                 )
                 return {"status": "post_onboarding_add_customer"}
 
@@ -4446,6 +4837,153 @@ async def webhook(req: Request):
 
             send_whatsapp_message(phone, build_post_onboarding_menu(pending.customer_name or business_name))
             return {"status": "post_onboarding_waiting"}
+
+        if pending and pending.action == "ARTISAN_PAYMENT_CHOICE" and not is_command:
+            normalized = text.lower().strip()
+            if normalized in ["1", "service", "work", "income", "new work"]:
+                pending.action = "SALE"
+                pending.buy_amount = pending.paid_amount
+                pending.product = pending.product or f"service/work - {pending.customer_name}"
+                pending.quantity = 1
+                pending.unit_price = pending.buy_amount
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    f"Confirm service income, no customer debt:\n"
+                    f"{pending.product.title()} - N{pending.buy_amount:,}\n"
+                    "Reply YES or 1 to save, EDIT or 2 to change."
+                )
+                return {"status": "artisan_service_confirm"}
+
+            if normalized in ["2", "debt", "debit", "old debt", "existing debt"]:
+                customer = db.query(Customer).filter(
+                    Customer.name == pending.customer_name,
+                    Customer.owner_phone == business_owner_phone
+                ).first()
+                if not customer:
+                    customer = Customer(
+                        name=pending.customer_name,
+                        owner_phone=business_owner_phone
+                    )
+                    db.add(customer)
+                    db.flush()
+
+                pending.action = "PAY"
+                pending.last_customer = customer.name
+                db.commit()
+                balance_after_line = build_projected_balance_line(
+                    db,
+                    customer.id,
+                    {"buy_amount": 0, "paid_amount": pending.paid_amount},
+                    visible_recorded_by_id
+                )
+                send_whatsapp_message(
+                    phone,
+                    f"Confirm debt payment:\n"
+                    f"{customer.name.title()} paid N{pending.paid_amount:,}\n"
+                    f"{balance_after_line}\n"
+                    "Reply YES or 1 to save, EDIT or 2 to change."
+                )
+                return {"status": "artisan_debt_payment_confirm"}
+
+            if normalized in ["edit", "change", "cancel", "back", "exit"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "Enter again. Example:\nI received 1000 for doing chair\nor\nAde paid 7000"
+                )
+                return {"status": "artisan_choice_cancelled"}
+
+            send_whatsapp_message(
+                phone,
+                f"{pending.customer_name.title()} paid you N{pending.paid_amount:,}.\n\n"
+                "What is this for?\n"
+                "1. For the work/service you did, no customer debt\n"
+                "2. He/she paid debt owed to you"
+            )
+            return {"status": "artisan_choice_waiting"}
+
+        if pending and pending.action == "OWNER_HOME_MENU" and not is_command:
+            normalized = text.lower().strip()
+            if normalized in ["1", "record", "record transaction", "transaction"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "Send a transaction like:\nAde bought rice 5000\nAde paid 3000"
+                )
+                return {"status": "owner_home_record_help"}
+            if normalized in ["2", "add customer", "customer"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "To add a customer, send their name and phone number like:\nJohn 08012345678\n\nYou can also send:\nadd customer John"
+                )
+                return {"status": "owner_home_add_customer"}
+            if normalized in ["3", "dashboard"]:
+                pending.action = "DASHBOARD_MENU"
+                db.commit()
+                send_whatsapp_message(phone, build_dashboard_menu_message())
+                return {"status": "owner_home_dashboard"}
+            if normalized in ["4", "upgrade", "my plan", "plan"]:
+                pending.action = "UPGRADE_MENU"
+                db.commit()
+                send_whatsapp_message(phone, build_upgrade_message())
+                return {"status": "owner_home_upgrade"}
+            if normalized in ["5", "staff", "staff menu"] and subscription["plan"] == PLAN_PRO:
+                db.delete(pending)
+                db.commit()
+                parsed = {"type": "STAFF_MENU"}
+                is_command = True
+            elif normalized in ["5", "6", "formats", "help", "format"]:
+                db.delete(pending)
+                db.commit()
+                parsed = {"type": "FORMATS"}
+                is_command = True
+            elif normalized in ["cancel", "exit", "back", "done", "stop"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Closed. You can continue anytime.")
+                return {"status": "owner_home_closed"}
+            else:
+                send_whatsapp_message(phone, build_owner_home_menu(user, subscription))
+                return {"status": "owner_home_waiting"}
+
+        if pending and pending.action == "STAFF_HOME_MENU" and not is_command:
+            normalized = text.lower().strip()
+            if normalized in ["1", "record", "record transaction", "transaction"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "Send a transaction like:\nAde bought rice 5000\nAde paid 3000"
+                )
+                return {"status": "staff_home_record_help"}
+            if normalized in ["2", "customers", "customer list", "list customers"]:
+                db.delete(pending)
+                db.commit()
+                parsed = {"type": "CUSTOMER_LIST", "period": None}
+                is_command = True
+            elif normalized in ["3", "dashboard"]:
+                pending.action = "DASHBOARD_MENU"
+                db.commit()
+                send_whatsapp_message(phone, build_dashboard_menu_message())
+                return {"status": "staff_home_dashboard"}
+            elif normalized in ["4", "resign"]:
+                db.delete(pending)
+                db.commit()
+                parsed = {"type": "RESIGN_REQUEST"}
+                is_command = True
+            elif normalized in ["cancel", "exit", "back", "done", "stop"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Closed. You can continue anytime.")
+                return {"status": "staff_home_closed"}
+            else:
+                send_whatsapp_message(phone, build_staff_home_menu(user, business_name))
+                return {"status": "staff_home_waiting"}
 
         # =========================
         # 👤 USER ONBOARDING / PROFILE UPDATE (CONFIRMATION)
@@ -4476,6 +5014,7 @@ async def webhook(req: Request):
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
                 name_to_save = pending.customer_name
+                post_onboarding = None
                 
                 if user:
                     # Update existing user (Business Name update)
@@ -4489,8 +5028,16 @@ async def webhook(req: Request):
                         role="user"
                     )
                     db.add(new_user)
+                    post_onboarding = PendingAction(
+                        phone=phone,
+                        customer_name=name_to_save,
+                        action="POST_ONBOARDING_MENU",
+                        last_customer=name_to_save
+                    )
                     msg = build_post_onboarding_menu(name_to_save)
 
+                if post_onboarding:
+                    db.add(post_onboarding)
                 db.delete(pending)
                 db.commit()
                 send_whatsapp_message(phone, msg)
@@ -4512,7 +5059,7 @@ async def webhook(req: Request):
             )
             return {"status": "waiting_onboarding_confirmation"}
 
-        if not user:
+        if not user and not (admin_command_allowed or admin_command_requested):
 
             if text.lower().strip() in ["continue", "start", "yes", "ok", "1", "hello", "hi", "hey", "onboard", "titi", "begin"]:
                 if pending and pending.action != "ONBOARD_USER":
@@ -4545,7 +5092,7 @@ async def webhook(req: Request):
             return {"status": "ignored_unrecognized_sender"}
 
         # Special Greeting for a Delegate's first time or on 'hello'
-        if user.role == "delegate" and text.lower().strip() in ["hello", "hi", "titi"]:
+        if user and user.role == "delegate" and text.lower().strip() in ["hello", "hi", "titi"]:
             send_whatsapp_message(
                 phone,
                 f"Hello {user.name.title()}! 👋\n\n"
@@ -4593,6 +5140,7 @@ async def webhook(req: Request):
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
                 if pending.action == "SALE":
+                    sale_saved_msg = pending_transaction_summary(pending)
                     recent_tx = db.query(Transaction).filter(
                         Transaction.type == "SALE",
                         Transaction.amount == pending.buy_amount,
@@ -4646,14 +5194,16 @@ async def webhook(req: Request):
                     )
                     db.add(customer)
                 else:
-                    customer.customer_phone = pending.customer_phone
+                    if pending.customer_phone:
+                        customer.customer_phone = pending.customer_phone
 
                 db.delete(pending)
                 db.commit()
 
+                phone_status = customer.customer_phone or "no phone added"
                 send_whatsapp_message(
                     phone,
-                    f"✅ Customer saved: {customer.name.title()} → {customer.customer_phone}.\n"
+                    f"Customer saved: {customer.name.title()} -> {phone_status}.\n"
                     "You can now record transactions for this customer."
                 )
                 return {"status": "customer_onboarded"}
@@ -4897,10 +5447,10 @@ async def webhook(req: Request):
                     confirm_msg = (
                         f"Preview reminder for {reminder.customer_name.title()}:\n\n"
                         f"{preview}\n\n"
-                        f"⚠️ Customer phone not set!\n"
-                        f"To send this reminder, please set the phone first:\n\n"
+                        "Customer phone is not set yet.\n"
+                        "To send this reminder, set the phone first:\n\n"
                         f"{reminder.customer_name} phone 08012345678\n\n"
-                        f"Then reply YES to send, or EDIT to cancel."
+                        "I will keep this reminder open. After setting the phone, reply YES to send."
                     )
 
                 pending.action = "REMINDER_CONFIRM"
@@ -4928,10 +5478,10 @@ async def webhook(req: Request):
                         # Instead of failing, prompt user to set phone first
                         send_whatsapp_message(
                             phone,
-                            f"⚠️ Customer phone not set for {reminder.customer_name.title()}.\n\n"
-                            f"Please set it using:\n"
+                            f"Customer phone is not set for {reminder.customer_name.title()}.\n\n"
+                            "Set it using:\n"
                             f"{reminder.customer_name} phone 08012345678\n\n"
-                            f"After setting, reply YES again to send the reminder."
+                            "I will keep this reminder open. After setting the phone, reply YES again."
                         )
                         # Keep the pending action so they can retry after setting phone
                         return {"status": "waiting_for_phone"}
@@ -4966,6 +5516,7 @@ async def webhook(req: Request):
                 pending_items = json.loads(pending.items_json or "[]")
 
                 if pending.action == "SALE":
+                    sale_saved_msg = pending_transaction_summary(pending)
                     recent_tx = db.query(Transaction).filter(
                         Transaction.type == "SALE",
                         Transaction.amount == pending.buy_amount,
@@ -5011,11 +5562,7 @@ async def webhook(req: Request):
                     db.delete(pending)
                     db.commit()
 
-                    send_whatsapp_message(
-                        phone,
-                        f"✅ Direct sale saved.\n"
-                        f"Total: ₦{pending.buy_amount:,}"
-                    )
+                    send_whatsapp_message(phone, sale_saved_msg)
                     return {"status": "direct_sale_saved"}
 
                 customer = db.query(Customer).filter(
@@ -5038,16 +5585,16 @@ async def webhook(req: Request):
                 if recent_tx:
                     send_whatsapp_message(
                         phone,
-                        f"⚠️ Hold on! A similar transaction for {customer.name.title()} "
-                        f"was already recorded just a moment ago.\n\n"
-                        f"If this was a mistake, you can ignore this. If you really want to "
-                        f"add it again, please wait a minute or change the amount slightly."
+                        f"A similar transaction for {customer.name.title()} was already recorded just now.\n\n"
+                        "If this was a mistake, ignore this message. If you truly need to add it again, "
+                        "wait a minute or send it with a clear note."
                     )
                     db.delete(pending)
                     db.commit()
                     return {"status": "duplicate_manual_prevention"}
 
                 # Proceed with saving
+                saved_summary = pending_transaction_summary(pending, customer)
                 if pending.action == "BUY":
                     tx = Transaction(
                         customer_id=customer.id,
@@ -5149,38 +5696,16 @@ async def webhook(req: Request):
                 db.commit()
 
                 balance = get_balance(db, customer.id, visible_recorded_by_id)
-
-                if pending.action == "COMBINED":
-                    if balance < 0:
-                        msg = (
-                            f"✅ Saved.\n"
-                            f"{customer.name} bought ₦{pending.buy_amount:,} "
-                            f"and paid ₦{pending.paid_amount:,}.\n"
-                            f"Credit: ₦{abs(balance):,}"
-                        )
-                    else:
-                        msg = (
-                            f"✅ Saved.\n"
-                            f"{customer.name} bought ₦{pending.buy_amount:,} "
-                            f"and paid ₦{pending.paid_amount:,}.\n"
-                            f"Balance: ₦{balance:,}"
-                        )
-                else:
-                    if balance < 0:
-                        msg = f"✅ Saved.\n{customer.name} credit: ₦{abs(balance):,}"
-                    else:
-                        msg = f"✅ Saved.\n{customer.name} balance: ₦{balance:,}"
+                msg = f"{saved_summary}\n{balance_status_line(balance)}"
 
                 send_whatsapp_message(phone, msg)
                 return {"status": "saved"}
 
             elif normalized in ["edit", "2", "change"]:
+                edit_msg = edit_prompt_for_pending(pending)
                 db.delete(pending)
                 db.commit()
-                send_whatsapp_message(
-                    phone,
-                    "Enter again (e.g. Ola paid 2000)"
-                )
+                send_whatsapp_message(phone, edit_msg)
                 return {"status": "edit"}
 
         if not parsed:
@@ -5192,29 +5717,37 @@ async def webhook(req: Request):
 
             send_whatsapp_message(
                 phone,
-                "❌ Message not understood.\n\n"
-                "Type:\nFORMATS\n\nor send:\nF\n\n"
-                "to see supported transaction examples."
+                build_invalid_message()
             )
             return {"status": "invalid"}
-
         if parsed["type"] == "FORMATS":
-            msg = (
-                "📘 Supported Formats\n\n"
-                "🛒 BUY ONLY\nAde bought rice 5000\n\n"
-                "💵 PAYMENT ONLY\nAde paid 3000\n\n"
-                "🔄 PART PAYMENT\nAde bought rice 5000 paid 2000\n\n"
-                "📅 DUE DATE\nAde bought rice 5000 due 12/2/2026\n\n"
-                "📅 PART PAYMENT + DUE DATE\n"
-                "Ade bought rice 5000 paid 2000 due 12/2/2026\n\n"
-                "📌 Date Format:\nUse D/M/YYYY\n\nExample:\n"
-                "12/2/2026 = 12 February 2026"
-                "\n\n⚙️ SETTINGS\n"
-                "To update your business name for better reports and branding, send:\n"
-                "*CHANGE NAME*"
-            )
+            msg = build_supported_formats_message()
             send_whatsapp_message(phone, msg)
             return {"status": "formats"}
+
+        if parsed["type"] == "ARTISAN_PAYMENT_CHOICE":
+            db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).delete()
+            db.add(
+                PendingAction(
+                    phone=phone,
+                    customer_name=parsed["name"].lower(),
+                    action="ARTISAN_PAYMENT_CHOICE",
+                    paid_amount=parsed["amount"],
+                    product=f"{parsed.get('description', 'service/work')} - {parsed['name'].lower()}",
+                    last_customer=parsed["name"].lower()
+                )
+            )
+            db.commit()
+            send_whatsapp_message(
+                phone,
+                f"{parsed['name'].title()} paid you N{parsed['amount']:,}.\n\n"
+                "What is this for?\n"
+                "1. For the work/service you did, no customer debt\n"
+                "2. He/she paid debt owed to you"
+            )
+            return {"status": "artisan_payment_choice"}
 
         if parsed["type"] == "MY_PLAN":
             send_whatsapp_message(phone, build_plan_message(subscription))
@@ -5665,14 +6198,15 @@ async def webhook(req: Request):
 
         if parsed["type"] == "SET_PHONE":
             target_name = parsed["name"].lower().strip()
-            target_phone = parsed["customer_phone"].strip()
+            target_phone = parsed.get("customer_phone")
+            target_phone = target_phone.strip() if target_phone else None
 
             existing_customer = db.query(Customer).filter(
                 Customer.name == target_name,
                 Customer.owner_phone == business_owner_phone
             ).first()
 
-            if existing_customer:
+            if existing_customer and target_phone:
                 # Update the phone number immediately
                 existing_customer.customer_phone = target_phone
                 
@@ -5709,15 +6243,21 @@ async def webhook(req: Request):
             db.commit()
 
             if existing_customer:
+                phone_line = (
+                    f" with phone {target_phone}" if target_phone else " without a phone number"
+                )
                 send_whatsapp_message(
                     phone,
-                    f"I found an existing customer {target_name.title()} with phone {target_phone}.\n"
-                    f"Change the phone to {target_phone}? Reply YES or 1 to update, EDIT or 2 to send it again."
+                    f"I found an existing customer {target_name.title()}{phone_line}.\n"
+                    "Reply YES or 1 to save, EDIT or 2 to send it again."
                 )
             else:
+                phone_line = (
+                    f" with phone {target_phone}" if target_phone else " without a phone number"
+                )
                 send_whatsapp_message(
                     phone,
-                    f"I found customer {target_name.title()} with phone {target_phone}.\n"
+                    f"I found customer {target_name.title()}{phone_line}.\n"
                     "Reply YES or 1 to save, EDIT or 2 to send it again."
                 )
             return {"status": "confirm_onboard_customer"}
@@ -6274,11 +6814,15 @@ async def webhook(req: Request):
             else:
                 item_line = f"{parsed['product']} - ₦{parsed['total']:,}"
 
-            send_whatsapp_message(
-                phone,
-                f"Confirm direct sale:\n{item_line}\n"
-                f"Reply YES or 1 to save, EDIT or 2 to change."
+            confirm_msg = (
+                f"Confirm service/direct income:\n{item_line}\n"
+                "No customer debt will be recorded.\n"
+                "Reply YES or 1 to save, EDIT or 2 to change."
             )
+            if voice_transcript_text:
+                confirm_msg = f"I heard:\n{voice_transcript_text}\n\n{confirm_msg}"
+
+            send_whatsapp_message(phone, confirm_msg)
             return {"status": "confirm_direct_sale"}
 
         customer_name = parsed["name"].lower()
@@ -6359,6 +6903,12 @@ async def webhook(req: Request):
         db.commit()
 
         # Send confirmation
+        balance_after_line = build_projected_balance_line(
+            db,
+            customer.id,
+            parsed,
+            visible_recorded_by_id
+        )
         if parsed["action"] == "BUY":
             if parsed.get("invoice_items"):
                 item_line = (
@@ -6436,6 +6986,16 @@ async def webhook(req: Request):
                     f"and paid ₦{parsed['paid_amount']:,}?\n"
                     f"Reply YES or 1 to save, EDIT or 2 to change."
                 )
+
+        confirm_msg = f"{confirm_msg}\n{balance_after_line}"
+        if parsed.get("artisan_note"):
+            confirm_msg = (
+                f"{confirm_msg}\n"
+                "This will record customer debt and payment.\n"
+                f"{parsed['artisan_note']}"
+            )
+        if voice_transcript_text:
+            confirm_msg = f"I heard:\n{voice_transcript_text}\n\n{confirm_msg}"
 
         send_whatsapp_message(phone, confirm_msg)
         return {"status": "pending"}
