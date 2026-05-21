@@ -46,6 +46,8 @@ if load_dotenv:
 DATABASE_URL = os.getenv("DATABASE_URL")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set")
@@ -192,6 +194,40 @@ class TransactionNote(Base):
     )
 
 
+class SubscriptionPayment(Base):
+
+    __tablename__ = "subscription_payments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    user_id = Column(String, ForeignKey("users.id"))
+
+    phone = Column(String)
+
+    plan = Column(String)
+
+    amount = Column(Integer)
+
+    status = Column(String, default="PENDING")
+
+    payment_method = Column(String, default="BANK_TRANSFER")
+
+    evidence_type = Column(String, nullable=True)
+
+    evidence_ref = Column(String, nullable=True)
+
+    admin_note = Column(String, nullable=True)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+    approved_at = Column(DateTime, nullable=True)
+
+    approved_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+
 class PendingAction(Base):
 
     __tablename__ = "pending_actions"
@@ -312,6 +348,7 @@ def debug_schema(token: str):
         Transaction,
         TransactionItem,
         TransactionNote,
+        SubscriptionPayment,
         PendingAction,
         ProcessedMessage,
         CustomerMemory,
@@ -466,6 +503,174 @@ def send_whatsapp_message(to, message):
 # =========================
 # 🧠 HELPERS
 # =========================
+
+def get_whatsapp_media_info(media_id):
+    if not WHATSAPP_TOKEN or not media_id:
+        return None
+
+    response = requests.get(
+        f"https://graph.facebook.com/v18.0/{media_id}",
+        headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
+        timeout=30
+    )
+    if response.status_code >= 400:
+        print("WhatsApp media info error:", response.text, flush=True)
+        return None
+    return response.json()
+
+
+def download_whatsapp_media(media_id):
+    media_info = get_whatsapp_media_info(media_id)
+    if not media_info or not media_info.get("url"):
+        return None, None
+
+    response = requests.get(
+        media_info["url"],
+        headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
+        timeout=60
+    )
+    if response.status_code >= 400:
+        print("WhatsApp media download error:", response.text, flush=True)
+        return None, None
+
+    return response.content, media_info.get("mime_type")
+
+
+def extension_for_mime_type(mime_type):
+    mime_type = (mime_type or "").split(";")[0].strip().lower()
+    return {
+        "audio/ogg": "ogg",
+        "audio/opus": "ogg",
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+        "audio/mp4": "mp4",
+        "audio/m4a": "m4a",
+        "audio/wav": "wav",
+        "audio/webm": "webm",
+    }.get(mime_type, "ogg")
+
+
+def transcribe_audio_bytes(audio_bytes, mime_type=None):
+    if not OPENAI_API_KEY:
+        return None, "OPENAI_API_KEY is not set."
+    if not audio_bytes:
+        return None, "No audio received."
+
+    filename = f"voice.{extension_for_mime_type(mime_type)}"
+    response = requests.post(
+        "https://api.openai.com/v1/audio/transcriptions",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+        data={
+            "model": OPENAI_TRANSCRIBE_MODEL,
+            "response_format": "json",
+            "prompt": (
+                "This is a WhatsApp business accounting command for CreditVoice. "
+                "Common words include bought, buy, paid, pay, sold, sell, supply, "
+                "rice, beans, cement, sand, naira, k for thousand, m for million."
+            )
+        },
+        files={"file": (filename, audio_bytes, mime_type or "audio/ogg")},
+        timeout=90
+    )
+    if response.status_code >= 400:
+        print("OpenAI transcription error:", response.text, flush=True)
+        return None, "Voice transcription failed."
+
+    return response.json().get("text", "").strip(), None
+
+
+NUMBER_WORDS = {
+    "zero": 0, "one": 1, "a": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30,
+    "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90,
+}
+
+
+def parse_number_words(words):
+    total = 0
+    current = 0
+    used = False
+    for word in words:
+        if word == "and":
+            continue
+        if word in NUMBER_WORDS:
+            current += NUMBER_WORDS[word]
+            used = True
+        elif word == "hundred":
+            current = max(current, 1) * 100
+            used = True
+        elif word == "thousand":
+            total += max(current, 1) * 1000
+            current = 0
+            used = True
+        elif word == "million":
+            total += max(current, 1) * 1000000
+            current = 0
+            used = True
+        else:
+            return None
+    return total + current if used else None
+
+
+def normalize_voice_transcript(transcript):
+    text_value = transcript.lower().replace("-", " ")
+    number_word_pattern = (
+        r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+        r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+        r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|"
+        r"ninety|hundred|thousand|million|and|a"
+    )
+    token_pattern = re.compile(
+        rf"\b(?:(?:{number_word_pattern})\s+){{0,8}}(?:{number_word_pattern})\b"
+    )
+
+    def replace_match(match):
+        phrase = match.group(0).strip()
+        amount = parse_number_words(phrase.split())
+        return str(amount) if amount is not None else phrase
+
+    text_value = token_pattern.sub(replace_match, text_value)
+    text_value = re.sub(r"\bnaira\b", "", text_value)
+    text_value = re.sub(
+        r"(\d+)\s+and\s+(?!(?:paid|pay)\b)([a-z][a-z]*(?:\s+[a-z][a-z]*){0,4}\s+\d+)",
+        r"\1, \2",
+        text_value
+    )
+    item_body_match = re.search(
+        r"\b(?:bought|buy|purchased)\b(?P<body>.+?)(?=\b(?:paid|pay|settled|gave)\b|$)",
+        text_value
+    )
+    if item_body_match and "," not in item_body_match.group("body"):
+        body = re.sub(
+            r"(\d{3,})\s+([a-z][a-z]*(?:\s+[a-z][a-z]*){0,3}\s+\d+)",
+            r"\1, \2",
+            item_body_match.group("body")
+        )
+        text_value = (
+            text_value[:item_body_match.start("body")]
+            + body
+            + text_value[item_body_match.end("body"):]
+        )
+    text_value = re.sub(r"\s+", " ", text_value).strip()
+    return text_value
+
+
+def transcribe_whatsapp_voice(message):
+    audio_payload = message.get("voice") or message.get("audio") or {}
+    media_id = audio_payload.get("id")
+    audio_bytes, mime_type = download_whatsapp_media(media_id)
+    transcript, error = transcribe_audio_bytes(
+        audio_bytes,
+        mime_type or audio_payload.get("mime_type")
+    )
+    if error:
+        return None, error
+    return normalize_voice_transcript(transcript), None
+
 
 def normalize_phone(phone_str):
     """Converts local Nigerian numbers to international format for Meta API."""
@@ -1283,6 +1488,44 @@ def parse_message(text):
     ]:
         return {"type": "UPGRADE_MENU"}
 
+    paid_plan_match = re.search(
+        r"^(?:paid|pay|payment)\s+(go|pro)$",
+        clean_text
+    )
+    if paid_plan_match:
+        return {
+            "type": "SUBSCRIPTION_PAID",
+            "plan": paid_plan_match.group(1).upper()
+        }
+
+    if clean_text in [
+        "pending subscriptions",
+        "pending subscription",
+        "subscription payments",
+        "pending subs"
+    ]:
+        return {"type": "PENDING_SUBSCRIPTIONS"}
+
+    approve_match = re.search(
+        r"^approve\s+sub(?:scription)?\s+(\+?[\d ]{7,15})$",
+        clean_text
+    )
+    if approve_match:
+        return {
+            "type": "APPROVE_SUBSCRIPTION",
+            "phone": normalize_phone(approve_match.group(1))
+        }
+
+    reject_match = re.search(
+        r"^reject\s+sub(?:scription)?\s+(\+?[\d ]{7,15})$",
+        clean_text
+    )
+    if reject_match:
+        return {
+            "type": "REJECT_SUBSCRIPTION",
+            "phone": normalize_phone(reject_match.group(1))
+        }
+
     activation_match = re.search(
         r"^(?:activate|set)\s+plan\s+(basic|go|pro)\s+(?:for\s+)?(\+?[\d ]{7,15})(?:\s+(\d+)\s+days?)?$",
         clean_text
@@ -1988,25 +2231,188 @@ def build_plan_message(subscription):
 
 
 def build_upgrade_message():
+    go_price = int(os.getenv("PLAN_GO_PRICE", "3000"))
+    pro_price = int(os.getenv("PLAN_PRO_PRICE", "7000"))
     return (
         "CreditVoice Plans\n\n"
         "BASIC - Free\n"
         "1 user, 50 customers, 100 monthly transactions, basic debt tracking.\n\n"
-        "GO\n"
+        f"1. GO - N{go_price:,}/month\n"
         "For one-owner businesses. Unlimited customers, unlimited transactions, invoices, direct sales, reports, reminders, and notes.\n\n"
-        "PRO\n"
+        f"2. PRO - N{pro_price:,}/month\n"
         "Everything in Go plus staff, staff permissions, team notes, and future multilingual voice.\n\n"
-        "Send MY PLAN to see your current plan."
+        "3. View my current plan\n"
+        "4. Cancel\n\n"
+        "Reply with 1, 2, 3, or 4."
     )
 
 
-def is_subscription_admin(phone):
-    admin_phones = [
+def get_plan_price(plan):
+    plan = normalize_plan(plan)
+    if plan == PLAN_GO:
+        return int(os.getenv("PLAN_GO_PRICE", "3000"))
+    if plan == PLAN_PRO:
+        return int(os.getenv("PLAN_PRO_PRICE", "7000"))
+    return 0
+
+
+def get_payment_account_message():
+    bank = os.getenv("SUBSCRIPTION_BANK_NAME", "your bank")
+    account_name = os.getenv("SUBSCRIPTION_ACCOUNT_NAME", "your account name")
+    account_number = os.getenv("SUBSCRIPTION_ACCOUNT_NUMBER", "your account number")
+    return (
+        f"Bank: {bank}\n"
+        f"Account Name: {account_name}\n"
+        f"Account Number: {account_number}"
+    )
+
+
+def build_plan_payment_message(plan):
+    plan = normalize_plan(plan)
+    amount = get_plan_price(plan)
+    if plan == PLAN_PRO:
+        benefits = (
+            "Everything in Go plus:\n"
+            "- Add staff\n"
+            "- Staff permissions\n"
+            "- Admin sees staff records\n"
+            "- Future Yoruba, Pidgin, and Hausa voice"
+        )
+    else:
+        benefits = (
+            "- Unlimited customers\n"
+            "- Unlimited transactions\n"
+            "- Direct sales\n"
+            "- Invoice sales\n"
+            "- Product reports\n"
+            "- Debt reminders\n"
+            "- Transaction notes"
+        )
+
+    return (
+        f"{plan} Plan - N{amount:,}/month\n\n"
+        f"{benefits}\n\n"
+        "Pay to:\n"
+        f"{get_payment_account_message()}\n\n"
+        f"After payment, send:\nPAID {plan}\n\n"
+        "Then send your receipt screenshot or payment reference here."
+    )
+
+
+def create_subscription_payment_request(db, user, plan):
+    owner = get_business_owner_user(db, user)
+    plan = normalize_plan(plan)
+    amount = get_plan_price(plan)
+
+    existing = db.query(SubscriptionPayment).filter(
+        SubscriptionPayment.user_id == owner.id,
+        SubscriptionPayment.status == "PENDING"
+    ).order_by(
+        SubscriptionPayment.created_at.desc()
+    ).first()
+
+    if existing:
+        existing.plan = plan
+        existing.amount = amount
+        existing.phone = owner.phone
+        existing.payment_method = "BANK_TRANSFER"
+        existing.evidence_type = None
+        existing.evidence_ref = None
+        existing.created_at = datetime.utcnow()
+        return existing
+
+    payment = SubscriptionPayment(
+        user_id=owner.id,
+        phone=owner.phone,
+        plan=plan,
+        amount=amount,
+        status="PENDING",
+        payment_method="BANK_TRANSFER"
+    )
+    db.add(payment)
+    db.flush()
+    return payment
+
+
+def get_pending_subscription_payment(db, user):
+    owner = get_business_owner_user(db, user)
+    if not owner:
+        return None
+    return db.query(SubscriptionPayment).filter(
+        SubscriptionPayment.user_id == owner.id,
+        SubscriptionPayment.status == "PENDING"
+    ).order_by(
+        SubscriptionPayment.created_at.desc()
+    ).first()
+
+
+def get_media_evidence_ref(message, message_type):
+    payload = message.get(message_type) or {}
+    return payload.get("id") or message.get("id")
+
+
+def subscription_admin_phones():
+    return [
         normalize_phone(value.strip())
         for value in os.getenv("SUBSCRIPTION_ADMIN_PHONES", "").split(",")
         if value.strip()
     ]
-    return normalize_phone(phone) in admin_phones
+
+
+def notify_subscription_admins(db, payment, owner, evidence_received=False):
+    admins = subscription_admin_phones()
+    if not admins:
+        return
+
+    evidence_line = "Evidence: received" if evidence_received else "Evidence: not received yet"
+    msg = (
+        "Subscription payment request\n\n"
+        f"Business: {owner.name.title()}\n"
+        f"Phone: {owner.phone}\n"
+        f"Plan: {payment.plan}\n"
+        f"Amount: N{payment.amount:,}\n"
+        f"{evidence_line}\n\n"
+        f"Approve:\nAPPROVE SUB {owner.phone}\n\n"
+        f"Reject:\nREJECT SUB {owner.phone}"
+    )
+    for admin_phone in admins:
+        send_whatsapp_message(admin_phone, msg)
+
+
+def approve_subscription_payment(db, payment, admin_user):
+    owner = db.query(User).filter(User.id == payment.user_id).first()
+    if not owner:
+        return None
+
+    owner.subscription_plan = normalize_plan(payment.plan)
+    owner.subscription_status = "ACTIVE"
+    owner.subscription_expires_at = datetime.utcnow() + timedelta(days=30)
+    payment.status = "APPROVED"
+    payment.approved_at = datetime.utcnow()
+    payment.approved_by_user_id = admin_user.id if admin_user else None
+    return owner
+
+
+def format_pending_subscriptions(payments):
+    if not payments:
+        return "No pending subscription payments."
+
+    msg = "Pending Subscription Payments\n\n"
+    for index, (payment, owner) in enumerate(payments, start=1):
+        evidence = "yes" if payment.evidence_ref else "no"
+        owner_name = owner.name.title() if owner and owner.name else payment.phone
+        msg += (
+            f"{index}. {owner_name}\n"
+            f"Phone: {payment.phone}\n"
+            f"Plan: {payment.plan}\n"
+            f"Amount: N{payment.amount:,}\n"
+            f"Evidence: {evidence}\n\n"
+        )
+    return msg.strip()
+
+
+def is_subscription_admin(phone):
+    return normalize_phone(phone) in subscription_admin_phones()
 
 
 def get_visible_transaction(db, owner_phone, transaction_id, recorded_by_id=None):
@@ -3288,11 +3694,10 @@ async def webhook(req: Request):
             ["value"]["messages"][0]
         )
 
-        text = message["text"]["body"].strip()
-
         phone = message["from"]
 
         message_type = message.get("type", "text")
+        text = (message.get("text") or {}).get("body", "").strip()
         message_id = message["id"]
 
     except:
@@ -3302,11 +3707,6 @@ async def webhook(req: Request):
     db = SessionLocal()
 
     try:
-        # Only process actual text messages to avoid responding to 
-        # reactions, locations, or media without context
-        if message_type != "text":
-            return {"status": "ignored_non_text"}
-
         # 1. Global Idempotency Check (Prevents Meta Retries)
         already_processed = db.query(ProcessedMessage).filter(
             ProcessedMessage.message_id == message_id
@@ -3341,6 +3741,12 @@ async def webhook(req: Request):
                     business_name = admin.name
             else:
                 business_name = user.name
+        elif message_type in ["voice", "audio"]:
+            send_whatsapp_message(
+                phone,
+                "Welcome to CreditVoice. Please register your business with a text message first, then you can use voice notes."
+            )
+            return {"status": "unregistered_voice"}
 
         # Logic for Pending Invitations
         if user and user.role == "delegate_pending":
@@ -3384,6 +3790,24 @@ async def webhook(req: Request):
         # Use the business_owner_phone for all lookups instead of the raw sender 'phone'
         # From this point forward, use business_owner_phone for DB queries
 
+        if message_type in ["voice", "audio"]:
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "VOICE_TEXT", "Voice notes")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "voice_plan_blocked"}
+
+            transcribed_text, transcription_error = transcribe_whatsapp_voice(message)
+            if transcription_error or not transcribed_text:
+                send_whatsapp_message(
+                    phone,
+                    f"I could not understand that voice note. {transcription_error or ''}".strip()
+                )
+                return {"status": "voice_transcription_failed"}
+
+            text = transcribed_text
+            message_type = "text"
+            print(f"Voice transcript for {phone}: {text}", flush=True)
+
         # Parse message early to check if it's an explicit command
         parsed = parse_message(text)
         is_command = parsed and parsed["type"] != "TRANSACTION"
@@ -3396,6 +3820,83 @@ async def webhook(req: Request):
         ).order_by(
             PendingAction.created_at.desc()
         ).first()
+
+        if message_type != "text":
+            if message_type in ["image", "document"] and pending and pending.action == "SUBSCRIPTION_PAYMENT_PENDING":
+                payment = db.query(SubscriptionPayment).filter(
+                    SubscriptionPayment.id == pending.reminder_id,
+                    SubscriptionPayment.status == "PENDING"
+                ).first()
+                if payment:
+                    owner = get_business_owner_user(db, user)
+                    payment.evidence_type = message_type.upper()
+                    payment.evidence_ref = get_media_evidence_ref(message, message_type)
+                    db.commit()
+                    notify_subscription_admins(db, payment, owner, evidence_received=True)
+                    send_whatsapp_message(
+                        phone,
+                        "Receipt received. Your subscription request is waiting for admin confirmation."
+                    )
+                    return {"status": "subscription_receipt_received"}
+
+            return {"status": "ignored_non_text"}
+
+        if pending and pending.action == "UPGRADE_MENU" and not is_command:
+            normalized = text.lower().strip()
+            if normalized in ["1", "go"]:
+                pending.action = "UPGRADE_PLAN_SELECTED"
+                pending.customer_name = PLAN_GO
+                db.commit()
+                send_whatsapp_message(phone, build_plan_payment_message(PLAN_GO))
+                return {"status": "upgrade_go_selected"}
+
+            if normalized in ["2", "pro"]:
+                pending.action = "UPGRADE_PLAN_SELECTED"
+                pending.customer_name = PLAN_PRO
+                db.commit()
+                send_whatsapp_message(phone, build_plan_payment_message(PLAN_PRO))
+                return {"status": "upgrade_pro_selected"}
+
+            if normalized in ["3", "my plan", "plan"]:
+                send_whatsapp_message(phone, build_plan_message(subscription))
+                return {"status": "upgrade_my_plan"}
+
+            if normalized in ["4", "cancel", "exit", "back"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Upgrade cancelled.")
+                return {"status": "upgrade_cancelled"}
+
+            send_whatsapp_message(phone, build_upgrade_message())
+            return {"status": "upgrade_menu_waiting"}
+
+        evidence_text = bool(re.search(
+            r"\b(receipt|ref|reference|transfer|payment|sent|paid)\b",
+            text.lower()
+        ))
+        if pending and pending.action == "SUBSCRIPTION_PAYMENT_PENDING" and not is_command and (not parsed or evidence_text):
+            normalized = text.lower().strip()
+            if normalized in ["cancel", "exit", "back", "stop"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Subscription payment request closed.")
+                return {"status": "subscription_payment_cancelled"}
+
+            payment = db.query(SubscriptionPayment).filter(
+                SubscriptionPayment.id == pending.reminder_id,
+                SubscriptionPayment.status == "PENDING"
+            ).first()
+            if payment:
+                owner = get_business_owner_user(db, user)
+                payment.evidence_type = "TEXT"
+                payment.evidence_ref = text[:500]
+                db.commit()
+                notify_subscription_admins(db, payment, owner, evidence_received=True)
+                send_whatsapp_message(
+                    phone,
+                    "Payment evidence received. Your subscription request is waiting for admin confirmation."
+                )
+                return {"status": "subscription_text_evidence_received"}
 
         # =========================
         # 👤 USER ONBOARDING / PROFILE UPDATE (CONFIRMATION)
@@ -4165,8 +4666,125 @@ async def webhook(req: Request):
             return {"status": "my_plan"}
 
         if parsed["type"] == "UPGRADE_MENU":
+            db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).delete()
+            db.add(
+                PendingAction(
+                    phone=phone,
+                    customer_name="",
+                    action="UPGRADE_MENU",
+                    last_customer=""
+                )
+            )
+            db.commit()
             send_whatsapp_message(phone, build_upgrade_message())
             return {"status": "upgrade_menu"}
+
+        if parsed["type"] == "SUBSCRIPTION_PAID":
+            payment = create_subscription_payment_request(db, user, parsed["plan"])
+            db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).delete()
+            db.add(
+                PendingAction(
+                    phone=phone,
+                    customer_name=parsed["plan"],
+                    action="SUBSCRIPTION_PAYMENT_PENDING",
+                    reminder_id=payment.id,
+                    last_customer=""
+                )
+            )
+            owner = get_business_owner_user(db, user)
+            db.commit()
+            notify_subscription_admins(db, payment, owner, evidence_received=False)
+            send_whatsapp_message(
+                phone,
+                f"Thank you. Your {parsed['plan']} subscription request has been received.\n\n"
+                "Please send your payment receipt screenshot here. An admin will confirm and activate your plan."
+            )
+            return {"status": "subscription_payment_pending"}
+
+        if parsed["type"] == "PENDING_SUBSCRIPTIONS":
+            if not is_subscription_admin(phone):
+                send_whatsapp_message(phone, "Only subscription admins can view pending subscriptions.")
+                return {"status": "unauthorized_pending_subscriptions"}
+
+            payments = db.query(SubscriptionPayment, User).outerjoin(
+                User,
+                SubscriptionPayment.user_id == User.id
+            ).filter(
+                SubscriptionPayment.status == "PENDING"
+            ).order_by(
+                SubscriptionPayment.created_at.asc()
+            ).all()
+            send_whatsapp_message(phone, format_pending_subscriptions(payments))
+            return {"status": "pending_subscriptions"}
+
+        if parsed["type"] == "APPROVE_SUBSCRIPTION":
+            if not is_subscription_admin(phone):
+                send_whatsapp_message(phone, "Only subscription admins can approve subscriptions.")
+                return {"status": "unauthorized_subscription_approval"}
+
+            payment = db.query(SubscriptionPayment).filter(
+                SubscriptionPayment.phone == parsed["phone"],
+                SubscriptionPayment.status == "PENDING"
+            ).order_by(
+                SubscriptionPayment.created_at.desc()
+            ).first()
+            if not payment:
+                send_whatsapp_message(phone, "No pending subscription payment found for that phone.")
+                return {"status": "subscription_payment_not_found"}
+
+            owner = approve_subscription_payment(db, payment, user)
+            db.query(PendingAction).filter(
+                PendingAction.phone == owner.phone,
+                PendingAction.action == "SUBSCRIPTION_PAYMENT_PENDING"
+            ).delete()
+            db.commit()
+            send_whatsapp_message(
+                phone,
+                f"Approved {owner.name.title()} for {owner.subscription_plan}.\n"
+                f"Expires: {owner.subscription_expires_at.strftime('%d/%m/%Y')}"
+            )
+            send_whatsapp_message(
+                owner.phone,
+                f"Your {owner.subscription_plan} plan is now active.\n"
+                f"Expires: {owner.subscription_expires_at.strftime('%d/%m/%Y')}\n\n"
+                "Send MY PLAN anytime to check your subscription."
+            )
+            return {"status": "subscription_approved"}
+
+        if parsed["type"] == "REJECT_SUBSCRIPTION":
+            if not is_subscription_admin(phone):
+                send_whatsapp_message(phone, "Only subscription admins can reject subscriptions.")
+                return {"status": "unauthorized_subscription_rejection"}
+
+            payment = db.query(SubscriptionPayment).filter(
+                SubscriptionPayment.phone == parsed["phone"],
+                SubscriptionPayment.status == "PENDING"
+            ).order_by(
+                SubscriptionPayment.created_at.desc()
+            ).first()
+            if not payment:
+                send_whatsapp_message(phone, "No pending subscription payment found for that phone.")
+                return {"status": "subscription_payment_not_found"}
+
+            payment.status = "REJECTED"
+            owner = db.query(User).filter(User.id == payment.user_id).first()
+            if owner:
+                db.query(PendingAction).filter(
+                    PendingAction.phone == owner.phone,
+                    PendingAction.action == "SUBSCRIPTION_PAYMENT_PENDING"
+                ).delete()
+            db.commit()
+            send_whatsapp_message(phone, "Subscription payment rejected.")
+            if owner:
+                send_whatsapp_message(
+                    owner.phone,
+                    "Your subscription payment could not be confirmed. Please contact support or send a clearer receipt."
+                )
+            return {"status": "subscription_rejected"}
 
         if parsed["type"] == "ACTIVATE_PLAN":
             if not is_subscription_admin(phone):
