@@ -228,6 +228,27 @@ class SubscriptionPayment(Base):
     approved_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
 
 
+class AppAdminRole(Base):
+
+    __tablename__ = "app_admin_roles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    phone = Column(String)
+
+    role = Column(String)
+
+    is_active = Column(Boolean, default=True)
+
+    created_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    deactivated_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    deactivated_at = Column(DateTime, nullable=True)
+
+
 class PendingAction(Base):
 
     __tablename__ = "pending_actions"
@@ -349,6 +370,7 @@ def debug_schema(token: str):
         TransactionItem,
         TransactionNote,
         SubscriptionPayment,
+        AppAdminRole,
         PendingAction,
         ProcessedMessage,
         CustomerMemory,
@@ -1506,6 +1528,54 @@ def parse_message(text):
     ]:
         return {"type": "PENDING_SUBSCRIPTIONS"}
 
+    if clean_text in [
+        "app dashboard",
+        "app admin dashboard",
+        "admin dashboard",
+        "app stats",
+        "app admin",
+        "platform dashboard"
+    ]:
+        return {"type": "APP_ADMIN_DASHBOARD"}
+
+    app_admin_list_match = re.search(
+        r"^app\s+(pro|go|free|basic|expired)\s+users$",
+        clean_text
+    )
+    if app_admin_list_match:
+        plan = app_admin_list_match.group(1).upper()
+        if plan == "FREE":
+            plan = PLAN_BASIC
+        return {
+            "type": "APP_ADMIN_USERS_BY_PLAN",
+            "plan": plan
+        }
+
+    role_match = re.search(
+        r"^(allow|approve|add|grant|deny|disable|remove|suspend)\s+"
+        r"(subscription admin|sub admin|customer support|support|app admin)\s+"
+        r"(\+?[\d ]{7,15})$",
+        clean_text
+    )
+    if role_match:
+        action_word = role_match.group(1)
+        role_phrase = role_match.group(2)
+        role = normalize_admin_role(role_phrase.replace("sub admin", "subscription admin"))
+        return {
+            "type": "MANAGE_APP_ADMIN_ROLE",
+            "role": role,
+            "phone": normalize_phone(role_match.group(3)),
+            "active": action_word in ["allow", "approve", "add", "grant"]
+        }
+
+    if clean_text in [
+        "list app roles",
+        "list admin roles",
+        "admin roles",
+        "app roles"
+    ]:
+        return {"type": "LIST_APP_ADMIN_ROLES"}
+
     approve_match = re.search(
         r"^approve\s+sub(?:scription)?\s+(\+?[\d ]{7,15})$",
         clean_text
@@ -2351,16 +2421,179 @@ def get_media_evidence_ref(message, message_type):
     return payload.get("id") or message.get("id")
 
 
-def subscription_admin_phones():
+def phone_list_from_env(name):
     return [
         normalize_phone(value.strip())
-        for value in os.getenv("SUBSCRIPTION_ADMIN_PHONES", "").split(",")
+        for value in os.getenv(name, "").split(",")
         if value.strip()
     ]
 
 
+def customer_support_phone():
+    phone = os.getenv("CUSTOMER_SUPPORT_PHONE", "").strip()
+    return normalize_phone(phone) if phone else None
+
+
+def support_line():
+    phone = customer_support_phone()
+    return f"\n\nNeed help? Contact support: {phone}" if phone else ""
+
+
+def subscription_admin_phones():
+    return phone_list_from_env("SUBSCRIPTION_ADMIN_PHONES")
+
+
+def app_admin_phones():
+    return phone_list_from_env("APP_ADMIN_PHONES")
+
+
+ROLE_CUSTOMER_SUPPORT = "CUSTOMER_SUPPORT"
+ROLE_SUBSCRIPTION_ADMIN = "SUBSCRIPTION_ADMIN"
+ROLE_APP_ADMIN = "APP_ADMIN"
+
+
+def normalize_admin_role(role):
+    role = (role or "").upper().replace(" ", "_").strip()
+    aliases = {
+        "SUPPORT": ROLE_CUSTOMER_SUPPORT,
+        "CUSTOMER_SUPPORT": ROLE_CUSTOMER_SUPPORT,
+        "SUBSCRIPTION": ROLE_SUBSCRIPTION_ADMIN,
+        "SUBSCRIPTION_ADMIN": ROLE_SUBSCRIPTION_ADMIN,
+        "APP": ROLE_APP_ADMIN,
+        "APP_ADMIN": ROLE_APP_ADMIN
+    }
+    return aliases.get(role)
+
+
+def get_admin_role_override(db, phone, role):
+    return db.query(AppAdminRole).filter(
+        AppAdminRole.phone == normalize_phone(phone),
+        AppAdminRole.role == role
+    ).order_by(
+        AppAdminRole.created_at.desc()
+    ).first()
+
+
+def role_is_denied(db, phone, role):
+    override = get_admin_role_override(db, phone, role)
+    return bool(override and not override.is_active)
+
+
+def has_db_admin_role(db, phone, role):
+    override = get_admin_role_override(db, phone, role)
+    return bool(override and override.is_active)
+
+
+def has_admin_role(db, phone, role):
+    phone = normalize_phone(phone)
+    if role == ROLE_APP_ADMIN:
+        if role_is_denied(db, phone, ROLE_APP_ADMIN):
+            return False
+        return phone in app_admin_phones() or has_db_admin_role(db, phone, ROLE_APP_ADMIN)
+
+    if role == ROLE_SUBSCRIPTION_ADMIN:
+        if role_is_denied(db, phone, ROLE_SUBSCRIPTION_ADMIN):
+            return False
+        return (
+            has_admin_role(db, phone, ROLE_APP_ADMIN)
+            or phone in subscription_admin_phones()
+            or has_db_admin_role(db, phone, ROLE_SUBSCRIPTION_ADMIN)
+        )
+
+    if role == ROLE_CUSTOMER_SUPPORT:
+        if role_is_denied(db, phone, ROLE_CUSTOMER_SUPPORT):
+            return False
+        return (
+            has_admin_role(db, phone, ROLE_APP_ADMIN)
+            or has_admin_role(db, phone, ROLE_SUBSCRIPTION_ADMIN)
+            or phone == customer_support_phone()
+            or has_db_admin_role(db, phone, ROLE_CUSTOMER_SUPPORT)
+        )
+
+    return False
+
+
+def set_admin_role(db, target_phone, role, is_active, actor_user=None):
+    target_phone = normalize_phone(target_phone)
+    role = normalize_admin_role(role)
+    override = get_admin_role_override(db, target_phone, role)
+
+    if not override:
+        override = AppAdminRole(
+            phone=target_phone,
+            role=role,
+            is_active=is_active,
+            created_by_user_id=actor_user.id if actor_user else None
+        )
+        db.add(override)
+    else:
+        override.is_active = is_active
+
+    if is_active:
+        override.deactivated_at = None
+        override.deactivated_by_user_id = None
+    else:
+        override.deactivated_at = datetime.utcnow()
+        override.deactivated_by_user_id = actor_user.id if actor_user else None
+
+    return override
+
+
+def format_admin_roles(db):
+    roles = db.query(AppAdminRole).order_by(
+        AppAdminRole.role.asc(),
+        AppAdminRole.created_at.desc()
+    ).all()
+
+    if not roles:
+        return "No WhatsApp-managed admin roles yet."
+
+    msg = "WhatsApp-Managed Admin Roles\n\n"
+    for index, role in enumerate(roles[:30], start=1):
+        status = "Active" if role.is_active else "Denied"
+        msg += (
+            f"{index}. {role.phone}\n"
+            f"Role: {role.role}\n"
+            f"Status: {status}\n\n"
+        )
+    if len(roles) > 30:
+        msg += f"...and {len(roles) - 30:,} more."
+    return msg.strip()
+
+
+def build_post_onboarding_menu(business_name):
+    return (
+        f"Account created.\n\n"
+        f"Business: {business_name.title()}\n"
+        "Plan: BASIC\n\n"
+        "What next?\n"
+        "1. See formats\n"
+        "2. Add customer\n"
+        "3. View dashboard\n"
+        "4. Upgrade"
+    )
+
+
+def build_onboarding_start_message():
+    return (
+        "Welcome to CreditVoice.\n\n"
+        "Reply with your business name to create your free BASIC account.\n"
+        "Example: Ayo Stores"
+    )
+
+
 def notify_subscription_admins(db, payment, owner, evidence_received=False):
-    admins = subscription_admin_phones()
+    admins = [
+        phone
+        for phone in subscription_admin_phones()
+        if has_admin_role(db, phone, ROLE_SUBSCRIPTION_ADMIN)
+    ]
+    db_admins = db.query(AppAdminRole).filter(
+        AppAdminRole.role == ROLE_SUBSCRIPTION_ADMIN,
+        AppAdminRole.is_active == True
+    ).all()
+    admins.extend([role.phone for role in db_admins])
+    admins = sorted(set(admins))
     if not admins:
         return
 
@@ -2411,8 +2644,228 @@ def format_pending_subscriptions(payments):
     return msg.strip()
 
 
-def is_subscription_admin(phone):
-    return normalize_phone(phone) in subscription_admin_phones()
+def app_user_effective_plan(user):
+    status = (getattr(user, "subscription_status", None) or "ACTIVE").upper()
+    expires_at = getattr(user, "subscription_expires_at", None)
+    if expires_at and expires_at < datetime.utcnow():
+        return "EXPIRED"
+    if status not in ["ACTIVE", "TRIAL"]:
+        return status
+    return normalize_plan(getattr(user, "subscription_plan", PLAN_BASIC))
+
+
+def get_app_dashboard_summary(db):
+    users = db.query(User).all()
+    business_users = [user for user in users if not user.parent_id]
+    staff_users = [user for user in users if user.parent_id]
+    plan_counts = {
+        PLAN_BASIC: 0,
+        PLAN_GO: 0,
+        PLAN_PRO: 0,
+        "EXPIRED": 0,
+        "PAST_DUE": 0
+    }
+
+    for user in business_users:
+        effective_plan = app_user_effective_plan(user)
+        if effective_plan not in plan_counts:
+            plan_counts[effective_plan] = 0
+        plan_counts[effective_plan] += 1
+
+    pending_count = db.query(SubscriptionPayment).filter(
+        SubscriptionPayment.status == "PENDING"
+    ).count()
+    pending_amount = db.query(func.coalesce(func.sum(SubscriptionPayment.amount), 0)).filter(
+        SubscriptionPayment.status == "PENDING"
+    ).scalar()
+
+    month_start = get_month_start()
+    approved_month_count = db.query(SubscriptionPayment).filter(
+        SubscriptionPayment.status == "APPROVED",
+        SubscriptionPayment.approved_at >= month_start
+    ).count()
+    approved_month_amount = db.query(func.coalesce(func.sum(SubscriptionPayment.amount), 0)).filter(
+        SubscriptionPayment.status == "APPROVED",
+        SubscriptionPayment.approved_at >= month_start
+    ).scalar()
+
+    return {
+        "total_users": len(users),
+        "business_users": len(business_users),
+        "staff_users": len(staff_users),
+        "active_staff": len([user for user in staff_users if user.role == "delegate"]),
+        "pending_staff": len([user for user in staff_users if user.role == "delegate_pending"]),
+        "plan_counts": plan_counts,
+        "pending_count": pending_count,
+        "pending_amount": pending_amount,
+        "approved_month_count": approved_month_count,
+        "approved_month_amount": approved_month_amount
+    }
+
+
+def build_app_admin_dashboard_message(db):
+    summary = get_app_dashboard_summary(db)
+    plan_counts = summary["plan_counts"]
+    return (
+        "CreditVoice App Admin Dashboard\n\n"
+        f"Total users: {summary['total_users']:,}\n"
+        f"Business accounts: {summary['business_users']:,}\n"
+        f"Staff accounts: {summary['staff_users']:,}\n"
+        f"Active staff: {summary['active_staff']:,}\n"
+        f"Pending staff: {summary['pending_staff']:,}\n\n"
+        f"FREE/BASIC users: {plan_counts.get(PLAN_BASIC, 0):,}\n"
+        f"GO users: {plan_counts.get(PLAN_GO, 0):,}\n"
+        f"PRO users: {plan_counts.get(PLAN_PRO, 0):,}\n"
+        f"Expired users: {plan_counts.get('EXPIRED', 0):,}\n\n"
+        f"Pending upgrades: {summary['pending_count']:,} (N{summary['pending_amount']:,})\n"
+        f"Approved this month: {summary['approved_month_count']:,} (N{summary['approved_month_amount']:,})\n\n"
+        "Reply with:\n"
+        "1. Summary\n"
+        "2. PRO users\n"
+        "3. GO users\n"
+        "4. FREE users\n"
+        "5. Expired users\n"
+        "6. Pending upgrades\n"
+        "7. Approved this month\n"
+        "8. Recent users\n"
+        "9. Revenue summary\n\n"
+        "Send exit or cancel to close."
+    )
+
+
+def format_user_list(users, title):
+    if not users:
+        return f"{title}\n\nNo users found."
+
+    msg = f"{title}\n\n"
+    for index, user in enumerate(users[:20], start=1):
+        expires = user.subscription_expires_at.strftime("%d/%m/%Y") if user.subscription_expires_at else "No expiry"
+        name = user.name.title() if user.name else "Unnamed"
+        msg += (
+            f"{index}. {name}\n"
+            f"Phone: {user.phone}\n"
+            f"Plan: {normalize_plan(user.subscription_plan)}\n"
+            f"Status: {app_user_effective_plan(user)}\n"
+            f"Expires: {expires}\n\n"
+        )
+    if len(users) > 20:
+        msg += f"...and {len(users) - 20:,} more."
+    return msg.strip()
+
+
+def get_business_users_by_effective_plan(db, plan):
+    users = db.query(User).filter(User.parent_id == None).order_by(
+        User.created_at.desc()
+    ).all()
+    return [
+        user
+        for user in users
+        if app_user_effective_plan(user) == plan
+    ]
+
+
+def build_app_admin_selection_message(db, selection):
+    normalized = str(selection).lower().strip()
+    if normalized in ["1", "summary"]:
+        return "app_admin_summary", build_app_admin_dashboard_message(db)
+
+    if normalized in ["2", "pro", "pro users"]:
+        return "app_admin_pro_users", format_user_list(
+            get_business_users_by_effective_plan(db, PLAN_PRO),
+            "PRO Users"
+        )
+
+    if normalized in ["3", "go", "go users"]:
+        return "app_admin_go_users", format_user_list(
+            get_business_users_by_effective_plan(db, PLAN_GO),
+            "GO Users"
+        )
+
+    if normalized in ["4", "free", "basic", "free users", "basic users"]:
+        return "app_admin_free_users", format_user_list(
+            get_business_users_by_effective_plan(db, PLAN_BASIC),
+            "FREE/BASIC Users"
+        )
+
+    if normalized in ["5", "expired", "expired users"]:
+        return "app_admin_expired_users", format_user_list(
+            get_business_users_by_effective_plan(db, "EXPIRED"),
+            "Expired Users"
+        )
+
+    if normalized in ["6", "pending", "pending upgrades"]:
+        payments = db.query(SubscriptionPayment, User).outerjoin(
+            User,
+            SubscriptionPayment.user_id == User.id
+        ).filter(
+            SubscriptionPayment.status == "PENDING"
+        ).order_by(
+            SubscriptionPayment.created_at.asc()
+        ).all()
+        return "app_admin_pending_upgrades", format_pending_subscriptions(payments)
+
+    if normalized in ["7", "approved", "approved this month"]:
+        payments = db.query(SubscriptionPayment, User).outerjoin(
+            User,
+            SubscriptionPayment.user_id == User.id
+        ).filter(
+            SubscriptionPayment.status == "APPROVED",
+            SubscriptionPayment.approved_at >= get_month_start()
+        ).order_by(
+            SubscriptionPayment.approved_at.desc()
+        ).limit(20).all()
+        if not payments:
+            return "app_admin_approved_month", "No approved subscriptions this month."
+        msg = "Approved This Month\n\n"
+        for index, (payment, owner) in enumerate(payments, start=1):
+            name = owner.name.title() if owner and owner.name else payment.phone
+            approved_at = payment.approved_at.strftime("%d/%m/%Y") if payment.approved_at else "Unknown date"
+            msg += (
+                f"{index}. {name}\n"
+                f"Phone: {payment.phone}\n"
+                f"Plan: {payment.plan}\n"
+                f"Amount: N{payment.amount:,}\n"
+                f"Approved: {approved_at}\n\n"
+            )
+        return "app_admin_approved_month", msg.strip()
+
+    if normalized in ["8", "recent", "recent users"]:
+        users = db.query(User).filter(User.parent_id == None).order_by(
+            User.created_at.desc()
+        ).limit(20).all()
+        return "app_admin_recent_users", format_user_list(users, "Recent Business Users")
+
+    if normalized in ["9", "revenue", "revenue summary"]:
+        total_approved = db.query(func.coalesce(func.sum(SubscriptionPayment.amount), 0)).filter(
+            SubscriptionPayment.status == "APPROVED"
+        ).scalar()
+        month_approved = db.query(func.coalesce(func.sum(SubscriptionPayment.amount), 0)).filter(
+            SubscriptionPayment.status == "APPROVED",
+            SubscriptionPayment.approved_at >= get_month_start()
+        ).scalar()
+        pending_amount = db.query(func.coalesce(func.sum(SubscriptionPayment.amount), 0)).filter(
+            SubscriptionPayment.status == "PENDING"
+        ).scalar()
+        return "app_admin_revenue", (
+            "Revenue Summary\n\n"
+            f"Approved all time: N{total_approved:,}\n"
+            f"Approved this month: N{month_approved:,}\n"
+            f"Pending upgrades: N{pending_amount:,}"
+        )
+
+    return "app_admin_unknown", build_app_admin_dashboard_message(db)
+
+
+def is_subscription_admin(phone, db=None):
+    if db is None:
+        return normalize_phone(phone) in subscription_admin_phones()
+    return has_admin_role(db, phone, ROLE_SUBSCRIPTION_ADMIN)
+
+
+def is_app_admin(phone, db=None):
+    if db is None:
+        return normalize_phone(phone) in app_admin_phones()
+    return has_admin_role(db, phone, ROLE_APP_ADMIN)
 
 
 def get_visible_transaction(db, owner_phone, transaction_id, recorded_by_id=None):
@@ -3405,13 +3858,28 @@ async def webhook(req: Request):
                         flush=True
                     )
                     if not sender_exists:
-                        send_whatsapp_message(
-                            phone,
-                            "Welcome to CreditVoice.\n\n"
-                            "This WhatsApp number is not registered yet. Please "
-                            "onboard it as a business owner or add it as staff first."
-                        )
-                        return {"status": "unregistered"}
+                        admin_preview = parse_message(text)
+                        admin_allowed = False
+                        if admin_preview:
+                            admin_allowed = (
+                                admin_preview["type"] in [
+                                    "APP_ADMIN_DASHBOARD",
+                                    "APP_ADMIN_USERS_BY_PLAN",
+                                    "MANAGE_APP_ADMIN_ROLE",
+                                    "LIST_APP_ADMIN_ROLES"
+                                ] and is_app_admin(phone, debug_db)
+                            ) or (
+                                admin_preview["type"] in [
+                                    "PENDING_SUBSCRIPTIONS",
+                                    "APPROVE_SUBSCRIPTION",
+                                    "REJECT_SUBSCRIPTION",
+                                    "ACTIVATE_PLAN"
+                                ] and is_subscription_admin(phone, debug_db)
+                            )
+
+                        if not admin_allowed:
+                            print("Unregistered sender will continue to onboarding flow", flush=True)
+                            raise LookupError("continue_to_onboarding")
 
                     early_visible_recorded_by_id = visibility_recorded_by_id(sender_exists)
 
@@ -3682,6 +4150,9 @@ async def webhook(req: Request):
                         return {"status": "due_menu_selection"}
                 finally:
                     debug_db.close()
+    except LookupError as exc:
+        if str(exc) != "continue_to_onboarding":
+            print("Webhook early parse lookup error:", repr(exc), flush=True)
     except Exception as exc:
         print("Webhook early parse error:", repr(exc), flush=True)
 
@@ -3748,10 +4219,34 @@ async def webhook(req: Request):
             )
             return {"status": "unregistered_voice"}
 
+        # Parse early so unregistered app/subscription admins can use admin commands.
+        parsed = parse_message(text) if message_type == "text" else None
+        is_command = parsed and parsed["type"] != "TRANSACTION"
+
+        if not user and parsed:
+            admin_command_allowed = (
+                parsed["type"] in [
+                    "APP_ADMIN_DASHBOARD",
+                    "APP_ADMIN_USERS_BY_PLAN",
+                    "MANAGE_APP_ADMIN_ROLE",
+                    "LIST_APP_ADMIN_ROLES"
+                ] and is_app_admin(phone, db)
+            ) or (
+                parsed["type"] in [
+                    "PENDING_SUBSCRIPTIONS",
+                    "APPROVE_SUBSCRIPTION",
+                    "REJECT_SUBSCRIPTION",
+                    "ACTIVATE_PLAN"
+                ] and is_subscription_admin(phone, db)
+            )
+            if not admin_command_allowed:
+                parsed = None
+                is_command = False
+
         # Logic for Pending Invitations
         if user and user.role == "delegate_pending":
-            normalized = text.strip()
-            if normalized == "1":
+            normalized = text.lower().strip()
+            if normalized in ["1", "yes", "accept", "approve"]:
                 user.role = "delegate"
                 db.commit()
                 send_whatsapp_message(
@@ -3764,7 +4259,7 @@ async def webhook(req: Request):
                     f"📢 Notification: {user.name.title()} has ACCEPTED your staff invitation."
                 )
                 return {"status": "delegate_accepted"}
-            elif normalized == "2":
+            elif normalized in ["2", "no", "decline", "reject"]:
                 user.role = "user"
                 user.parent_id = None
                 user.can_view_all_transactions = False
@@ -3809,8 +4304,9 @@ async def webhook(req: Request):
             print(f"Voice transcript for {phone}: {text}", flush=True)
 
         # Parse message early to check if it's an explicit command
-        parsed = parse_message(text)
-        is_command = parsed and parsed["type"] != "TRANSACTION"
+        if parsed is None:
+            parsed = parse_message(text)
+            is_command = parsed and parsed["type"] != "TRANSACTION"
         visible_recorded_by_id = visibility_recorded_by_id(user)
         subscription = get_business_subscription(db, user)
 
@@ -3836,6 +4332,7 @@ async def webhook(req: Request):
                     send_whatsapp_message(
                         phone,
                         "Receipt received. Your subscription request is waiting for admin confirmation."
+                        f"{support_line()}"
                     )
                     return {"status": "subscription_receipt_received"}
 
@@ -3863,6 +4360,14 @@ async def webhook(req: Request):
 
             if normalized in ["4", "cancel", "exit", "back"]:
                 db.delete(pending)
+                db.add(
+                    PendingAction(
+                        phone=phone,
+                        customer_name=name_to_save,
+                        action="POST_ONBOARDING_MENU",
+                        last_customer=name_to_save
+                    )
+                )
                 db.commit()
                 send_whatsapp_message(phone, "Upgrade cancelled.")
                 return {"status": "upgrade_cancelled"}
@@ -3895,8 +4400,52 @@ async def webhook(req: Request):
                 send_whatsapp_message(
                     phone,
                     "Payment evidence received. Your subscription request is waiting for admin confirmation."
+                    f"{support_line()}"
                 )
                 return {"status": "subscription_text_evidence_received"}
+
+        if pending and pending.action == "POST_ONBOARDING_MENU" and not is_command:
+            normalized = text.lower().strip()
+            if normalized in ["1", "formats", "format", "f"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "Supported Formats\n\n"
+                    "BUY ONLY\nAde bought rice 5000\n\n"
+                    "PAYMENT ONLY\nAde paid 3000\n\n"
+                    "PART PAYMENT\nAde bought rice 5000 paid 2000\n\n"
+                    "INVOICE\nAde bought rice 4000, beans 3000 paid 2000"
+                )
+                return {"status": "post_onboarding_formats"}
+
+            if normalized in ["2", "add customer", "customer"]:
+                send_whatsapp_message(
+                    phone,
+                    "To add a customer, send their name and phone number like:\nJohn 08012345678"
+                )
+                return {"status": "post_onboarding_add_customer"}
+
+            if normalized in ["3", "dashboard"]:
+                pending.action = "DASHBOARD_MENU"
+                db.commit()
+                send_whatsapp_message(phone, build_dashboard_menu_message())
+                return {"status": "post_onboarding_dashboard"}
+
+            if normalized in ["4", "upgrade"]:
+                pending.action = "UPGRADE_MENU"
+                db.commit()
+                send_whatsapp_message(phone, build_upgrade_message())
+                return {"status": "post_onboarding_upgrade"}
+
+            if normalized in ["cancel", "exit", "back", "done", "stop"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Closed. You can continue anytime.")
+                return {"status": "post_onboarding_closed"}
+
+            send_whatsapp_message(phone, build_post_onboarding_menu(pending.customer_name or business_name))
+            return {"status": "post_onboarding_waiting"}
 
         # =========================
         # 👤 USER ONBOARDING / PROFILE UPDATE (CONFIRMATION)
@@ -3940,12 +4489,7 @@ async def webhook(req: Request):
                         role="user"
                     )
                     db.add(new_user)
-                    msg = (
-                        f"✅ Registration Successful!\n\n"
-                        f"Welcome {name_to_save.title()}, you are now set up on CreditVoice. I am TITI, your assistant.\n\n"
-                        "You can now start managing your debts and payments. To add your first customer, send their name and phone number like this:\n\n"
-                        "*John 08012345678*"
-                    )
+                    msg = build_post_onboarding_menu(name_to_save)
 
                 db.delete(pending)
                 db.commit()
@@ -3970,7 +4514,7 @@ async def webhook(req: Request):
 
         if not user:
 
-            if text.lower() in ["continue", "start", "yes", "ok", "1"]:
+            if text.lower().strip() in ["continue", "start", "yes", "ok", "1", "hello", "hi", "hey", "onboard", "titi", "begin"]:
                 if pending and pending.action != "ONBOARD_USER":
                     db.delete(pending)
                     db.commit()
@@ -3984,7 +4528,7 @@ async def webhook(req: Request):
 
                 send_whatsapp_message(
                     phone,
-                    "Great! To finish your registration, please reply with your name or business name."
+                    build_onboarding_start_message()
                 )
                 return {"status": "onboarding_started"}
 
@@ -3994,8 +4538,7 @@ async def webhook(req: Request):
             if text.lower().strip() in onboarding_triggers:
                 send_whatsapp_message(
                     phone,
-                    "Welcome to CreditVoice! I am TITI.\n\n"
-                    "Reply CONTINUE or 1 to begin onboarding."
+                    build_onboarding_start_message()
                 )
                 return {"status": "welcome_sent"}
             
@@ -4132,6 +4675,18 @@ async def webhook(req: Request):
             return {"status": "customer_onboarded_confirm"}
 
         if pending and not is_command:
+            if pending.action == "APP_ADMIN_DASHBOARD":
+                normalized = text.strip().lower()
+                status, msg = build_app_admin_selection_message(db, normalized)
+                if status == "app_admin_unknown":
+                    send_whatsapp_message(phone, msg)
+                    return {"status": "invalid_app_admin_dashboard_option"}
+
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, msg)
+                return {"status": status}
+
             if pending.action == "DASHBOARD_MENU":
                 normalized = text.strip().lower()
                 dashboard_aliases = {
@@ -4702,11 +5257,12 @@ async def webhook(req: Request):
                 phone,
                 f"Thank you. Your {parsed['plan']} subscription request has been received.\n\n"
                 "Please send your payment receipt screenshot here. An admin will confirm and activate your plan."
+                f"{support_line()}"
             )
             return {"status": "subscription_payment_pending"}
 
         if parsed["type"] == "PENDING_SUBSCRIPTIONS":
-            if not is_subscription_admin(phone):
+            if not is_subscription_admin(phone, db):
                 send_whatsapp_message(phone, "Only subscription admins can view pending subscriptions.")
                 return {"status": "unauthorized_pending_subscriptions"}
 
@@ -4721,8 +5277,77 @@ async def webhook(req: Request):
             send_whatsapp_message(phone, format_pending_subscriptions(payments))
             return {"status": "pending_subscriptions"}
 
+        if parsed["type"] == "APP_ADMIN_DASHBOARD":
+            if not is_app_admin(phone, db):
+                send_whatsapp_message(phone, "Only app admins can view the app admin dashboard.")
+                return {"status": "unauthorized_app_admin_dashboard"}
+
+            db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).delete()
+            db.add(
+                PendingAction(
+                    phone=phone,
+                    customer_name="",
+                    action="APP_ADMIN_DASHBOARD",
+                    last_customer=""
+                )
+            )
+            db.commit()
+            send_whatsapp_message(phone, build_app_admin_dashboard_message(db))
+            return {"status": "app_admin_dashboard"}
+
+        if parsed["type"] == "APP_ADMIN_USERS_BY_PLAN":
+            if not is_app_admin(phone, db):
+                send_whatsapp_message(phone, "Only app admins can view app users.")
+                return {"status": "unauthorized_app_admin_users"}
+
+            users = get_business_users_by_effective_plan(db, parsed["plan"])
+            title = "FREE/BASIC Users" if parsed["plan"] == PLAN_BASIC else f"{parsed['plan']} Users"
+            send_whatsapp_message(phone, format_user_list(users, title))
+            return {"status": "app_admin_users_by_plan"}
+
+        if parsed["type"] == "MANAGE_APP_ADMIN_ROLE":
+            if not is_app_admin(phone, db):
+                send_whatsapp_message(phone, "Only app admins can manage admin roles.")
+                return {"status": "unauthorized_admin_role_management"}
+
+            if not parsed.get("role"):
+                send_whatsapp_message(phone, "Unknown admin role.")
+                return {"status": "unknown_admin_role"}
+
+            if parsed["role"] == ROLE_APP_ADMIN and parsed["phone"] in app_admin_phones() and not parsed["active"]:
+                send_whatsapp_message(
+                    phone,
+                    "Root app admins from Render APP_ADMIN_PHONES cannot be denied from WhatsApp."
+                )
+                return {"status": "cannot_deny_root_app_admin"}
+
+            role_record = set_admin_role(
+                db,
+                parsed["phone"],
+                parsed["role"],
+                parsed["active"],
+                actor_user=user
+            )
+            db.commit()
+            status_text = "allowed" if role_record.is_active else "denied"
+            send_whatsapp_message(
+                phone,
+                f"{role_record.phone} is now {status_text} for {role_record.role}."
+            )
+            return {"status": "admin_role_updated"}
+
+        if parsed["type"] == "LIST_APP_ADMIN_ROLES":
+            if not is_app_admin(phone, db):
+                send_whatsapp_message(phone, "Only app admins can view admin roles.")
+                return {"status": "unauthorized_admin_role_list"}
+
+            send_whatsapp_message(phone, format_admin_roles(db))
+            return {"status": "admin_roles"}
+
         if parsed["type"] == "APPROVE_SUBSCRIPTION":
-            if not is_subscription_admin(phone):
+            if not is_subscription_admin(phone, db):
                 send_whatsapp_message(phone, "Only subscription admins can approve subscriptions.")
                 return {"status": "unauthorized_subscription_approval"}
 
@@ -4756,7 +5381,7 @@ async def webhook(req: Request):
             return {"status": "subscription_approved"}
 
         if parsed["type"] == "REJECT_SUBSCRIPTION":
-            if not is_subscription_admin(phone):
+            if not is_subscription_admin(phone, db):
                 send_whatsapp_message(phone, "Only subscription admins can reject subscriptions.")
                 return {"status": "unauthorized_subscription_rejection"}
 
@@ -4782,12 +5407,13 @@ async def webhook(req: Request):
             if owner:
                 send_whatsapp_message(
                     owner.phone,
-                    "Your subscription payment could not be confirmed. Please contact support or send a clearer receipt."
+                    "Your subscription payment could not be confirmed. Please send a clearer receipt."
+                    f"{support_line()}"
                 )
             return {"status": "subscription_rejected"}
 
         if parsed["type"] == "ACTIVATE_PLAN":
-            if not is_subscription_admin(phone):
+            if not is_subscription_admin(phone, db):
                 send_whatsapp_message(phone, "Only subscription admins can activate plans.")
                 return {"status": "unauthorized_plan_activation"}
 
@@ -5816,3 +6442,5 @@ async def webhook(req: Request):
 
     finally:
         db.close()
+
+
