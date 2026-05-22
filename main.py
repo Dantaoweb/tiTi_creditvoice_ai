@@ -48,6 +48,7 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
+OPENAI_PARSE_MODEL = os.getenv("OPENAI_PARSE_MODEL", "gpt-4o-mini")
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set")
@@ -285,6 +286,8 @@ class PendingAction(Base):
 
     items_json = Column(String, nullable=True)
 
+    source_text = Column(String, nullable=True)
+
     last_customer = Column(String)
 
     due_date = Column(
@@ -449,7 +452,8 @@ def ensure_schema_updates():
         "quantity": "INTEGER",
         "unit": "VARCHAR",
         "unit_price": "INTEGER",
-        "items_json": "VARCHAR"
+        "items_json": "VARCHAR",
+        "source_text": "VARCHAR"
     }
     with engine.begin() as connection:
         for column_name, column_type in pending_updates.items():
@@ -694,6 +698,95 @@ def transcribe_whatsapp_voice(message):
     return normalize_voice_transcript(transcript), None
 
 
+def extract_json_object(text_value):
+    if not text_value:
+        return None
+    text_value = text_value.strip()
+    try:
+        return json.loads(text_value)
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r"\{.*\}", text_value, re.DOTALL)
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+
+
+def interpret_text_with_openai(text_value):
+    if not OPENAI_API_KEY:
+        return None
+    text_value = (text_value or "").strip()
+    if not text_value or len(text_value) > 600:
+        return None
+
+    system_prompt = (
+        "You help normalize Nigerian WhatsApp business accounting messages for CreditVoice. "
+        "Return only strict JSON. Do not explain. Do not save anything. "
+        "Convert messy wording into one supported command sentence that the local parser can understand. "
+        "Supported command styles include: "
+        "'Ayo bought rice 5000', 'Ayo paid 3000', "
+        "'Ayo bought rice 4000, beans 3000 paid 2000', "
+        "'I sold phone 45k', 'I received 1000 for doing chair', "
+        "'Ayo paid 6000 for gate and balance is 5600', "
+        "'add customer Ayo', 'Ayo phone 08012345678'. "
+        "Preserve customer names, products, amounts, paid amounts, balances, units, and due dates. "
+        "If the message is not a business transaction/customer setup/reminder command, set understood false. "
+        "If important money details are missing or ambiguous, set understood false and provide a short clarification_question."
+    )
+    user_prompt = (
+        "Normalize this message for the local parser.\n\n"
+        f"Message: {text_value}\n\n"
+        "Return JSON with exactly these keys:\n"
+        "{"
+        "\"understood\": true|false, "
+        "\"normalized_text\": \"\", "
+        "\"confidence\": \"high|medium|low\", "
+        "\"clarification_question\": \"\""
+        "}"
+    )
+
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": OPENAI_PARSE_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0,
+                "response_format": {"type": "json_object"}
+            },
+            timeout=30
+        )
+    except requests.RequestException as exc:
+        print("OpenAI parser fallback request error:", repr(exc), flush=True)
+        return None
+
+    if response.status_code >= 400:
+        print("OpenAI parser fallback error:", response.text, flush=True)
+        return None
+
+    content = (
+        response.json()
+        .get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+    )
+    result = extract_json_object(content)
+    if not isinstance(result, dict):
+        return None
+    return result
+
+
 def normalize_phone(phone_str):
     """Converts local Nigerian numbers to international format for Meta API."""
     if not phone_str:
@@ -893,6 +986,37 @@ def extract_artisan_transaction(text):
             "total": total_amount,
             "due_date": due_date,
             "artisan_note": f"Paid N{paid_amount:,}, balance N{balance_amount:,}"
+        }
+
+    paid_for_balance_match = re.search(
+        r"^(?P<name>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:pay|paid|pays)\s+(?:me\s+)?"
+        r"(?P<paid>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+"
+        r"(?:for\s+(?P<description>.+?)\s+)?(?:and\s+)?"
+        r"(?:balance|bal|remaining|remain)\s+(?:is\s+)?"
+        r"(?P<balance>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)",
+        clean
+    )
+    if paid_for_balance_match:
+        paid_amount = parse_amount_token(paid_for_balance_match.group("paid"))
+        balance_amount = parse_amount_token(paid_for_balance_match.group("balance"))
+        if paid_amount is None or balance_amount is None:
+            return None
+        total_amount = paid_amount + balance_amount
+        product = (paid_for_balance_match.group("description") or "service/job").strip()
+        return {
+            "type": "TRANSACTION",
+            "name": paid_for_balance_match.group("name").strip(),
+            "action": "COMBINED",
+            "buy_amount": total_amount,
+            "paid_amount": paid_amount,
+            "quantity": None,
+            "unit": None,
+            "product": product,
+            "unit_price": total_amount,
+            "invoice_items": None,
+            "total": total_amount,
+            "due_date": due_date,
+            "artisan_note": f"{product.title()}: paid N{paid_amount:,}, balance N{balance_amount:,}"
         }
 
     receive_match = re.search(
@@ -1204,6 +1328,12 @@ def get_customer_period_range(period, target_date=None):
 def parse_customer_account_request(text):
     clean = text.lower().strip()
     if clean.startswith("customer summary") or clean.startswith("customer balance summary"):
+        return None
+    transaction_terms = [
+        "bought", "buy", "paid", "pay", "collect", "collected",
+        "receive", "received", "sold", "sell", "supply", "supplied"
+    ]
+    if any(re.search(rf"\b{term}\b", clean) for term in transaction_terms):
         return None
 
     for keyword in [" account", " balance", " summary"]:
@@ -2868,6 +2998,8 @@ def balance_status_line(balance):
 
 
 def edit_prompt_for_pending(pending):
+    if pending.source_text:
+        return pending.source_text
     if pending.action == "SALE":
         return (
             "No problem. Send the corrected service income.\n"
@@ -2887,6 +3019,18 @@ def edit_prompt_for_pending(pending):
         "No problem. Send the corrected transaction.\n"
         "Example: Ade bought rice 5000"
     )
+
+
+def apply_voice_confirmation_options(confirm_msg, source_text=None):
+    if not source_text:
+        return confirm_msg
+    confirm_msg = re.sub(
+        r"Reply YES or 1 to save, EDIT or 2 to change\.?",
+        "",
+        confirm_msg
+    ).strip()
+    confirm_msg = f"{confirm_msg}\n\nReply:\n1. Save\n2. Edit text\n3. Send voice again"
+    return f"I heard:\n{source_text}\n\n{confirm_msg}"
 
 
 def build_onboarding_start_message():
@@ -5701,25 +5845,48 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, msg)
                 return {"status": "saved"}
 
+            elif normalized == "3" and pending.source_text:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, "Send the voice note again.")
+                return {"status": "voice_retry_requested"}
+
             elif normalized in ["edit", "2", "change"]:
+                is_voice_edit = bool(pending.source_text)
                 edit_msg = edit_prompt_for_pending(pending)
                 db.delete(pending)
                 db.commit()
                 send_whatsapp_message(phone, edit_msg)
-                return {"status": "edit"}
+                return {"status": "voice_text_edit" if is_voice_edit else "edit"}
 
         if not parsed:
-            # Ignore simple pleasantries or short messages from registered users 
-            # so we don't spam them with "Message not understood"
-            pleasantries = ["thanks", "thank you", "ok", "okay", "done", "bye", "good", "nice", "👍"]
+            # Ignore simple pleasantries or short messages from registered users
+            # so we do not spam them with "Message not understood"
+            pleasantries = ["thanks", "thank you", "ok", "okay", "done", "bye", "good", "nice", "??"]
             if text.lower().strip() in pleasantries or len(text) < 2:
                 return {"status": "ignored_pleasantry"}
 
-            send_whatsapp_message(
-                phone,
-                build_invalid_message()
-            )
-            return {"status": "invalid"}
+            fallback = interpret_text_with_openai(text)
+            if fallback:
+                normalized_text = (fallback.get("normalized_text") or "").strip()
+                clarification = (fallback.get("clarification_question") or "").strip()
+                if fallback.get("understood") and normalized_text:
+                    fallback_parsed = parse_message(normalized_text)
+                    if fallback_parsed:
+                        parsed = fallback_parsed
+                        text = normalized_text
+                        is_command = parsed and parsed["type"] != "TRANSACTION"
+                        print(f"OpenAI parser fallback normalized to: {normalized_text}", flush=True)
+                    elif clarification:
+                        send_whatsapp_message(phone, clarification)
+                        return {"status": "openai_parser_clarification"}
+                elif clarification:
+                    send_whatsapp_message(phone, clarification)
+                    return {"status": "openai_parser_clarification"}
+
+            if not parsed:
+                send_whatsapp_message(phone, build_invalid_message())
+                return {"status": "invalid"}
         if parsed["type"] == "FORMATS":
             msg = build_supported_formats_message()
             send_whatsapp_message(phone, msg)
@@ -6791,7 +6958,8 @@ async def webhook(req: Request):
                 quantity=parsed.get("quantity"),
                 unit=parsed.get("unit"),
                 unit_price=parsed.get("unit_price"),
-                items_json=json.dumps(parsed.get("invoice_items") or [])
+                items_json=json.dumps(parsed.get("invoice_items") or []),
+                source_text=voice_transcript_text
             )
             db.add(pending)
             db.commit()
@@ -6819,8 +6987,7 @@ async def webhook(req: Request):
                 "No customer debt will be recorded.\n"
                 "Reply YES or 1 to save, EDIT or 2 to change."
             )
-            if voice_transcript_text:
-                confirm_msg = f"I heard:\n{voice_transcript_text}\n\n{confirm_msg}"
+            confirm_msg = apply_voice_confirmation_options(confirm_msg, voice_transcript_text)
 
             send_whatsapp_message(phone, confirm_msg)
             return {"status": "confirm_direct_sale"}
@@ -6849,6 +7016,7 @@ async def webhook(req: Request):
             Customer.name == customer_name,
             Customer.owner_phone == business_owner_phone
         ).first()
+        customer_was_created = False
 
         if not customer:
             customer_allowed, customer_limit_msg = check_customer_limit(
@@ -6866,6 +7034,7 @@ async def webhook(req: Request):
             )
             db.add(customer)
             db.commit()
+            customer_was_created = True
 
         planned_rows = 2 if parsed["action"] == "COMBINED" else 1
         transaction_allowed, transaction_limit_msg = check_monthly_transaction_limit(
@@ -6896,6 +7065,7 @@ async def webhook(req: Request):
             unit=parsed.get("unit"),
             unit_price=parsed.get("unit_price"),
             items_json=json.dumps(parsed.get("invoice_items") or []),
+            source_text=voice_transcript_text,
             due_date=parsed["due_date"]
         )
 
@@ -6987,15 +7157,30 @@ async def webhook(req: Request):
                     f"Reply YES or 1 to save, EDIT or 2 to change."
                 )
 
-        confirm_msg = f"{confirm_msg}\n{balance_after_line}"
+        phone_warning = ""
+        if not customer.customer_phone:
+            setup_hint = f"{customer.name} phone 08012345678"
+            if customer_was_created:
+                phone_warning = (
+                    f"\nNew customer created: {customer.name.title()} with no phone number.\n"
+                    "This transaction will still save. For reminders later, send:\n"
+                    f"{setup_hint}"
+                )
+            else:
+                phone_warning = (
+                    f"\nCustomer phone is not set for {customer.name.title()}.\n"
+                    "This transaction will still save. For reminders later, send:\n"
+                    f"{setup_hint}"
+                )
+
+        confirm_msg = f"{confirm_msg}\n{balance_after_line}{phone_warning}"
         if parsed.get("artisan_note"):
             confirm_msg = (
                 f"{confirm_msg}\n"
                 "This will record customer debt and payment.\n"
                 f"{parsed['artisan_note']}"
             )
-        if voice_transcript_text:
-            confirm_msg = f"I heard:\n{voice_transcript_text}\n\n{confirm_msg}"
+        confirm_msg = apply_voice_confirmation_options(confirm_msg, voice_transcript_text)
 
         send_whatsapp_message(phone, confirm_msg)
         return {"status": "pending"}
