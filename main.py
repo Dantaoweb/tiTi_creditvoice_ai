@@ -1083,12 +1083,14 @@ def extract_due_date_from_text(text):
     if any(phrase in clean_text for phrase in tomorrow_phrases):
         return datetime.utcnow() + timedelta(days=1)
 
-    date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", clean_text)
+    date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})", clean_text)
     if not date_match:
         return None
 
     try:
-        return datetime.strptime(date_match.group(1), "%d/%m/%Y")
+        date_text = date_match.group(1)
+        date_format = "%d/%m/%y" if len(date_text.rsplit("/", 1)[-1]) == 2 else "%d/%m/%Y"
+        return datetime.strptime(date_text, date_format)
     except ValueError:
         return None
 
@@ -1578,16 +1580,18 @@ def parse_period_phrase(text):
 
 
 def parse_date_phrase(text):
-    match = re.search(r"(\d{1,2}/\d{1,2}/\d{4})", text)
+    match = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})", text)
     return match.group(1) if match else None
 
 
 def parse_slash_date(text):
-    match = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    match = re.search(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", text)
     if not match:
         return None
 
     day, month, year = map(int, match.groups())
+    if year < 100:
+        year += 2000
     try:
         return datetime(year, month, day)
     except ValueError:
@@ -2496,7 +2500,7 @@ def parse_message(text):
          due_date = None
 
          date_match = re.search(
-              r'(\d{1,2}/\d{1,2}/\d{4})',
+              r'(\d{1,2}/\d{1,2}/\d{2,4})',
               clean_text
          )
 
@@ -2504,13 +2508,20 @@ def parse_message(text):
 
         try:
 
-            due_date = datetime.strptime(
-                date_match.group(1),
-                "%d/%m/%Y"
-            )
+            date_text = date_match.group(1)
+            date_format = "%d/%m/%y" if len(date_text.rsplit("/", 1)[-1]) == 2 else "%d/%m/%Y"
+            due_date = datetime.strptime(date_text, date_format)
 
         except:
             return None
+
+    due_clause_pattern = (
+        r"\s*(?:,?\s+and)?\s+"
+        r"(?:due\s+to\s+pay|due|will\s+pay|pay|balance|will\s+balance)"
+        r"\s+\d{1,2}/\d{1,2}/\d{2,4}\b"
+    )
+    invoice_clean_text = re.sub(due_clause_pattern, "", invoice_clean_text).strip()
+    clean_text = re.sub(due_clause_pattern, "", clean_text, flags=re.IGNORECASE).strip()
 
     # =========================
     # 🧠 DETECT TYPE
