@@ -195,6 +195,119 @@ class TransactionNote(Base):
     )
 
 
+class Supplier(Base):
+
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    name = Column(String)
+
+    owner_phone = Column(String)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SupplierPurchase(Base):
+
+    __tablename__ = "supplier_purchases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"))
+
+    owner_phone = Column(String)
+
+    product = Column(String)
+
+    quantity = Column(Integer, nullable=True)
+
+    unit = Column(String, nullable=True)
+
+    unit_price = Column(Integer, nullable=True)
+
+    total = Column(Integer)
+
+    paid_amount = Column(Integer, default=0)
+
+    due_date = Column(DateTime, nullable=True)
+
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SupplierPayment(Base):
+
+    __tablename__ = "supplier_payments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"))
+
+    owner_phone = Column(String)
+
+    amount = Column(Integer)
+
+    product = Column(String, nullable=True)
+
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InventoryItem(Base):
+
+    __tablename__ = "inventory_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String)
+
+    name = Column(String)
+
+    unit = Column(String, nullable=True)
+
+    quantity = Column(Integer, default=0)
+
+    cost_price = Column(Integer, nullable=True)
+
+    selling_price = Column(Integer, nullable=True)
+
+    low_stock_alert = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InventoryMovement(Base):
+
+    __tablename__ = "inventory_movements"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String)
+
+    item_id = Column(Integer, ForeignKey("inventory_items.id"))
+
+    movement_type = Column(String)
+
+    quantity = Column(Integer)
+
+    unit_price = Column(Integer, nullable=True)
+
+    source_type = Column(String, nullable=True)
+
+    source_id = Column(Integer, nullable=True)
+
+    note = Column(String, nullable=True)
+
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class SubscriptionPayment(Base):
 
     __tablename__ = "subscription_payments"
@@ -372,6 +485,11 @@ def debug_schema(token: str):
         Transaction,
         TransactionItem,
         TransactionNote,
+        Supplier,
+        SupplierPurchase,
+        SupplierPayment,
+        InventoryItem,
+        InventoryMovement,
         SubscriptionPayment,
         AppAdminRole,
         PendingAction,
@@ -731,6 +849,8 @@ def interpret_text_with_openai(text_value):
         "'Ayo bought rice 5000', 'Ayo paid 3000', "
         "'Ayo bought rice 4000, beans 3000 paid 2000', "
         "'I sold phone 45k', 'I received 1000 for doing chair', "
+        "'Ayo supply me 12kg cocoa at 5000', "
+        "'I paid Ayo 14000 for egg', "
         "'Ayo paid 6000 for gate and balance is 5600', "
         "'add customer Ayo', 'Ayo phone 08012345678'. "
         "Preserve customer names, products, amounts, paid amounts, balances, units, and due dates. "
@@ -805,19 +925,38 @@ def extract_item_details(text):
 
     match = re.search(
         r"(?P<quantity>\d+)\s*"
-        r"(?P<unit>[a-z/]+)\s+(?:of\s+)?"
+        r"(?P<container>[a-z/]+)\s+of\s+"
         r"(?P<product>[a-z ]+?)\s+(?:at|for)\s+(?P<unit_price>" + amount_pattern + ")",
         clean
     )
-
+    compact_unit_match = None
     if not match:
+        compact_unit_match = re.search(
+            r"(?P<quantity>\d+)\s*"
+            r"(?P<unit>kg|g|ml|l)\s+(?:of\s+)?"
+            r"(?P<product>[a-z ]+?)\s+(?:at|for)\s+(?P<unit_price>" + amount_pattern + ")",
+            clean
+        )
+    no_of_match = None
+    if not match and not compact_unit_match:
+        no_of_match = re.search(
+            r"(?P<quantity>\d+)\s*"
+            r"(?P<product>[a-z/]+(?:\s+[a-z/]+){0,3})\s+"
+            r"(?:at|for)\s+(?P<unit_price>" + amount_pattern + ")",
+            clean
+        )
+
+    active_match = match or compact_unit_match or no_of_match
+    if not active_match:
         return None
 
     # Parse quantity and unit price safely, supporting k/m suffixes for the price
-    quantity = parse_amount_token(match.group("quantity")) or 0
-    unit = match.group("unit")
-    product = match.group("product").strip()
-    unit_price = parse_amount_token(match.group("unit_price")) or 0
+    quantity = parse_amount_token(active_match.group("quantity")) or 0
+    unit = match.group("container") if match else None
+    if compact_unit_match:
+        unit = compact_unit_match.group("unit")
+    product = active_match.group("product").strip()
+    unit_price = parse_amount_token(active_match.group("unit_price")) or 0
     total = quantity * unit_price
 
     return {
@@ -831,7 +970,7 @@ def extract_item_details(text):
 
 def extract_direct_sale_details(text):
     clean = text.lower().replace(",", "").strip()
-    clean = re.sub(r"^(?:i\s+)?(?:sold|sell|supply|supplied)\s+", "", clean).strip()
+    clean = re.sub(r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+", "", clean).strip()
     clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean).strip()
 
     amount_matches = list(re.finditer(
@@ -864,6 +1003,8 @@ def extract_direct_sale_details(text):
         unit_phrases = [
             "truck loads",
             "truck load",
+            "trucks",
+            "truck",
             "bags",
             "bag",
             "cartons",
@@ -960,7 +1101,7 @@ def extract_artisan_transaction(text):
     due_date = extract_due_date_from_text(clean)
 
     balance_match = re.search(
-        r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays|pay\s+me|paid\s+me)\s+"
+        r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays|pay\s+me|paid\s+me|give\s+me|gave\s+me|send|sent|transfer|transferred|transfered|deposit|deposited|settle|settled|clear|cleared)\s+"
         r"(?P<paid>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+"
         r"(?:balance|bal|remaining|remain)\s+"
         r"(?P<balance>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)",
@@ -989,7 +1130,7 @@ def extract_artisan_transaction(text):
         }
 
     paid_for_balance_match = re.search(
-        r"^(?P<name>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:pay|paid|pays)\s+(?:me\s+)?"
+        r"^(?P<name>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:pay|paid|pays|give|gave|send|sent|transfer|transferred|transfered|deposit|deposited|settle|settled|clear|cleared)\s+(?:me\s+)?"
         r"(?P<paid>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+"
         r"(?:for\s+(?P<description>.+?)\s+)?(?:and\s+)?"
         r"(?:balance|bal|remaining|remain)\s+(?:is\s+)?"
@@ -1017,6 +1158,31 @@ def extract_artisan_transaction(text):
             "total": total_amount,
             "due_date": due_date,
             "artisan_note": f"{product.title()}: paid N{paid_amount:,}, balance N{balance_amount:,}"
+        }
+
+    i_was_paid_match = re.search(
+        r"^(?:i\s+)?(?:was\s+)?paid\s+"
+        r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+for\s+(?P<description>.+)$",
+        clean
+    )
+    if i_was_paid_match:
+        amount = parse_amount_token(i_was_paid_match.group("amount"))
+        if amount is None:
+            return None
+        return {
+            "type": "TRANSACTION",
+            "name": "",
+            "action": "SALE",
+            "buy_amount": amount,
+            "paid_amount": 0,
+            "quantity": 1,
+            "unit": None,
+            "product": i_was_paid_match.group("description").strip(),
+            "unit_price": amount,
+            "invoice_items": None,
+            "total": amount,
+            "due_date": None,
+            "artisan_note": "Service income, no customer debt"
         }
 
     receive_match = re.search(
@@ -1052,7 +1218,7 @@ def extract_artisan_transaction(text):
         }
 
     paid_me_for_match = re.search(
-        r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays)\s+(?:me\s+)?"
+        r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays|give|gave|send|sent|transfer|transferred|transfered|deposit|deposited|settle|settled|clear|cleared)\s+(?:me\s+)?"
         r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+for\s+(?P<description>.+)$",
         clean
     )
@@ -1060,6 +1226,11 @@ def extract_artisan_transaction(text):
         amount = parse_amount_token(paid_me_for_match.group("amount"))
         if amount is None:
             return None
+        payer_name = paid_me_for_match.group("name").strip()
+        description = paid_me_for_match.group("description").strip()
+        product = description
+        if payer_name not in ["customer", "client"]:
+            product = f"{description} - {payer_name}"
         return {
             "type": "TRANSACTION",
             "name": "",
@@ -1068,7 +1239,7 @@ def extract_artisan_transaction(text):
             "paid_amount": 0,
             "quantity": 1,
             "unit": None,
-            "product": f"{paid_me_for_match.group('description').strip()} - {paid_me_for_match.group('name').strip()}",
+            "product": product,
             "unit_price": amount,
             "invoice_items": None,
             "total": amount,
@@ -1244,6 +1415,134 @@ def extract_amounts(text):
         if parsed is not None:
             amounts.append(parsed)
     return amounts
+
+
+def parse_stock_item_body(body):
+    clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", body.lower()).strip()
+    clean = re.sub(r"\s+", " ", clean)
+    unit_pattern = (
+        r"truck loads?|bags?|cartons?|crates?|pieces?|units?|loads?|tons?|"
+        r"litres?|liters?|dozens?|rolls?|kg|g|ml|l"
+    )
+    quantity_match = re.match(
+        rf"(?P<quantity>\d+)\s*(?P<unit>{unit_pattern})?\s*(?:of\s+)?(?P<product>.*)$",
+        clean
+    )
+    if quantity_match:
+        quantity = int(quantity_match.group("quantity"))
+        unit = quantity_match.group("unit")
+        product = quantity_match.group("product").strip()
+        if not product:
+            product = unit or "stock item"
+            unit = None
+        return {
+            "quantity": quantity,
+            "unit": unit,
+            "product": product
+        }
+
+    return {
+        "quantity": 1,
+        "unit": None,
+        "product": clean
+    }
+
+
+def extract_supplier_transaction(text):
+    clean = text.lower().replace(",", "").strip()
+    if not extract_amounts(clean):
+        return None
+
+    amount_pattern = r"\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?"
+    due_date = extract_due_date_from_text(clean)
+
+    supplier_payment_patterns = [
+        re.search(
+            rf"^i\s+(?:have\s+)?(?:paid|pay|sent|send|transfer(?:red|ed)?|deposit(?:ed)?)\s+"
+            rf"(?P<amount>{amount_pattern})\s+to\s+(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)"
+            rf"(?:\s+for\s+(?P<product>.+?))?$",
+            clean
+        ),
+        re.search(
+            rf"^i\s+(?:have\s+)?(?:paid|pay)\s+(?P<amount>{amount_pattern})\s+for\s+"
+            rf"(?P<product>.+?)\s+(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+"
+            rf"(?:supply|supplied|deliver|delivered)$",
+            clean
+        ),
+        re.search(
+            rf"^i\s+(?:have\s+)?(?:paid|pay|sent|send|transfer(?:red|ed)?|deposit(?:ed)?)\s+"
+            rf"(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?P<amount>{amount_pattern})"
+            rf"(?:\s+for\s+(?P<product>.+?))?$",
+            clean
+        )
+    ]
+    for payment_match in supplier_payment_patterns:
+        if not payment_match:
+            continue
+        amount = parse_amount_token(payment_match.group("amount"))
+        if amount is None:
+            return None
+        supplier = payment_match.group("supplier").strip()
+        product = (payment_match.groupdict().get("product") or "").strip()
+        product = re.sub(r"\b(?:supply|supplied|deliver|delivered)$", "", product).strip() or None
+        return {
+            "type": "SUPPLIER_TRANSACTION",
+            "action": "SUPPLIER_PAYMENT",
+            "name": supplier,
+            "product": product,
+            "paid_amount": amount,
+            "buy_amount": 0,
+            "quantity": None,
+            "unit": None,
+            "unit_price": None,
+            "total": 0,
+            "due_date": None
+        }
+
+    purchase_patterns = [
+        re.search(
+            rf"^i\s+(?:buy|bought|purchase|purchased)\s+(?P<body>.+?)\s+from\s+"
+            rf"(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:at|for)\s+"
+            rf"(?P<price>{amount_pattern})(?:\s+each)?",
+            clean
+        ),
+        re.search(
+            rf"^(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:supply|supplied|deliver|delivered)\s+me\s+"
+            rf"(?P<body>.+?)\s+(?:at|for)\s+(?P<price>{amount_pattern})(?:\s+each)?",
+            clean
+        )
+    ]
+    for purchase_match in purchase_patterns:
+        if not purchase_match:
+            continue
+        price = parse_amount_token(purchase_match.group("price"))
+        if price is None:
+            return None
+        item = parse_stock_item_body(purchase_match.group("body"))
+        quantity = item["quantity"]
+        total = quantity * price
+        paid_amount = 0
+        paid_match = re.search(
+            rf"\b(?:paid|pay|sent|send|transfer(?:red|ed)?|deposit(?:ed)?)\s+(?P<paid>{amount_pattern})",
+            clean
+        )
+        if paid_match:
+            paid_amount = parse_amount_token(paid_match.group("paid")) or 0
+        return {
+            "type": "SUPPLIER_TRANSACTION",
+            "action": "SUPPLIER_PURCHASE",
+            "name": purchase_match.group("supplier").strip(),
+            "product": item["product"],
+            "quantity": quantity,
+            "unit": item["unit"],
+            "unit_price": price,
+            "buy_amount": total,
+            "paid_amount": paid_amount,
+            "total": total,
+            "due_date": due_date
+        }
+
+    return None
 
 
 def build_reminder_text(reminder):
@@ -1500,6 +1799,21 @@ def parse_message(text):
 
     if clean_text in ["formats", "format", "f"]:
         return {"type": "FORMATS"}
+
+    if clean_text in ["stock", "my stock", "inventory", "my inventory"]:
+        return {"type": "INVENTORY_LIST"}
+
+    if clean_text in ["suppliers", "my suppliers", "supplier debts", "suppliers i owe"]:
+        return {"type": "SUPPLIER_LIST"}
+
+    if clean_text in ["supplier due", "suppliers due", "supplier due today", "suppliers due today"]:
+        return {"type": "SUPPLIER_DUE"}
+
+    if clean_text.startswith("stock "):
+        return {
+            "type": "INVENTORY_ITEM",
+            "product": clean_text.replace("stock", "", 1).strip()
+        }
 
     # =========================
     # 📊 COMMANDS
@@ -2071,6 +2385,10 @@ def parse_message(text):
             "text": text
         }
 
+    supplier_transaction = extract_supplier_transaction(text)
+    if supplier_transaction:
+        return supplier_transaction
+
     artisan = extract_artisan_transaction(text)
     if artisan:
         return artisan
@@ -2198,17 +2516,25 @@ def parse_message(text):
     # 🧠 DETECT TYPE
     # =========================
 
-    buy_keywords = ["bought", "buy", "owes", "owe", "owing", "purchased"]
-    pay_keywords = ["paid", "pay", "settled", "gave"]
-    sale_keywords = ["sold", "sell", "supply", "supplied"]
+    buy_keywords = [
+        "bought", "buy", "purchase", "purchased", "collect", "collected",
+        "took", "take", "carry", "carried", "owes", "owe", "owing"
+    ]
+    pay_keywords = [
+        "paid", "pay", "settle", "settled", "clear", "cleared",
+        "gave", "give", "send", "sent", "transfer", "transferred",
+        "transfered", "deposit", "deposited"
+    ]
+    sale_keywords = ["sold", "sell", "supply", "supplied", "deliver", "delivered"]
 
-    has_buy = bool(re.search(r"\b(" + "|".join(buy_keywords) + r")\b", clean_text))
-    has_pay = bool(re.search(r"\b(" + "|".join(pay_keywords) + r")\b", clean_text))
+    lowered_clean_text = clean_text.lower()
+    has_buy = bool(re.search(r"\b(" + "|".join(buy_keywords) + r")\b", lowered_clean_text))
+    has_pay = bool(re.search(r"\b(" + "|".join(pay_keywords) + r")\b", lowered_clean_text))
     has_direct_sale = bool(re.match(r"^(?:i\s+)?(" + "|".join(sale_keywords) + r")\b", clean_text.lower()))
 
     if has_direct_sale:
         sale_body = re.sub(
-            r"^(?:i\s+)?(?:sold|sell|supply|supplied)\s+",
+            r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+",
             "",
             invoice_clean_text,
             count=1
@@ -2250,12 +2576,12 @@ def parse_message(text):
         }
 
     customer_invoice_match = re.match(
-        r"(?P<name>.+?)\s+(?:bought|buy|purchased)\s+(?P<items>.+)",
+        r"(?P<name>.+?)\s+(?:bought|buy|purchase|purchased|collect|collected|took|take|carry|carried)\s+(?P<items>.+)",
         invoice_clean_text
     )
     if customer_invoice_match and has_pay:
         payment_split = re.search(
-            r"\b(?:paid|pay|settled|gave)\b(?P<payment>.+)$",
+            r"\b(?:paid|pay|settle|settled|clear|cleared|gave|give|send|sent|transfer|transferred|transfered|deposit|deposited)\b(?P<payment>.+)$",
             customer_invoice_match.group("items")
         )
         if payment_split:
@@ -2360,12 +2686,37 @@ def parse_message(text):
     action_index = None
 
     for i, word in enumerate(words):
+        normalized_word = re.sub(r"[^a-zA-Z]", "", word).lower()
 
-        if word in [
+        if normalized_word in [
             "bought",
             "buy",
+            "purchase",
+            "purchased",
+            "collect",
+            "collected",
+            "took",
+            "take",
+            "carry",
+            "carried",
+            "owes",
+            "owe",
+            "owing",
             "paid",
-            "pay"
+            "pay",
+            "settle",
+            "settled",
+            "clear",
+            "cleared",
+            "gave",
+            "give",
+            "send",
+            "sent",
+            "transfer",
+            "transferred",
+            "transfered",
+            "deposit",
+            "deposited"
         ]:
 
             action_index = i
@@ -2378,6 +2729,7 @@ def parse_message(text):
     name = " ".join(
         words[:action_index]
     ).lower()
+    name = re.sub(r"\b(?:is|was)\s*$", "", name).strip()
 
     if name.strip() == "":
         return None
@@ -2454,6 +2806,8 @@ FEATURE_MIN_PLAN = {
     "TRANSACTION_NOTES": PLAN_GO,
     "ADVANCED_REPORTS": PLAN_GO,
     "DUE_REMINDERS": PLAN_GO,
+    "INVENTORY": PLAN_GO,
+    "SUPPLIERS": PLAN_GO,
     "STAFF": PLAN_PRO,
     "STAFF_PERMISSION": PLAN_PRO,
     "VOICE_TEXT": PLAN_GO,
@@ -2615,7 +2969,7 @@ def build_upgrade_message():
         "BASIC - Free\n"
         "1 user, 50 customers, 100 monthly transactions, basic debt tracking.\n\n"
         f"1. GO - N{go_price:,}/month\n"
-        "For one-owner businesses. Unlimited customers, unlimited transactions, invoices, direct sales, reports, reminders, and notes.\n\n"
+        "For one-owner businesses. Unlimited customers, unlimited transactions, invoices, direct sales, inventory, suppliers, reports, reminders, and notes.\n\n"
         f"2. PRO - N{pro_price:,}/month\n"
         "Everything in Go plus staff, staff permissions, team notes, and future multilingual voice.\n\n"
         "3. View my current plan\n"
@@ -2661,6 +3015,8 @@ def build_plan_payment_message(plan):
             "- Unlimited transactions\n"
             "- Direct sales\n"
             "- Invoice sales\n"
+            "- Inventory and stock value\n"
+            "- Supplier debt and payment records\n"
             "- Product reports\n"
             "- Debt reminders\n"
             "- Transaction notes"
@@ -2940,6 +3296,12 @@ def build_supported_formats_message():
         "I sold phone 45k\n"
         "I supply 1 truck load of sand 60000\n"
         "I received 1000 for doing chair\n\n"
+        "Stock and suppliers\n"
+        "Ayo supply me 12kg cocoa at 5000\n"
+        "I buy 12 bags rice from Ayo at 15k each\n"
+        "I paid Ayo 14000 for egg\n"
+        "stock\n"
+        "suppliers\n\n"
         "Customer setup\n"
         "John 08012345678\n"
         "add customer John\n"
@@ -2963,6 +3325,22 @@ def build_projected_balance_line(db, customer_id, parsed, recorded_by_id=None):
 
 
 def pending_transaction_summary(pending, customer=None):
+    if pending.action == "SUPPLIER_PURCHASE":
+        balance = max((pending.buy_amount or 0) - (pending.paid_amount or 0), 0)
+        return (
+            "Supplier purchase saved.\n"
+            f"{pending.product.title()}: N{pending.buy_amount:,}\n"
+            f"Paid: N{pending.paid_amount:,}\n"
+            f"You owe: N{balance:,}"
+        )
+
+    if pending.action == "SUPPLIER_PAYMENT":
+        product_line = f" for {pending.product.title()}" if pending.product else ""
+        return (
+            "Supplier payment saved.\n"
+            f"{pending.customer_name.title()}: N{pending.paid_amount:,}{product_line}"
+        )
+
     if pending.action == "SALE":
         label = pending.product.title() if pending.product else "Service/direct income"
         return (
@@ -3000,6 +3378,16 @@ def balance_status_line(balance):
 def edit_prompt_for_pending(pending):
     if pending.source_text:
         return pending.source_text
+    if pending.action == "SUPPLIER_PURCHASE":
+        return (
+            "No problem. Send the corrected stock purchase.\n"
+            "Example: Ayo supply me 12kg cocoa at 5000"
+        )
+    if pending.action == "SUPPLIER_PAYMENT":
+        return (
+            "No problem. Send the corrected supplier payment.\n"
+            "Example: I paid Ayo 14000 for egg"
+        )
     if pending.action == "SALE":
         return (
             "No problem. Send the corrected service income.\n"
@@ -3409,6 +3797,184 @@ def get_balance(db, customer_id, recorded_by_id=None):
     total_pay = pay_query.scalar()
 
     return total_buy - total_pay
+
+
+def find_or_create_supplier(db, owner_phone, supplier_name):
+    supplier_name = supplier_name.strip().lower()
+    supplier = db.query(Supplier).filter(
+        Supplier.owner_phone == owner_phone,
+        func.lower(Supplier.name) == supplier_name
+    ).first()
+    if supplier:
+        return supplier
+    supplier = Supplier(name=supplier_name, owner_phone=owner_phone)
+    db.add(supplier)
+    db.flush()
+    return supplier
+
+
+def find_inventory_item(db, owner_phone, product, unit=None):
+    query = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        func.lower(InventoryItem.name) == product.lower()
+    )
+    if unit:
+        query = query.filter(InventoryItem.unit == unit)
+    else:
+        query = query.filter(InventoryItem.unit.is_(None))
+    return query.first()
+
+
+def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None):
+    if not product or not quantity:
+        return None
+    item = find_inventory_item(db, owner_phone, product, unit)
+    if not item:
+        item = InventoryItem(
+            owner_phone=owner_phone,
+            name=product.lower(),
+            unit=unit,
+            quantity=0,
+            cost_price=unit_price
+        )
+        db.add(item)
+        db.flush()
+
+    if movement_type == "IN":
+        item.quantity = (item.quantity or 0) + quantity
+        if unit_price:
+            item.cost_price = unit_price
+    elif movement_type == "OUT":
+        item.quantity = (item.quantity or 0) - quantity
+    else:
+        item.quantity = (item.quantity or 0) + quantity
+    item.updated_at = datetime.utcnow()
+
+    movement = InventoryMovement(
+        owner_phone=owner_phone,
+        item_id=item.id,
+        movement_type=movement_type,
+        quantity=quantity,
+        unit_price=unit_price,
+        source_type=source_type,
+        source_id=source_id,
+        recorded_by_id=recorded_by_id,
+        note=note
+    )
+    db.add(movement)
+    return item
+
+
+def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, recorded_by_id=None):
+    updates = []
+    missing = []
+    for item_data in items or []:
+        product = (item_data.get("product") or "").lower().strip()
+        quantity = item_data.get("quantity") or 1
+        unit = item_data.get("unit")
+        if not product:
+            continue
+        item = find_inventory_item(db, owner_phone, product, unit)
+        if not item:
+            missing.append(product.title())
+            continue
+        add_inventory_movement(
+            db,
+            owner_phone,
+            product,
+            quantity,
+            unit,
+            item_data.get("unit_price"),
+            "OUT",
+            source_type,
+            source_id,
+            recorded_by_id,
+            "Sold"
+        )
+        unit_label = f" {unit}" if unit else ""
+        updates.append(f"{product.title()}: {item.quantity:,}{unit_label} left")
+    return updates, missing
+
+
+def get_supplier_balance(db, supplier_id):
+    total_purchase = db.query(func.coalesce(func.sum(SupplierPurchase.total), 0)).filter(
+        SupplierPurchase.supplier_id == supplier_id
+    ).scalar()
+    paid_on_purchase = db.query(func.coalesce(func.sum(SupplierPurchase.paid_amount), 0)).filter(
+        SupplierPurchase.supplier_id == supplier_id
+    ).scalar()
+    payments = db.query(func.coalesce(func.sum(SupplierPayment.amount), 0)).filter(
+        SupplierPayment.supplier_id == supplier_id
+    ).scalar()
+    return total_purchase - paid_on_purchase - payments
+
+
+def build_inventory_list_message(db, owner_phone, product=None):
+    query = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone)
+    if product:
+        query = query.filter(func.lower(InventoryItem.name).like(f"%{product.lower()}%"))
+    items = query.order_by(InventoryItem.name.asc()).limit(20).all()
+    if not items:
+        return "No stock found yet.\n\nTo add stock, send:\nAyo supply me 12kg cocoa at 5000"
+
+    title = "Stock" if not product else f"Stock: {product.title()}"
+    msg = f"{title}\n\n"
+    for index, item in enumerate(items, start=1):
+        unit = f" {item.unit}" if item.unit else ""
+        value = (item.quantity or 0) * (item.cost_price or 0)
+        msg += f"{index}. {item.name.title()}: {item.quantity:,}{unit}"
+        if item.cost_price:
+            msg += f" | Cost: N{item.cost_price:,} | Value: N{value:,}"
+        msg += "\n"
+    return msg.strip()
+
+
+def build_supplier_list_message(db, owner_phone):
+    suppliers = db.query(Supplier).filter(
+        Supplier.owner_phone == owner_phone
+    ).order_by(Supplier.name.asc()).limit(20).all()
+    if not suppliers:
+        return "No supplier record yet.\n\nExample:\nAyo supply me 12kg cocoa at 5000"
+
+    msg = "Suppliers You Owe\n\n"
+    total = 0
+    count = 0
+    for supplier in suppliers:
+        balance = get_supplier_balance(db, supplier.id)
+        if balance <= 0:
+            continue
+        count += 1
+        total += balance
+        msg += f"{count}. {supplier.name.title()} - N{balance:,}\n"
+    if count == 0:
+        return "No supplier debt right now."
+    msg += f"\nTotal supplier debt: N{total:,}"
+    return msg
+
+
+def build_supplier_due_message(db, owner_phone):
+    start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    purchases = db.query(SupplierPurchase, Supplier).join(
+        Supplier,
+        SupplierPurchase.supplier_id == Supplier.id
+    ).filter(
+        SupplierPurchase.owner_phone == owner_phone,
+        SupplierPurchase.due_date >= start,
+        SupplierPurchase.due_date < end
+    ).order_by(SupplierPurchase.due_date.asc()).all()
+    if not purchases:
+        return "No supplier payment due today."
+
+    msg = "Supplier Due Today\n\n"
+    count = 0
+    for purchase, supplier in purchases:
+        balance = max((purchase.total or 0) - (purchase.paid_amount or 0), 0)
+        if balance == 0:
+            continue
+        count += 1
+        msg += f"{count}. {supplier.name.title()} - N{balance:,} for {purchase.product.title()}\n"
+    return msg.strip() if count else "No supplier payment due today."
 
 # =========================
 # 📊 SALES ANALYTICS
@@ -5205,11 +5771,11 @@ async def webhook(req: Request):
 
         if not user and not (admin_command_allowed or admin_command_requested):
 
-            if text.lower().strip() in ["continue", "start", "yes", "ok", "1", "hello", "hi", "hey", "onboard", "titi", "begin"]:
-                if pending and pending.action != "ONBOARD_USER":
-                    db.delete(pending)
-                    db.commit()
+            if pending and pending.action != "ONBOARD_USER":
+                db.delete(pending)
+                db.commit()
 
+            if not pending or pending.action != "ONBOARD_USER":
                 onboarding = PendingAction(
                     phone=phone,
                     action="ONBOARD_USER"
@@ -5217,23 +5783,11 @@ async def webhook(req: Request):
                 db.add(onboarding)
                 db.commit()
 
-                send_whatsapp_message(
-                    phone,
-                    build_onboarding_start_message()
-                )
-                return {"status": "onboarding_started"}
-
-            # Only send the welcome message if the user actually tried to 
-            # engage with a greeting or a start command.
-            onboarding_triggers = ["hello", "hi", "hey", "start", "onboard", "titi", "begin", "1", "continue"]
-            if text.lower().strip() in onboarding_triggers:
-                send_whatsapp_message(
-                    phone,
-                    build_onboarding_start_message()
-                )
-                return {"status": "welcome_sent"}
-            
-            return {"status": "ignored_unrecognized_sender"}
+            send_whatsapp_message(
+                phone,
+                build_onboarding_start_message()
+            )
+            return {"status": "onboarding_started"}
 
         # Special Greeting for a Delegate's first time or on 'hello'
         if user and user.role == "delegate" and text.lower().strip() in ["hello", "hi", "titi"]:
@@ -5694,20 +6248,97 @@ async def webhook(req: Request):
                     db.flush()
                     if pending_items:
                         add_transaction_items(db, tx.id, pending_items)
+                        stock_updates, stock_missing = deduct_inventory_for_items(
+                            db,
+                            business_owner_phone,
+                            pending_items,
+                            "SALE",
+                            tx.id,
+                            user.id
+                        )
                     elif pending.product:
-                        add_transaction_items(db, tx.id, [{
+                        fallback_items = [{
                             "product": pending.product,
                             "quantity": pending.quantity or 1,
                             "unit": pending.unit,
                             "unit_price": pending.unit_price or pending.buy_amount,
                             "total": pending.buy_amount
-                        }])
+                        }]
+                        add_transaction_items(db, tx.id, fallback_items)
+                        stock_updates, stock_missing = deduct_inventory_for_items(
+                            db,
+                            business_owner_phone,
+                            fallback_items,
+                            "SALE",
+                            tx.id,
+                            user.id
+                        )
+                    else:
+                        stock_updates, stock_missing = [], []
 
                     db.delete(pending)
                     db.commit()
 
-                    send_whatsapp_message(phone, sale_saved_msg)
+                    stock_msg = ""
+                    if stock_updates:
+                        stock_msg = "\n\nStock updated:\n" + "\n".join(stock_updates)
+                    elif stock_missing:
+                        stock_msg = "\n\nSale saved. Stock item not found yet. Send STOCK to check inventory."
+                    send_whatsapp_message(phone, f"{sale_saved_msg}{stock_msg}")
                     return {"status": "direct_sale_saved"}
+
+                if pending.action in ["SUPPLIER_PURCHASE", "SUPPLIER_PAYMENT"]:
+                    supplier = find_or_create_supplier(db, business_owner_phone, pending.customer_name)
+                    saved_summary = pending_transaction_summary(pending)
+
+                    if pending.action == "SUPPLIER_PURCHASE":
+                        purchase = SupplierPurchase(
+                            supplier_id=supplier.id,
+                            owner_phone=business_owner_phone,
+                            product=pending.product,
+                            quantity=pending.quantity,
+                            unit=pending.unit,
+                            unit_price=pending.unit_price,
+                            total=pending.buy_amount,
+                            paid_amount=pending.paid_amount,
+                            due_date=pending.due_date,
+                            recorded_by_id=user.id,
+                            created_at=datetime.utcnow()
+                        )
+                        db.add(purchase)
+                        db.flush()
+                        add_inventory_movement(
+                            db,
+                            business_owner_phone,
+                            pending.product,
+                            pending.quantity or 1,
+                            pending.unit,
+                            pending.unit_price,
+                            "IN",
+                            "SUPPLIER_PURCHASE",
+                            purchase.id,
+                            user.id,
+                            f"Supplied by {supplier.name.title()}"
+                        )
+                    else:
+                        payment = SupplierPayment(
+                            supplier_id=supplier.id,
+                            owner_phone=business_owner_phone,
+                            amount=pending.paid_amount,
+                            product=pending.product,
+                            recorded_by_id=user.id,
+                            created_at=datetime.utcnow()
+                        )
+                        db.add(payment)
+
+                    db.delete(pending)
+                    db.commit()
+                    balance = get_supplier_balance(db, supplier.id)
+                    send_whatsapp_message(
+                        phone,
+                        f"{saved_summary}\nSupplier balance: N{balance:,}"
+                    )
+                    return {"status": "supplier_saved"}
 
                 customer = db.query(Customer).filter(
                     Customer.name == pending.customer_name,
@@ -5739,6 +6370,8 @@ async def webhook(req: Request):
 
                 # Proceed with saving
                 saved_summary = pending_transaction_summary(pending, customer)
+                stock_updates = []
+                stock_missing = []
                 if pending.action == "BUY":
                     tx = Transaction(
                         customer_id=customer.id,
@@ -5757,14 +6390,31 @@ async def webhook(req: Request):
                     db.flush()
                     if pending_items:
                         add_transaction_items(db, tx.id, pending_items)
+                        stock_updates, stock_missing = deduct_inventory_for_items(
+                            db,
+                            business_owner_phone,
+                            pending_items,
+                            "CUSTOMER_SALE",
+                            tx.id,
+                            user.id
+                        )
                     elif pending.product:
-                        add_transaction_items(db, tx.id, [{
+                        fallback_items = [{
                             "product": pending.product,
                             "quantity": pending.quantity or 1,
                             "unit": pending.unit,
                             "unit_price": pending.unit_price or pending.buy_amount,
                             "total": pending.buy_amount
-                        }])
+                        }]
+                        add_transaction_items(db, tx.id, fallback_items)
+                        stock_updates, stock_missing = deduct_inventory_for_items(
+                            db,
+                            business_owner_phone,
+                            fallback_items,
+                            "CUSTOMER_SALE",
+                            tx.id,
+                            user.id
+                        )
 
                 elif pending.action == "PAY":
                     tx = Transaction(
@@ -5804,14 +6454,31 @@ async def webhook(req: Request):
                     db.flush()
                     if pending_items:
                         add_transaction_items(db, buy_tx.id, pending_items)
+                        stock_updates, stock_missing = deduct_inventory_for_items(
+                            db,
+                            business_owner_phone,
+                            pending_items,
+                            "CUSTOMER_SALE",
+                            buy_tx.id,
+                            user.id
+                        )
                     elif pending.product:
-                        add_transaction_items(db, buy_tx.id, [{
+                        fallback_items = [{
                             "product": pending.product,
                             "quantity": pending.quantity or 1,
                             "unit": pending.unit,
                             "unit_price": pending.unit_price or pending.buy_amount,
                             "total": pending.buy_amount
-                        }])
+                        }]
+                        add_transaction_items(db, buy_tx.id, fallback_items)
+                        stock_updates, stock_missing = deduct_inventory_for_items(
+                            db,
+                            business_owner_phone,
+                            fallback_items,
+                            "CUSTOMER_SALE",
+                            buy_tx.id,
+                            user.id
+                        )
 
                     pay_tx = Transaction(
                         customer_id=customer.id,
@@ -5841,6 +6508,10 @@ async def webhook(req: Request):
 
                 balance = get_balance(db, customer.id, visible_recorded_by_id)
                 msg = f"{saved_summary}\n{balance_status_line(balance)}"
+                if stock_updates:
+                    msg += "\n\nStock updated:\n" + "\n".join(stock_updates)
+                elif stock_missing:
+                    msg += "\n\nSale saved. Stock item not found yet. Send STOCK to check inventory."
 
                 send_whatsapp_message(phone, msg)
                 return {"status": "saved"}
@@ -5891,6 +6562,92 @@ async def webhook(req: Request):
             msg = build_supported_formats_message()
             send_whatsapp_message(phone, msg)
             return {"status": "formats"}
+
+        if parsed["type"] in ["INVENTORY_LIST", "INVENTORY_ITEM"]:
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "inventory_plan_blocked"}
+            msg = build_inventory_list_message(
+                db,
+                business_owner_phone,
+                parsed.get("product")
+            )
+            send_whatsapp_message(phone, msg)
+            return {"status": "inventory_list"}
+
+        if parsed["type"] == "SUPPLIER_LIST":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "SUPPLIERS", "Supplier records")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "supplier_plan_blocked"}
+            send_whatsapp_message(phone, build_supplier_list_message(db, business_owner_phone))
+            return {"status": "supplier_list"}
+
+        if parsed["type"] == "SUPPLIER_DUE":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "SUPPLIERS", "Supplier reminders")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "supplier_due_plan_blocked"}
+            send_whatsapp_message(phone, build_supplier_due_message(db, business_owner_phone))
+            return {"status": "supplier_due"}
+
+        if parsed["type"] == "SUPPLIER_TRANSACTION":
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "SUPPLIERS", "Supplier and inventory records")
+            if not allowed:
+                send_whatsapp_message(phone, upgrade_msg)
+                return {"status": "supplier_transaction_plan_blocked"}
+
+            db.query(PendingAction).filter(
+                PendingAction.phone == phone
+            ).delete()
+            pending = PendingAction(
+                phone=phone,
+                customer_name=parsed["name"].lower(),
+                last_customer=parsed["name"].lower(),
+                action=parsed["action"],
+                buy_amount=parsed.get("buy_amount") or 0,
+                paid_amount=parsed.get("paid_amount") or 0,
+                product=parsed.get("product"),
+                quantity=parsed.get("quantity"),
+                unit=parsed.get("unit"),
+                unit_price=parsed.get("unit_price"),
+                source_text=voice_transcript_text,
+                due_date=parsed.get("due_date")
+            )
+            db.add(pending)
+            db.commit()
+
+            if parsed["action"] == "SUPPLIER_PURCHASE":
+                unit_label = f" {parsed['unit']}" if parsed.get("unit") else ""
+                balance = max((parsed.get("buy_amount") or 0) - (parsed.get("paid_amount") or 0), 0)
+                due_line = ""
+                if parsed.get("due_date"):
+                    due_line = f"\nDue: {parsed['due_date'].strftime('%d/%m/%Y')}"
+                confirm_msg = (
+                    "Confirm stock from supplier:\n"
+                    f"Supplier: {parsed['name'].title()}\n"
+                    f"Item: {parsed['product'].title()}\n"
+                    f"Qty: {parsed['quantity']:,}{unit_label}\n"
+                    f"Cost each: N{parsed['unit_price']:,}\n"
+                    f"Total: N{parsed['buy_amount']:,}\n"
+                    f"Paid: N{parsed['paid_amount']:,}\n"
+                    f"You owe: N{balance:,}"
+                    f"{due_line}\n\n"
+                    "Reply YES or 1 to save, EDIT or 2 to change."
+                )
+            else:
+                product_line = f"\nFor: {parsed['product'].title()}" if parsed.get("product") else ""
+                confirm_msg = (
+                    "Confirm supplier payment:\n"
+                    f"Supplier: {parsed['name'].title()}\n"
+                    f"Paid: N{parsed['paid_amount']:,}"
+                    f"{product_line}\n\n"
+                    "Reply YES or 1 to save, EDIT or 2 to change."
+                )
+            confirm_msg = apply_voice_confirmation_options(confirm_msg, voice_transcript_text)
+            send_whatsapp_message(phone, confirm_msg)
+            return {"status": "confirm_supplier_transaction"}
 
         if parsed["type"] == "ARTISAN_PAYMENT_CHOICE":
             db.query(PendingAction).filter(
