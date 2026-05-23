@@ -3,8 +3,6 @@ import re
 import json
 import requests
 import traceback
-import uuid
-
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -15,25 +13,54 @@ except ImportError:
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
 
 from sqlalchemy import (
-    create_engine,
-    Column,
-    Boolean,
-    Integer,
-    String,
-    DateTime,
-    ForeignKey,
     func,
     or_,
     inspect,
     text
 )
 
-from sqlalchemy.orm import (
-    sessionmaker,
-    declarative_base
+from database import Base, SessionLocal, engine
+from models import (
+    AppAdminRole,
+    Customer,
+    CustomerMemory,
+    InventoryItem,
+    InventoryMovement,
+    PendingAction,
+    ProcessedMessage,
+    ReminderMemory,
+    SubscriptionPayment,
+    Supplier,
+    SupplierPayment,
+    SupplierPurchase,
+    Transaction,
+    TransactionItem,
+    TransactionNote,
+    User,
+)
+from schemas import CustomerCreate, UserCreate
+
+from business_templates import (
+    build_business_category_menu,
+    build_business_type_menu,
+    business_category_by_key,
+    business_type_display,
+    make_custom_business_key,
+    selected_business_category,
+    selected_business_type,
+    template_examples_for_user,
+)
+from plans import (
+    FEATURE_MIN_PLAN,
+    PLAN_BASIC,
+    PLAN_GO,
+    PLAN_LIMITS,
+    PLAN_PRO,
+    format_upgrade_message,
+    normalize_plan,
+    plan_allows_feature,
 )
 
 # =========================
@@ -43,434 +70,17 @@ from sqlalchemy.orm import (
 if load_dotenv:
     load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 OPENAI_PARSE_MODEL = os.getenv("OPENAI_PARSE_MODEL", "gpt-4o-mini")
 
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL not set")
-
-engine = create_engine(DATABASE_URL)
-
-SessionLocal = sessionmaker(bind=engine)
-
-Base = declarative_base()
-
 app = FastAPI()
 
 # =========================
 # 🧱 MODELS
-# =========================
-
-class Customer(Base):
-
-    __tablename__ = "customers"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    name = Column(String)
-
-    owner_phone = Column(String)
-
-    customer_phone = Column(String, nullable=True)
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-
-class User(Base):
-
-    __tablename__ = "users"
-
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-
-    name = Column(String)
-
-    phone = Column(String, unique=True)
-
-    role = Column(String, default="user")
-
-    parent_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-    can_view_all_transactions = Column(Boolean, default=False)
-
-    subscription_plan = Column(String, default="BASIC")
-
-    subscription_status = Column(String, default="ACTIVE")
-
-    subscription_expires_at = Column(DateTime, nullable=True)
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-
-class Transaction(Base):
-
-    __tablename__ = "transactions"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    customer_id = Column(
-        Integer,
-        ForeignKey("customers.id"),
-        nullable=True
-    )
-
-    type = Column(String)
-
-    amount = Column(Integer)
-
-    product = Column(String, nullable=True)
-
-    quantity = Column(Integer, nullable=True)
-
-    unit = Column(String, nullable=True)
-
-    unit_price = Column(Integer, nullable=True)
-
-    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-    due_date = Column(
-        DateTime,
-        nullable=True
-    )
-
-    message_id = Column(
-        String,
-        unique=True
-    )
-
-
-class TransactionItem(Base):
-
-    __tablename__ = "transaction_items"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    transaction_id = Column(Integer, ForeignKey("transactions.id"))
-
-    product = Column(String)
-
-    quantity = Column(Integer, default=1)
-
-    unit = Column(String, nullable=True)
-
-    unit_price = Column(Integer)
-
-    total = Column(Integer)
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-
-class TransactionNote(Base):
-
-    __tablename__ = "transaction_notes"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    transaction_id = Column(Integer, ForeignKey("transactions.id"))
-
-    author_user_id = Column(String, ForeignKey("users.id"))
-
-    note = Column(String)
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-
-class Supplier(Base):
-
-    __tablename__ = "suppliers"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    name = Column(String)
-
-    owner_phone = Column(String)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class SupplierPurchase(Base):
-
-    __tablename__ = "supplier_purchases"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"))
-
-    owner_phone = Column(String)
-
-    product = Column(String)
-
-    quantity = Column(Integer, nullable=True)
-
-    unit = Column(String, nullable=True)
-
-    unit_price = Column(Integer, nullable=True)
-
-    total = Column(Integer)
-
-    paid_amount = Column(Integer, default=0)
-
-    due_date = Column(DateTime, nullable=True)
-
-    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class SupplierPayment(Base):
-
-    __tablename__ = "supplier_payments"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"))
-
-    owner_phone = Column(String)
-
-    amount = Column(Integer)
-
-    product = Column(String, nullable=True)
-
-    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class InventoryItem(Base):
-
-    __tablename__ = "inventory_items"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    owner_phone = Column(String)
-
-    name = Column(String)
-
-    unit = Column(String, nullable=True)
-
-    quantity = Column(Integer, default=0)
-
-    cost_price = Column(Integer, nullable=True)
-
-    selling_price = Column(Integer, nullable=True)
-
-    low_stock_alert = Column(Integer, nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    updated_at = Column(DateTime, default=datetime.utcnow)
-
-
-class InventoryMovement(Base):
-
-    __tablename__ = "inventory_movements"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    owner_phone = Column(String)
-
-    item_id = Column(Integer, ForeignKey("inventory_items.id"))
-
-    movement_type = Column(String)
-
-    quantity = Column(Integer)
-
-    unit_price = Column(Integer, nullable=True)
-
-    source_type = Column(String, nullable=True)
-
-    source_id = Column(Integer, nullable=True)
-
-    note = Column(String, nullable=True)
-
-    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class SubscriptionPayment(Base):
-
-    __tablename__ = "subscription_payments"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    user_id = Column(String, ForeignKey("users.id"))
-
-    phone = Column(String)
-
-    plan = Column(String)
-
-    amount = Column(Integer)
-
-    status = Column(String, default="PENDING")
-
-    payment_method = Column(String, default="BANK_TRANSFER")
-
-    evidence_type = Column(String, nullable=True)
-
-    evidence_ref = Column(String, nullable=True)
-
-    admin_note = Column(String, nullable=True)
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-    approved_at = Column(DateTime, nullable=True)
-
-    approved_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-
-class AppAdminRole(Base):
-
-    __tablename__ = "app_admin_roles"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    phone = Column(String)
-
-    role = Column(String)
-
-    is_active = Column(Boolean, default=True)
-
-    created_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-    deactivated_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    deactivated_at = Column(DateTime, nullable=True)
-
-
-class PendingAction(Base):
-
-    __tablename__ = "pending_actions"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    phone = Column(String)
-
-    customer_name = Column(String)
-
-    customer_phone = Column(String, nullable=True)
-
-    action = Column(String)
-
-    reminder_id = Column(Integer, nullable=True)
-
-    buy_amount = Column(
-        Integer,
-        default=0
-    )
-
-    paid_amount = Column(
-        Integer,
-        default=0
-    )
-
-    product = Column(String, nullable=True)
-
-    quantity = Column(Integer, nullable=True)
-
-    unit = Column(String, nullable=True)
-
-    unit_price = Column(Integer, nullable=True)
-
-    items_json = Column(String, nullable=True)
-
-    source_text = Column(String, nullable=True)
-
-    last_customer = Column(String)
-
-    due_date = Column(
-        DateTime,
-        nullable=True
-    )
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-
-class ProcessedMessage(Base):
-
-    __tablename__ = "processed_messages"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    message_id = Column(String, unique=True, index=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class CustomerMemory(Base):
-
-    __tablename__ = "customer_memory"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    phone = Column(
-        String,
-        unique=True
-    )
-
-    last_customer = Column(String)
-
-
-class ReminderMemory(Base):
-
-    __tablename__ = "reminder_memory"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    phone = Column(String)
-
-    customer_id = Column(Integer, nullable=True)
-
-    customer_name = Column(String)
-
-    customer_phone = Column(String, nullable=True)
-
-    balance = Column(Integer)
-
-    due_date = Column(DateTime)
-
-    reminder_type = Column(String)
-
-
-class UserCreate(BaseModel):
-    name: str
-    phone: str
-    role: Optional[str] = "user"
-
-
-class CustomerCreate(BaseModel):
-    owner_phone: str
-    name: str
-    customer_phone: Optional[str] = None
-
+# Models and request schemas are imported from models.py and schemas.py.
 
 @app.get("/debug/schema")
 def debug_schema(token: str):
@@ -548,6 +158,9 @@ def ensure_schema_updates():
             )
 
     user_updates = {
+        "business_category": "VARCHAR",
+        "business_type": "VARCHAR",
+        "business_type_label": "VARCHAR",
         "subscription_plan": "VARCHAR DEFAULT 'BASIC'",
         "subscription_status": "VARCHAR DEFAULT 'ACTIVE'",
         "subscription_expires_at": "TIMESTAMP"
@@ -2783,57 +2396,6 @@ def visibility_recorded_by_id(user):
     return None
 
 
-PLAN_BASIC = "BASIC"
-PLAN_GO = "GO"
-PLAN_PRO = "PRO"
-
-PLAN_ORDER = {
-    PLAN_BASIC: 1,
-    PLAN_GO: 2,
-    PLAN_PRO: 3
-}
-
-PLAN_LIMITS = {
-    PLAN_BASIC: {
-        "customers": 50,
-        "monthly_transactions": 100,
-        "staff": 0
-    },
-    PLAN_GO: {
-        "customers": None,
-        "monthly_transactions": None,
-        "staff": 0
-    },
-    PLAN_PRO: {
-        "customers": None,
-        "monthly_transactions": None,
-        "staff": 10
-    }
-}
-
-FEATURE_MIN_PLAN = {
-    "DIRECT_SALE": PLAN_GO,
-    "INVOICE": PLAN_GO,
-    "TRANSACTION_NOTES": PLAN_GO,
-    "ADVANCED_REPORTS": PLAN_GO,
-    "DUE_REMINDERS": PLAN_GO,
-    "INVENTORY": PLAN_GO,
-    "SUPPLIERS": PLAN_GO,
-    "STAFF": PLAN_PRO,
-    "STAFF_PERMISSION": PLAN_PRO,
-    "VOICE_TEXT": PLAN_GO,
-    "MULTILINGUAL_VOICE": PLAN_PRO,
-    "VOICE_REPLY": PLAN_PRO
-}
-
-
-def normalize_plan(plan):
-    plan = (plan or PLAN_BASIC).upper().strip()
-    if plan in PLAN_ORDER:
-        return plan
-    return PLAN_BASIC
-
-
 def get_business_owner_user(db, user):
     if not user:
         return None
@@ -2863,19 +2425,6 @@ def get_business_subscription(db, user):
         "expires_at": expires_at,
         "limits": PLAN_LIMITS[plan]
     }
-
-
-def plan_allows_feature(plan, feature):
-    required_plan = FEATURE_MIN_PLAN.get(feature, PLAN_BASIC)
-    return PLAN_ORDER[normalize_plan(plan)] >= PLAN_ORDER[required_plan]
-
-
-def format_upgrade_message(current_plan, required_plan, feature_label):
-    return (
-        f"{feature_label} is available on {required_plan}.\n\n"
-        f"Your current plan: {normalize_plan(current_plan)}\n\n"
-        "Send UPGRADE to see plans."
-    )
 
 
 def ensure_feature_allowed(db, user, feature, feature_label):
@@ -3235,11 +2784,59 @@ def format_admin_roles(db):
     return msg.strip()
 
 
-def build_post_onboarding_menu(business_name):
+def complete_user_onboarding(db, user, phone, pending, category_key, business_type_key, business_type_label):
+    name_to_save = pending.customer_name
+    post_onboarding = None
+
+    if user:
+        user.name = name_to_save
+        user.business_category = category_key
+        user.business_type = business_type_key
+        user.business_type_label = business_type_label
+        msg = (
+            f"Profile updated.\n\n"
+            f"Business: {name_to_save.title()}\n"
+            f"Type: {business_type_label}"
+        )
+    else:
+        user = User(
+            name=name_to_save,
+            phone=phone,
+            role="user",
+            business_category=category_key,
+            business_type=business_type_key,
+            business_type_label=business_type_label
+        )
+        db.add(user)
+        post_onboarding = PendingAction(
+            phone=phone,
+            customer_name=name_to_save,
+            action="POST_ONBOARDING_MENU",
+            last_customer=name_to_save
+        )
+        msg = build_post_onboarding_menu(name_to_save, user)
+
+    if post_onboarding:
+        db.add(post_onboarding)
+    db.delete(pending)
+    db.commit()
+    return user, msg
+
+
+def build_post_onboarding_menu(business_name, user=None):
+    type_line = f"Type: {business_type_display(user)}\n" if user else ""
+    examples = template_examples_for_user(user) if user else [
+        "Ade bought rice 5000",
+        "Ade paid 3000",
+    ]
     return (
         f"Account created.\n\n"
         f"Business: {business_name.title()}\n"
+        f"{type_line}"
         "Plan: BASIC\n\n"
+        "Try:\n"
+        f"{examples[0]}\n"
+        f"{examples[1]}\n\n"
         "What next?\n"
         "1. See formats\n"
         "2. Add customer\n"
@@ -3253,14 +2850,17 @@ def build_owner_home_menu(user, subscription):
         extra_lines = "\n5. Staff menu\n6. Help formats"
     else:
         extra_lines = "\n5. Help formats"
+    examples = template_examples_for_user(user)
     return (
         f"Hello {user.name.title()}.\n\n"
+        f"Business type: {business_type_display(user)}\n\n"
         "What would you like to do?\n"
         "1. Record transaction\n"
         "2. Add customer\n"
         "3. Dashboard\n"
         "4. Upgrade / My plan"
-        f"{extra_lines}"
+        f"{extra_lines}\n\n"
+        f"Example: {examples[0]}"
     )
 
 
@@ -3278,21 +2878,31 @@ def build_staff_home_menu(user, business_name):
     )
 
 
-def build_invalid_message():
+def build_invalid_message(user=None):
+    examples = template_examples_for_user(user)
     return (
         "I could not understand that yet.\n\n"
         "Try:\n"
-        "Ade bought rice 5000\n"
-        "Ade paid 3000\n"
-        "dashboard\n"
+        f"{examples[0]}\n"
+        f"{examples[1]}\n"
+        f"{examples[2]}\n"
         "upgrade\n\n"
         "Send FORMATS for more examples."
     )
 
 
-def build_supported_formats_message():
+def build_supported_formats_message(user=None):
+    examples = template_examples_for_user(user)
+    business_line = ""
+    if user:
+        business_line = f"For {business_type_display(user)}\n\n"
     return (
         "Supported Formats\n\n"
+        f"{business_line}"
+        "Recommended for your business\n"
+        f"{examples[0]}\n"
+        f"{examples[1]}\n"
+        f"{examples[2]}\n\n"
         "Customer debt/sales\n"
         "Ade bought rice 5000\n"
         "Ade bought 3kg cement for 5000\n"
@@ -4680,6 +4290,9 @@ def onboard_user(user_data: UserCreate):
                     "name": existing.name,
                     "phone": existing.phone,
                     "role": existing.role,
+                    "business_category": existing.business_category,
+                    "business_type": existing.business_type,
+                    "business_type_label": existing.business_type_label,
                     "created_at": existing.created_at.isoformat()
                 }
             }
@@ -4687,7 +4300,10 @@ def onboard_user(user_data: UserCreate):
         user = User(
             name=user_data.name,
             phone=user_data.phone,
-            role=user_data.role
+            role=user_data.role,
+            business_category=user_data.business_category,
+            business_type=user_data.business_type,
+            business_type_label=user_data.business_type_label
         )
         db.add(user)
         db.commit()
@@ -4700,6 +4316,9 @@ def onboard_user(user_data: UserCreate):
                 "name": user.name,
                 "phone": user.phone,
                 "role": user.role,
+                "business_category": user.business_category,
+                "business_type": user.business_type,
+                "business_type_label": user.business_type_label,
                 "created_at": user.created_at.isoformat()
             }
         }
@@ -5428,12 +5047,13 @@ async def webhook(req: Request):
             if normalized in ["4", "cancel", "exit", "back"]:
                 db.delete(pending)
                 if not user:
+                    pending_business_name = pending.customer_name or business_name
                     db.add(
                         PendingAction(
                             phone=phone,
-                            customer_name=name_to_save,
+                            customer_name=pending_business_name,
                             action="POST_ONBOARDING_MENU",
-                            last_customer=name_to_save
+                            last_customer=pending_business_name
                         )
                     )
                 db.commit()
@@ -5525,7 +5145,7 @@ async def webhook(req: Request):
             if normalized in ["1", "formats", "format", "f"]:
                 db.delete(pending)
                 db.commit()
-                send_whatsapp_message(phone, build_supported_formats_message())
+                send_whatsapp_message(phone, build_supported_formats_message(user))
                 return {"status": "post_onboarding_formats"}
 
             if normalized in ["2", "add customer", "customer"]:
@@ -5556,7 +5176,7 @@ async def webhook(req: Request):
                 send_whatsapp_message(phone, "Closed. You can continue anytime.")
                 return {"status": "post_onboarding_closed"}
 
-            send_whatsapp_message(phone, build_post_onboarding_menu(pending.customer_name or business_name))
+            send_whatsapp_message(phone, build_post_onboarding_menu(pending.customer_name or business_name, user))
             return {"status": "post_onboarding_waiting"}
 
         if pending and pending.action == "ARTISAN_PAYMENT_CHOICE" and not is_command:
@@ -5734,35 +5354,10 @@ async def webhook(req: Request):
         if pending and pending.action == "ONBOARD_USER_CONFIRM" and not is_command:
             normalized = text.lower().strip()
             if normalized in ["yes", "1", "save"]:
-                name_to_save = pending.customer_name
-                post_onboarding = None
-                
-                if user:
-                    # Update existing user (Business Name update)
-                    user.name = name_to_save
-                    msg = f"✅ Profile updated! Your business name is now *{name_to_save.title()}*."
-                else:
-                    # Register new user
-                    new_user = User(
-                        name=name_to_save,
-                        phone=phone,
-                        role="user"
-                    )
-                    db.add(new_user)
-                    post_onboarding = PendingAction(
-                        phone=phone,
-                        customer_name=name_to_save,
-                        action="POST_ONBOARDING_MENU",
-                        last_customer=name_to_save
-                    )
-                    msg = build_post_onboarding_menu(name_to_save)
-
-                if post_onboarding:
-                    db.add(post_onboarding)
-                db.delete(pending)
+                pending.action = "ONBOARD_USER_CATEGORY"
                 db.commit()
-                send_whatsapp_message(phone, msg)
-                return {"status": "user_saved"}
+                send_whatsapp_message(phone, build_business_category_menu())
+                return {"status": "onboarding_category_prompt"}
 
             if normalized in ["edit", "2", "change"]:
                 pending.action = "ONBOARD_USER"
@@ -5780,13 +5375,97 @@ async def webhook(req: Request):
             )
             return {"status": "waiting_onboarding_confirmation"}
 
+        if pending and pending.action == "ONBOARD_USER_CATEGORY" and not is_command:
+            category = selected_business_category(text)
+            if not category:
+                send_whatsapp_message(phone, build_business_category_menu())
+                return {"status": "onboarding_invalid_category"}
+
+            pending.last_customer = category["key"]
+            if category["key"] == "other":
+                pending.action = "ONBOARD_USER_CUSTOM_TYPE"
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "Please type your business type.\nExample: Event Decoration"
+                )
+                return {"status": "onboarding_custom_type_prompt"}
+
+            pending.action = "ONBOARD_USER_BUSINESS_TYPE"
+            db.commit()
+            send_whatsapp_message(phone, build_business_type_menu(category))
+            return {"status": "onboarding_business_type_prompt"}
+
+        if pending and pending.action == "ONBOARD_USER_BUSINESS_TYPE" and not is_command:
+            category = business_category_by_key(pending.last_customer)
+            if not category:
+                pending.action = "ONBOARD_USER_CATEGORY"
+                db.commit()
+                send_whatsapp_message(phone, build_business_category_menu())
+                return {"status": "onboarding_category_missing"}
+
+            business_type_key, business_type_label = selected_business_type(category, text)
+            if not business_type_key:
+                send_whatsapp_message(phone, build_business_type_menu(category))
+                return {"status": "onboarding_invalid_business_type"}
+
+            if business_type_key.startswith("other_"):
+                pending.action = "ONBOARD_USER_CUSTOM_TYPE"
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    "Please type your business type.\nExample: Event Decoration"
+                )
+                return {"status": "onboarding_custom_type_prompt"}
+
+            user, msg = complete_user_onboarding(
+                db,
+                user,
+                phone,
+                pending,
+                category["key"],
+                business_type_key,
+                business_type_label
+            )
+            send_whatsapp_message(phone, msg)
+            return {"status": "user_saved"}
+
+        if pending and pending.action == "ONBOARD_USER_CUSTOM_TYPE" and not is_command:
+            custom_label = text.strip()
+            if custom_label == "" or custom_label.lower() in ["continue", "start", "yes", "ok", "1"]:
+                send_whatsapp_message(
+                    phone,
+                    "Please type your business type.\nExample: Event Decoration"
+                )
+                return {"status": "onboarding_custom_type_required"}
+
+            user, msg = complete_user_onboarding(
+                db,
+                user,
+                phone,
+                pending,
+                pending.last_customer or "other",
+                make_custom_business_key(custom_label),
+                custom_label.title()
+            )
+            send_whatsapp_message(phone, msg)
+            return {"status": "user_saved_custom_type"}
+
         if not user and not (admin_command_allowed or admin_command_requested):
 
-            if pending and pending.action != "ONBOARD_USER":
+            onboarding_actions = [
+                "ONBOARD_USER",
+                "ONBOARD_USER_CONFIRM",
+                "ONBOARD_USER_CATEGORY",
+                "ONBOARD_USER_BUSINESS_TYPE",
+                "ONBOARD_USER_CUSTOM_TYPE"
+            ]
+
+            if pending and pending.action not in onboarding_actions:
                 db.delete(pending)
                 db.commit()
 
-            if not pending or pending.action != "ONBOARD_USER":
+            if not pending or pending.action not in onboarding_actions:
                 onboarding = PendingAction(
                     phone=phone,
                     action="ONBOARD_USER"
@@ -6567,10 +6246,10 @@ async def webhook(req: Request):
                     return {"status": "openai_parser_clarification"}
 
             if not parsed:
-                send_whatsapp_message(phone, build_invalid_message())
+                send_whatsapp_message(phone, build_invalid_message(user))
                 return {"status": "invalid"}
         if parsed["type"] == "FORMATS":
-            msg = build_supported_formats_message()
+            msg = build_supported_formats_message(user)
             send_whatsapp_message(phone, msg)
             return {"status": "formats"}
 
