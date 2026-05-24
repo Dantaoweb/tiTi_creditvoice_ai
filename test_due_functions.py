@@ -8,11 +8,13 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Import the functions from main.py (adjust path if needed)
-from main import (
-    Base, Customer, Transaction, 
-    get_due_in_2_days, get_due_today, get_overdue_debtors,
-    get_balance
+from database import Base
+from models import Customer, Transaction
+from reports import (
+    get_balance,
+    get_due_in_2_days,
+    get_due_today,
+    get_overdue_debtors,
 )
 
 # Use an in-memory SQLite database for testing
