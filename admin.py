@@ -1,12 +1,146 @@
+import os
+from datetime import datetime
+
 from sqlalchemy import func
 
 from models import AppAdminRole, SubscriptionPayment, User
+from parser import normalize_phone
 from plans import PLAN_BASIC, PLAN_GO, PLAN_PRO, normalize_plan
 from subscriptions import (
     app_user_effective_plan,
     get_business_users_by_effective_plan,
     get_month_start,
 )
+
+
+ROLE_CUSTOMER_SUPPORT = "CUSTOMER_SUPPORT"
+ROLE_SUBSCRIPTION_ADMIN = "SUBSCRIPTION_ADMIN"
+ROLE_APP_ADMIN = "APP_ADMIN"
+
+
+def phone_list_from_env(name):
+    return [
+        normalize_phone(value.strip())
+        for value in os.getenv(name, "").split(",")
+        if value.strip()
+    ]
+
+
+def customer_support_phone():
+    phone = os.getenv("CUSTOMER_SUPPORT_PHONE", "").strip()
+    return normalize_phone(phone) if phone else None
+
+
+def support_line():
+    phone = customer_support_phone()
+    return f"\n\nNeed help? Contact support: {phone}" if phone else ""
+
+
+def subscription_admin_phones():
+    return phone_list_from_env("SUBSCRIPTION_ADMIN_PHONES")
+
+
+def app_admin_phones():
+    return phone_list_from_env("APP_ADMIN_PHONES")
+
+
+def normalize_admin_role(role):
+    role = (role or "").upper().replace(" ", "_").strip()
+    aliases = {
+        "SUPPORT": ROLE_CUSTOMER_SUPPORT,
+        "CUSTOMER_SUPPORT": ROLE_CUSTOMER_SUPPORT,
+        "SUBSCRIPTION": ROLE_SUBSCRIPTION_ADMIN,
+        "SUBSCRIPTION_ADMIN": ROLE_SUBSCRIPTION_ADMIN,
+        "APP": ROLE_APP_ADMIN,
+        "APP_ADMIN": ROLE_APP_ADMIN,
+    }
+    return aliases.get(role)
+
+
+def get_admin_role_override(db, phone, role):
+    return db.query(AppAdminRole).filter(
+        AppAdminRole.phone == normalize_phone(phone),
+        AppAdminRole.role == role
+    ).order_by(
+        AppAdminRole.created_at.desc()
+    ).first()
+
+
+def role_is_denied(db, phone, role):
+    override = get_admin_role_override(db, phone, role)
+    return bool(override and not override.is_active)
+
+
+def has_db_admin_role(db, phone, role):
+    override = get_admin_role_override(db, phone, role)
+    return bool(override and override.is_active)
+
+
+def has_admin_role(db, phone, role):
+    phone = normalize_phone(phone)
+    if role == ROLE_APP_ADMIN:
+        if role_is_denied(db, phone, ROLE_APP_ADMIN):
+            return False
+        return phone in app_admin_phones() or has_db_admin_role(db, phone, ROLE_APP_ADMIN)
+
+    if role == ROLE_SUBSCRIPTION_ADMIN:
+        if role_is_denied(db, phone, ROLE_SUBSCRIPTION_ADMIN):
+            return False
+        return (
+            has_admin_role(db, phone, ROLE_APP_ADMIN)
+            or phone in subscription_admin_phones()
+            or has_db_admin_role(db, phone, ROLE_SUBSCRIPTION_ADMIN)
+        )
+
+    if role == ROLE_CUSTOMER_SUPPORT:
+        if role_is_denied(db, phone, ROLE_CUSTOMER_SUPPORT):
+            return False
+        return (
+            has_admin_role(db, phone, ROLE_APP_ADMIN)
+            or has_admin_role(db, phone, ROLE_SUBSCRIPTION_ADMIN)
+            or phone == customer_support_phone()
+            or has_db_admin_role(db, phone, ROLE_CUSTOMER_SUPPORT)
+        )
+
+    return False
+
+
+def set_admin_role(db, target_phone, role, is_active, actor_user=None):
+    target_phone = normalize_phone(target_phone)
+    role = normalize_admin_role(role)
+    override = get_admin_role_override(db, target_phone, role)
+
+    if not override:
+        override = AppAdminRole(
+            phone=target_phone,
+            role=role,
+            is_active=is_active,
+            created_by_user_id=actor_user.id if actor_user else None
+        )
+        db.add(override)
+    else:
+        override.is_active = is_active
+
+    if is_active:
+        override.deactivated_at = None
+        override.deactivated_by_user_id = None
+    else:
+        override.deactivated_at = datetime.utcnow()
+        override.deactivated_by_user_id = actor_user.id if actor_user else None
+
+    return override
+
+
+def is_subscription_admin(phone, db=None):
+    if db is None:
+        return normalize_phone(phone) in subscription_admin_phones()
+    return has_admin_role(db, phone, ROLE_SUBSCRIPTION_ADMIN)
+
+
+def is_app_admin(phone, db=None):
+    if db is None:
+        return normalize_phone(phone) in app_admin_phones()
+    return has_admin_role(db, phone, ROLE_APP_ADMIN)
 
 
 def format_admin_roles(db):
