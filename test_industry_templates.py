@@ -163,6 +163,13 @@ def test_quantity_unit_item_parses_when_price_has_no_at_keyword():
         assert parsed["total"] == 800
 
 
+def test_i_buy_without_supplier_does_not_create_customer_i():
+    parsed = parse_message("i buy 1 pack of coke 2400")
+
+    assert parsed is not None
+    assert parsed["type"] == "SELF_PURCHASE_NEEDS_SUPPLIER"
+
+
 def run_onboarding_flow(category_choice, business_choice, expected_category, expected_type, expected_label):
     db = make_test_db()
     sent_messages = []
@@ -269,6 +276,7 @@ if __name__ == "__main__":
     test_post_onboarding_allows_natural_transaction_text()
     test_thrift_contribution_text_parses_as_payment()
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()
+    test_i_buy_without_supplier_does_not_create_customer_i()
     test_industry_onboarding_paths()
     test_basic_thrift_participant_limit()
     print("industry template smoke tests passed")

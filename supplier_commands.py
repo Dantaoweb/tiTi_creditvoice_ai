@@ -51,6 +51,15 @@ def handle_supplier_command(
         send_message(phone, build_supplier_due_message(db, business_owner_phone))
         return {"status": "supplier_due"}
 
+    if command_type == "SELF_PURCHASE_NEEDS_SUPPLIER":
+        send_message(
+            phone,
+            "I understand this as stock you bought for your business, not a customer debt.\n\n"
+            "Please include the supplier name, like:\n"
+            "I buy 1 pack of coke from Ayo at 2400"
+        )
+        return {"status": "self_purchase_needs_supplier"}
+
     if command_type == "SUPPLIER_TRANSACTION":
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "SUPPLIERS", "Supplier and inventory records")
         if not allowed:

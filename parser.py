@@ -1767,6 +1767,11 @@ def parse_message(text):
     if supplier_transaction:
         return supplier_transaction
 
+    if re.match(r"^i\s+(?:buy|bought|purchase|purchased)\b", clean_text):
+        return {
+            "type": "SELF_PURCHASE_NEEDS_SUPPLIER"
+        }
+
     artisan = extract_artisan_transaction(text)
     if artisan:
         return artisan
