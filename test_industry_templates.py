@@ -6,9 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from business_templates import HIGH_VALUE_TEMPLATE_KEYS, industry_plan_matrix
 from database import Base
 from messages import build_owner_home_menu, build_post_onboarding_menu
-from models import Customer, PendingAction, User
+from models import Customer, PendingAction, Transaction, User
 from onboarding_commands import handle_onboarding_pending, handle_post_onboarding_pending
-from parser import parse_message
+from parser import build_customer_account_summary, parse_message
 from plans import format_upgrade_message
 from subscriptions import check_thrift_participant_limit
 
@@ -170,6 +170,38 @@ def test_i_buy_without_supplier_does_not_create_customer_i():
     assert parsed["type"] == "SELF_PURCHASE_NEEDS_SUPPLIER"
 
 
+def test_customer_account_summary_includes_product_details():
+    db = make_test_db()
+    owner_phone = "2348000000888"
+    customer = Customer(name="shade", owner_phone=owner_phone)
+    db.add(customer)
+    db.flush()
+    db.add(
+        Transaction(
+            customer_id=customer.id,
+            type="BUY",
+            amount=2400,
+            product="coke",
+            quantity=1,
+            unit="pack",
+            unit_price=2400,
+        )
+    )
+    db.add(
+        Transaction(
+            customer_id=customer.id,
+            type="PAY",
+            amount=1000,
+        )
+    )
+    db.commit()
+
+    summary = build_customer_account_summary(db, owner_phone, "shade")
+
+    assert "BUY - 1 pack of coke: ₦2,400" in summary
+    assert "PAY: ₦1,000" in summary
+
+
 def run_onboarding_flow(category_choice, business_choice, expected_category, expected_type, expected_label):
     db = make_test_db()
     sent_messages = []
@@ -277,6 +309,7 @@ if __name__ == "__main__":
     test_thrift_contribution_text_parses_as_payment()
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()
     test_i_buy_without_supplier_does_not_create_customer_i()
+    test_customer_account_summary_includes_product_details()
     test_industry_onboarding_paths()
     test_basic_thrift_participant_limit()
     print("industry template smoke tests passed")

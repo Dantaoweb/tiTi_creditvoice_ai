@@ -1099,7 +1099,15 @@ def build_customer_account_summary(db, owner_phone, customer_name, period=None, 
         msg += "\n\nRecent Transactions\n"
         for tx in recent_transactions:
             tx_date = tx.created_at.strftime("%d/%m/%Y")
-            msg += f"{tx_date} - {tx.type}: ₦{tx.amount:,}\n"
+            item_line = ""
+            if tx.type == "BUY" and tx.product:
+                if tx.quantity and tx.unit:
+                    item_line = f" - {tx.quantity} {tx.unit} of {tx.product}"
+                elif tx.quantity and tx.quantity > 1:
+                    item_line = f" - {tx.quantity} {tx.product}"
+                else:
+                    item_line = f" - {tx.product}"
+            msg += f"{tx_date} - {tx.type}{item_line}: ₦{tx.amount:,}\n"
 
     if include_menu:
         msg += (
