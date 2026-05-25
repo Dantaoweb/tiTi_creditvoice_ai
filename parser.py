@@ -83,7 +83,7 @@ def transcribe_audio_bytes(audio_bytes, mime_type=None):
             "response_format": "json",
             "prompt": (
                 "This is a WhatsApp business accounting command for CreditVoice. "
-                "Common words include bought, buy, paid, pay, sold, sell, supply, "
+                "Common words include bought, buy, paid, pay, contributed, contribution, sold, sell, supply, "
                 "rice, beans, cement, sand, naira, k for thousand, m for million."
             )
         },
@@ -154,7 +154,7 @@ def normalize_voice_transcript(transcript):
     text_value = token_pattern.sub(replace_match, text_value)
     text_value = re.sub(r"\bnaira\b", "", text_value)
     text_value = re.sub(
-        r"(\d+)\s+and\s+(?!(?:paid|pay)\b)([a-z][a-z]*(?:\s+[a-z][a-z]*){0,4}\s+\d+)",
+        r"(\d+)\s+and\s+(?!(?:paid|pay|contributed|contribute|contribution)\b)([a-z][a-z]*(?:\s+[a-z][a-z]*){0,4}\s+\d+)",
         r"\1, \2",
         text_value
     )
@@ -220,7 +220,7 @@ def interpret_text_with_openai(text_value):
         "Return only strict JSON. Do not explain. Do not save anything. "
         "Convert messy wording into one supported command sentence that the local parser can understand. "
         "Supported command styles include: "
-        "'Ayo bought rice 5000', 'Ayo paid 3000', "
+        "'Ayo bought rice 5000', 'Ayo paid 3000', 'Amina contributed 5000', "
         "'Ayo bought rice 4000, beans 3000 paid 2000', "
         "'I sold phone 45k', 'I received 1000 for doing chair', "
         "'Ayo supply me 12kg cocoa at 5000', "
@@ -1908,7 +1908,8 @@ def parse_message(text):
     pay_keywords = [
         "paid", "pay", "settle", "settled", "clear", "cleared",
         "gave", "give", "send", "sent", "transfer", "transferred",
-        "transfered", "deposit", "deposited"
+        "transfered", "deposit", "deposited", "contribute", "contributed",
+        "contribution", "contributions", "save", "saved", "thrift", "ajo", "esusu"
     ]
     sale_keywords = ["sold", "sell", "supply", "supplied", "deliver", "delivered"]
 
@@ -1966,7 +1967,7 @@ def parse_message(text):
     )
     if customer_invoice_match and has_pay:
         payment_split = re.search(
-            r"\b(?:paid|pay|settle|settled|clear|cleared|gave|give|send|sent|transfer|transferred|transfered|deposit|deposited)\b(?P<payment>.+)$",
+            r"\b(?:paid|pay|settle|settled|clear|cleared|gave|give|send|sent|transfer|transferred|transfered|deposit|deposited|contribute|contributed|contribution|contributions|save|saved|thrift|ajo|esusu)\b(?P<payment>.+)$",
             customer_invoice_match.group("items")
         )
         if payment_split:
@@ -2055,6 +2056,9 @@ def parse_message(text):
 
     elif has_pay:
 
+        if not amounts:
+            return None
+
         paid_amount = amounts[0]
 
         action = "PAY"
@@ -2101,7 +2105,16 @@ def parse_message(text):
             "transferred",
             "transfered",
             "deposit",
-            "deposited"
+            "deposited",
+            "contribute",
+            "contributed",
+            "contribution",
+            "contributions",
+            "save",
+            "saved",
+            "thrift",
+            "ajo",
+            "esusu"
         ]:
 
             action_index = i

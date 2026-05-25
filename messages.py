@@ -1,7 +1,14 @@
 import os
 import re
 
-from business_templates import business_type_display, template_examples_for_user
+from business_templates import (
+    business_type_display,
+    industry_template_for_user,
+    template_examples_for_user,
+    template_next_steps_for_user,
+    template_plan_value_for_user,
+    template_quick_actions_for_user,
+)
 from plans import PLAN_GO, PLAN_PRO, normalize_plan
 
 
@@ -18,6 +25,12 @@ def build_plan_message(subscription):
     customer_limit = limits["customers"] if limits["customers"] is not None else "Unlimited"
     transaction_limit = limits["monthly_transactions"] if limits["monthly_transactions"] is not None else "Unlimited"
     staff_limit = limits["staff"] if limits["staff"] is not None else "Unlimited"
+    thrift_participant_limit = limits.get("thrift_participants")
+    thrift_participant_limit = (
+        thrift_participant_limit
+        if thrift_participant_limit is not None else
+        "Unlimited"
+    )
 
     return (
         "Your Subscription\n\n"
@@ -26,17 +39,56 @@ def build_plan_message(subscription):
         f"{expiry_line}"
         f"Customers: {customer_limit}\n"
         f"Monthly transactions: {transaction_limit}\n"
+        f"Thrift participants: {thrift_participant_limit}\n"
         f"Staff: {staff_limit}"
     )
 
 
-def build_upgrade_message():
+def _numbered_lines(items, start=1):
+    return "\n".join(f"{index}. {item}" for index, item in enumerate(items, start=start))
+
+
+def _quick_action_lines(user):
+    actions = template_quick_actions_for_user(user)
+    return "\n".join(f"{index}. {label} - {instruction}" for index, (label, instruction) in enumerate(actions, start=1))
+
+
+def build_industry_value_message(user):
+    template = industry_template_for_user(user)
+    values = template_plan_value_for_user(user)
+    title = template["label"] if template else business_type_display(user)
+    go_reason = values.get("go_reason", "GO adds stronger reports and business tools.")
+    pro_reason = values.get("pro_reason", "PRO is best when staff need controlled access.")
+
+    return (
+        f"{title} setup\n\n"
+        "BASIC helps you:\n"
+        f"{_numbered_lines(values['basic'])}\n\n"
+        "GO adds:\n"
+        f"{_numbered_lines(values['go'])}\n"
+        f"{go_reason}\n\n"
+        "PRO adds:\n"
+        f"{_numbered_lines(values['pro'])}\n"
+        f"{pro_reason}"
+    )
+
+
+def build_upgrade_message(user=None):
     go_price = int(os.getenv("PLAN_GO_PRICE", "3000"))
     pro_price = int(os.getenv("PLAN_PRO_PRICE", "7000"))
+    industry_value = ""
+    if user:
+        values = template_plan_value_for_user(user)
+        industry_value = (
+            f"\nFor {business_type_display(user)}:\n"
+            f"GO: {values['go'][0]}\n"
+            f"PRO: {values['pro'][0]}\n\n"
+        )
     return (
         "CreditVoice Plans\n\n"
         "BASIC - Free\n"
         "1 user, 50 customers, 100 monthly transactions, basic debt tracking.\n\n"
+        f"{industry_value}"
         f"1. GO - N{go_price:,}/month\n"
         "For one-owner businesses. Unlimited customers, unlimited transactions, invoices, direct sales, inventory, suppliers, reports, reminders, and notes.\n\n"
         f"2. PRO - N{pro_price:,}/month\n"
@@ -107,19 +159,29 @@ def build_post_onboarding_menu(business_name, user=None):
         "Ade bought rice 5000",
         "Ade paid 3000",
     ]
+    next_steps = template_next_steps_for_user(user) if user else [
+        "Confirm with YES to save or EDIT to correct.",
+        "Send dashboard to review your business.",
+        "Send back, cancel, done, or menu to leave a flow.",
+    ]
     return (
         f"Account created.\n\n"
         f"Business: {business_name.title()}\n"
         f"{type_line}"
         "Plan: BASIC\n\n"
-        "Try:\n"
+        "Start with one of these:\n"
         f"{examples[0]}\n"
         f"{examples[1]}\n\n"
+        "Quick actions:\n"
+        f"{_quick_action_lines(user) if user else '1. Formats - Send: formats'}\n\n"
+        "How to move around:\n"
+        f"{_numbered_lines(next_steps)}\n\n"
         "What next?\n"
         "1. See formats\n"
         "2. Add customer\n"
         "3. View dashboard\n"
-        "4. Upgrade"
+        "4. Upgrade\n\n"
+        "Reply with a number, or send menu anytime."
     )
 
 
@@ -138,7 +200,12 @@ def build_owner_home_menu(user, subscription):
         "3. Dashboard\n"
         "4. Upgrade / My plan"
         f"{extra_lines}\n\n"
-        f"Example: {examples[0]}"
+        "Fast examples:\n"
+        f"{examples[0]}\n"
+        f"{examples[1]}\n\n"
+        "Quick actions:\n"
+        f"{_quick_action_lines(user)}\n\n"
+        "Send back, cancel, done, or menu whenever you need to leave a step."
     )
 
 
@@ -158,6 +225,7 @@ def build_staff_home_menu(user, business_name, can_view_all):
 
 def build_invalid_message(user=None):
     examples = template_examples_for_user(user)
+    next_steps = template_next_steps_for_user(user)
     return (
         "I could not understand that yet.\n\n"
         "Try:\n"
@@ -165,12 +233,15 @@ def build_invalid_message(user=None):
         f"{examples[1]}\n"
         f"{examples[2]}\n"
         "upgrade\n\n"
-        "Send FORMATS for more examples."
+        "Useful next steps:\n"
+        f"{_numbered_lines(next_steps)}\n\n"
+        "Send FORMATS for more examples, or MENU to go home."
     )
 
 
 def build_supported_formats_message(user=None):
     examples = template_examples_for_user(user)
+    next_steps = template_next_steps_for_user(user)
     business_line = ""
     if user:
         business_line = f"For {business_type_display(user)}\n\n"
@@ -209,7 +280,9 @@ def build_supported_formats_message(user=None):
         "dashboard\n"
         "my plan\n"
         "upgrade\n"
-        "change name"
+        "change name\n\n"
+        "When you are inside a feature:\n"
+        f"{_numbered_lines(next_steps)}"
     )
 
 

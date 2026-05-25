@@ -85,7 +85,7 @@ def handle_parsed_command(
             )
         )
         db.commit()
-        send_whatsapp_message(phone, build_upgrade_message())
+        send_whatsapp_message(phone, build_upgrade_message(user))
         return {"status": "upgrade_menu"}
 
     admin_subscription_result = handle_admin_subscription_command(

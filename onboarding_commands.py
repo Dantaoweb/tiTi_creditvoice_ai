@@ -98,6 +98,8 @@ def handle_post_onboarding_pending(
         return {"status": "post_onboarding_formats"}
 
     if normalized in ["2", "add customer", "customer"]:
+        db.delete(pending)
+        db.commit()
         send_message(
             phone,
             "To add a customer, send their name and phone number like:\n"
@@ -116,7 +118,7 @@ def handle_post_onboarding_pending(
     if normalized in ["4", "upgrade"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
-        send_message(phone, build_upgrade_message())
+        send_message(phone, build_upgrade_message(user))
         return {"status": "post_onboarding_upgrade"}
 
     if normalized in ["cancel", "exit", "back", "done", "stop"]:
@@ -125,8 +127,9 @@ def handle_post_onboarding_pending(
         send_message(phone, "Closed. You can continue anytime.")
         return {"status": "post_onboarding_closed"}
 
-    send_message(phone, build_post_onboarding_menu(pending.customer_name or business_name, user))
-    return {"status": "post_onboarding_waiting"}
+    db.delete(pending)
+    db.commit()
+    return None
 
 
 def handle_onboarding_pending(db, phone, text, pending, user, send_message):
@@ -171,6 +174,16 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
         return {"status": "waiting_onboarding_confirmation"}
 
     if pending.action == "ONBOARD_USER_CATEGORY":
+        if text.lower().strip() in ["back", "menu", "cancel"]:
+            pending.action = "ONBOARD_USER_CONFIRM"
+            db.commit()
+            send_message(
+                phone,
+                f"Confirm name: *{pending.customer_name}*?\n\n"
+                "Reply YES or 1 to continue, EDIT or 2 to change."
+            )
+            return {"status": "onboarding_category_back"}
+
         category = selected_business_category(text)
         if not category:
             send_message(phone, build_business_category_menu())
@@ -196,6 +209,12 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
             send_message(phone, build_business_category_menu())
             return {"status": "onboarding_category_missing"}
 
+        if text.lower().strip() in ["back", "menu", "cancel"]:
+            pending.action = "ONBOARD_USER_CATEGORY"
+            db.commit()
+            send_message(phone, build_business_category_menu())
+            return {"status": "onboarding_business_type_back"}
+
         business_type_key, business_type_label = selected_business_type(category, text)
         if not business_type_key:
             send_message(phone, build_business_type_menu(category))
@@ -220,6 +239,12 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
         return {"status": "user_saved"}
 
     if pending.action == "ONBOARD_USER_CUSTOM_TYPE":
+        if text.lower().strip() in ["back", "menu", "cancel"]:
+            pending.action = "ONBOARD_USER_CATEGORY"
+            db.commit()
+            send_message(phone, build_business_category_menu())
+            return {"status": "onboarding_custom_type_back"}
+
         custom_label = text.strip()
         if custom_label == "" or custom_label.lower() in ["continue", "start", "yes", "ok", "1"]:
             send_message(phone, "Please type your business type.\nExample: Event Decoration")

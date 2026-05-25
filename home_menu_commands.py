@@ -31,7 +31,7 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
     if normalized in ["4", "upgrade", "my plan", "plan"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
-        send_message(phone, build_upgrade_message())
+        send_message(phone, build_upgrade_message(user))
         return {"status": "owner_home_upgrade"}
 
     if normalized in ["5", "staff", "staff menu"] and subscription["plan"] == PLAN_PRO:
@@ -50,8 +50,9 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
         send_message(phone, "Closed. You can continue anytime.")
         return {"status": "owner_home_closed"}
 
-    send_message(phone, build_owner_home_menu(user, subscription))
-    return {"status": "owner_home_waiting"}
+    db.delete(pending)
+    db.commit()
+    return None
 
 
 def handle_staff_home_menu(
@@ -94,8 +95,9 @@ def handle_staff_home_menu(
         send_message(phone, "Closed. You can continue anytime.")
         return {"status": "staff_home_closed"}
 
-    send_message(phone, build_staff_home_menu(user, business_name, can_view_all))
-    return {"status": "staff_home_waiting"}
+    db.delete(pending)
+    db.commit()
+    return None
 
 
 def handle_home_menu_pending(

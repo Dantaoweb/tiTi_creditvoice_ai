@@ -45,13 +45,16 @@ def get_business_subscription(db, user):
 
 def ensure_feature_allowed(db, user, feature, feature_label):
     subscription = get_business_subscription(db, user)
+    owner = subscription["owner"] or user
     required_plan = FEATURE_MIN_PLAN.get(feature, PLAN_BASIC)
     if plan_allows_feature(subscription["plan"], feature):
         return True, None
     return False, format_upgrade_message(
         subscription["plan"],
         required_plan,
-        feature_label
+        feature_label,
+        owner,
+        feature,
     )
 
 
@@ -74,6 +77,23 @@ def check_customer_limit(db, owner_phone, subscription):
     return False, (
         f"Basic plan customer limit reached ({limit}).\n\n"
         "Send UPGRADE to move to Go for unlimited customers."
+    )
+
+
+def check_thrift_participant_limit(db, owner_phone, subscription):
+    limit = subscription["limits"].get("thrift_participants")
+    if limit is None:
+        return True, None
+
+    count = db.query(Customer).filter(
+        Customer.owner_phone == owner_phone
+    ).count()
+    if count < limit:
+        return True, None
+
+    return False, (
+        f"BASIC allows up to {limit} thrift participants.\n\n"
+        "Upgrade to GO for unlimited participants, contribution reminders, and participant history."
     )
 
 

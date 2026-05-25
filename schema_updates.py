@@ -5,7 +5,7 @@ def repair_empty_sqlite_integer_id_tables(engine):
     if engine.dialect.name != "sqlite":
         return
 
-    from models import Customer, PendingAction, ReminderMemory, Transaction, User
+    from models import Customer, CustomerMemory, PendingAction, ReminderMemory, Transaction, User
 
     models_to_repair = [
         User,
@@ -13,6 +13,7 @@ def repair_empty_sqlite_integer_id_tables(engine):
         Transaction,
         PendingAction,
         ReminderMemory,
+        CustomerMemory,
     ]
     inspector = inspect(engine)
 

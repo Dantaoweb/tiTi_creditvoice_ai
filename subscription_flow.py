@@ -89,7 +89,7 @@ def handle_upgrade_menu_pending(db, phone, text, pending, user, subscription, bu
         send_message(phone, "Upgrade cancelled.")
         return {"status": "upgrade_cancelled"}
 
-    send_message(phone, build_upgrade_message())
+    send_message(phone, build_upgrade_message(user))
     return {"status": "upgrade_menu_waiting"}
 
 
