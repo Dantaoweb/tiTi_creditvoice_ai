@@ -104,6 +104,7 @@ def ensure_schema_updates(engine):
         column["name"]
         for column in inspector.get_columns("inventory_items")
     }
+    boolean_true = "TRUE" if engine.dialect.name == "postgresql" else "1"
     inventory_updates = {
         "size": "VARCHAR",
         "color": "VARCHAR",
@@ -111,7 +112,7 @@ def ensure_schema_updates(engine):
         "media_url": "VARCHAR",
         "payment_modes": "VARCHAR",
         "delivery_options": "VARCHAR",
-        "is_available": "BOOLEAN DEFAULT 1",
+        "is_available": f"BOOLEAN DEFAULT {boolean_true}",
     }
     with engine.begin() as connection:
         for column_name, column_type in inventory_updates.items():
