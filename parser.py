@@ -300,7 +300,7 @@ def extract_item_details(text):
     match = re.search(
         r"(?P<quantity>\d+)\s*"
         r"(?P<container>[a-z/]+)\s+of\s+"
-        r"(?P<product>[a-z ]+?)\s+(?:at|for)\s+(?P<unit_price>" + amount_pattern + ")",
+        r"(?P<product>[a-z ]+?)\s+(?:(?:at|for)\s+)?(?P<unit_price>" + amount_pattern + ")",
         clean
     )
     compact_unit_match = None
@@ -308,7 +308,7 @@ def extract_item_details(text):
         compact_unit_match = re.search(
             r"(?P<quantity>\d+)\s*"
             r"(?P<unit>kg|g|ml|l)\s+(?:of\s+)?"
-            r"(?P<product>[a-z ]+?)\s+(?:at|for)\s+(?P<unit_price>" + amount_pattern + ")",
+            r"(?P<product>[a-z ]+?)\s+(?:(?:at|for)\s+)?(?P<unit_price>" + amount_pattern + ")",
             clean
         )
     no_of_match = None
@@ -316,7 +316,7 @@ def extract_item_details(text):
         no_of_match = re.search(
             r"(?P<quantity>\d+)\s*"
             r"(?P<product>[a-z/]+(?:\s+[a-z/]+){0,3})\s+"
-            r"(?:at|for)\s+(?P<unit_price>" + amount_pattern + ")",
+            r"(?:(?:at|for)\s+)?(?P<unit_price>" + amount_pattern + ")",
             clean
         )
 

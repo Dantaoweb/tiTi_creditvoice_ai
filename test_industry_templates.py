@@ -142,6 +142,27 @@ def test_thrift_contribution_text_parses_as_payment():
         assert parsed["paid_amount"] == expected_amount
 
 
+def test_quantity_unit_item_parses_when_price_has_no_at_keyword():
+    samples = [
+        "shade buy 2 congos of rice at 400",
+        "shade buy 2 congos of rice 400",
+        "shade buy 2 congos of rice at 400.",
+    ]
+
+    for text in samples:
+        parsed = parse_message(text)
+        assert parsed is not None, text
+        assert parsed["type"] == "TRANSACTION"
+        assert parsed["name"] == "shade"
+        assert parsed["action"] == "BUY"
+        assert parsed["buy_amount"] == 800
+        assert parsed["quantity"] == 2
+        assert parsed["unit"] == "congos"
+        assert parsed["product"] == "rice"
+        assert parsed["unit_price"] == 400
+        assert parsed["total"] == 800
+
+
 def run_onboarding_flow(category_choice, business_choice, expected_category, expected_type, expected_label):
     db = make_test_db()
     sent_messages = []
@@ -247,6 +268,7 @@ if __name__ == "__main__":
     test_post_onboarding_add_customer_does_not_trap_user()
     test_post_onboarding_allows_natural_transaction_text()
     test_thrift_contribution_text_parses_as_payment()
+    test_quantity_unit_item_parses_when_price_has_no_at_keyword()
     test_industry_onboarding_paths()
     test_basic_thrift_participant_limit()
     print("industry template smoke tests passed")
