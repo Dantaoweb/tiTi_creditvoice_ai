@@ -183,7 +183,7 @@ def handle_report_command(
         for index, customer in enumerate(customers, start=1):
             msg += (
                 f"{index}. {customer['name'].title()}"
-                f" ({customer['phone'] or 'no phone'}) -> N{customer['balance']:,}\n"
+                f" ({customer['phone'] or 'no phone'}): N{customer['balance']:,}\n"
             )
         send_message(phone, msg)
         return {"status": "customer_list"}
@@ -243,7 +243,7 @@ def handle_report_command(
         if not debtor:
             send_message(phone, "No debtors found.")
             return {"status": "biggest_debtor_empty"}
-        send_message(phone, f"Biggest debtor: {debtor['name'].title()} -> N{debtor['balance']:,}")
+        send_message(phone, f"Biggest debtor: {debtor['name'].title()}: N{debtor['balance']:,}")
         return {"status": "biggest_debtor"}
 
     if command_type == "DEBTOR_LEADERBOARD":
@@ -253,7 +253,7 @@ def handle_report_command(
             return {"status": "debtor_leaderboard_empty"}
         msg = "Debtor Leaderboard\n\n"
         for index, debtor in enumerate(leaderboard, start=1):
-            msg += f"{index}. {debtor['name'].title()} -> N{debtor['balance']:,}\n"
+            msg += f"{index}. {debtor['name'].title()}: N{debtor['balance']:,}\n"
         send_message(phone, msg)
         return {"status": "debtor_leaderboard"}
 
@@ -318,7 +318,7 @@ def handle_report_command(
 
         msg = "Unpaid Debtors\n\n"
         for index, debtor in enumerate(debtors, start=1):
-            msg += f"{index}. {debtor['name']} -> N{debtor['balance']:,}\n"
+            msg += f"{index}. {debtor['name'].title()}: N{debtor['balance']:,}\n"
 
         msg += f"\nTotal Outstanding: N{total_outstanding:,}"
         send_message(phone, msg)

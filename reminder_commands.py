@@ -61,7 +61,7 @@ def format_due_selection(selection, due_list):
                 f"Overdue: {debtor.get('overdue_days', 0)} days\n\n"
             )
         else:
-            msg += f"{index}. {debtor['name']} -> N{debtor['balance']:,}\n"
+            msg += f"{index}. {debtor['name'].title()}: N{debtor['balance']:,}\n"
 
     numbers = ", ".join(str(index) for index in range(1, len(due_list) + 1))
     msg += f"\nSend:\n{numbers} to preview the reminder before sending to customer."

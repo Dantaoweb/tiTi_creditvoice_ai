@@ -273,7 +273,7 @@ def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id
         for i, customer in enumerate(customers, start=1):
             msg += (
                 f"{i}. {customer['name'].title()}"
-                f" ({customer['phone'] or 'no phone'}) -> N{customer['balance']:,}\n"
+                f" ({customer['phone'] or 'no phone'}): N{customer['balance']:,}\n"
             )
         return "dashboard_customer_list", msg
 
@@ -284,7 +284,7 @@ def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id
 
         msg = f"Unpaid Debtors\nTotal outstanding: N{total_outstanding:,}\n\n"
         for i, debtor in enumerate(debtors, start=1):
-            msg += f"{i}. {debtor['name'].title()} -> N{debtor['balance']:,}\n"
+            msg += f"{i}. {debtor['name'].title()}: N{debtor['balance']:,}\n"
         return "dashboard_unpaid_debtors", msg
 
     if selection == "9":
