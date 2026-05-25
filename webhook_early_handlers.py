@@ -13,6 +13,22 @@ from webhook_context import visibility_recorded_by_id
 from whatsapp_client import send_whatsapp_message
 
 
+def is_reminder_automation_text(text):
+    normalized = (text or "").strip().lower()
+    return normalized.startswith((
+        "reminder automation",
+        "reminder preview",
+        "auto reminders",
+        "reminder time",
+        "run reminder automation",
+        "preview reminder automation",
+        "reminder queue",
+        "send reminder",
+        "skip reminder",
+        "edit reminder",
+    ))
+
+
 def handle_early_webhook_message(incoming):
     try:
         value = incoming.value
@@ -64,6 +80,9 @@ def handle_early_webhook_message(incoming):
                             "Closed. You can continue recording transactions."
                         )
                         return {"status": "pending_cancelled"}
+
+                    if is_reminder_automation_text(text):
+                        raise LookupError("continue_to_main_flow")
 
                     if pending and pending.action in ["CUSTOMER_SUMMARY_MENU", "CUSTOMER_SUMMARY_DATE"]:
                         print(f"Customer summary follow-up reached: {text}", flush=True)
@@ -318,7 +337,7 @@ def handle_early_webhook_message(incoming):
                 finally:
                     debug_db.close()
     except LookupError as exc:
-        if str(exc) != "continue_to_onboarding":
+        if str(exc) not in ["continue_to_onboarding", "continue_to_main_flow"]:
             print("Webhook early parse lookup error:", repr(exc), flush=True)
     except Exception as exc:
         print("Webhook early parse error:", repr(exc), flush=True)

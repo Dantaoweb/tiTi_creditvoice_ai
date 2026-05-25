@@ -100,6 +100,28 @@ def ensure_schema_updates(engine):
                     )
                 )
 
+    inventory_columns = {
+        column["name"]
+        for column in inspector.get_columns("inventory_items")
+    }
+    inventory_updates = {
+        "size": "VARCHAR",
+        "color": "VARCHAR",
+        "description": "VARCHAR",
+        "media_url": "VARCHAR",
+        "payment_modes": "VARCHAR",
+        "delivery_options": "VARCHAR",
+        "is_available": "BOOLEAN DEFAULT 1",
+    }
+    with engine.begin() as connection:
+        for column_name, column_type in inventory_updates.items():
+            if column_name not in inventory_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE inventory_items ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
     if engine.dialect.name == "postgresql":
         transaction_columns = {
             column["name"]: column

@@ -221,6 +221,20 @@ class InventoryItem(Base):
 
     selling_price = Column(Integer, nullable=True)
 
+    size = Column(String, nullable=True)
+
+    color = Column(String, nullable=True)
+
+    description = Column(String, nullable=True)
+
+    media_url = Column(String, nullable=True)
+
+    payment_modes = Column(String, nullable=True)
+
+    delivery_options = Column(String, nullable=True)
+
+    is_available = Column(Boolean, default=True)
+
     low_stock_alert = Column(Integer, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -251,6 +265,153 @@ class InventoryMovement(Base):
     note = Column(String, nullable=True)
 
     recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AutomationSettings(Base):
+
+    __tablename__ = "automation_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String, unique=True)
+
+    bot_enabled = Column(Boolean, default=False)
+
+    auto_reply_enabled = Column(Boolean, default=True)
+
+    auto_order_enabled = Column(Boolean, default=False)
+
+    allow_part_payment = Column(Boolean, default=True)
+
+    min_deposit_percent = Column(Integer, default=0)
+
+    payment_modes = Column(String, nullable=True)
+
+    pickup_address = Column(String, nullable=True)
+
+    delivery_note = Column(String, nullable=True)
+
+    business_hours = Column(String, nullable=True)
+
+    uncertainty_alerts_enabled = Column(Boolean, default=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CustomerConversation(Base):
+
+    __tablename__ = "customer_conversations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String)
+
+    customer_phone = Column(String)
+
+    customer_name = Column(String, nullable=True)
+
+    status = Column(String, default="AUTO")
+
+    stage = Column(String, default="START")
+
+    product_query = Column(String, nullable=True)
+
+    matched_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+
+    quantity = Column(Integer, nullable=True)
+
+    last_customer_message = Column(String, nullable=True)
+
+    last_bot_message = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SalesOrder(Base):
+
+    __tablename__ = "sales_orders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String)
+
+    customer_phone = Column(String)
+
+    customer_name = Column(String, nullable=True)
+
+    status = Column(String, default="PENDING")
+
+    total_amount = Column(Integer, default=0)
+
+    paid_amount = Column(Integer, default=0)
+
+    balance_amount = Column(Integer, default=0)
+
+    payment_status = Column(String, default="UNPAID")
+
+    payment_mode = Column(String, nullable=True)
+
+    delivery_status = Column(String, default="NOT_STARTED")
+
+    delivery_address = Column(String, nullable=True)
+
+    due_date = Column(DateTime, nullable=True)
+
+    notes = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SalesOrderItem(Base):
+
+    __tablename__ = "sales_order_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    order_id = Column(Integer, ForeignKey("sales_orders.id"))
+
+    inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+
+    product = Column(String)
+
+    quantity = Column(Integer, default=1)
+
+    unit = Column(String, nullable=True)
+
+    size = Column(String, nullable=True)
+
+    color = Column(String, nullable=True)
+
+    unit_price = Column(Integer)
+
+    total = Column(Integer)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SalesOrderPayment(Base):
+
+    __tablename__ = "sales_order_payments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    order_id = Column(Integer, ForeignKey("sales_orders.id"))
+
+    amount = Column(Integer)
+
+    payment_mode = Column(String, nullable=True)
+
+    status = Column(String, default="PENDING_CONFIRMATION")
+
+    evidence_ref = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -405,3 +566,74 @@ class ReminderMemory(Base):
     due_date = Column(DateTime)
 
     reminder_type = Column(String)
+
+
+class ReminderAutomationSettings(Base):
+
+    __tablename__ = "reminder_automation_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String, unique=True)
+
+    preview_enabled = Column(Boolean, default=True)
+
+    auto_send_enabled = Column(Boolean, default=False)
+
+    reminder_time = Column(String, default="08:00")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReminderQueue(Base):
+
+    __tablename__ = "reminder_queue"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String)
+
+    customer_phone = Column(String, nullable=True)
+
+    customer_name = Column(String)
+
+    balance = Column(Integer)
+
+    due_date = Column(DateTime)
+
+    reminder_type = Column(String)
+
+    source_type = Column(String)
+
+    source_id = Column(Integer, nullable=True)
+
+    message_text = Column(String)
+
+    status = Column(String, default="PENDING_OWNER_CONFIRMATION")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReminderSendLog(Base):
+
+    __tablename__ = "reminder_send_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String)
+
+    customer_phone = Column(String, nullable=True)
+
+    reminder_type = Column(String)
+
+    source_type = Column(String)
+
+    source_id = Column(Integer, nullable=True)
+
+    sent_date = Column(String)
+
+    created_at = Column(DateTime, default=datetime.utcnow)

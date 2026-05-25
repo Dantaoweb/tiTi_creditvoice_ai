@@ -1,7 +1,12 @@
 ﻿from admin_commands import notify_subscription_admins
+from customer_automation import (
+    handle_automation_owner_command,
+    handle_customer_automation_message,
+)
 from database import SessionLocal
 from models import PendingAction
 from parser import parse_message
+from reminder_automation import handle_reminder_automation_command
 from subscription_flow import handle_subscription_media_receipt
 from subscriptions import get_business_subscription
 from webhook_admin_handlers import (
@@ -57,6 +62,16 @@ def handle_webhook_body(body):
             )
             return {"status": "unregistered_voice"}
 
+        if not user and message_type == "text":
+            customer_bot_result = handle_customer_automation_message(
+                db,
+                phone,
+                text,
+                send_whatsapp_message,
+            )
+            if customer_bot_result:
+                return customer_bot_result
+
         voice_transcript_text = None
 
         # Parse early so unregistered app/subscription admins can use admin commands.
@@ -89,6 +104,27 @@ def handle_webhook_body(body):
         if voice_result.message_type is not None:
             message_type = voice_result.message_type
         voice_transcript_text = voice_result.voice_transcript_text
+
+        if user and message_type == "text":
+            reminder_automation_result = handle_reminder_automation_command(
+                db,
+                phone,
+                text,
+                user,
+                send_whatsapp_message,
+            )
+            if reminder_automation_result:
+                return reminder_automation_result
+
+            automation_owner_result = handle_automation_owner_command(
+                db,
+                phone,
+                text,
+                user,
+                send_whatsapp_message,
+            )
+            if automation_owner_result:
+                return automation_owner_result
 
         # Parse message early to check if it's an explicit command
         if parsed is None:

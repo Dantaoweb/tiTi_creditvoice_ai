@@ -46,6 +46,12 @@ FEATURE_MIN_PLAN = {
     "THRIFT_PARTICIPANTS": PLAN_GO,
     "THRIFT_REMINDERS": PLAN_GO,
     "THRIFT_HISTORY": PLAN_GO,
+    "CUSTOMER_SALES_BOT": PLAN_GO,
+    "CUSTOMER_BOT_HANDOFF": PLAN_GO,
+    "CUSTOMER_BOT_PART_PAYMENT": PLAN_GO,
+    "DELIVERY_AUTOMATION": PLAN_PRO,
+    "REMINDER_AUTOMATION": PLAN_GO,
+    "REMINDER_AUTO_SEND": PLAN_PRO,
 }
 
 FEATURE_VALUE_BY_TEMPLATE = {
@@ -56,6 +62,9 @@ FEATURE_VALUE_BY_TEMPLATE = {
         "DUE_REMINDERS": "For shops, reminders help you follow customers who bought on credit.",
         "STAFF": "For shops, PRO lets attendants record sales while the owner keeps control.",
         "VOICE_TEXT": "For shops, voice notes make it faster to record sales while serving customers.",
+        "CUSTOMER_SALES_BOT": "For shops, the customer bot answers price and stock questions from your saved inventory.",
+        "CUSTOMER_BOT_PART_PAYMENT": "For shops, part-payment automation helps track deposits, balances, and follow-up.",
+        "DELIVERY_AUTOMATION": "For shops, delivery automation helps move paid orders from payment to pickup or dispatch.",
     },
     "pharmacy": {
         "INVENTORY": "For pharmacies, stock tracking helps you follow medicine quantity and fast-moving items.",
@@ -64,6 +73,7 @@ FEATURE_VALUE_BY_TEMPLATE = {
         "DUE_REMINDERS": "For pharmacies, reminders help follow customers or organizations buying on credit.",
         "STAFF": "For pharmacies, PRO lets attendants record sales while the owner sees everything.",
         "VOICE_TEXT": "For pharmacies, voice notes help record sales quickly at the counter.",
+        "CUSTOMER_SALES_BOT": "For pharmacies, the customer bot can answer medicine availability and price from stock records.",
     },
     "school": {
         "ADVANCED_REPORTS": "For schools, reports help you see paid fees, balances, and unpaid students by period.",
@@ -79,6 +89,7 @@ FEATURE_VALUE_BY_TEMPLATE = {
         "TRANSACTION_NOTES": "For salons, notes help remember service details like style, product, or appointment context.",
         "STAFF": "For salons, PRO lets stylists or attendants record their work while the owner sees records.",
         "VOICE_TEXT": "For salons, voice notes help record service income hands-free.",
+        "CUSTOMER_SALES_BOT": "For salons, the customer bot can answer product, booking, and service price questions before handoff.",
     },
     "artisan_services": {
         "SUPPLIERS": "For service businesses, supplier records help track materials bought for jobs.",
@@ -95,6 +106,7 @@ FEATURE_VALUE_BY_TEMPLATE = {
         "DUE_REMINDERS": "For food businesses, reminders help follow customers who part-paid or bought on credit.",
         "STAFF": "For food businesses, PRO lets attendants or cashiers record sales with owner control.",
         "VOICE_TEXT": "For food businesses, voice notes help record sales quickly during busy hours.",
+        "CUSTOMER_SALES_BOT": "For food businesses, the customer bot can answer menu price, availability, and order questions.",
     },
     "agriculture": {
         "INVENTORY": "For agriculture, stock helps track feed, produce, livestock, and farm inputs.",
