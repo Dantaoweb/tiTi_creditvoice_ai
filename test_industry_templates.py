@@ -10,6 +10,7 @@ from models import Customer, PendingAction, Transaction, User
 from onboarding_commands import handle_onboarding_pending, handle_post_onboarding_pending
 from parser import build_customer_account_summary, parse_message
 from plans import format_upgrade_message
+from reports import build_dashboard_selection_message
 from subscriptions import check_thrift_participant_limit
 
 
@@ -202,6 +203,22 @@ def test_customer_account_summary_includes_product_details():
     assert "PAY: ₦1,000" in summary
 
 
+def test_dashboard_summary_includes_outstanding_balance():
+    db = make_test_db()
+    owner_phone = "2348000000889"
+    customer = Customer(name="shade", owner_phone=owner_phone)
+    db.add(customer)
+    db.flush()
+    db.add(Transaction(customer_id=customer.id, type="BUY", amount=2400))
+    db.add(Transaction(customer_id=customer.id, type="PAY", amount=1000))
+    db.commit()
+
+    status, message = build_dashboard_selection_message(db, owner_phone, "5")
+
+    assert status == "dashboard_summary"
+    assert "Outstanding balance: N1,400" in message
+
+
 def run_onboarding_flow(category_choice, business_choice, expected_category, expected_type, expected_label):
     db = make_test_db()
     sent_messages = []
@@ -310,6 +327,7 @@ if __name__ == "__main__":
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()
     test_i_buy_without_supplier_does_not_create_customer_i()
     test_customer_account_summary_includes_product_details()
+    test_dashboard_summary_includes_outstanding_balance()
     test_industry_onboarding_paths()
     test_basic_thrift_participant_limit()
     print("industry template smoke tests passed")

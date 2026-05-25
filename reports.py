@@ -194,7 +194,8 @@ def get_dashboard_summary(db, owner_phone=None, period=None, recorded_by_id=None
         "direct_sales_amount": stats["direct_sales"],
         "total_sales_amount": stats["total_sales"],
         "total_buy_amount": stats["total_sales"],
-        "total_pay_amount": stats["total_pay"]
+        "total_pay_amount": stats["total_pay"],
+        "total_outstanding": get_total_outstanding(db, owner_phone, recorded_by_id),
     }
 
 
@@ -219,7 +220,8 @@ def build_dashboard_summary_message(summary, period=None):
         f"Credit sales: N{summary['credit_sales_amount']:,}\n"
         f"Direct sales: N{summary['direct_sales_amount']:,}\n"
         f"Total sales: N{summary['total_sales_amount']:,}\n"
-        f"Payments received: N{summary['total_pay_amount']:,}"
+        f"Payments received: N{summary['total_pay_amount']:,}\n"
+        f"Outstanding balance: N{summary['total_outstanding']:,}"
     )
 
 
