@@ -373,6 +373,7 @@ def handle_pending_actions(
                 visible_recorded_by_id,
                 message_id,
                 pending_items,
+                subscription,
                 send_whatsapp_message
             )
             if save_result:

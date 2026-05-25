@@ -9,6 +9,7 @@ from inventory_suppliers import (
 from messages import balance_status_line, pending_transaction_summary
 from models import Customer, CustomerMemory, SupplierPayment, SupplierPurchase, Transaction
 from parser import add_transaction_items
+from plans import plan_allows_feature
 from reports import get_balance
 
 
@@ -50,6 +51,7 @@ def save_direct_sale(
     business_owner_phone,
     message_id,
     pending_items,
+    inventory_enabled,
     send_message,
 ):
     sale_saved_msg = pending_transaction_summary(pending)
@@ -81,15 +83,18 @@ def save_direct_sale(
     )
     db.add(tx)
     db.flush()
-    stock_updates, stock_missing = apply_sale_inventory(
-        db,
-        business_owner_phone,
-        tx.id,
-        user.id,
-        pending,
-        pending_items,
-        "SALE",
-    )
+    stock_updates = []
+    stock_missing = []
+    if inventory_enabled:
+        stock_updates, stock_missing = apply_sale_inventory(
+            db,
+            business_owner_phone,
+            tx.id,
+            user.id,
+            pending,
+            pending_items,
+            "SALE",
+        )
 
     db.delete(pending)
     db.commit()
@@ -163,6 +168,7 @@ def save_customer_pending(
     visible_recorded_by_id,
     message_id,
     pending_items,
+    inventory_enabled,
     send_message,
 ):
     customer = db.query(Customer).filter(
@@ -215,15 +221,16 @@ def save_customer_pending(
         )
         db.add(tx)
         db.flush()
-        stock_updates, stock_missing = apply_sale_inventory(
-            db,
-            business_owner_phone,
-            tx.id,
-            user.id,
-            pending,
-            pending_items,
-            "CUSTOMER_SALE",
-        )
+        if inventory_enabled:
+            stock_updates, stock_missing = apply_sale_inventory(
+                db,
+                business_owner_phone,
+                tx.id,
+                user.id,
+                pending,
+                pending_items,
+                "CUSTOMER_SALE",
+            )
 
     elif pending.action == "PAY":
         tx = Transaction(
@@ -261,15 +268,16 @@ def save_customer_pending(
         )
         db.add(buy_tx)
         db.flush()
-        stock_updates, stock_missing = apply_sale_inventory(
-            db,
-            business_owner_phone,
-            buy_tx.id,
-            user.id,
-            pending,
-            pending_items,
-            "CUSTOMER_SALE",
-        )
+        if inventory_enabled:
+            stock_updates, stock_missing = apply_sale_inventory(
+                db,
+                business_owner_phone,
+                buy_tx.id,
+                user.id,
+                pending,
+                pending_items,
+                "CUSTOMER_SALE",
+            )
 
         pay_tx = Transaction(
             customer_id=customer.id,
@@ -310,8 +318,13 @@ def save_confirmed_pending_transaction(
     visible_recorded_by_id,
     message_id,
     pending_items,
+    subscription,
     send_message,
 ):
+    inventory_enabled = bool(
+        subscription and plan_allows_feature(subscription.get("plan"), "INVENTORY")
+    )
+
     if pending.action == "SALE":
         return save_direct_sale(
             db,
@@ -321,6 +334,7 @@ def save_confirmed_pending_transaction(
             business_owner_phone,
             message_id,
             pending_items,
+            inventory_enabled,
             send_message,
         )
 
@@ -344,6 +358,7 @@ def save_confirmed_pending_transaction(
             visible_recorded_by_id,
             message_id,
             pending_items,
+            inventory_enabled,
             send_message,
         )
 
