@@ -12,6 +12,7 @@ try:
 except ImportError:
     load_dotenv = None
 
+from item_normalizer import UNIT_PATTERN, normalize_item
 from models import Customer, Transaction, TransactionItem
 
 if load_dotenv:
@@ -330,6 +331,7 @@ def extract_item_details(text):
     if compact_unit_match:
         unit = compact_unit_match.group("unit")
     product = active_match.group("product").strip()
+    product, unit = normalize_item(product, unit)
     unit_price = parse_amount_token(active_match.group("unit_price")) or 0
     total = quantity * unit_price
 
@@ -383,6 +385,10 @@ def extract_direct_sale_details(text):
             "bag",
             "cartons",
             "carton",
+            "crates",
+            "crate",
+            "packs",
+            "pack",
             "pieces",
             "piece",
             "units",
@@ -401,6 +407,8 @@ def extract_direct_sale_details(text):
             "dozen",
             "rolls",
             "roll",
+            "congos",
+            "congo",
             "kg",
             "g",
             "ml",
@@ -416,6 +424,7 @@ def extract_direct_sale_details(text):
             product = rest
 
     product = product.strip()
+    product, unit = normalize_item(product, unit)
     if not product:
         return None
 
@@ -673,10 +682,11 @@ def parse_invoice_item(item_text):
         rest = re.sub(r"\s+of\s+", " ", quantity_match.group("rest").strip(), count=1)
 
         unit_phrases = [
-            "truck loads", "truck load", "bags", "bag", "cartons", "carton",
+            "truck loads", "truck load", "trucks", "truck", "bags", "bag",
+            "cartons", "carton", "crates", "crate", "packs", "pack",
             "pieces", "piece", "units", "unit", "loads", "load", "tons", "ton",
-            "litres", "litre", "liters", "liter", "crates", "crate",
-            "dozens", "dozen", "rolls", "roll", "kg", "g", "ml", "l"
+            "litres", "litre", "liters", "liter", "dozens", "dozen",
+            "rolls", "roll", "congos", "congo", "kg", "g", "ml", "l"
         ]
         for unit_phrase in unit_phrases:
             if rest == unit_phrase or rest.startswith(f"{unit_phrase} "):
@@ -688,6 +698,7 @@ def parse_invoice_item(item_text):
             product = rest
 
     product = product.strip()
+    product, unit = normalize_item(product, unit)
     if not product:
         return None
 
@@ -796,12 +807,8 @@ def extract_amounts(text):
 def parse_stock_item_body(body):
     clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", body.lower()).strip()
     clean = re.sub(r"\s+", " ", clean)
-    unit_pattern = (
-        r"truck loads?|bags?|cartons?|crates?|pieces?|units?|loads?|tons?|"
-        r"litres?|liters?|dozens?|rolls?|kg|g|ml|l"
-    )
     quantity_match = re.match(
-        rf"(?P<quantity>\d+)\s*(?P<unit>{unit_pattern})?\s*(?:of\s+)?(?P<product>.*)$",
+        rf"(?P<quantity>\d+)\s*(?P<unit>{UNIT_PATTERN})?\s*(?:of\s+)?(?P<product>.*)$",
         clean
     )
     if quantity_match:
@@ -811,16 +818,18 @@ def parse_stock_item_body(body):
         if not product:
             product = unit or "stock item"
             unit = None
+        product, unit = normalize_item(product, unit)
         return {
             "quantity": quantity,
             "unit": unit,
             "product": product
         }
 
+    product, unit = normalize_item(clean)
     return {
         "quantity": 1,
-        "unit": None,
-        "product": clean
+        "unit": unit,
+        "product": product
     }
 
 

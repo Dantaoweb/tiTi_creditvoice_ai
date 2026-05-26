@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from business_templates import HIGH_VALUE_TEMPLATE_KEYS, industry_plan_matrix
 from database import Base
+from inventory_suppliers import add_inventory_movement, deduct_inventory_for_items
 from messages import build_owner_home_menu, build_post_onboarding_menu
 from models import Customer, PendingAction, Transaction, User
 from onboarding_commands import handle_onboarding_pending, handle_post_onboarding_pending
@@ -158,7 +159,7 @@ def test_quantity_unit_item_parses_when_price_has_no_at_keyword():
         assert parsed["action"] == "BUY"
         assert parsed["buy_amount"] == 800
         assert parsed["quantity"] == 2
-        assert parsed["unit"] == "congos"
+        assert parsed["unit"] == "congo"
         assert parsed["product"] == "rice"
         assert parsed["unit_price"] == 400
         assert parsed["total"] == 800
@@ -183,6 +184,62 @@ def test_subscription_admin_short_approve_and_reject_parse():
         "type": "REJECT_SUBSCRIPTION",
         "phone": "2348012345678",
     }
+
+
+def test_pack_stock_purchase_and_customer_sale_match_inventory():
+    parsed = parse_message("i buy 1 pack of coke from Ayo at 2400")
+
+    assert parsed["type"] == "SUPPLIER_TRANSACTION"
+    assert parsed["product"] == "coke"
+    assert parsed["quantity"] == 1
+    assert parsed["unit"] == "pack"
+
+    db = make_test_db()
+    owner_phone = "2348000000887"
+    add_inventory_movement(
+        db,
+        owner_phone,
+        "pack of coke",
+        1,
+        None,
+        2400,
+        "IN",
+        "SUPPLIER_PURCHASE",
+        1,
+    )
+    db.commit()
+
+    updates, missing = deduct_inventory_for_items(
+        db,
+        owner_phone,
+        [{
+            "product": "coke",
+            "quantity": 1,
+            "unit": "pack",
+            "unit_price": 2400,
+        }],
+        "CUSTOMER_SALE",
+        2,
+    )
+
+    assert missing == []
+    assert updates == ["Coke: 0 pack left"]
+
+
+def test_item_normalization_handles_common_shop_variants():
+    samples = [
+        ("shade buy 2 packs of coke 2400", "coke", "pack", 4800),
+        ("shade buy 2 pack coke 2400", "coke", "pack", 4800),
+        ("shade buy 3 cartons indomie 5000", "indomie", "carton", 15000),
+        ("shade buy 4 bags rice 30000", "rice", "bag", 120000),
+    ]
+
+    for text, product, unit, total in samples:
+        parsed = parse_message(text)
+        assert parsed is not None, text
+        assert parsed["product"] == product
+        assert parsed["unit"] == unit
+        assert parsed["total"] == total
 
 
 def test_customer_account_summary_includes_product_details():
@@ -341,6 +398,8 @@ if __name__ == "__main__":
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()
     test_i_buy_without_supplier_does_not_create_customer_i()
     test_subscription_admin_short_approve_and_reject_parse()
+    test_pack_stock_purchase_and_customer_sale_match_inventory()
+    test_item_normalization_handles_common_shop_variants()
     test_customer_account_summary_includes_product_details()
     test_dashboard_summary_includes_outstanding_balance()
     test_industry_onboarding_paths()

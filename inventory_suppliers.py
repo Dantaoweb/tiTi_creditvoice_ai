@@ -1,7 +1,10 @@
+import re
+
 from datetime import datetime, timedelta
 
 from sqlalchemy import func
 
+from item_normalizer import normalize_item
 from models import (
     InventoryItem,
     InventoryMovement,
@@ -26,6 +29,7 @@ def find_or_create_supplier(db, owner_phone, supplier_name):
 
 
 def find_inventory_item(db, owner_phone, product, unit=None):
+    product, unit = normalize_item(product, unit)
     query = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
         func.lower(InventoryItem.name) == product.lower()
@@ -37,10 +41,37 @@ def find_inventory_item(db, owner_phone, product, unit=None):
     return query.first()
 
 
+def find_matching_inventory_item(db, owner_phone, product, unit=None):
+    product, unit = normalize_item(product, unit)
+    item = find_inventory_item(db, owner_phone, product, unit)
+    if item:
+        return item
+
+    if unit:
+        legacy_name = f"{unit} of {product}".lower()
+        item = find_inventory_item(db, owner_phone, legacy_name, None)
+        if item:
+            return item
+
+    unit_match = re.match(r"^(?P<unit>[a-z]+)\s+of\s+(?P<product>.+)$", product.lower())
+    if unit_match:
+        item = find_inventory_item(
+            db,
+            owner_phone,
+            unit_match.group("product"),
+            unit_match.group("unit"),
+        )
+        if item:
+            return item
+
+    return None
+
+
 def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None):
     if not product or not quantity:
         return None
-    item = find_inventory_item(db, owner_phone, product, unit)
+    product, unit = normalize_item(product, unit)
+    item = find_matching_inventory_item(db, owner_phone, product, unit)
     if not item:
         item = InventoryItem(
             owner_phone=owner_phone,
@@ -84,9 +115,10 @@ def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, r
         product = (item_data.get("product") or "").lower().strip()
         quantity = item_data.get("quantity") or 1
         unit = item_data.get("unit")
+        product, unit = normalize_item(product, unit)
         if not product:
             continue
-        item = find_inventory_item(db, owner_phone, product, unit)
+        item = find_matching_inventory_item(db, owner_phone, product, unit)
         if not item:
             missing.append(product.title())
             continue
