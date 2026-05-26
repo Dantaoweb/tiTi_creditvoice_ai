@@ -1570,7 +1570,7 @@ def parse_message(text):
         return {"type": "LIST_APP_ADMIN_ROLES"}
 
     approve_match = re.search(
-        r"^approve\s+sub(?:scription)?\s+(\+?[\d ]{7,15})$",
+        r"^approve(?:\s+sub(?:scription)?)?\s+(\+?[\d ]{7,15})$",
         clean_text
     )
     if approve_match:
@@ -1580,7 +1580,7 @@ def parse_message(text):
         }
 
     reject_match = re.search(
-        r"^reject\s+sub(?:scription)?\s+(\+?[\d ]{7,15})$",
+        r"^reject(?:\s+sub(?:scription)?)?\s+(\+?[\d ]{7,15})$",
         clean_text
     )
     if reject_match:

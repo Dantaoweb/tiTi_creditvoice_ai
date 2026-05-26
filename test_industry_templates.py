@@ -171,6 +171,20 @@ def test_i_buy_without_supplier_does_not_create_customer_i():
     assert parsed["type"] == "SELF_PURCHASE_NEEDS_SUPPLIER"
 
 
+def test_subscription_admin_short_approve_and_reject_parse():
+    approve = parse_message("approve 2348012345678")
+    reject = parse_message("reject 2348012345678")
+
+    assert approve == {
+        "type": "APPROVE_SUBSCRIPTION",
+        "phone": "2348012345678",
+    }
+    assert reject == {
+        "type": "REJECT_SUBSCRIPTION",
+        "phone": "2348012345678",
+    }
+
+
 def test_customer_account_summary_includes_product_details():
     db = make_test_db()
     owner_phone = "2348000000888"
@@ -326,6 +340,7 @@ if __name__ == "__main__":
     test_thrift_contribution_text_parses_as_payment()
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()
     test_i_buy_without_supplier_does_not_create_customer_i()
+    test_subscription_admin_short_approve_and_reject_parse()
     test_customer_account_summary_includes_product_details()
     test_dashboard_summary_includes_outstanding_balance()
     test_industry_onboarding_paths()

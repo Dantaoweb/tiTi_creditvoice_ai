@@ -2,7 +2,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from admin_commands import notify_subscription_admins
+from admin_commands import (
+    handle_subscription_admin_pending_selection,
+    notify_subscription_admins,
+)
 from home_menu_commands import handle_home_menu_pending
 from messages import edit_prompt_for_pending
 from models import Customer, Transaction
@@ -42,6 +45,18 @@ def handle_pending_actions(
     parsed,
     is_command,
 ):
+    if pending and not is_command:
+        subscription_admin_selection_result = handle_subscription_admin_pending_selection(
+            db,
+            phone,
+            text,
+            pending,
+            user,
+            send_whatsapp_message,
+        )
+        if subscription_admin_selection_result:
+            return subscription_admin_selection_result
+
     if pending and not is_command:
         subscription_pending_result = handle_subscription_pending_flow(
             db,

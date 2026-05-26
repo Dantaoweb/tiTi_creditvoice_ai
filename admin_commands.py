@@ -93,6 +93,19 @@ def handle_admin_subscription_command(db, phone, parsed, user, send_message, not
             SubscriptionPayment.created_at.asc()
         ).all()
         send_message(phone, format_pending_subscriptions(payments))
+        db.query(PendingAction).filter(
+            PendingAction.phone == phone
+        ).delete()
+        if payments:
+            db.add(
+                PendingAction(
+                    phone=phone,
+                    customer_name="",
+                    action="SUBSCRIPTION_APPROVAL_LIST",
+                    last_customer=""
+                )
+            )
+        db.commit()
         return {"status": "pending_subscriptions"}
 
     if command_type == "APP_ADMIN_DASHBOARD":
@@ -265,3 +278,81 @@ def handle_admin_subscription_command(db, phone, parsed, user, send_message, not
         return {"status": "plan_activated"}
 
     return None
+
+
+def handle_subscription_admin_pending_selection(db, phone, text, pending, user, send_message):
+    if not pending or pending.action != "SUBSCRIPTION_APPROVAL_LIST":
+        return None
+
+    if not is_subscription_admin(phone, db):
+        return None
+
+    normalized = text.lower().strip()
+    if normalized in ["cancel", "exit", "back", "done", "stop"]:
+        db.delete(pending)
+        db.commit()
+        send_message(phone, "Subscription approval list closed.")
+        return {"status": "subscription_approval_list_closed"}
+
+    reject_match = normalized.startswith("reject ")
+    number_text = normalized.replace("reject", "", 1).strip() if reject_match else normalized
+    if not number_text.isdigit():
+        send_message(
+            phone,
+            "Reply with a pending subscription number to approve, like 1.\n"
+            "To reject, send reject 1."
+        )
+        return {"status": "invalid_subscription_approval_selection"}
+
+    payments = db.query(SubscriptionPayment, User).outerjoin(
+        User,
+        SubscriptionPayment.user_id == User.id
+    ).filter(
+        SubscriptionPayment.status == "PENDING"
+    ).order_by(
+        SubscriptionPayment.created_at.asc()
+    ).all()
+
+    index = int(number_text)
+    if index < 1 or index > len(payments):
+        send_message(phone, "Pending subscription number not found.")
+        return {"status": "subscription_approval_selection_not_found"}
+
+    payment, owner = payments[index - 1]
+    if reject_match:
+        payment.status = "REJECTED"
+        if owner:
+            db.query(PendingAction).filter(
+                PendingAction.phone == owner.phone,
+                PendingAction.action == "SUBSCRIPTION_PAYMENT_PENDING"
+            ).delete()
+        db.delete(pending)
+        db.commit()
+        send_message(phone, f"Rejected subscription payment for {payment.phone}.")
+        if owner:
+            send_message(
+                owner.phone,
+                "Your subscription payment could not be confirmed. Please send a clearer receipt."
+                f"{support_line()}"
+            )
+        return {"status": "subscription_rejected_by_number"}
+
+    owner = approve_subscription_payment(db, payment, user)
+    db.query(PendingAction).filter(
+        PendingAction.phone == owner.phone,
+        PendingAction.action == "SUBSCRIPTION_PAYMENT_PENDING"
+    ).delete()
+    db.delete(pending)
+    db.commit()
+    send_message(
+        phone,
+        f"Approved {owner.name.title()} for {owner.subscription_plan}.\n"
+        f"Expires: {owner.subscription_expires_at.strftime('%d/%m/%Y')}"
+    )
+    send_message(
+        owner.phone,
+        f"Your {owner.subscription_plan} plan is now active.\n"
+        f"Expires: {owner.subscription_expires_at.strftime('%d/%m/%Y')}\n\n"
+        "Send MY PLAN anytime to check your subscription."
+    )
+    return {"status": "subscription_approved_by_number"}

@@ -180,6 +180,8 @@ def format_pending_subscriptions(payments):
             f"Amount: N{payment.amount:,}\n"
             f"Evidence: {evidence}\n\n"
         )
+    msg += "Reply with a number to approve, like 1.\n"
+    msg += "To reject, send reject 1."
     return msg.strip()
 
 
