@@ -43,6 +43,16 @@ def apply_sale_inventory(db, owner_phone, tx_id, user_id, pending, pending_items
     )
 
 
+def build_stock_save_message(stock_updates, stock_missing):
+    stock_msg = ""
+    if stock_updates:
+        stock_msg += "\n\nStock updated:\n" + "\n".join(stock_updates)
+    if stock_missing:
+        stock_msg += "\n\nStock item not found: " + ", ".join(stock_missing)
+        stock_msg += "\nSend STOCK to check inventory."
+    return stock_msg
+
+
 def save_direct_sale(
     db,
     phone,
@@ -99,16 +109,12 @@ def save_direct_sale(
     db.delete(pending)
     db.commit()
 
-    stock_msg = ""
-    if stock_updates:
-        stock_msg = "\n\nStock updated:\n" + "\n".join(stock_updates)
-    elif stock_missing:
-        stock_msg = "\n\nSale saved. Stock item not found yet. Send STOCK to check inventory."
+    stock_msg = build_stock_save_message(stock_updates, stock_missing)
     send_message(phone, f"{sale_saved_msg}{stock_msg}")
     return {"status": "direct_sale_saved"}
 
 
-def save_supplier_pending(db, phone, pending, user, business_owner_phone, send_message):
+def save_supplier_pending(db, phone, pending, user, business_owner_phone, pending_items, send_message):
     supplier = find_or_create_supplier(db, business_owner_phone, pending.customer_name)
     saved_summary = pending_transaction_summary(pending)
 
@@ -128,13 +134,18 @@ def save_supplier_pending(db, phone, pending, user, business_owner_phone, send_m
         )
         db.add(purchase)
         db.flush()
+        stock_item = pending_items[0] if pending_items else None
+        stock_product = stock_item.get("product") if stock_item else pending.product
+        stock_quantity = stock_item.get("quantity") if stock_item else (pending.quantity or 1)
+        stock_unit = stock_item.get("unit") if stock_item else pending.unit
+        stock_unit_price = stock_item.get("unit_price") if stock_item else pending.unit_price
         add_inventory_movement(
             db,
             business_owner_phone,
-            pending.product,
-            pending.quantity or 1,
-            pending.unit,
-            pending.unit_price,
+            stock_product,
+            stock_quantity,
+            stock_unit,
+            stock_unit_price,
             "IN",
             "SUPPLIER_PURCHASE",
             purchase.id,
@@ -300,10 +311,7 @@ def save_customer_pending(
 
     balance = get_balance(db, customer.id, visible_recorded_by_id)
     msg = f"{saved_summary}\n{balance_status_line(balance)}"
-    if stock_updates:
-        msg += "\n\nStock updated:\n" + "\n".join(stock_updates)
-    elif stock_missing:
-        msg += "\n\nSale saved. Stock item not found yet. Send STOCK to check inventory."
+    msg += build_stock_save_message(stock_updates, stock_missing)
 
     send_message(phone, msg)
     return {"status": "saved"}
@@ -345,6 +353,7 @@ def save_confirmed_pending_transaction(
             pending,
             user,
             business_owner_phone,
+            pending_items,
             send_message,
         )
 

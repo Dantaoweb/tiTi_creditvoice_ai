@@ -47,6 +47,14 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
     if item:
         return item
 
+    if not unit:
+        product_matches = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            func.lower(InventoryItem.name) == product.lower()
+        ).all()
+        if len(product_matches) == 1:
+            return product_matches[0]
+
     if unit:
         legacy_name = f"{unit} of {product}".lower()
         item = find_inventory_item(db, owner_phone, legacy_name, None)
@@ -135,7 +143,7 @@ def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, r
             recorded_by_id,
             "Sold"
         )
-        unit_label = f" {unit}" if unit else ""
+        unit_label = f" {item.unit}" if item.unit else ""
         updates.append(f"{product.title()}: {item.quantity:,}{unit_label} left")
     return updates, missing
 

@@ -7,12 +7,13 @@ from business_templates import HIGH_VALUE_TEMPLATE_KEYS, industry_plan_matrix
 from database import Base
 from inventory_suppliers import add_inventory_movement, deduct_inventory_for_items
 from messages import build_owner_home_menu, build_post_onboarding_menu
-from models import Customer, PendingAction, Transaction, User
+from models import Customer, InventoryItem, PendingAction, Transaction, User
 from onboarding_commands import handle_onboarding_pending, handle_post_onboarding_pending
 from parser import build_customer_account_summary, parse_message
 from plans import format_upgrade_message
 from reports import build_dashboard_selection_message
 from subscriptions import check_thrift_participant_limit
+from transaction_save import save_supplier_pending
 
 
 def make_user(business_type, business_category, business_type_label):
@@ -242,6 +243,114 @@ def test_item_normalization_handles_common_shop_variants():
         assert parsed["total"] == total
 
 
+def test_unitless_invoice_item_matches_single_stock_unit():
+    db = make_test_db()
+    owner_phone = "2348000000886"
+    add_inventory_movement(
+        db,
+        owner_phone,
+        "coke",
+        2,
+        "pack",
+        2400,
+        "IN",
+        "SUPPLIER_PURCHASE",
+        1,
+    )
+    db.commit()
+
+    updates, missing = deduct_inventory_for_items(
+        db,
+        owner_phone,
+        [{
+            "product": "coke",
+            "quantity": 1,
+            "unit_price": 2400,
+        }],
+        "CUSTOMER_SALE",
+        2,
+    )
+
+    assert missing == []
+    assert updates == ["Coke: 1 pack left"]
+
+
+def test_bulk_supplier_purchase_can_add_retail_units_to_stock():
+    parsed = parse_message("i buy 1 pack of coke from Ayo at 2400 split into 12 bottles")
+
+    assert parsed["type"] == "SUPPLIER_TRANSACTION"
+    assert parsed["product"] == "coke"
+    assert parsed["quantity"] == 1
+    assert parsed["unit"] == "pack"
+    assert parsed["unit_price"] == 2400
+    assert parsed["stock_item"] == {
+        "product": "coke",
+        "quantity": 12,
+        "unit": "bottle",
+        "unit_price": 200,
+        "total": 2400,
+        "conversion_quantity_per_bulk": 12,
+    }
+
+
+def test_bulk_supplier_save_records_retail_stock_quantity():
+    db = make_test_db()
+    owner_phone = "2348000000885"
+    user = make_user("provision_store", "retail_trading", "Provision Store")
+    pending = PendingAction(
+        phone=owner_phone,
+        customer_name="ayo",
+        last_customer="ayo",
+        action="SUPPLIER_PURCHASE",
+        product="coke",
+        quantity=1,
+        unit="pack",
+        unit_price=2400,
+        buy_amount=2400,
+        paid_amount=0,
+    )
+    db.add(pending)
+    db.commit()
+
+    sent_messages = []
+    result = save_supplier_pending(
+        db,
+        owner_phone,
+        pending,
+        user,
+        owner_phone,
+        [{
+            "product": "coke",
+            "quantity": 12,
+            "unit": "bottle",
+            "unit_price": 200,
+            "total": 2400,
+        }],
+        lambda to, message: sent_messages.append((to, message)),
+    )
+
+    stock = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.name == "coke",
+        InventoryItem.unit == "bottle",
+    ).first()
+
+    assert result == {"status": "supplier_saved"}
+    assert stock is not None
+    assert stock.quantity == 12
+    assert stock.cost_price == 200
+
+
+def test_bulk_conversion_supports_carton_to_pieces():
+    parsed = parse_message("i buy 1 carton of indomie from Ayo at 5000 has 40 pieces")
+
+    assert parsed["product"] == "indomie"
+    assert parsed["unit"] == "carton"
+    assert parsed["stock_item"]["quantity"] == 40
+    assert parsed["stock_item"]["unit"] == "piece"
+    assert parsed["stock_item"]["unit_price"] == 125
+
+
 def test_customer_account_summary_includes_product_details():
     db = make_test_db()
     owner_phone = "2348000000888"
@@ -400,6 +509,10 @@ if __name__ == "__main__":
     test_subscription_admin_short_approve_and_reject_parse()
     test_pack_stock_purchase_and_customer_sale_match_inventory()
     test_item_normalization_handles_common_shop_variants()
+    test_unitless_invoice_item_matches_single_stock_unit()
+    test_bulk_supplier_purchase_can_add_retail_units_to_stock()
+    test_bulk_supplier_save_records_retail_stock_quantity()
+    test_bulk_conversion_supports_carton_to_pieces()
     test_customer_account_summary_includes_product_details()
     test_dashboard_summary_includes_outstanding_balance()
     test_industry_onboarding_paths()

@@ -833,6 +833,32 @@ def parse_stock_item_body(body):
     }
 
 
+def extract_bulk_stock_conversion(text, product, bulk_quantity, total_cost):
+    conversion_match = re.search(
+        rf"\b(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
+        rf"(?P<quantity>\d+)\s*(?P<unit>{UNIT_PATTERN})\b",
+        text.lower()
+    )
+    if not conversion_match:
+        return None
+
+    retail_quantity_per_bulk = int(conversion_match.group("quantity"))
+    retail_unit = conversion_match.group("unit")
+    _, retail_unit = normalize_item(product, retail_unit)
+    retail_quantity = (bulk_quantity or 1) * retail_quantity_per_bulk
+    if retail_quantity <= 0:
+        return None
+    retail_unit_price = round((total_cost or 0) / retail_quantity)
+    return {
+        "product": product,
+        "quantity": retail_quantity,
+        "unit": retail_unit,
+        "unit_price": retail_unit_price,
+        "total": total_cost,
+        "conversion_quantity_per_bulk": retail_quantity_per_bulk,
+    }
+
+
 def extract_supplier_transaction(text):
     clean = text.lower().replace(",", "").strip()
     if not extract_amounts(clean):
@@ -903,9 +929,16 @@ def extract_supplier_transaction(text):
         price = parse_amount_token(purchase_match.group("price"))
         if price is None:
             return None
-        item = parse_stock_item_body(purchase_match.group("body"))
+        body = re.sub(
+            rf"\b(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
+            rf"\d+\s*(?:{UNIT_PATTERN})\b.*$",
+            "",
+            purchase_match.group("body").strip()
+        ).strip()
+        item = parse_stock_item_body(body)
         quantity = item["quantity"]
         total = quantity * price
+        stock_item = extract_bulk_stock_conversion(clean, item["product"], quantity, total)
         paid_amount = 0
         paid_match = re.search(
             rf"\b(?:paid|pay|sent|send|transfer(?:red|ed)?|deposit(?:ed)?)\s+(?P<paid>{amount_pattern})",
@@ -924,6 +957,7 @@ def extract_supplier_transaction(text):
             "buy_amount": total,
             "paid_amount": paid_amount,
             "total": total,
+            "stock_item": stock_item,
             "due_date": due_date
         }
 

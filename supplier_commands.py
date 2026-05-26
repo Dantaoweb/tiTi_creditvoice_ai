@@ -1,3 +1,5 @@
+import json
+
 from inventory_suppliers import (
     build_inventory_list_message,
     build_supplier_due_message,
@@ -80,6 +82,7 @@ def handle_supplier_command(
             quantity=parsed.get("quantity"),
             unit=parsed.get("unit"),
             unit_price=parsed.get("unit_price"),
+            items_json=json.dumps([parsed["stock_item"]] if parsed.get("stock_item") else []),
             source_text=voice_transcript_text,
             due_date=parsed.get("due_date"),
         )
@@ -104,6 +107,22 @@ def handle_supplier_command(
                 f"{due_line}\n\n"
                 "Reply YES or 1 to save, EDIT or 2 to change."
             )
+            if parsed.get("stock_item"):
+                stock_item = parsed["stock_item"]
+                stock_unit = f" {stock_item['unit']}" if stock_item.get("unit") else ""
+                confirm_msg = (
+                    "Confirm stock from supplier:\n"
+                    f"Supplier: {parsed['name'].title()}\n"
+                    f"Bought: {parsed['quantity']:,}{unit_label} of {parsed['product'].title()}\n"
+                    f"Bulk cost: N{parsed['unit_price']:,} each\n"
+                    f"Total: N{parsed['buy_amount']:,}\n"
+                    f"Paid: N{parsed['paid_amount']:,}\n"
+                    f"You owe: N{balance:,}"
+                    f"{due_line}\n"
+                    f"Stock will be added as: {stock_item['quantity']:,}{stock_unit} "
+                    f"of {stock_item['product'].title()} at N{stock_item['unit_price']:,} each\n\n"
+                    "Reply YES or 1 to save, EDIT or 2 to change."
+                )
         else:
             product_line = f"\nFor: {parsed['product'].title()}" if parsed.get("product") else ""
             confirm_msg = (
