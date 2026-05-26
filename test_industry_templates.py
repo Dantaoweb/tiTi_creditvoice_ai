@@ -351,6 +351,20 @@ def test_bulk_conversion_supports_carton_to_pieces():
     assert parsed["stock_item"]["unit_price"] == 125
 
 
+def test_bulk_conversion_before_price_defaults_each_to_piece():
+    parsed = parse_message("i buy 3 carton of detergent from Ayo contain 12 each at 2000")
+
+    assert parsed["type"] == "SUPPLIER_TRANSACTION"
+    assert parsed["product"] == "detergent"
+    assert parsed["quantity"] == 3
+    assert parsed["unit"] == "carton"
+    assert parsed["unit_price"] == 2000
+    assert parsed["buy_amount"] == 6000
+    assert parsed["stock_item"]["quantity"] == 36
+    assert parsed["stock_item"]["unit"] == "piece"
+    assert parsed["stock_item"]["unit_price"] == 167
+
+
 def test_customer_account_summary_includes_product_details():
     db = make_test_db()
     owner_phone = "2348000000888"
@@ -513,6 +527,7 @@ if __name__ == "__main__":
     test_bulk_supplier_purchase_can_add_retail_units_to_stock()
     test_bulk_supplier_save_records_retail_stock_quantity()
     test_bulk_conversion_supports_carton_to_pieces()
+    test_bulk_conversion_before_price_defaults_each_to_piece()
     test_customer_account_summary_includes_product_details()
     test_dashboard_summary_includes_outstanding_balance()
     test_industry_onboarding_paths()

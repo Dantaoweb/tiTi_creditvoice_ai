@@ -12,6 +12,7 @@ UNIT_ALIASES = {
     "pack": "pack",
     "pieces": "piece",
     "piece": "piece",
+    "each": "piece",
     "bottles": "bottle",
     "bottle": "bottle",
     "sachets": "sachet",

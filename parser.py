@@ -836,14 +836,14 @@ def parse_stock_item_body(body):
 def extract_bulk_stock_conversion(text, product, bulk_quantity, total_cost):
     conversion_match = re.search(
         rf"\b(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
-        rf"(?P<quantity>\d+)\s*(?P<unit>{UNIT_PATTERN})\b",
+        rf"(?P<quantity>\d+)\s*(?P<unit>{UNIT_PATTERN})?\b",
         text.lower()
     )
     if not conversion_match:
         return None
 
     retail_quantity_per_bulk = int(conversion_match.group("quantity"))
-    retail_unit = conversion_match.group("unit")
+    retail_unit = conversion_match.group("unit") or "each"
     _, retail_unit = normalize_item(product, retail_unit)
     retail_quantity = (bulk_quantity or 1) * retail_quantity_per_bulk
     if retail_quantity <= 0:
@@ -913,6 +913,22 @@ def extract_supplier_transaction(text):
     purchase_patterns = [
         re.search(
             rf"^i\s+(?:buy|bought|purchase|purchased)\s+(?P<body>.+?)\s+from\s+"
+            rf"(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+"
+            rf"(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
+            rf"\d+\s*(?:{UNIT_PATTERN})?\s+(?:at|for)\s+"
+            rf"(?P<price>{amount_pattern})(?:\s+each)?",
+            clean
+        ),
+        re.search(
+            rf"^(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:supply|supplied|deliver|delivered)\s+me\s+"
+            rf"(?P<body>.+?)\s+"
+            rf"(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
+            rf"\d+\s*(?:{UNIT_PATTERN})?\s+(?:at|for)\s+"
+            rf"(?P<price>{amount_pattern})(?:\s+each)?",
+            clean
+        ),
+        re.search(
+            rf"^i\s+(?:buy|bought|purchase|purchased)\s+(?P<body>.+?)\s+from\s+"
             rf"(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:at|for)\s+"
             rf"(?P<price>{amount_pattern})(?:\s+each)?",
             clean
@@ -931,7 +947,7 @@ def extract_supplier_transaction(text):
             return None
         body = re.sub(
             rf"\b(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
-            rf"\d+\s*(?:{UNIT_PATTERN})\b.*$",
+            rf"\d+\s*(?:{UNIT_PATTERN})?\b.*$",
             "",
             purchase_match.group("body").strip()
         ).strip()
