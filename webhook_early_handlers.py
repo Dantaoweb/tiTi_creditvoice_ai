@@ -293,7 +293,7 @@ def handle_early_webhook_message(incoming):
 
                         if not due_list:
                             debug_db.commit()
-                            send_whatsapp_message(phone, f"âœ… {empty_msg}")
+                            send_whatsapp_message(phone, empty_msg)
                             return {"status": "due_menu_empty"}
 
                         msg = f"{title}\n\n"
@@ -313,12 +313,12 @@ def handle_early_webhook_message(incoming):
                                 due_date_text = debtor["due_date"].strftime("%d/%m/%Y")
                                 msg += (
                                     f"{i}. {debtor['name']}\n"
-                                    f"Balance: â‚¦{debtor['balance']:,}\n"
+                                    f"Balance: N{debtor['balance']:,}\n"
                                     f"Due: {due_date_text}\n"
                                     f"Overdue: {debtor.get('overdue_days', 0)} days\n\n"
                                 )
                             else:
-                                msg += f"{i}. {debtor['name']} â†’ â‚¦{debtor['balance']:,}\n"
+                                msg += f"{i}. {debtor['name'].title()}: N{debtor['balance']:,}\n"
 
                         debug_db.add(
                             PendingAction(
