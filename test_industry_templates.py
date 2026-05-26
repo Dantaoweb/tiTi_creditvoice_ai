@@ -478,6 +478,7 @@ def test_customer_account_summary_includes_product_details():
     db = make_test_db()
     owner_phone = "2348000000888"
     customer = Customer(name="shade", owner_phone=owner_phone)
+    customer.customer_phone = "2348012345679"
     db.add(customer)
     db.flush()
     db.add(
@@ -502,6 +503,7 @@ def test_customer_account_summary_includes_product_details():
 
     summary = build_customer_account_summary(db, owner_phone, "shade")
 
+    assert "Phone: 2348012345679" in summary
     assert "BUY - 1 pack of coke: ₦2,400" in summary
     assert "PAY: ₦1,000" in summary
 

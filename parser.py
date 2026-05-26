@@ -1141,8 +1141,11 @@ def build_customer_account_summary(db, owner_phone, customer_name, period=None, 
     else:
         balance_line = f"Balance: ₦{balance:,}"
 
+    phone_line = f"Phone: {customer.customer_phone or 'no phone'}\n"
+
     msg = (
         f"{customer.name.title()} Account Summary\n"
+        f"{phone_line}"
         f"Period: {period_label}\n\n"
         f"Bought: ₦{total_buy:,}\n"
         f"Paid: ₦{total_paid:,}\n"
