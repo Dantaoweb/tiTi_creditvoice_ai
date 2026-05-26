@@ -7,7 +7,7 @@ from business_templates import HIGH_VALUE_TEMPLATE_KEYS, industry_plan_matrix
 from database import Base
 from inventory_suppliers import add_inventory_movement, deduct_inventory_for_items
 from messages import build_owner_home_menu, build_post_onboarding_menu
-from models import Customer, InventoryItem, PendingAction, Transaction, User
+from models import Customer, InventoryItem, SupplierPurchase, PendingAction, Transaction, User
 from onboarding_commands import handle_onboarding_pending, handle_post_onboarding_pending
 from parser import build_customer_account_summary, parse_message
 from plans import format_upgrade_message
@@ -341,6 +341,53 @@ def test_bulk_supplier_save_records_retail_stock_quantity():
     assert stock.cost_price == 200
 
 
+def test_bulk_sale_can_deduct_from_converted_retail_stock():
+    db = make_test_db()
+    owner_phone = "2348000000884"
+    user = make_user("provision_store", "retail_trading", "Provision Store")
+    purchase = SupplierPurchase(
+        supplier_id=1,
+        owner_phone=owner_phone,
+        product="detergent",
+        quantity=3,
+        unit="carton",
+        unit_price=2000,
+        total=6000,
+        paid_amount=0,
+        recorded_by_id=user.id,
+    )
+    db.add(purchase)
+    db.flush()
+    add_inventory_movement(
+        db,
+        owner_phone,
+        "detergent",
+        36,
+        "piece",
+        167,
+        "IN",
+        "SUPPLIER_PURCHASE",
+        purchase.id,
+    )
+    db.commit()
+
+    updates, missing = deduct_inventory_for_items(
+        db,
+        owner_phone,
+        [{
+            "product": "detergent",
+            "quantity": 1,
+            "unit": "carton",
+            "unit_price": 3000,
+        }],
+        "CUSTOMER_SALE",
+        2,
+    )
+
+    assert missing == []
+    assert updates == ["Detergent: 24 piece left"]
+
+
 def test_bulk_conversion_supports_carton_to_pieces():
     parsed = parse_message("i buy 1 carton of indomie from Ayo at 5000 has 40 pieces")
 
@@ -526,6 +573,7 @@ if __name__ == "__main__":
     test_unitless_invoice_item_matches_single_stock_unit()
     test_bulk_supplier_purchase_can_add_retail_units_to_stock()
     test_bulk_supplier_save_records_retail_stock_quantity()
+    test_bulk_sale_can_deduct_from_converted_retail_stock()
     test_bulk_conversion_supports_carton_to_pieces()
     test_bulk_conversion_before_price_defaults_each_to_piece()
     test_customer_account_summary_includes_product_details()

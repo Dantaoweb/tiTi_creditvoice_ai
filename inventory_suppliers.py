@@ -75,6 +75,52 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
     return None
 
 
+def find_converted_inventory_for_sale(db, owner_phone, product, sale_unit, sale_quantity):
+    product, sale_unit = normalize_item(product, sale_unit)
+    if not product or not sale_unit:
+        return None, None
+
+    purchases = db.query(SupplierPurchase).filter(
+        SupplierPurchase.owner_phone == owner_phone,
+        func.lower(SupplierPurchase.product) == product.lower(),
+        SupplierPurchase.unit == sale_unit,
+        SupplierPurchase.quantity != None,
+        SupplierPurchase.quantity > 0,
+    ).order_by(
+        SupplierPurchase.created_at.desc()
+    ).all()
+
+    for purchase in purchases:
+        movement = db.query(InventoryMovement).join(
+            InventoryItem,
+            InventoryMovement.item_id == InventoryItem.id
+        ).filter(
+            InventoryMovement.owner_phone == owner_phone,
+            InventoryMovement.source_type == "SUPPLIER_PURCHASE",
+            InventoryMovement.source_id == purchase.id,
+            InventoryMovement.movement_type == "IN",
+            func.lower(InventoryItem.name) == product.lower(),
+        ).order_by(
+            InventoryMovement.created_at.desc()
+        ).first()
+        if not movement or not movement.quantity:
+            continue
+
+        item = db.query(InventoryItem).filter(
+            InventoryItem.id == movement.item_id
+        ).first()
+        if not item or item.unit == sale_unit:
+            continue
+
+        conversion_ratio = movement.quantity / purchase.quantity
+        if conversion_ratio <= 0:
+            continue
+
+        return item, int(round((sale_quantity or 1) * conversion_ratio))
+
+    return None, None
+
+
 def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None):
     if not product or not quantity:
         return None
@@ -127,15 +173,25 @@ def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, r
         if not product:
             continue
         item = find_matching_inventory_item(db, owner_phone, product, unit)
+        deduct_quantity = quantity
         if not item:
-            missing.append(product.title())
-            continue
+            item, converted_quantity = find_converted_inventory_for_sale(
+                db,
+                owner_phone,
+                product,
+                unit,
+                quantity,
+            )
+            if not item:
+                missing.append(product.title())
+                continue
+            deduct_quantity = converted_quantity
         add_inventory_movement(
             db,
             owner_phone,
-            product,
-            quantity,
-            unit,
+            item.name,
+            deduct_quantity,
+            item.unit,
             item_data.get("unit_price"),
             "OUT",
             source_type,
