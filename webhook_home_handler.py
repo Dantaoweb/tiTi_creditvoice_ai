@@ -4,7 +4,17 @@ from webhook_context import can_view_all_business_transactions
 from whatsapp_client import send_whatsapp_message
 
 
-HOME_WORDS = ["hello", "hi", "hey", "titi", "start", "menu", "home", "help"]
+HOME_WORDS = [
+    "hello",
+    "hi",
+    "hey",
+    "titi",
+    "start",
+    "menu",
+    "main menu",
+    "home",
+    "help",
+]
 
 
 def handle_home_menu_request(db, phone, text, user, subscription, business_name):

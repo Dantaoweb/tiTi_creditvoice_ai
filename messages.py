@@ -162,7 +162,7 @@ def build_post_onboarding_menu(business_name, user=None):
     next_steps = template_next_steps_for_user(user) if user else [
         "Confirm with YES to save or EDIT to correct.",
         "Send dashboard to review your business.",
-        "Send back, cancel, done, or menu to leave a flow.",
+        "Send MENU to see the main menu, or BACK/CANCEL/DONE to close the current flow.",
     ]
     return (
         f"Account created.\n\n"
@@ -181,31 +181,35 @@ def build_post_onboarding_menu(business_name, user=None):
         "2. Add customer\n"
         "3. View dashboard\n"
         "4. Upgrade\n\n"
-        "Reply with a number, or send menu anytime."
+        "Reply with a number, or send MENU anytime."
     )
 
 
 def build_owner_home_menu(user, subscription):
     if subscription["plan"] == PLAN_PRO:
-        extra_lines = "\n5. Staff menu\n6. Help formats"
+        extra_lines = "\n9. Staff menu"
     else:
-        extra_lines = "\n5. Help formats"
+        extra_lines = ""
     examples = template_examples_for_user(user)
     return (
         f"Hello {user.name.title()}.\n\n"
         f"Business type: {business_type_display(user)}\n\n"
-        "What would you like to do?\n"
+        "Main Menu\n"
         "1. Record transaction\n"
         "2. Add customer\n"
         "3. Dashboard\n"
-        "4. Upgrade / My plan"
+        "4. Stock / inventory\n"
+        "5. Suppliers\n"
+        "6. Due reminders\n"
+        "7. Upgrade / My plan\n"
+        "8. Help formats"
         f"{extra_lines}\n\n"
         "Fast examples:\n"
         f"{examples[0]}\n"
         f"{examples[1]}\n\n"
         "Quick actions:\n"
         f"{_quick_action_lines(user)}\n\n"
-        "Send back, cancel, done, or menu whenever you need to leave a step."
+        "Send MENU anytime to return here. Send BACK, CANCEL, DONE, or EXIT to close the current step."
     )
 
 
@@ -219,7 +223,11 @@ def build_staff_home_menu(user, business_name, can_view_all):
         "1. Record transaction\n"
         "2. View customers you handled\n"
         "3. Dashboard\n"
-        "4. Resign"
+        "4. Stock / inventory\n"
+        "5. Suppliers\n"
+        "6. Help formats\n"
+        "7. Resign\n\n"
+        "Send MENU anytime to return here. Send BACK, CANCEL, DONE, or EXIT to close the current step."
     )
 
 
@@ -345,37 +353,63 @@ def balance_status_line(balance):
     return f"Balance: N{balance:,}"
 
 
-def edit_prompt_for_pending(pending):
+def _business_example(user, index, fallback):
+    if not user:
+        return fallback
+    examples = template_examples_for_user(user)
+    if len(examples) > index:
+        return examples[index]
+    return fallback
+
+
+def _customer_payment_example(pending, user):
+    customer_name = (getattr(pending, "customer_name", None) or "").strip().title()
+    if not customer_name:
+        template = industry_template_for_user(user) if user else None
+        customer_name = "Mary" if template and template.get("label") == "Pharmacy / Medicine Store" else "Ade"
+    return f"{customer_name} paid 3000"
+
+
+def _supplier_payment_example(pending, user):
+    supplier_name = (getattr(pending, "customer_name", None) or "").strip().title() or "Ayo"
+    product = (getattr(pending, "product", None) or "").strip()
+    if not product:
+        template = industry_template_for_user(user) if user else None
+        product = "malaria drug" if template and template.get("label") == "Pharmacy / Medicine Store" else "rice"
+    return f"I paid {supplier_name} 14000 for {product}"
+
+
+def edit_prompt_for_pending(pending, user=None):
     if pending.source_text:
         return pending.source_text
     if pending.action == "SUPPLIER_PURCHASE":
         return (
             "No problem. Send the corrected stock purchase.\n"
-            "Example: Ayo supply me 12kg cocoa at 5000"
+            f"Example: {_business_example(user, 2, 'Ayo supply me 12kg cocoa at 5000')}"
         )
     if pending.action == "SUPPLIER_PAYMENT":
         return (
             "No problem. Send the corrected supplier payment.\n"
-            "Example: I paid Ayo 14000 for egg"
+            f"Example: {_supplier_payment_example(pending, user)}"
         )
     if pending.action == "SALE":
         return (
             "No problem. Send the corrected service income.\n"
-            "Example: I received 1000 for doing chair"
+            f"Example: {_business_example(user, 1, 'I received 1000 for doing chair')}"
         )
     if pending.action == "PAY":
         return (
             "No problem. Send the corrected payment.\n"
-            "Example: Ade paid 3000"
+            f"Example: {_customer_payment_example(pending, user)}"
         )
     if pending.action == "COMBINED":
         return (
             "No problem. Send the corrected transaction.\n"
-            "Example: Ade bought rice 5000 paid 2000"
+            f"Example: {_business_example(user, 0, 'Ade bought rice 5000 paid 2000')}"
         )
     return (
         "No problem. Send the corrected transaction.\n"
-        "Example: Ade bought rice 5000"
+        f"Example: {_business_example(user, 0, 'Ade bought rice 5000')}"
     )
 
 

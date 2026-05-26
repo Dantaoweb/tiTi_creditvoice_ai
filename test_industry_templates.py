@@ -10,7 +10,7 @@ from inventory_suppliers import (
     build_supplier_list_message,
     deduct_inventory_for_items,
 )
-from messages import build_owner_home_menu, build_post_onboarding_menu
+from messages import build_owner_home_menu, build_post_onboarding_menu, edit_prompt_for_pending
 from models import (
     Customer,
     InventoryItem,
@@ -77,7 +77,7 @@ def test_industry_matrix_and_messages():
 
         assert_contains(post_onboarding, "Quick actions:")
         assert_contains(post_onboarding, "How to move around:")
-        assert_contains(home_menu, "Send back, cancel, done, or menu")
+        assert_contains(home_menu, "Send MENU anytime to return here")
         assert_contains(upgrade, expected_value)
 
 
@@ -111,6 +111,27 @@ def test_post_onboarding_add_customer_does_not_trap_user():
     assert remaining_pending is None
     assert sent_messages
     assert_contains(sent_messages[-1][1], "John 08012345678")
+
+
+def test_pharmacy_edit_prompts_use_pharmacy_examples():
+    user = make_user("pharmacy", "health", "Pharmacy")
+
+    sale_prompt = edit_prompt_for_pending(
+        PendingAction(action="SALE"),
+        user,
+    )
+    supplier_prompt = edit_prompt_for_pending(
+        PendingAction(action="SUPPLIER_PURCHASE"),
+        user,
+    )
+    transaction_prompt = edit_prompt_for_pending(
+        PendingAction(action="COMBINED"),
+        user,
+    )
+
+    assert_contains(sale_prompt, "amoxicillin")
+    assert_contains(supplier_prompt, "malaria drug")
+    assert_contains(transaction_prompt, "paracetamol")
 
 
 def test_post_onboarding_allows_natural_transaction_text():
@@ -627,6 +648,7 @@ def test_basic_thrift_participant_limit():
 if __name__ == "__main__":
     test_industry_matrix_and_messages()
     test_post_onboarding_add_customer_does_not_trap_user()
+    test_pharmacy_edit_prompts_use_pharmacy_examples()
     test_post_onboarding_allows_natural_transaction_text()
     test_thrift_contribution_text_parses_as_payment()
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()

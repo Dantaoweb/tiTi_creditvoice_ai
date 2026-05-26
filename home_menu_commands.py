@@ -28,18 +28,33 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
         send_message(phone, build_dashboard_menu_message())
         return {"status": "owner_home_dashboard"}
 
-    if normalized in ["4", "upgrade", "my plan", "plan"]:
+    if normalized in ["4", "stock", "inventory", "my stock", "my inventory"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "INVENTORY_LIST"}}
+
+    if normalized in ["5", "supplier", "suppliers", "supplier list", "my suppliers"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "SUPPLIER_LIST"}}
+
+    if normalized in ["6", "due", "reminders", "due reminders", "debt reminders"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "DUE_MENU"}}
+
+    if normalized in ["7", "upgrade", "my plan", "plan"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
         send_message(phone, build_upgrade_message(user))
         return {"status": "owner_home_upgrade"}
 
-    if normalized in ["5", "staff", "staff menu"] and subscription["plan"] == PLAN_PRO:
+    if normalized in ["9", "staff", "staff menu"] and subscription["plan"] == PLAN_PRO:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "STAFF_MENU"}}
 
-    if normalized in ["5", "6", "formats", "help", "format"]:
+    if normalized in ["8", "formats", "help", "format"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "FORMATS"}}
@@ -84,7 +99,22 @@ def handle_staff_home_menu(
         send_message(phone, build_dashboard_menu_message())
         return {"status": "staff_home_dashboard"}
 
-    if normalized in ["4", "resign"]:
+    if normalized in ["4", "stock", "inventory", "my stock", "my inventory"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "INVENTORY_LIST"}}
+
+    if normalized in ["5", "supplier", "suppliers", "supplier list", "my suppliers"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "SUPPLIER_LIST"}}
+
+    if normalized in ["6", "formats", "help", "format"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "FORMATS"}}
+
+    if normalized in ["7", "resign"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "RESIGN_REQUEST"}}

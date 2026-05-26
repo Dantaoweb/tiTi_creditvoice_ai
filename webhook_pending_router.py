@@ -401,7 +401,7 @@ def handle_pending_actions(
 
         elif normalized in ["edit", "2", "change"]:
             is_voice_edit = bool(pending.source_text)
-            edit_msg = edit_prompt_for_pending(pending)
+            edit_msg = edit_prompt_for_pending(pending, user)
             db.delete(pending)
             db.commit()
             send_whatsapp_message(phone, edit_msg)
