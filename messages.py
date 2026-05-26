@@ -300,15 +300,15 @@ def pending_transaction_summary(pending, customer=None):
         return (
             "Supplier purchase saved.\n"
             f"{pending.product.title()}: N{pending.buy_amount:,}\n"
-            f"Paid: N{pending.paid_amount:,}\n"
-            f"You owe: N{balance:,}"
+            f"Paid now: N{pending.paid_amount:,}\n"
+            f"Debt: N{balance:,}"
         )
 
     if pending.action == "SUPPLIER_PAYMENT":
         product_line = f" for {pending.product.title()}" if pending.product else ""
         return (
             "Supplier payment saved.\n"
-            f"{pending.customer_name.title()}: N{pending.paid_amount:,}{product_line}"
+            f"Paid now: N{pending.paid_amount:,} to {pending.customer_name.title()}{product_line}"
         )
 
     if pending.action == "SALE":

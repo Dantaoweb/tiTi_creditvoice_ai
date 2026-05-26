@@ -166,7 +166,11 @@ def save_supplier_pending(db, phone, pending, user, business_owner_phone, pendin
     db.delete(pending)
     db.commit()
     balance = get_supplier_balance(db, supplier.id)
-    send_message(phone, f"{saved_summary}\nSupplier balance: N{balance:,}")
+    debt_label = "Total debt" if pending.action == "SUPPLIER_PURCHASE" else "Total debt remaining"
+    send_message(
+        phone,
+        f"{saved_summary}\n{debt_label} to {supplier.name.title()}: N{balance:,}"
+    )
     return {"status": "supplier_saved"}
 
 
