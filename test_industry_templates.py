@@ -187,6 +187,11 @@ def test_subscription_admin_short_approve_and_reject_parse():
     }
 
 
+def test_supplier_list_aliases_parse():
+    for text in ["suppliers", "supplier list", "list supplier", "list suppliers"]:
+        assert parse_message(text) == {"type": "SUPPLIER_LIST"}
+
+
 def test_pack_stock_purchase_and_customer_sale_match_inventory():
     parsed = parse_message("i buy 1 pack of coke from Ayo at 2400")
 
@@ -568,6 +573,7 @@ if __name__ == "__main__":
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()
     test_i_buy_without_supplier_does_not_create_customer_i()
     test_subscription_admin_short_approve_and_reject_parse()
+    test_supplier_list_aliases_parse()
     test_pack_stock_purchase_and_customer_sale_match_inventory()
     test_item_normalization_handles_common_shop_variants()
     test_unitless_invoice_item_matches_single_stock_unit()

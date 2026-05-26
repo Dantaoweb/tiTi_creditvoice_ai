@@ -1248,7 +1248,15 @@ def parse_message(text):
     if clean_text in ["stock", "my stock", "inventory", "my inventory"]:
         return {"type": "INVENTORY_LIST"}
 
-    if clean_text in ["suppliers", "my suppliers", "supplier debts", "suppliers i owe"]:
+    if clean_text in [
+        "suppliers",
+        "supplier list",
+        "list supplier",
+        "list suppliers",
+        "my suppliers",
+        "supplier debts",
+        "suppliers i owe"
+    ]:
         return {"type": "SUPPLIER_LIST"}
 
     if clean_text in ["supplier due", "suppliers due", "supplier due today", "suppliers due today"]:
