@@ -5,9 +5,22 @@ from sqlalchemy.orm import sessionmaker
 
 from business_templates import HIGH_VALUE_TEMPLATE_KEYS, industry_plan_matrix
 from database import Base
-from inventory_suppliers import add_inventory_movement, deduct_inventory_for_items
+from inventory_suppliers import (
+    add_inventory_movement,
+    build_supplier_list_message,
+    deduct_inventory_for_items,
+)
 from messages import build_owner_home_menu, build_post_onboarding_menu
-from models import Customer, InventoryItem, SupplierPurchase, PendingAction, Transaction, User
+from models import (
+    Customer,
+    InventoryItem,
+    Supplier,
+    SupplierPayment,
+    SupplierPurchase,
+    PendingAction,
+    Transaction,
+    User,
+)
 from onboarding_commands import handle_onboarding_pending, handle_post_onboarding_pending
 from parser import build_customer_account_summary, parse_message
 from plans import format_upgrade_message
@@ -188,7 +201,7 @@ def test_subscription_admin_short_approve_and_reject_parse():
 
 
 def test_supplier_list_aliases_parse():
-    for text in ["suppliers", "supplier list", "list supplier", "list suppliers"]:
+    for text in ["supplier", "suppliers", "supplier list", "list supplier", "list suppliers"]:
         assert parse_message(text) == {"type": "SUPPLIER_LIST"}
 
 
@@ -417,6 +430,50 @@ def test_bulk_conversion_before_price_defaults_each_to_piece():
     assert parsed["stock_item"]["unit_price"] == 167
 
 
+def test_supplier_list_shows_all_suppliers_not_only_debtors():
+    db = make_test_db()
+    owner_phone = "2348000000883"
+    supplier_debt = Supplier(name="ayo", owner_phone=owner_phone)
+    supplier_clear = Supplier(name="bola", owner_phone=owner_phone)
+    supplier_credit = Supplier(name="kemi", owner_phone=owner_phone)
+    db.add_all([supplier_debt, supplier_clear, supplier_credit])
+    db.flush()
+    db.add(
+        SupplierPurchase(
+            supplier_id=supplier_debt.id,
+            owner_phone=owner_phone,
+            product="detergent",
+            total=6000,
+            paid_amount=3000,
+        )
+    )
+    db.add(
+        SupplierPurchase(
+            supplier_id=supplier_clear.id,
+            owner_phone=owner_phone,
+            product="coke",
+            total=2400,
+            paid_amount=2400,
+        )
+    )
+    db.add(
+        SupplierPayment(
+            supplier_id=supplier_credit.id,
+            owner_phone=owner_phone,
+            amount=1000,
+        )
+    )
+    db.commit()
+
+    message = build_supplier_list_message(db, owner_phone)
+
+    assert "1. Ayo: Debt: N3,000" in message
+    assert "2. Bola: No debt" in message
+    assert "3. Kemi: Credit: N1,000" in message
+    assert "Total supplier debt: N3,000" in message
+    assert "Total supplier credit: N1,000" in message
+
+
 def test_customer_account_summary_includes_product_details():
     db = make_test_db()
     owner_phone = "2348000000888"
@@ -582,6 +639,7 @@ if __name__ == "__main__":
     test_bulk_sale_can_deduct_from_converted_retail_stock()
     test_bulk_conversion_supports_carton_to_pieces()
     test_bulk_conversion_before_price_defaults_each_to_piece()
+    test_supplier_list_shows_all_suppliers_not_only_debtors()
     test_customer_account_summary_includes_product_details()
     test_dashboard_summary_includes_outstanding_balance()
     test_industry_onboarding_paths()

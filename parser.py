@@ -1250,6 +1250,7 @@ def parse_message(text):
 
     if clean_text in [
         "suppliers",
+        "supplier",
         "supplier list",
         "list supplier",
         "list suppliers",

@@ -244,19 +244,24 @@ def build_supplier_list_message(db, owner_phone):
     if not suppliers:
         return "No supplier record yet.\n\nExample:\nAyo supply me 12kg cocoa at 5000"
 
-    msg = "Suppliers You Owe\n\n"
-    total = 0
-    count = 0
-    for supplier in suppliers:
+    msg = "Suppliers\n\n"
+    total_debt = 0
+    total_credit = 0
+    for index, supplier in enumerate(suppliers, start=1):
         balance = get_supplier_balance(db, supplier.id)
-        if balance <= 0:
-            continue
-        count += 1
-        total += balance
-        msg += f"{count}. {supplier.name.title()} - N{balance:,}\n"
-    if count == 0:
-        return "No supplier debt right now."
-    msg += f"\nTotal supplier debt: N{total:,}"
+        if balance > 0:
+            total_debt += balance
+            status = f"Debt: N{balance:,}"
+        elif balance < 0:
+            total_credit += abs(balance)
+            status = f"Credit: N{abs(balance):,}"
+        else:
+            status = "No debt"
+        msg += f"{index}. {supplier.name.title()}: {status}\n"
+
+    msg += f"\nTotal supplier debt: N{total_debt:,}"
+    if total_credit:
+        msg += f"\nTotal supplier credit: N{total_credit:,}"
     return msg
 
 
