@@ -301,7 +301,7 @@ def extract_item_details(text):
     match = re.search(
         r"(?P<quantity>\d+)\s*"
         r"(?P<container>[a-z/]+)\s+of\s+"
-        r"(?P<product>[a-z ]+?)\s+(?:(?:at|for)\s+)?(?P<unit_price>" + amount_pattern + ")",
+        r"(?P<product>[a-z ]+?)\s+(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?",
         clean
     )
     compact_unit_match = None
@@ -309,7 +309,7 @@ def extract_item_details(text):
         compact_unit_match = re.search(
             r"(?P<quantity>\d+)\s*"
             r"(?P<unit>kg|g|ml|l)\s+(?:of\s+)?"
-            r"(?P<product>[a-z ]+?)\s+(?:(?:at|for)\s+)?(?P<unit_price>" + amount_pattern + ")",
+            r"(?P<product>[a-z ]+?)\s+(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?",
             clean
         )
     no_of_match = None
@@ -317,7 +317,7 @@ def extract_item_details(text):
         no_of_match = re.search(
             r"(?P<quantity>\d+)\s*"
             r"(?P<product>[a-z/]+(?:\s+[a-z/]+){0,3})\s+"
-            r"(?:(?:at|for)\s+)?(?P<unit_price>" + amount_pattern + ")",
+            r"(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?",
             clean
         )
 
@@ -332,22 +332,32 @@ def extract_item_details(text):
         unit = compact_unit_match.group("unit")
     product = active_match.group("product").strip()
     product, unit = normalize_item(product, unit)
-    unit_price = parse_amount_token(active_match.group("unit_price")) or 0
-    total = quantity * unit_price
+    price = parse_amount_token(active_match.group("unit_price")) or 0
+    price_info = price_total_from_marker(
+        quantity,
+        price,
+        active_match.groupdict().get("price_marker"),
+        bool(
+            re.match(
+                r"\s*(?:each|per\s+unit|per\s+piece)\b",
+                clean[active_match.end():],
+            )
+        ) or "each" in active_match.group(0).lower(),
+    )
 
     return {
         "quantity": quantity,
         "unit": unit,
         "product": product,
-        "unit_price": unit_price,
-        "total": total
+        "unit_price": price_info["unit_price"],
+        "total": price_info["total"]
     }
 
 
 def extract_direct_sale_details(text):
     clean = text.lower().replace(",", "").strip()
     clean = re.sub(r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+", "", clean).strip()
-    clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean).strip()
+    clean = re.sub(r"\b(per\s+unit|per\s+piece)\b", "each", clean).strip()
 
     amount_matches = list(re.finditer(
         r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![a-zA-Z\d/])",
@@ -357,12 +367,16 @@ def extract_direct_sale_details(text):
         return None
 
     amount_match = amount_matches[-1]
-    unit_price = parse_amount_token(amount_match.group())
-    if unit_price is None:
+    price = parse_amount_token(amount_match.group())
+    if price is None:
         return None
 
     item_text = clean[:amount_match.start()].strip()
+    marker_match = re.search(r"\b(for|at)\s*$", item_text)
+    price_marker = marker_match.group(1) if marker_match else None
+    priced_each = bool(re.match(r"\s*each\b", clean[amount_match.end():]))
     item_text = re.sub(r"\b(for|at)\s*$", "", item_text).strip()
+    item_text = re.sub(r"\beach\b", "", item_text).strip()
     if not item_text:
         return None
 
@@ -428,13 +442,13 @@ def extract_direct_sale_details(text):
     if not product:
         return None
 
-    total = quantity * unit_price
+    price_info = price_total_from_marker(quantity, price, price_marker, priced_each)
     return {
         "quantity": quantity,
         "unit": unit,
         "product": product,
-        "unit_price": unit_price,
-        "total": total
+        "unit_price": price_info["unit_price"],
+        "total": price_info["total"]
     }
 
 
@@ -653,7 +667,7 @@ def extract_artisan_transaction(text):
 
 def parse_invoice_item(item_text):
     clean = item_text.lower().replace(",", "").strip()
-    clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean).strip()
+    clean = re.sub(r"\b(per\s+unit|per\s+piece)\b", "each", clean).strip()
 
     amount_matches = list(re.finditer(
         r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![a-zA-Z\d/])",
@@ -663,12 +677,16 @@ def parse_invoice_item(item_text):
         return None
 
     amount_match = amount_matches[-1]
-    unit_price = parse_amount_token(amount_match.group())
-    if unit_price is None:
+    price = parse_amount_token(amount_match.group())
+    if price is None:
         return None
 
     item_body = clean[:amount_match.start()].strip()
+    marker_match = re.search(r"\b(for|at)\s*$", item_body)
+    price_marker = marker_match.group(1) if marker_match else None
+    priced_each = bool(re.match(r"\s*each\b", clean[amount_match.end():]))
     item_body = re.sub(r"\b(for|at)\s*$", "", item_body).strip()
+    item_body = re.sub(r"\beach\b", "", item_body).strip()
     if not item_body:
         return None
 
@@ -702,13 +720,13 @@ def parse_invoice_item(item_text):
     if not product:
         return None
 
-    total = quantity * unit_price
+    price_info = price_total_from_marker(quantity, price, price_marker, priced_each)
     return {
         "product": product,
         "quantity": quantity,
         "unit": unit,
-        "unit_price": unit_price,
-        "total": total
+        "unit_price": price_info["unit_price"],
+        "total": price_info["total"]
     }
 
 
@@ -915,7 +933,7 @@ def extract_supplier_transaction(text):
             rf"^i\s+(?:buy|bought|purchase|purchased)\s+(?P<body>.+?)\s+from\s+"
             rf"(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+"
             rf"(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
-            rf"\d+\s*(?:{UNIT_PATTERN})?\s+(?:at|for)\s+"
+            rf"\d+\s*(?:{UNIT_PATTERN})?\s+(?P<price_marker>at|for)\s+"
             rf"(?P<price>{amount_pattern})(?:\s+each)?",
             clean
         ),
@@ -923,19 +941,19 @@ def extract_supplier_transaction(text):
             rf"^(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:supply|supplied|deliver|delivered)\s+me\s+"
             rf"(?P<body>.+?)\s+"
             rf"(?:split\s+into|convert(?:ed)?\s+to|contains?|has|makes?)\s+"
-            rf"\d+\s*(?:{UNIT_PATTERN})?\s+(?:at|for)\s+"
+            rf"\d+\s*(?:{UNIT_PATTERN})?\s+(?P<price_marker>at|for)\s+"
             rf"(?P<price>{amount_pattern})(?:\s+each)?",
             clean
         ),
         re.search(
             rf"^i\s+(?:buy|bought|purchase|purchased)\s+(?P<body>.+?)\s+from\s+"
-            rf"(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:at|for)\s+"
+            rf"(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?P<price_marker>at|for)\s+"
             rf"(?P<price>{amount_pattern})(?:\s+each)?",
             clean
         ),
         re.search(
             rf"^(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:supply|supplied|deliver|delivered)\s+me\s+"
-            rf"(?P<body>.+?)\s+(?:at|for)\s+(?P<price>{amount_pattern})(?:\s+each)?",
+            rf"(?P<body>.+?)\s+(?P<price_marker>at|for)\s+(?P<price>{amount_pattern})(?:\s+each)?",
             clean
         )
     ]
@@ -953,7 +971,14 @@ def extract_supplier_transaction(text):
         ).strip()
         item = parse_stock_item_body(body)
         quantity = item["quantity"]
-        total = quantity * price
+        price_info = price_total_from_marker(
+            quantity,
+            price,
+            purchase_match.groupdict().get("price_marker"),
+            "each" in purchase_match.group(0).lower(),
+        )
+        unit_price = price_info["unit_price"]
+        total = price_info["total"]
         stock_item = extract_bulk_stock_conversion(clean, item["product"], quantity, total)
         paid_amount = 0
         paid_match = re.search(
@@ -969,7 +994,7 @@ def extract_supplier_transaction(text):
             "product": item["product"],
             "quantity": quantity,
             "unit": item["unit"],
-            "unit_price": price,
+            "unit_price": unit_price,
             "buy_amount": total,
             "paid_amount": paid_amount,
             "total": total,
@@ -1029,6 +1054,20 @@ def parse_slash_date(text):
         return datetime(year, month, day)
     except ValueError:
         return None
+
+
+def price_total_from_marker(quantity, price, marker=None, priced_each=False):
+    quantity = quantity or 1
+    marker = (marker or "").lower()
+    if marker == "for" and not priced_each:
+        return {
+            "unit_price": round(price / quantity) if quantity else price,
+            "total": price,
+        }
+    return {
+        "unit_price": price,
+        "total": quantity * price,
+    }
 
 
 def get_customer_period_range(period, target_date=None):

@@ -134,6 +134,30 @@ def test_pharmacy_edit_prompts_use_pharmacy_examples():
     assert_contains(transaction_prompt, "paracetamol")
 
 
+def test_at_and_for_price_meanings_are_distinct_globally():
+    direct_at = parse_message("I sold 2 pack of paracetamol at 2500")
+    direct_for = parse_message("I sold 2 pack of paracetamol for 2500")
+    customer_at = parse_message("Mary bought 2 pack of paracetamol at 2500")
+    customer_for = parse_message("Mary bought 2 pack of paracetamol for 2500")
+    customer_for_each = parse_message("Mary bought 2 pack of paracetamol for 2500 each")
+    supplier_for = parse_message("Ayo supplied me 10 packs malaria drug for 18000")
+
+    assert direct_at["buy_amount"] == 5000
+    assert direct_at["unit_price"] == 2500
+    assert direct_for["buy_amount"] == 2500
+    assert direct_for["unit_price"] == 1250
+
+    assert customer_at["buy_amount"] == 5000
+    assert customer_at["unit_price"] == 2500
+    assert customer_for["buy_amount"] == 2500
+    assert customer_for["unit_price"] == 1250
+    assert customer_for_each["buy_amount"] == 5000
+    assert customer_for_each["unit_price"] == 2500
+
+    assert supplier_for["buy_amount"] == 18000
+    assert supplier_for["unit_price"] == 1800
+
+
 def test_post_onboarding_allows_natural_transaction_text():
     db = make_test_db()
     phone = "2348000000002"
@@ -649,6 +673,7 @@ if __name__ == "__main__":
     test_industry_matrix_and_messages()
     test_post_onboarding_add_customer_does_not_trap_user()
     test_pharmacy_edit_prompts_use_pharmacy_examples()
+    test_at_and_for_price_meanings_are_distinct_globally()
     test_post_onboarding_allows_natural_transaction_text()
     test_thrift_contribution_text_parses_as_payment()
     test_quantity_unit_item_parses_when_price_has_no_at_keyword()
