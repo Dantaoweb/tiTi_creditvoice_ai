@@ -31,6 +31,21 @@ class PendingRouteResult:
     is_command: bool = False
 
 
+def add_stock_option_to_menu(message):
+    if "add stock" in (message or "").lower():
+        return message
+    return f"{message}\n10. Add stock"
+
+
+def build_add_stock_help_message():
+    return (
+        "To add stock, send it like:\n"
+        "I buy 10 packs paracetamol from Ayo at 1800 each\n\n"
+        "You can also check stock by sending:\n"
+        "stock"
+    )
+
+
 def handle_pending_actions(
     db,
     phone,
@@ -328,6 +343,12 @@ def handle_pending_actions(
 
         if pending.action == "DASHBOARD_MENU":
             normalized = text.strip().lower()
+            if normalized in ["10", "add stock", "stock", "inventory"]:
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(phone, build_add_stock_help_message())
+                return {"status": "dashboard_add_stock"}
+
             dashboard_aliases = {
                 "today": "1",
                 "this week": "2",
@@ -357,7 +378,7 @@ def handle_pending_actions(
             )
 
             if not msg:
-                send_whatsapp_message(phone, build_dashboard_menu_message())
+                send_whatsapp_message(phone, add_stock_option_to_menu(build_dashboard_menu_message()))
                 return {"status": "invalid_dashboard_menu_option"}
 
             db.delete(pending)

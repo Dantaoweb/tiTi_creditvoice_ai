@@ -616,8 +616,10 @@ def run_onboarding_flow(category_choice, business_choice, expected_category, exp
     assert user.business_type_label == expected_label
     assert next_pending is not None
     assert next_pending.action == "POST_ONBOARDING_MENU"
-    assert_contains(sent_messages[-1][1], "Quick actions:")
-    assert_contains(sent_messages[-1][1], "How to move around:")
+    assert_contains(sent_messages[-1][1], "Account created.")
+    assert_contains(sent_messages[-1][1], "1. See formats")
+    assert_contains(sent_messages[-1][1], "4. Add stock")
+    assert_contains(sent_messages[-1][1], "5. Upgrade")
 
 
 def test_industry_onboarding_paths():

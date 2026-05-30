@@ -8,6 +8,7 @@ from business_templates import (
 )
 from messages import (
     build_onboarding_start_message,
+    build_account_ready_menu,
     build_post_onboarding_menu,
     build_supported_formats_message,
     build_upgrade_message,
@@ -23,6 +24,18 @@ ONBOARDING_ACTIONS = [
     "ONBOARD_USER_BUSINESS_TYPE",
     "ONBOARD_USER_CUSTOM_TYPE",
 ]
+
+
+def add_stock_option_to_menu(message):
+    if "add stock" in (message or "").lower():
+        return message
+    return f"{message}\n4. Add stock"
+
+
+def add_stock_option_to_dashboard_menu(message):
+    if "add stock" in (message or "").lower():
+        return message
+    return f"{message}\n10. Add stock"
 
 
 def complete_user_onboarding(
@@ -61,7 +74,7 @@ def complete_user_onboarding(
         )
     )
     db.commit()
-    return user, build_post_onboarding_menu(name, user)
+    return user, build_account_ready_menu()
 
 
 def start_onboarding(db, phone, pending, send_message):
@@ -112,14 +125,26 @@ def handle_post_onboarding_pending(
     if normalized in ["3", "dashboard"]:
         pending.action = "DASHBOARD_MENU"
         db.commit()
-        send_message(phone, build_dashboard_menu_message())
+        send_message(phone, add_stock_option_to_dashboard_menu(build_dashboard_menu_message()))
         return {"status": "post_onboarding_dashboard"}
 
-    if normalized in ["4", "upgrade"]:
+    if normalized in ["5", "upgrade"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
         send_message(phone, build_upgrade_message(user))
         return {"status": "post_onboarding_upgrade"}
+
+    if normalized in ["4", "add stock", "stock", "inventory"]:
+        db.delete(pending)
+        db.commit()
+        send_message(
+            phone,
+            "To add stock, send it like:\n"
+            "I buy 10 packs paracetamol from Ayo at 1800 each\n\n"
+            "You can also check stock by sending:\n"
+            "stock"
+        )
+        return {"status": "post_onboarding_add_stock"}
 
     if normalized in ["cancel", "exit", "back", "done", "stop"]:
         db.delete(pending)

@@ -423,3 +423,15 @@ def apply_voice_confirmation_options(confirm_msg, source_text=None):
     ).strip()
     confirm_msg = f"{confirm_msg}\n\nReply:\n1. Save\n2. Edit text\n3. Send voice again"
     return f"I heard:\n{source_text}\n\n{confirm_msg}"
+def build_account_ready_menu():
+    return (
+        "Account created.\n\n"
+        "Choose an option:\n\n"
+        "1. See formats\n"
+        "2. Add customer\n"
+        "3. View dashboard\n"
+        "4. Add stock\n"
+        "5. Upgrade\n\n"
+        "Send MENU anytime."
+    )
+

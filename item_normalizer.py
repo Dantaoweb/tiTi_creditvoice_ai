@@ -10,6 +10,8 @@ UNIT_ALIASES = {
     "crate": "crate",
     "packs": "pack",
     "pack": "pack",
+    "plates": "plate",
+    "plate": "plate",
     "pieces": "piece",
     "piece": "piece",
     "each": "piece",

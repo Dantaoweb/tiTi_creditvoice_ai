@@ -331,12 +331,17 @@ def extract_item_details(text):
     if compact_unit_match:
         unit = compact_unit_match.group("unit")
     product = active_match.group("product").strip()
+    price_marker = active_match.groupdict().get("price_marker")
+    trailing_marker = re.search(r"\b(at|for)$", product)
+    if trailing_marker and not price_marker:
+        price_marker = trailing_marker.group(1)
+        product = product[:trailing_marker.start()].strip()
     product, unit = normalize_item(product, unit)
     price = parse_amount_token(active_match.group("unit_price")) or 0
     price_info = price_total_from_marker(
         quantity,
         price,
-        active_match.groupdict().get("price_marker"),
+        price_marker,
         bool(
             re.match(
                 r"\s*(?:each|per\s+unit|per\s+piece)\b",
@@ -403,6 +408,8 @@ def extract_direct_sale_details(text):
             "crate",
             "packs",
             "pack",
+            "plates",
+            "plate",
             "pieces",
             "piece",
             "units",
@@ -559,6 +566,37 @@ def extract_artisan_transaction(text):
             "artisan_note": f"{product.title()}: paid N{paid_amount:,}, balance N{balance_amount:,}"
         }
 
+    service_work_paid_match = re.search(
+        r"^(?P<name>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+"
+        r"(?:did|done|do|sewed|sew|washed|wash|printed|print|made|make|fixed|fix|repaired|repair)\s+"
+        r"(?P<description>.+?)\s+"
+        r"(?P<total>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+"
+        r"(?:paid|pay|pays|deposit|deposited)\s+"
+        r"(?P<paid>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)$",
+        clean
+    )
+    if service_work_paid_match:
+        total_amount = parse_amount_token(service_work_paid_match.group("total"))
+        paid_amount = parse_amount_token(service_work_paid_match.group("paid"))
+        if total_amount is None or paid_amount is None:
+            return None
+        product = service_work_paid_match.group("description").strip()
+        return {
+            "type": "TRANSACTION",
+            "name": service_work_paid_match.group("name").strip(),
+            "action": "COMBINED",
+            "buy_amount": total_amount,
+            "paid_amount": paid_amount,
+            "quantity": None,
+            "unit": None,
+            "product": product,
+            "unit_price": total_amount,
+            "invoice_items": None,
+            "total": total_amount,
+            "due_date": due_date,
+            "artisan_note": f"{product.title()}: paid N{paid_amount:,}, balance N{max(total_amount - paid_amount, 0):,}"
+        }
+
     i_was_paid_match = re.search(
         r"^(?:i\s+)?(?:was\s+)?paid\s+"
         r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)\s+for\s+(?P<description>.+)$",
@@ -702,6 +740,7 @@ def parse_invoice_item(item_text):
         unit_phrases = [
             "truck loads", "truck load", "trucks", "truck", "bags", "bag",
             "cartons", "carton", "crates", "crate", "packs", "pack",
+            "plates", "plate",
             "pieces", "piece", "units", "unit", "loads", "load", "tons", "ton",
             "litres", "litre", "liters", "liter", "dozens", "dozen",
             "rolls", "roll", "congos", "congo", "kg", "g", "ml", "l"
