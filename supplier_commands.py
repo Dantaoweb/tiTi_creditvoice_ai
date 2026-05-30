@@ -1,13 +1,33 @@
 import json
+import re
 
 from inventory_suppliers import (
     build_inventory_list_message,
     build_supplier_due_message,
     build_supplier_list_message,
+    get_total_stock_value,
+    manual_stock_add,
+    manual_stock_remove,
+    manual_stock_set,
+    set_low_stock_alert,
+    upsert_stock_with_prices,
 )
 from messages import apply_voice_confirmation_options
 from models import PendingAction
+from parser import parse_stock_item_body
 from subscriptions import ensure_feature_allowed
+
+
+def _can_modify_stock(user):
+    """
+    Only the business owner or a staff member with full access may remove
+    or adjust stock. Limited-access staff (own records only) are blocked.
+    """
+    if not user:
+        return False
+    if user.parent_id is None:
+        return True  # owner
+    return bool(user.can_view_all_transactions)  # full-access staff
 
 
 def handle_supplier_command(
@@ -32,8 +52,197 @@ def handle_supplier_command(
             business_owner_phone,
             parsed.get("product"),
         )
+        total_value = get_total_stock_value(db, business_owner_phone)
+        if total_value:
+            msg += f"\n\nTotal stock value: N{total_value:,}"
         send_message(phone, msg)
         return {"status": "inventory_list"}
+
+    # ── Add stock with cost + sell prices ────────────────────────────────────
+    if command_type == "STOCK_ADD_WITH_PRICES":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "inventory_plan_blocked"}
+
+        items = parsed.get("items", [])
+        if not items:
+            send_message(phone, "Not understood. Try:\nadd stock rice cost 3000 sell 4000")
+            return {"status": "stock_add_prices_invalid"}
+
+        # Show confirmation
+        lines = ["Confirm stock:\n"]
+        for i, item in enumerate(items, start=1):
+            unit_label = f" ({item['unit']})" if item.get("unit") else ""
+            lines.append(
+                f"{i}. {item['product'].title()}{unit_label}\n"
+                f"   Cost: N{item['cost']:,}  Sell: N{item['sell']:,}"
+            )
+        lines.append("\nReply YES to save or EDIT to change.")
+
+        db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+        pending = PendingAction(
+            phone=phone,
+            action="STOCK_ADD_CONFIRM",
+            customer_name="",
+            last_customer="",
+            items_json=json.dumps(items),
+        )
+        db.add(pending)
+        db.commit()
+
+        send_message(phone, "\n".join(lines))
+        return {"status": "stock_add_prices_confirm"}
+
+    # ── Manual stock add (quantity only) ─────────────────────────────────────
+    if command_type == "STOCK_ADD":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "inventory_plan_blocked"}
+
+        body = parsed.get("body", "").strip()
+        if not body:
+            # Bare "add stock" — show the guide
+            send_message(
+                phone,
+                "Add stock with prices:\n"
+                "add stock rice cost 3000 sell 4000\n"
+                "add stock paracetamol 500mg cost 150 sell 200, "
+                "paracetamol 1g cost 250 sell 350\n\n"
+                "Add quantity only (no price change):\n"
+                "add stock 10 bags rice\n\n"
+                "With supplier:\n"
+                "Ayo supply me 12 bags rice at 5000"
+            )
+            return {"status": "stock_add_guide"}
+
+        item_data = parse_stock_item_body(body)
+        if not item_data or not item_data.get("product"):
+            send_message(phone, "Not understood. Try:\nadd stock 10 bags rice")
+            return {"status": "stock_add_invalid"}
+
+        item = manual_stock_add(
+            db, business_owner_phone,
+            item_data["product"], item_data["quantity"], item_data["unit"],
+            user.id,
+        )
+        db.commit()
+        unit_label = f" {item.unit}" if item.unit else ""
+        send_message(
+            phone,
+            f"Stock added: {item.name.title()}\n"
+            f"Added: {item_data['quantity']:,}{unit_label}\n"
+            f"Total now: {item.quantity:,}{unit_label}"
+        )
+        return {"status": "stock_added"}
+
+    # ── Manual stock remove ──────────────────────────────────────────────────
+    if command_type == "STOCK_REMOVE":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "inventory_plan_blocked"}
+
+        if not _can_modify_stock(user):
+            send_message(phone, "You do not have permission to remove stock.\nContact the business owner.")
+            return {"status": "stock_remove_permission_denied"}
+
+        body = parsed.get("body", "")
+        note = None
+        note_match = re.search(r"\((.+?)\)", body)
+        if note_match:
+            note = note_match.group(1).strip()
+            body = body[:note_match.start()].strip()
+
+        if not note:
+            send_message(
+                phone,
+                "A reason is required to remove stock.\n\n"
+                "Format:\nremove stock 5 bags rice (reason)\n\n"
+                "Examples:\n"
+                "remove stock 5 bags rice (spoilage)\n"
+                "remove stock 2 carton malt (expired)\n"
+                "remove stock 10 pieces soap (damaged)"
+            )
+            return {"status": "stock_remove_no_reason"}
+
+        item_data = parse_stock_item_body(body)
+        if not item_data or not item_data.get("product"):
+            send_message(phone, "Not understood. Try:\nremove stock 5 bags rice (spoilage)")
+            return {"status": "stock_remove_invalid"}
+
+        item = manual_stock_remove(
+            db, business_owner_phone,
+            item_data["product"], item_data["quantity"], item_data["unit"],
+            user.id, note,
+        )
+        if not item:
+            send_message(phone, f"Stock item not found: {item_data['product'].title()}")
+            return {"status": "stock_remove_not_found"}
+
+        db.commit()
+        unit_label = f" {item.unit}" if item.unit else ""
+        send_message(
+            phone,
+            f"Stock removed: {item.name.title()}\n"
+            f"Removed: {item_data['quantity']:,}{unit_label} — {note}\n"
+            f"Total now: {item.quantity:,}{unit_label}"
+        )
+        return {"status": "stock_removed"}
+
+    # ── Manual stock set (count correction) ──────────────────────────────────
+    if command_type == "STOCK_SET":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "inventory_plan_blocked"}
+
+        if not _can_modify_stock(user):
+            send_message(phone, "You do not have permission to adjust stock counts.\nContact the business owner.")
+            return {"status": "stock_set_permission_denied"}
+
+        item_data = parse_stock_item_body(parsed.get("body", ""))
+        if not item_data or not item_data.get("product") or not item_data.get("quantity"):
+            send_message(phone, "Not understood. Try:\nset stock rice 50 bags")
+            return {"status": "stock_set_invalid"}
+
+        item = manual_stock_set(
+            db, business_owner_phone,
+            item_data["product"], item_data["quantity"], item_data["unit"],
+            user.id,
+        )
+        db.commit()
+        unit_label = f" {item.unit}" if item.unit else ""
+        send_message(
+            phone,
+            f"Stock corrected: {item.name.title()}\n"
+            f"New count: {item.quantity:,}{unit_label}"
+        )
+        return {"status": "stock_set"}
+
+    # ── Low-stock alert threshold ─────────────────────────────────────────────
+    if command_type == "STOCK_ALERT_SET":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "inventory_plan_blocked"}
+
+        product = parsed.get("product", "")
+        threshold = parsed.get("quantity", 0)
+        item = set_low_stock_alert(db, business_owner_phone, product, None, threshold)
+        if not item:
+            send_message(phone, f"Stock item not found: {product.title()}\nSend STOCK to see your items.")
+            return {"status": "stock_alert_not_found"}
+
+        db.commit()
+        unit_label = f" {item.unit}" if item.unit else ""
+        send_message(
+            phone,
+            f"Alert set: {item.name.title()}\n"
+            f"You will be notified when stock drops to {threshold:,}{unit_label} or below."
+        )
+        return {"status": "stock_alert_set"}
 
     if command_type == "SUPPLIER_LIST":
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "SUPPLIERS", "Supplier records")

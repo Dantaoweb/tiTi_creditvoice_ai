@@ -9,6 +9,7 @@ from models import PendingAction
 from onboarding_commands import handle_profile_command
 from reminder_commands import handle_reminder_command
 from report_commands import handle_report_command
+from select_product_commands import start_select_product
 from staff_commands import handle_staff_command
 from supplier_commands import handle_supplier_command
 from transaction_setup import handle_transaction_setup
@@ -32,6 +33,9 @@ def handle_parsed_command(
         msg = build_supported_formats_message(user)
         send_whatsapp_message(phone, msg)
         return {"status": "formats"}
+
+    if parsed["type"] == "SELECT_PRODUCT":
+        return start_select_product(db, phone, business_owner_phone, send_whatsapp_message)
 
     supplier_result = handle_supplier_command(
         db,

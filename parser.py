@@ -984,6 +984,43 @@ def extract_supplier_transaction(text):
             "due_date": due_date
         }
 
+    # ── Stock purchase with no named supplier ───────────────────────────────
+    # "I buy 10 bags rice at 5000 each" — defaults to "Cash Purchase" supplier
+    no_supplier_match = re.search(
+        rf"^i\s+(?:buy|bought|purchase|purchased)\s+(?P<body>.+?)\s+(?P<price_marker>at|for)\s+"
+        rf"(?P<price>{amount_pattern})(?:\s+each)?$",
+        clean,
+    )
+    if no_supplier_match:
+        price = parse_amount_token(no_supplier_match.group("price"))
+        body = no_supplier_match.group("body").strip()
+        if price is not None and body:
+            item = parse_stock_item_body(body)
+            price_info = price_total_from_marker(
+                item["quantity"],
+                price,
+                no_supplier_match.group("price_marker"),
+                "each" in no_supplier_match.group(0).lower(),
+            )
+            paid_match = re.search(
+                rf"\b(?:paid|pay)\s+(?P<paid>{amount_pattern})", clean
+            )
+            paid_amount = parse_amount_token(paid_match.group("paid")) if paid_match else price_info["total"]
+            return {
+                "type": "SUPPLIER_TRANSACTION",
+                "action": "SUPPLIER_PURCHASE",
+                "name": "cash purchase",
+                "product": item["product"],
+                "quantity": item["quantity"],
+                "unit": item["unit"],
+                "unit_price": price_info["unit_price"],
+                "buy_amount": price_info["total"],
+                "paid_amount": paid_amount,
+                "total": price_info["total"],
+                "stock_item": None,
+                "due_date": due_date,
+            }
+
     return None
 
 
@@ -1293,6 +1330,54 @@ def parse_message(text):
         return {
             "type": "INVENTORY_ITEM",
             "product": clean_text.replace("stock", "", 1).strip()
+        }
+
+    # ── Add stock (new format with cost + sell prices) ──────────────────────
+    # "add stock rice cost 3000 sell 4000"
+    # "add stock rice cost 3000 sell 4000, beans cost 2000 sell 2500"
+    # Body is optional — bare "add stock" shows the guide
+    stock_add_match = (
+        re.match(r"^(?:add\s+stock|stock\s+add)(?:\s+(?P<body>.+))?$", clean_text, re.DOTALL)
+        or re.match(r"^add\s+(?P<body>.+?)\s+to\s+stock$", clean_text, re.DOTALL)
+    )
+    if stock_add_match:
+        body = (stock_add_match.group("body") or "").strip()
+        # Detect cost+sell format
+        if body and re.search(r"\bcost\b", body, re.I) and re.search(r"\bsell\b", body, re.I):
+            items = _parse_stock_items_with_prices(body)
+            if items:
+                return {"type": "STOCK_ADD_WITH_PRICES", "items": items}
+        return {"type": "STOCK_ADD", "body": body}
+
+    # ── Manual stock remove ─────────────────────────────────────────────────
+    # "remove stock 5 bags rice"  |  "remove 5 bags rice from stock"
+    stock_remove_match = (
+        re.match(r"^(?:remove\s+stock|stock\s+remove)\s+(?P<body>.+)$", clean_text)
+        or re.match(r"^remove\s+(?P<body>.+?)\s+from\s+stock$", clean_text)
+    )
+    if stock_remove_match:
+        return {"type": "STOCK_REMOVE", "body": stock_remove_match.group("body").strip()}
+
+    # ── Manual stock set (count correction) ────────────────────────────────
+    # "set stock rice 50 bags"  |  "adjust stock rice 50 bags"  |  "correct stock rice 50"
+    stock_set_match = re.match(
+        r"^(?:set\s+stock|adjust\s+stock|correct\s+stock|stock\s+count)\s+(?P<body>.+)$",
+        clean_text
+    )
+    if stock_set_match:
+        return {"type": "STOCK_SET", "body": stock_set_match.group("body").strip()}
+
+    # ── Low-stock alert threshold ───────────────────────────────────────────
+    # "stock alert rice 10"  |  "set low stock alert rice 10"
+    stock_alert_match = re.match(
+        r"^(?:set\s+)?(?:low\s+)?stock\s+alert\s+(?P<product>.+?)\s+(?P<quantity>\d+)$",
+        clean_text
+    )
+    if stock_alert_match:
+        return {
+            "type": "STOCK_ALERT_SET",
+            "product": stock_alert_match.group("product").strip(),
+            "quantity": int(stock_alert_match.group("quantity")),
         }
 
     # =========================
@@ -2144,6 +2229,37 @@ def parse_message(text):
 # =========================
 # 💰 BALANCE
 # =========================
+
+def _parse_stock_items_with_prices(body):
+    """
+    Parse one or more comma/newline-separated stock items that include
+    cost and sell prices.
+
+    Accepted format per item:
+        <product name> cost <amount> sell <amount>
+    Example:
+        dangote salt 50g cost 150 sell 200
+        paracetamol 500mg cost 120 sell 180
+    """
+    amount_pat = r"\d[\d,\.]*(?:k|m)?"
+    item_pat = re.compile(
+        rf"^(?P<product>.+?)\s+cost\s+(?P<cost>{amount_pat})\s+sell\s+(?P<sell>{amount_pat})$",
+        re.I,
+    )
+    parts = [p.strip() for p in re.split(r"[,\n]+", body) if p.strip()]
+    items = []
+    for part in parts:
+        m = item_pat.match(part.strip())
+        if not m:
+            return None  # one bad item → fall back to STOCK_ADD
+        cost = parse_amount_token(m.group("cost").replace(",", ""))
+        sell = parse_amount_token(m.group("sell").replace(",", ""))
+        if cost is None or sell is None:
+            return None
+        product, unit = normalize_item(m.group("product").strip())
+        items.append({"product": product, "unit": unit, "cost": cost, "sell": sell})
+    return items if items else None
+
 
 SELECT_PRODUCT_COMMANDS = {
     "select product",

@@ -1,4 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from inventory_suppliers import (
     add_inventory_movement,
@@ -30,16 +34,11 @@ def pending_stock_items(pending, pending_items):
 def apply_sale_inventory(db, owner_phone, tx_id, user_id, pending, pending_items, source_type):
     items = pending_stock_items(pending, pending_items)
     if not items:
-        return [], []
+        return [], [], []
 
     add_transaction_items(db, tx_id, items)
     return deduct_inventory_for_items(
-        db,
-        owner_phone,
-        items,
-        source_type,
-        tx_id,
-        user_id,
+        db, owner_phone, items, source_type, tx_id, user_id,
     )
 
 
@@ -51,6 +50,15 @@ def build_stock_save_message(stock_updates, stock_missing):
         stock_msg += "\n\nStock item not found: " + ", ".join(stock_missing)
         stock_msg += "\nSend STOCK to check inventory."
     return stock_msg
+
+
+def send_low_stock_alerts(send_message, owner_phone, low_stock_alerts):
+    if not low_stock_alerts:
+        return
+    send_message(
+        owner_phone,
+        "Low stock alert:\n" + "\n".join(low_stock_alerts)
+    )
 
 
 def save_direct_sale(
@@ -70,7 +78,7 @@ def save_direct_sale(
         Transaction.amount == pending.buy_amount,
         Transaction.product == pending.product,
         Transaction.recorded_by_id == user.id,
-        Transaction.created_at >= datetime.utcnow() - timedelta(minutes=2),
+        Transaction.created_at >= _utcnow() - timedelta(minutes=2),
     ).first()
 
     if recent_tx:
@@ -89,21 +97,16 @@ def save_direct_sale(
         unit_price=pending.unit_price,
         recorded_by_id=user.id,
         message_id=message_id,
-        created_at=datetime.utcnow(),
+        created_at=_utcnow(),
     )
     db.add(tx)
     db.flush()
     stock_updates = []
     stock_missing = []
+    low_stock_alerts = []
     if inventory_enabled:
-        stock_updates, stock_missing = apply_sale_inventory(
-            db,
-            business_owner_phone,
-            tx.id,
-            user.id,
-            pending,
-            pending_items,
-            "SALE",
+        stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
+            db, business_owner_phone, tx.id, user.id, pending, pending_items, "SALE",
         )
 
     db.delete(pending)
@@ -111,6 +114,7 @@ def save_direct_sale(
 
     stock_msg = build_stock_save_message(stock_updates, stock_missing)
     send_message(phone, f"{sale_saved_msg}{stock_msg}")
+    send_low_stock_alerts(send_message, business_owner_phone, low_stock_alerts)
     return {"status": "direct_sale_saved"}
 
 
@@ -130,7 +134,7 @@ def save_supplier_pending(db, phone, pending, user, business_owner_phone, pendin
             paid_amount=pending.paid_amount,
             due_date=pending.due_date,
             recorded_by_id=user.id,
-            created_at=datetime.utcnow(),
+            created_at=_utcnow(),
         )
         db.add(purchase)
         db.flush()
@@ -159,7 +163,7 @@ def save_supplier_pending(db, phone, pending, user, business_owner_phone, pendin
             amount=pending.paid_amount,
             product=pending.product,
             recorded_by_id=user.id,
-            created_at=datetime.utcnow(),
+            created_at=_utcnow(),
         )
         db.add(payment)
 
@@ -202,7 +206,7 @@ def save_customer_pending(
         Transaction.customer_id == customer.id,
         Transaction.type == check_type,
         Transaction.amount == check_amount,
-        Transaction.created_at >= datetime.utcnow() - timedelta(minutes=2),
+        Transaction.created_at >= _utcnow() - timedelta(minutes=2),
     ).first()
 
     if recent_tx:
@@ -219,6 +223,7 @@ def save_customer_pending(
     saved_summary = pending_transaction_summary(pending, customer)
     stock_updates = []
     stock_missing = []
+    low_stock_alerts = []
 
     if pending.action == "BUY":
         tx = Transaction(
@@ -232,19 +237,13 @@ def save_customer_pending(
             due_date=pending.due_date,
             recorded_by_id=user.id,
             message_id=message_id,
-            created_at=datetime.utcnow(),
+            created_at=_utcnow(),
         )
         db.add(tx)
         db.flush()
         if inventory_enabled:
-            stock_updates, stock_missing = apply_sale_inventory(
-                db,
-                business_owner_phone,
-                tx.id,
-                user.id,
-                pending,
-                pending_items,
-                "CUSTOMER_SALE",
+            stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
+                db, business_owner_phone, tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
             )
 
     elif pending.action == "PAY":
@@ -254,7 +253,7 @@ def save_customer_pending(
             amount=pending.paid_amount,
             recorded_by_id=user.id,
             message_id=message_id,
-            created_at=datetime.utcnow(),
+            created_at=_utcnow(),
         )
         db.add(tx)
         if pending.due_date:
@@ -279,19 +278,13 @@ def save_customer_pending(
             due_date=pending.due_date,
             recorded_by_id=user.id,
             message_id=f"{message_id}_buy",
-            created_at=datetime.utcnow(),
+            created_at=_utcnow(),
         )
         db.add(buy_tx)
         db.flush()
         if inventory_enabled:
-            stock_updates, stock_missing = apply_sale_inventory(
-                db,
-                business_owner_phone,
-                buy_tx.id,
-                user.id,
-                pending,
-                pending_items,
-                "CUSTOMER_SALE",
+            stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
+                db, business_owner_phone, buy_tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
             )
 
         pay_tx = Transaction(
@@ -300,7 +293,7 @@ def save_customer_pending(
             amount=pending.paid_amount,
             recorded_by_id=user.id,
             message_id=f"{message_id}_pay",
-            created_at=datetime.utcnow(),
+            created_at=_utcnow(),
         )
         db.add(pay_tx)
 
@@ -318,6 +311,7 @@ def save_customer_pending(
     msg += build_stock_save_message(stock_updates, stock_missing)
 
     send_message(phone, msg)
+    send_low_stock_alerts(send_message, business_owner_phone, low_stock_alerts)
     return {"status": "saved"}
 
 

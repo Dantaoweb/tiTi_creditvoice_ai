@@ -1,10 +1,14 @@
 import re
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 
 from item_normalizer import normalize_item
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 from models import (
     InventoryItem,
     InventoryMovement,
@@ -145,7 +149,7 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
         item.quantity = (item.quantity or 0) - quantity
     else:
         item.quantity = (item.quantity or 0) + quantity
-    item.updated_at = datetime.utcnow()
+    item.updated_at = _utcnow()
 
     movement = InventoryMovement(
         owner_phone=owner_phone,
@@ -165,6 +169,7 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
 def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, recorded_by_id=None):
     updates = []
     missing = []
+    low_stock_alerts = []
     for item_data in items or []:
         product = (item_data.get("product") or "").lower().strip()
         quantity = item_data.get("quantity") or 1
@@ -176,32 +181,24 @@ def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, r
         deduct_quantity = quantity
         if not item:
             item, converted_quantity = find_converted_inventory_for_sale(
-                db,
-                owner_phone,
-                product,
-                unit,
-                quantity,
+                db, owner_phone, product, unit, quantity,
             )
             if not item:
                 missing.append(product.title())
                 continue
             deduct_quantity = converted_quantity
         add_inventory_movement(
-            db,
-            owner_phone,
-            item.name,
-            deduct_quantity,
-            item.unit,
-            item_data.get("unit_price"),
-            "OUT",
-            source_type,
-            source_id,
-            recorded_by_id,
-            "Sold"
+            db, owner_phone, item.name, deduct_quantity, item.unit,
+            item_data.get("unit_price"), "OUT", source_type, source_id,
+            recorded_by_id, "Sold",
         )
         unit_label = f" {item.unit}" if item.unit else ""
         updates.append(f"{product.title()}: {item.quantity:,}{unit_label} left")
-    return updates, missing
+        if item.low_stock_alert is not None and item.quantity <= item.low_stock_alert:
+            low_stock_alerts.append(
+                f"{item.name.title()}: only {item.quantity:,}{unit_label} left"
+            )
+    return updates, missing, low_stock_alerts
 
 
 def get_supplier_balance(db, supplier_id):
@@ -266,7 +263,7 @@ def build_supplier_list_message(db, owner_phone):
 
 
 def build_supplier_due_message(db, owner_phone):
-    start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    start = _utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
     purchases = db.query(SupplierPurchase, Supplier).join(
         Supplier,
@@ -288,3 +285,97 @@ def build_supplier_due_message(db, owner_phone):
         count += 1
         msg += f"{count}. {supplier.name.title()} - N{balance:,} for {purchase.product.title()}\n"
     return msg.strip() if count else "No supplier payment due today."
+
+
+# ── Manual stock operations ──────────────────────────────────────────────────
+
+def upsert_stock_with_prices(db, owner_phone, product, unit, cost_price, selling_price):
+    """Create or update an inventory item's cost and selling prices."""
+    product, unit = normalize_item(product, unit)
+    item = find_matching_inventory_item(db, owner_phone, product, unit)
+    if not item:
+        item = InventoryItem(
+            owner_phone=owner_phone,
+            name=product.lower(),
+            unit=unit,
+            quantity=0,
+            cost_price=cost_price,
+            selling_price=selling_price,
+            is_available=True,
+        )
+        db.add(item)
+    else:
+        item.cost_price = cost_price
+        item.selling_price = selling_price
+        item.is_available = True
+        item.updated_at = _utcnow()
+    return item
+
+
+def manual_stock_add(db, owner_phone, product, quantity, unit, user_id, note="Manual add"):
+    """Add stock without a supplier transaction (e.g. owner counted and corrected)."""
+    return add_inventory_movement(
+        db, owner_phone, product, quantity, unit, None,
+        "IN", "MANUAL", None, user_id, note,
+    )
+
+
+def manual_stock_remove(db, owner_phone, product, quantity, unit, user_id, note="Manual remove"):
+    """Remove stock without a sale (spoilage, theft, expiry, correction)."""
+    return add_inventory_movement(
+        db, owner_phone, product, quantity, unit, None,
+        "OUT", "MANUAL", None, user_id, note,
+    )
+
+
+def manual_stock_set(db, owner_phone, product, quantity, unit, user_id):
+    """Set an absolute stock count (physical stock-take correction)."""
+    product, unit = normalize_item(product, unit)
+    item = find_matching_inventory_item(db, owner_phone, product, unit)
+    if not item:
+        item = InventoryItem(
+            owner_phone=owner_phone,
+            name=product.lower(),
+            unit=unit,
+            quantity=0,
+        )
+        db.add(item)
+        db.flush()
+
+    old_qty = item.quantity or 0
+    diff = quantity - old_qty
+    if diff != 0:
+        movement = InventoryMovement(
+            owner_phone=owner_phone,
+            item_id=item.id,
+            movement_type="IN" if diff > 0 else "OUT",
+            quantity=abs(diff),
+            source_type="MANUAL_SET",
+            recorded_by_id=user_id,
+            note=f"Stock count: set to {quantity}",
+        )
+        db.add(movement)
+    item.quantity = quantity
+    item.updated_at = _utcnow()
+    return item
+
+
+def set_low_stock_alert(db, owner_phone, product, unit, threshold):
+    """Set the low-stock alert threshold for an inventory item."""
+    product, unit = normalize_item(product, unit)
+    item = find_matching_inventory_item(db, owner_phone, product, unit)
+    if not item:
+        return None
+    item.low_stock_alert = threshold
+    item.updated_at = _utcnow()
+    return item
+
+
+def get_total_stock_value(db, owner_phone):
+    """Sum of (quantity × cost_price) across all inventory items."""
+    items = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.quantity > 0,
+        InventoryItem.cost_price.isnot(None),
+    ).all()
+    return sum((i.quantity or 0) * (i.cost_price or 0) for i in items)

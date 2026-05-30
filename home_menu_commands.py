@@ -12,45 +12,50 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
         send_message(phone, "Record a sale:\nAde bought rice 5000\nAde paid 3000")
         return {"status": "owner_home_record_help"}
 
-    if normalized in ["2", "add customer", "customer"]:
+    if normalized in ["2", "select product", "sell", "product", "products"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "SELECT_PRODUCT"}}
+
+    if normalized in ["3", "add customer", "customer"]:
         db.delete(pending)
         db.commit()
         send_message(phone, "Add a customer:\nJohn 08012345678\nor: add customer John")
         return {"status": "owner_home_add_customer"}
 
-    if normalized in ["3", "dashboard"]:
+    if normalized in ["4", "dashboard"]:
         pending.action = "DASHBOARD_MENU"
         db.commit()
         send_message(phone, build_dashboard_menu_message())
         return {"status": "owner_home_dashboard"}
 
-    if normalized in ["4", "stock", "inventory", "my stock", "my inventory"]:
+    if normalized in ["5", "stock", "inventory", "my stock", "my inventory"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "INVENTORY_LIST"}}
 
-    if normalized in ["5", "supplier", "suppliers", "supplier list", "my suppliers"]:
+    if normalized in ["6", "supplier", "suppliers", "supplier list", "my suppliers"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "SUPPLIER_LIST"}}
 
-    if normalized in ["6", "due", "reminders", "due reminders", "debt reminders"]:
+    if normalized in ["7", "due", "reminders", "due reminders", "debt reminders"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "DUE_MENU"}}
 
-    if normalized in ["7", "upgrade", "my plan", "plan"]:
+    if normalized in ["8", "upgrade", "my plan", "plan"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
         send_message(phone, build_upgrade_message(user))
         return {"status": "owner_home_upgrade"}
 
-    if normalized in ["9", "staff", "staff menu"] and subscription["plan"] == PLAN_PRO:
+    if normalized in ["10", "staff", "staff menu"] and subscription["plan"] == PLAN_PRO:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "STAFF_MENU"}}
 
-    if normalized in ["8", "formats", "help", "format"]:
+    if normalized in ["9", "formats", "help", "format"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "FORMATS"}}

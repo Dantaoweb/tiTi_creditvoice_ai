@@ -513,6 +513,8 @@ class PendingAction(Base):
 
     items_json = Column(String, nullable=True)
 
+    payload_json = Column(String, nullable=True)
+
     source_text = Column(String, nullable=True)
 
     last_customer = Column(String)

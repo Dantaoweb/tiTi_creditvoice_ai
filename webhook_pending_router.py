@@ -11,7 +11,11 @@ from constants import (
     ACTION_DASHBOARD_MENU,
     ACTION_ONBOARD_CUSTOMER,
     ACTION_RESIGN_CONFIRM,
+    ACTION_STOCK_ADD_CONFIRM,
+    SELECT_PRODUCT_ACTIONS,
 )
+from inventory_suppliers import upsert_stock_with_prices
+from select_product_commands import handle_select_product_pending
 from home_menu_commands import handle_home_menu_pending
 from messages import edit_prompt_for_pending
 from models import Customer, PendingAction, Transaction
@@ -52,10 +56,21 @@ def add_stock_option_to_menu(message):
 
 def build_add_stock_help_message():
     return (
-        "To add stock, send it like:\n"
+        "Stock\n\n"
+        "View stock:\n"
+        "stock\n\n"
+        "Add stock (with supplier):\n"
+        "Ayo supply me 10 bags rice at 5000\n"
         "I buy 10 packs paracetamol from Ayo at 1800 each\n\n"
-        "You can also check stock by sending:\n"
-        "stock"
+        "Add stock (cash / no supplier):\n"
+        "I buy 10 bags rice at 5000 each\n\n"
+        "Manual adjustment (owner / full-access staff only for remove & set):\n"
+        "add stock 10 bags rice\n"
+        "remove stock 5 bags rice (spoilage)\n"
+        "remove stock 2 carton malt (expired)\n"
+        "set stock rice 50 bags\n\n"
+        "Set low-stock alert:\n"
+        "stock alert rice 10"
     )
 
 
@@ -226,6 +241,25 @@ def handle_pending_actions(
         if result and result.response:
             return result
 
+    # ── Select product cart flow ─────────────────────────────────────────────
+    if pending and pending.action in SELECT_PRODUCT_ACTIONS and not is_command:
+        from webhook_context import load_webhook_user_context
+        result = handle_select_product_pending(
+            db, phone, text, pending, user,
+            business_owner_phone, visible_recorded_by_id,
+            subscription, message_id, business_name, send_whatsapp_message,
+        )
+        if result:
+            return _wrap(result)
+
+    # ── Add stock with prices confirmation ───────────────────────────────────
+    if pending and pending.action == ACTION_STOCK_ADD_CONFIRM and not is_command:
+        result = _wrap(_handle_stock_add_confirm(
+            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
+        ))
+        if result and result.response:
+            return result
+
     # ── App admin dashboard ──────────────────────────────────────────────────
     if pending and not is_command:
         result = _wrap(handle_app_admin_dashboard_pending(
@@ -259,6 +293,48 @@ def handle_pending_actions(
             return result
 
     return PendingRouteResult(parsed=parsed, is_command=is_command)
+
+
+def _handle_stock_add_confirm(db, phone, text, pending, user, business_owner_phone, send_message):
+    """Save or cancel the STOCK_ADD_WITH_PRICES confirmation."""
+    normalized = text.strip().lower()
+
+    if normalized in ["edit", "no", "cancel", "back"]:
+        db.delete(pending)
+        db.commit()
+        send_message(
+            phone,
+            "Cancelled. Send your stock again:\n"
+            "add stock rice cost 3000 sell 4000"
+        )
+        return {"status": "stock_add_confirm_cancelled"}
+
+    if normalized != "yes":
+        send_message(phone, "Reply YES to save or EDIT to change.")
+        return {"status": "stock_add_confirm_waiting"}
+
+    items = json.loads(pending.items_json or "[]")
+    saved = []
+    for item_data in items:
+        item = upsert_stock_with_prices(
+            db,
+            business_owner_phone,
+            item_data["product"],
+            item_data.get("unit"),
+            item_data["cost"],
+            item_data["sell"],
+        )
+        unit_label = f" {item.unit}" if item.unit else ""
+        saved.append(f"{item.name.title()}{unit_label} — sell N{item.selling_price:,}")
+
+    db.delete(pending)
+    db.commit()
+
+    send_message(
+        phone,
+        "Stock saved:\n" + "\n".join(saved) + "\n\nSend 'select product' to start selling."
+    )
+    return {"status": "stock_add_confirm_saved"}
 
 
 def _handle_onboard_customer(
