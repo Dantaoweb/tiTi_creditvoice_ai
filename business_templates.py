@@ -745,6 +745,89 @@ INDUSTRY_TEMPLATES = {
 }
 
 
+RECEIPT_CONFIG = {
+    "retail_trading": {
+        "title": "Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you for your business.",
+    },
+    "pharmacy": {
+        "title": "Pharmacy Receipt",
+        "customer_label": "Patient",
+        "amount_label": "Total",
+        "footer": "Keep this receipt for reference.",
+    },
+    "school": {
+        "title": "Fee Payment Receipt",
+        "customer_label": "Student",
+        "amount_label": "Amount",
+        "footer": "Please keep this receipt as proof of payment.",
+    },
+    "salon_beauty": {
+        "title": "Service Receipt",
+        "customer_label": "Client",
+        "amount_label": "Total",
+        "footer": "Thank you for visiting us.",
+    },
+    "artisan_services": {
+        "title": "Work Receipt",
+        "customer_label": "Client",
+        "amount_label": "Total",
+        "footer": "Thank you for your patronage.",
+    },
+    "food_hospitality": {
+        "title": "Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you, come again!",
+    },
+    "agriculture": {
+        "title": "Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you for your business.",
+    },
+    "transport_logistics": {
+        "title": "Trip / Delivery Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Amount",
+        "footer": "Thank you for choosing us.",
+    },
+    "real_estate_rentals": {
+        "title": "Payment Receipt",
+        "customer_label": "Tenant",
+        "amount_label": "Amount",
+        "footer": "Please keep this receipt as proof of payment.",
+    },
+    "professional_services": {
+        "title": "Invoice / Receipt",
+        "customer_label": "Client",
+        "amount_label": "Total",
+        "footer": "Thank you for your patronage.",
+    },
+    "thrift_contribution": {
+        "title": "Contribution Receipt",
+        "customer_label": "Participant",
+        "amount_label": "Amount",
+        "footer": "Thank you for your contribution.",
+    },
+}
+
+DEFAULT_RECEIPT_CONFIG = {
+    "title": "Receipt",
+    "customer_label": "Customer",
+    "amount_label": "Total",
+    "footer": "Thank you for your business.",
+}
+
+
+def receipt_config_for_user(user):
+    """Return the niche-specific receipt config for a business owner."""
+    key = template_key_for_user(user)
+    return RECEIPT_CONFIG.get(key, DEFAULT_RECEIPT_CONFIG)
+
+
 def business_category_by_key(key):
     for category in BUSINESS_CATEGORIES:
         if category["key"] == key:

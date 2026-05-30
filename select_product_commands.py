@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime, timezone
 
+from business_templates import DEFAULT_RECEIPT_CONFIG, receipt_config_for_user
 from constants import (
     ACTION_SELECT_PRODUCT_CART,
     ACTION_SELECT_PRODUCT_CONFIRM,
@@ -12,7 +13,7 @@ from constants import (
     ACTION_SELECT_PRODUCT_QTY,
 )
 from inventory_suppliers import deduct_inventory_for_items
-from models import Customer, InventoryItem, PendingAction, Transaction
+from models import Customer, InventoryItem, PendingAction, Transaction, User
 from parser import add_transaction_items
 from plans import plan_allows_feature
 from reports import get_balance
@@ -82,19 +83,22 @@ def build_confirm_message(cart, customer_name, paid, total, due_date_str=None):
     return msg
 
 
-def build_owner_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id):
+def build_owner_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id, config=None):
+    cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
     date_str = now.strftime("%d/%m/%Y  %H:%M")
     lines = [
         business_name.upper(),
         date_str,
         "--------------------",
+        f"{cfg['customer_label']}: {customer_name.title()}",
+        "--------------------",
     ]
     for item in cart:
         lines.append(f"{item['product'].title()}")
         lines.append(f"  x{item['quantity']} @ N{item['unit_price']:,} = N{item['total']:,}")
     lines.append("--------------------")
-    lines.append(f"Total:    N{total:,}")
+    lines.append(f"{cfg['amount_label']}:    N{total:,}")
     lines.append(f"Paid:     N{paid:,}")
     if balance > 0:
         lines.append(f"Balance:  N{balance:,}")
@@ -102,23 +106,27 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
             lines.append(f"Due:      {due_date_str}")
     lines.append("--------------------")
     lines.append(f"Ref: TXN-{tx_id}")
-    lines.append("Thank you!")
+    lines.append(cfg["footer"])
     return "\n".join(lines)
 
 
-def build_customer_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id):
+def build_customer_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id, config=None):
+    cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
     date_str = now.strftime("%d/%m/%Y  %H:%M")
     lines = [
-        f"Receipt from {business_name.title()}",
+        cfg["title"].upper(),
+        business_name.title(),
         date_str,
+        "--------------------",
+        f"{cfg['customer_label']}: {customer_name.title()}",
         "--------------------",
     ]
     for item in cart:
         lines.append(f"{item['product'].title()}")
         lines.append(f"  x{item['quantity']} @ N{item['unit_price']:,} = N{item['total']:,}")
     lines.append("--------------------")
-    lines.append(f"Total:    N{total:,}")
+    lines.append(f"{cfg['amount_label']}:    N{total:,}")
     lines.append(f"Paid:     N{paid:,}")
     if balance > 0:
         lines.append(f"Balance:  N{balance:,}")
@@ -126,7 +134,7 @@ def build_customer_receipt(business_name, customer_name, cart, total, paid, bala
             lines.append(f"Due date: {due_date_str}")
     lines.append("--------------------")
     lines.append(f"Ref: TXN-{tx_id}")
-    lines.append("Keep this as your receipt.")
+    lines.append(cfg["footer"])
     return "\n".join(lines)
 
 
@@ -489,9 +497,13 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     db.delete(pending)
     db.commit()
 
+    # ── Get niche receipt config from owner's business type ───────────────────
+    owner_user = db.query(User).filter(User.phone == business_owner_phone).first()
+    receipt_cfg = receipt_config_for_user(owner_user) if owner_user else DEFAULT_RECEIPT_CONFIG
+
     # ── Build and send owner receipt ──────────────────────────────────────────
     owner_receipt = build_owner_receipt(
-        business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id
+        business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id, receipt_cfg
     )
     if stock_lines:
         owner_receipt += "\n\nStock updated:\n" + "\n".join(stock_lines)
@@ -501,7 +513,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     # ── Forward receipt to customer if phone exists ───────────────────────────
     if customer_phone:
         customer_receipt = build_customer_receipt(
-            business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id
+            business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id, receipt_cfg
         )
         send_message(customer_phone, customer_receipt)
     else:
