@@ -1322,6 +1322,8 @@ def extract_customer_onboarding(text):
 def parse_message(text):
 
     clean_text = text.lower().strip()
+    if clean_text in SELECT_PRODUCT_COMMANDS:
+        return {"type": "SELECT_PRODUCT"}
 
     if clean_text in ["formats", "format", "f"]:
         return {"type": "FORMATS"}
@@ -2314,3 +2316,12 @@ def parse_message(text):
 # 💰 BALANCE
 # =========================
 
+SELECT_PRODUCT_COMMANDS = {
+    "select product",
+    "select products",
+    "sell product",
+    "sell products",
+    "sell",
+    "product",
+    "products",
+}
