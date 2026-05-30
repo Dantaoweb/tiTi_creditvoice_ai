@@ -6,11 +6,10 @@ from subscriptions import ensure_feature_allowed
 
 def build_due_menu_message():
     return (
-        "Due Reminder Menu\n\n"
-        "1. Due in 2 Days\n"
-        "2. Due Today\n"
-        "3. Overdue Debtors\n\n"
-        "Reply with:\n1, 2, or 3"
+        "Reminders\n\n"
+        "1. Due in 2 days\n"
+        "2. Due today\n"
+        "3. Overdue"
     )
 
 
@@ -63,8 +62,7 @@ def format_due_selection(selection, due_list):
         else:
             msg += f"{index}. {debtor['name'].title()}: N{debtor['balance']:,}\n"
 
-    numbers = ", ".join(str(index) for index in range(1, len(due_list) + 1))
-    msg += f"\nSend:\n{numbers} to preview the reminder before sending to customer."
+    msg += "\nReply with a number to preview."
     return reminder_type, msg, empty_msg
 
 
@@ -128,7 +126,7 @@ def handle_reminder_pending(
 
     if pending.action == "REMINDER_SELECTION":
         if not text.isdigit():
-            send_message(phone, "Reply with reminder number.\nExample: 1")
+            send_message(phone, "Send a number. Example: 1")
             return {"status": "invalid_reminder_selection"}
 
         index = int(text)
@@ -145,19 +143,16 @@ def handle_reminder_pending(
 
         if reminder.customer_phone:
             confirm_msg = (
-                f"Preview reminder for {reminder.customer_name.title()}:\n\n"
+                f"Preview for {reminder.customer_name.title()}:\n\n"
                 f"{preview}\n\n"
-                f"Reply YES to send this reminder to {reminder.customer_name.title()} "
-                f"at {reminder.customer_phone}, or EDIT to cancel."
+                f"YES to send to {reminder.customer_phone}. EDIT to cancel."
             )
         else:
             confirm_msg = (
-                f"Preview reminder for {reminder.customer_name.title()}:\n\n"
+                f"Preview for {reminder.customer_name.title()}:\n\n"
                 f"{preview}\n\n"
-                "Customer phone is not set yet.\n"
-                "To send this reminder, set the phone first:\n\n"
-                f"{reminder.customer_name} phone 08012345678\n\n"
-                "I will keep this reminder open. After setting the phone, reply YES to send."
+                f"No phone set. Send:\n{reminder.customer_name} phone 08012345678\n"
+                "Then reply YES."
             )
 
         pending.action = "REMINDER_CONFIRM"
@@ -181,10 +176,9 @@ def handle_reminder_pending(
             if not reminder.customer_phone:
                 send_message(
                     phone,
-                    f"Customer phone is not set for {reminder.customer_name.title()}.\n\n"
-                    "Set it using:\n"
-                    f"{reminder.customer_name} phone 08012345678\n\n"
-                    "I will keep this reminder open. After setting the phone, reply YES again."
+                    f"No phone for {reminder.customer_name.title()}. Send:\n"
+                    f"{reminder.customer_name} phone 08012345678\n"
+                    "Then reply YES again."
                 )
                 return {"status": "waiting_for_phone"}
 
@@ -201,10 +195,10 @@ def handle_reminder_pending(
         if normalized == "edit":
             db.delete(pending)
             db.commit()
-            send_message(phone, "Reminder cancelled. Reply DUE to start again.")
+            send_message(phone, "Cancelled. Send DUE to start again.")
             return {"status": "reminder_cancelled"}
 
-        send_message(phone, "Reply YES to send the reminder to the customer or EDIT to cancel.")
+        send_message(phone, "Send YES to send or EDIT to cancel.")
         return {"status": "reminder_confirm_prompt"}
 
     return None

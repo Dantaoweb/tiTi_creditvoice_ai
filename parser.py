@@ -3,7 +3,7 @@ import os
 import re
 import requests
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 
@@ -12,8 +12,18 @@ try:
 except ImportError:
     load_dotenv = None
 
-from item_normalizer import UNIT_PATTERN, normalize_item
+from admin import normalize_admin_role
+from constants import (
+    BUY_KEYWORDS,
+    DUE_TODAY_PHRASES,
+    DUE_TOMORROW_PHRASES,
+    NAME_SPLIT_KEYWORDS,
+    PAY_KEYWORDS,
+    SALE_KEYWORDS,
+)
+from item_normalizer import UNIT_PATTERN, UNIT_PHRASES, normalize_item
 from models import Customer, Transaction, TransactionItem
+from plans import PLAN_BASIC
 
 if load_dotenv:
     load_dotenv()
@@ -395,47 +405,7 @@ def extract_direct_sale_details(text):
         rest = quantity_match.group("rest").strip()
         rest = re.sub(r"\s+of\s+", " ", rest, count=1)
 
-        unit_phrases = [
-            "truck loads",
-            "truck load",
-            "trucks",
-            "truck",
-            "bags",
-            "bag",
-            "cartons",
-            "carton",
-            "crates",
-            "crate",
-            "packs",
-            "pack",
-            "plates",
-            "plate",
-            "pieces",
-            "piece",
-            "units",
-            "unit",
-            "loads",
-            "load",
-            "tons",
-            "ton",
-            "litres",
-            "litre",
-            "liters",
-            "liter",
-            "crates",
-            "crate",
-            "dozens",
-            "dozen",
-            "rolls",
-            "roll",
-            "congos",
-            "congo",
-            "kg",
-            "g",
-            "ml",
-            "l",
-        ]
-        for unit_phrase in unit_phrases:
+        for unit_phrase in UNIT_PHRASES:
             if rest == unit_phrase or rest.startswith(f"{unit_phrase} "):
                 unit = unit_phrase
                 product = rest[len(unit_phrase):].strip()
@@ -461,31 +431,12 @@ def extract_direct_sale_details(text):
 
 def extract_due_date_from_text(text):
     clean_text = text.lower()
-    today_phrases = [
-        "due today",
-        "pay today",
-        "balance today",
-        "will pay today",
-        "will balance today"
-    ]
-    tomorrow_phrases = [
-        "due tomorrow",
-        "due tommorrow",
-        "pay tomorrow",
-        "pay tommorrow",
-        "balance tomorrow",
-        "balance tommorrow",
-        "will pay tomorrow",
-        "will pay tommorrow",
-        "will balance tomorrow",
-        "will balance tommorrow"
-    ]
 
-    if any(phrase in clean_text for phrase in today_phrases):
-        return datetime.utcnow()
+    if any(phrase in clean_text for phrase in DUE_TODAY_PHRASES):
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
-    if any(phrase in clean_text for phrase in tomorrow_phrases):
-        return datetime.utcnow() + timedelta(days=1)
+    if any(phrase in clean_text for phrase in DUE_TOMORROW_PHRASES):
+        return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
 
     date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})", clean_text)
     if not date_match:
@@ -737,15 +688,7 @@ def parse_invoice_item(item_text):
         quantity = int(quantity_match.group("quantity"))
         rest = re.sub(r"\s+of\s+", " ", quantity_match.group("rest").strip(), count=1)
 
-        unit_phrases = [
-            "truck loads", "truck load", "trucks", "truck", "bags", "bag",
-            "cartons", "carton", "crates", "crate", "packs", "pack",
-            "plates", "plate",
-            "pieces", "piece", "units", "unit", "loads", "load", "tons", "ton",
-            "litres", "litre", "liters", "liter", "dozens", "dozen",
-            "rolls", "roll", "congos", "congo", "kg", "g", "ml", "l"
-        ]
-        for unit_phrase in unit_phrases:
+        for unit_phrase in UNIT_PHRASES:
             if rest == unit_phrase or rest.startswith(f"{unit_phrase} "):
                 unit = unit_phrase
                 product = rest[len(unit_phrase):].strip()
@@ -1110,7 +1053,7 @@ def price_total_from_marker(quantity, price, marker=None, priced_each=False):
 
 
 def get_customer_period_range(period, target_date=None):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     today = datetime(now.year, now.month, now.day)
 
     if period == "TODAY":
@@ -1907,15 +1850,6 @@ def parse_message(text):
     ]:
         return {"type": "REONBOARD"}
 
-    if clean_text in [
-        "formats",
-        "format",
-        "f"
-    ]:
-        return {
-            "type": "FORMATS"
-        }
-
     if clean_text.startswith("remind"):
         return {
             "type": "REMIND",
@@ -1996,62 +1930,7 @@ def parse_message(text):
     # =========================
     # 📅 DUE DATE
     # =========================
-    today_phrases = [
-        "due today",
-        "pay today",
-        "balance today",
-        "will pay today",
-        "will balance today"
-    ]
-
-    tomorrow_phrases = [
-        "due tomorrow",
-        "due tommorrow",
-        "pay tomorrow",
-        "pay tommorrow",
-        "balance tomorrow",
-        "balance tommorrow",
-        "will pay tomorrow",
-        "will pay tommorrow",
-        "will balance tomorrow",
-        "will balance tommorrow"
-    ]
-    
-    date_match = None
-    
-    if any(
-        phrase in clean_text 
-        for phrase in today_phrases):
-            
-        due_date = datetime.utcnow()
-
-    elif any(
-        phrase in clean_text
-        for phrase in tomorrow_phrases):
-            
-        due_date = (
-            datetime.utcnow() 
-            + timedelta(days=1)
-        )
-
-    else:
-         due_date = None
-
-         date_match = re.search(
-              r'(\d{1,2}/\d{1,2}/\d{2,4})',
-              clean_text
-         )
-
-    if due_date is None and date_match:
-
-        try:
-
-            date_text = date_match.group(1)
-            date_format = "%d/%m/%y" if len(date_text.rsplit("/", 1)[-1]) == 2 else "%d/%m/%Y"
-            due_date = datetime.strptime(date_text, date_format)
-
-        except:
-            return None
+    due_date = extract_due_date_from_text(clean_text)
 
     due_clause_pattern = (
         r"\s*(?:,?\s+and)?\s+"
@@ -2065,22 +1944,10 @@ def parse_message(text):
     # 🧠 DETECT TYPE
     # =========================
 
-    buy_keywords = [
-        "bought", "buy", "purchase", "purchased", "collect", "collected",
-        "took", "take", "carry", "carried", "owes", "owe", "owing"
-    ]
-    pay_keywords = [
-        "paid", "pay", "settle", "settled", "clear", "cleared",
-        "gave", "give", "send", "sent", "transfer", "transferred",
-        "transfered", "deposit", "deposited", "contribute", "contributed",
-        "contribution", "contributions", "save", "saved", "thrift", "ajo", "esusu"
-    ]
-    sale_keywords = ["sold", "sell", "supply", "supplied", "deliver", "delivered"]
-
     lowered_clean_text = clean_text.lower()
-    has_buy = bool(re.search(r"\b(" + "|".join(buy_keywords) + r")\b", lowered_clean_text))
-    has_pay = bool(re.search(r"\b(" + "|".join(pay_keywords) + r")\b", lowered_clean_text))
-    has_direct_sale = bool(re.match(r"^(?:i\s+)?(" + "|".join(sale_keywords) + r")\b", clean_text.lower()))
+    has_buy = bool(re.search(r"\b(" + "|".join(BUY_KEYWORDS) + r")\b", lowered_clean_text))
+    has_pay = bool(re.search(r"\b(" + "|".join(PAY_KEYWORDS) + r")\b", lowered_clean_text))
+    has_direct_sale = bool(re.match(r"^(?:i\s+)?(" + "|".join(SALE_KEYWORDS) + r")\b", clean_text.lower()))
 
     if has_direct_sale:
         sale_body = re.sub(
@@ -2241,45 +2108,7 @@ def parse_message(text):
     for i, word in enumerate(words):
         normalized_word = re.sub(r"[^a-zA-Z]", "", word).lower()
 
-        if normalized_word in [
-            "bought",
-            "buy",
-            "purchase",
-            "purchased",
-            "collect",
-            "collected",
-            "took",
-            "take",
-            "carry",
-            "carried",
-            "owes",
-            "owe",
-            "owing",
-            "paid",
-            "pay",
-            "settle",
-            "settled",
-            "clear",
-            "cleared",
-            "gave",
-            "give",
-            "send",
-            "sent",
-            "transfer",
-            "transferred",
-            "transfered",
-            "deposit",
-            "deposited",
-            "contribute",
-            "contributed",
-            "contribution",
-            "contributions",
-            "save",
-            "saved",
-            "thrift",
-            "ajo",
-            "esusu"
-        ]:
+        if normalized_word in NAME_SPLIT_KEYWORDS:
 
             action_index = i
 

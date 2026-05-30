@@ -7,7 +7,6 @@ from business_templates import (
     template_examples_for_user,
     template_next_steps_for_user,
     template_plan_value_for_user,
-    template_quick_actions_for_user,
 )
 from plans import PLAN_GO, PLAN_PRO, normalize_plan
 
@@ -48,10 +47,6 @@ def _numbered_lines(items, start=1):
     return "\n".join(f"{index}. {item}" for index, item in enumerate(items, start=start))
 
 
-def _quick_action_lines(user):
-    actions = template_quick_actions_for_user(user)
-    return "\n".join(f"{index}. {label} - {instruction}" for index, (label, instruction) in enumerate(actions, start=1))
-
 
 def build_industry_value_message(user):
     template = industry_template_for_user(user)
@@ -80,22 +75,21 @@ def build_upgrade_message(user=None):
     if user:
         values = template_plan_value_for_user(user)
         industry_value = (
-            f"\nFor {business_type_display(user)}:\n"
+            f"For {business_type_display(user)}:\n"
             f"GO: {values['go'][0]}\n"
             f"PRO: {values['pro'][0]}\n\n"
         )
     return (
-        "CreditVoice Plans\n\n"
+        "Plans\n\n"
         "BASIC - Free\n"
-        "1 user, 50 customers, 100 monthly transactions, basic debt tracking.\n\n"
+        "50 customers, 100 transactions/month.\n\n"
         f"{industry_value}"
         f"1. GO - N{go_price:,}/month\n"
-        "For one-owner businesses. Unlimited customers, unlimited transactions, invoices, direct sales, inventory, suppliers, reports, reminders, and notes.\n\n"
+        "Unlimited customers, transactions, inventory, suppliers, reminders, reports.\n\n"
         f"2. PRO - N{pro_price:,}/month\n"
-        "Everything in Go plus staff, staff permissions, team notes, and future multilingual voice.\n\n"
-        "3. View my current plan\n"
-        "4. Cancel\n\n"
-        "Reply with 1, 2, 3, or 4."
+        "GO + staff management.\n\n"
+        "3. My current plan\n"
+        "4. Cancel"
     )
 
 
@@ -154,96 +148,67 @@ def build_plan_payment_message(plan):
 
 
 def build_post_onboarding_menu(business_name, user=None):
-    type_line = f"Type: {business_type_display(user)}\n" if user else ""
+    type_line = f"{business_type_display(user)}\n" if user else ""
     examples = template_examples_for_user(user) if user else [
         "Ade bought rice 5000",
         "Ade paid 3000",
     ]
-    next_steps = template_next_steps_for_user(user) if user else [
-        "Confirm with YES to save or EDIT to correct.",
-        "Send dashboard to review your business.",
-        "Send MENU to see the main menu, or BACK/CANCEL/DONE to close the current flow.",
-    ]
     return (
-        f"Account created.\n\n"
+        f"Account created.\n"
         f"Business: {business_name.title()}\n"
         f"{type_line}"
         "Plan: BASIC\n\n"
-        "Start with one of these:\n"
-        f"{examples[0]}\n"
-        f"{examples[1]}\n\n"
-        "Quick actions:\n"
-        f"{_quick_action_lines(user) if user else '1. Formats - Send: formats'}\n\n"
-        "How to move around:\n"
-        f"{_numbered_lines(next_steps)}\n\n"
-        "What next?\n"
-        "1. See formats\n"
+        f"Try sending:\n{examples[0]}\n{examples[1]}\n\n"
+        "Or pick one:\n"
+        "1. Help & formats\n"
         "2. Add customer\n"
-        "3. View dashboard\n"
+        "3. Dashboard\n"
         "4. Upgrade\n\n"
-        "Reply with a number, or send MENU anytime."
+        "Send MENU anytime."
     )
 
 
 def build_owner_home_menu(user, subscription):
     if subscription["plan"] == PLAN_PRO:
-        extra_lines = "\n9. Staff menu"
+        extra_lines = "\n9. Staff"
     else:
         extra_lines = ""
-    examples = template_examples_for_user(user)
     return (
-        f"Hello {user.name.title()}.\n\n"
-        f"Business type: {business_type_display(user)}\n\n"
-        "Main Menu\n"
-        "1. Record transaction\n"
+        f"Hi {user.name.title()}.\n\n"
+        "1. Record sale\n"
         "2. Add customer\n"
         "3. Dashboard\n"
-        "4. Stock / inventory\n"
+        "4. Stock\n"
         "5. Suppliers\n"
-        "6. Due reminders\n"
-        "7. Upgrade / My plan\n"
-        "8. Help formats"
+        "6. Reminders\n"
+        "7. My plan\n"
+        "8. Help & formats"
         f"{extra_lines}\n\n"
-        "Fast examples:\n"
-        f"{examples[0]}\n"
-        f"{examples[1]}\n\n"
-        "Quick actions:\n"
-        f"{_quick_action_lines(user)}\n\n"
-        "Send MENU anytime to return here. Send BACK, CANCEL, DONE, or EXIT to close the current step."
+        "MENU to return here anytime."
     )
 
 
 def build_staff_home_menu(user, business_name, can_view_all):
-    access = "Can view all business transactions" if can_view_all else "Own records only"
+    access = "All records" if can_view_all else "Own records only"
     return (
-        f"Hello {user.name.title()}.\n\n"
-        f"You are staff under {business_name.title()}.\n"
+        f"Hi {user.name.title()}. Staff at {business_name.title()}.\n"
         f"Access: {access}\n\n"
-        "You can:\n"
-        "1. Record transaction\n"
-        "2. View customers you handled\n"
+        "1. Record sale\n"
+        "2. My customers\n"
         "3. Dashboard\n"
-        "4. Stock / inventory\n"
+        "4. Stock\n"
         "5. Suppliers\n"
-        "6. Help formats\n"
+        "6. Help & formats\n"
         "7. Resign\n\n"
-        "Send MENU anytime to return here. Send BACK, CANCEL, DONE, or EXIT to close the current step."
+        "MENU to return here anytime."
     )
 
 
 def build_invalid_message(user=None):
     examples = template_examples_for_user(user)
-    next_steps = template_next_steps_for_user(user)
     return (
-        "I could not understand that yet.\n\n"
-        "Try:\n"
-        f"{examples[0]}\n"
-        f"{examples[1]}\n"
-        f"{examples[2]}\n"
-        "upgrade\n\n"
-        "Useful next steps:\n"
-        f"{_numbered_lines(next_steps)}\n\n"
-        "Send FORMATS for more examples, or MENU to go home."
+        f"Not understood. Try:\n{examples[0]}\n\n"
+        "Send MENU for options or FORMATS for examples."
     )
 
 
@@ -423,15 +388,3 @@ def apply_voice_confirmation_options(confirm_msg, source_text=None):
     ).strip()
     confirm_msg = f"{confirm_msg}\n\nReply:\n1. Save\n2. Edit text\n3. Send voice again"
     return f"I heard:\n{source_text}\n\n{confirm_msg}"
-def build_account_ready_menu():
-    return (
-        "Account created.\n\n"
-        "Choose an option:\n\n"
-        "1. See formats\n"
-        "2. Add customer\n"
-        "3. View dashboard\n"
-        "4. Add stock\n"
-        "5. Upgrade\n\n"
-        "Send MENU anytime."
-    )
-

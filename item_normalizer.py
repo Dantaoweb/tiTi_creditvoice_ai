@@ -50,6 +50,14 @@ UNIT_PATTERN = "|".join(
     for unit in sorted(UNIT_ALIASES, key=len, reverse=True)
 )
 
+# Ordered list of unit strings (longest first) for greedy matching in parser.
+# "each" excluded — parser strips it as a price modifier, not a container unit.
+UNIT_PHRASES = sorted(
+    (u for u in UNIT_ALIASES if u != "each"),
+    key=len,
+    reverse=True,
+)
+
 
 def normalize_unit(unit):
     if not unit:

@@ -221,3 +221,40 @@ def handle_staff_command(db, phone, parsed, user, subscription, business_name, s
         return {"status": "resign_confirm_sent"}
 
     return None
+
+
+def handle_resign_pending(db, phone, text, pending, user, business_owner_phone, business_name, send_message):
+    """
+    Handles the RESIGN_CONFIRM pending state.
+    Extracted from webhook_pending_router so the router stays a thin dispatcher.
+    """
+    normalized = text.strip()
+
+    if normalized in ["1", "yes"]:
+        user.role = "user"
+        user.parent_id = None
+        user.can_view_all_transactions = False
+        db.delete(pending)
+        db.commit()
+        send_message(
+            phone,
+            f"You have successfully resigned. You no longer have access to {business_name.title()}'s data."
+        )
+        if business_owner_phone != phone:
+            send_message(
+                business_owner_phone,
+                f"Notice: {user.name.title()} has resigned as your staff member."
+            )
+        return {"status": "resigned_success"}
+
+    if normalized in ["2", "no", "edit"]:
+        db.delete(pending)
+        db.commit()
+        send_message(phone, "Resignation cancelled. You are still staff.")
+        return {"status": "resigned_cancelled"}
+
+    send_message(
+        phone,
+        f"Are you sure you want to stop working with {business_name.title()}?\n\n1. Yes, Confirm\n2. No, Cancel"
+    )
+    return {"status": "resign_confirm_waiting"}

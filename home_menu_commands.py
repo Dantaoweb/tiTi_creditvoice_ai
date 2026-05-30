@@ -1,4 +1,4 @@
-from messages import build_owner_home_menu, build_staff_home_menu, build_upgrade_message
+from messages import build_upgrade_message
 from plans import PLAN_PRO
 from reports import build_dashboard_menu_message
 
@@ -9,17 +9,13 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
     if normalized in ["1", "record", "record transaction", "transaction"]:
         db.delete(pending)
         db.commit()
-        send_message(phone, "Send a transaction like:\nAde bought rice 5000\nAde paid 3000")
+        send_message(phone, "Record a sale:\nAde bought rice 5000\nAde paid 3000")
         return {"status": "owner_home_record_help"}
 
     if normalized in ["2", "add customer", "customer"]:
         db.delete(pending)
         db.commit()
-        send_message(
-            phone,
-            "To add a customer, send their name and phone number like:\n"
-            "John 08012345678\n\nYou can also send:\nadd customer John"
-        )
+        send_message(phone, "Add a customer:\nJohn 08012345678\nor: add customer John")
         return {"status": "owner_home_add_customer"}
 
     if normalized in ["3", "dashboard"]:

@@ -227,22 +227,16 @@ def build_dashboard_summary_message(summary, period=None):
 
 def build_dashboard_menu_message():
     return (
-        "Dashboard Menu\n\n"
-        "1. Today dashboard\n"
-        "2. This week dashboard\n"
-        "3. This month dashboard\n"
-        "4. This year dashboard\n"
-        "5. All-time dashboard\n"
+        "Dashboard\n\n"
+        "1. Today\n"
+        "2. This week\n"
+        "3. This month\n"
+        "4. This year\n"
+        "5. All time\n"
         "6. Customer count\n"
         "7. Customer list\n"
         "8. Unpaid debtors\n"
-        "9. Product leaderboard\n\n"
-        "Reply with 1-9.\n"
-        "You can also send commands like:\n"
-        "dashboard today\n"
-        "list customers\n"
-        "unpaid debtors\n\n"
-        "Send exit, back, done, or cancel to close."
+        "9. Product leaderboard"
     )
 
 

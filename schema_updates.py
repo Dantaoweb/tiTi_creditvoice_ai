@@ -134,3 +134,38 @@ def ensure_schema_updates(engine):
                 connection.execute(
                     text("ALTER TABLE transactions ALTER COLUMN customer_id DROP NOT NULL")
                 )
+
+    # ── payload_json column for PendingAction ───────────────────────────────
+    # Gives flows a typed JSON payload slot so new state no longer requires
+    # adding columns to the shared pending_actions table.
+    pending_columns = {
+        column["name"]
+        for column in inspector.get_columns("pending_actions")
+    }
+    if "payload_json" not in pending_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE pending_actions ADD COLUMN payload_json VARCHAR")
+            )
+
+    # ── Performance indexes for existing databases ───────────────────────────
+    # SQLAlchemy index=True only creates indexes on CREATE TABLE.
+    # For existing databases we run CREATE INDEX IF NOT EXISTS here.
+    if engine.dialect.name == "postgresql":
+        indexes = [
+            ("ix_customers_owner_phone",       "customers",          "owner_phone"),
+            ("ix_transactions_customer_id",    "transactions",       "customer_id"),
+            ("ix_transactions_recorded_by_id", "transactions",       "recorded_by_id"),
+            ("ix_pending_actions_phone",       "pending_actions",    "phone"),
+            ("ix_suppliers_owner_phone",       "suppliers",          "owner_phone"),
+            ("ix_supplier_purchases_owner",    "supplier_purchases", "owner_phone"),
+            ("ix_inventory_items_owner_phone", "inventory_items",    "owner_phone"),
+        ]
+        with engine.begin() as connection:
+            for index_name, table, column in indexes:
+                connection.execute(
+                    text(
+                        f"CREATE INDEX IF NOT EXISTS {index_name} "
+                        f"ON {table} ({column})"
+                    )
+                )

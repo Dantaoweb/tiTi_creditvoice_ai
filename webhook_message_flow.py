@@ -192,8 +192,6 @@ def handle_webhook_body(body):
             parsed,
             is_command,
         )
-        if isinstance(pending_result, dict):
-            return pending_result
         if pending_result.response:
             return pending_result.response
         parsed = pending_result.parsed

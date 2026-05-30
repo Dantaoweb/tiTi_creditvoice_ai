@@ -1,9 +1,14 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
 from database import Base
+
+
+def utcnow():
+    """Timezone-aware UTC helper that returns a naive datetime for DB storage."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Customer(Base):
@@ -14,13 +19,13 @@ class Customer(Base):
 
     name = Column(String)
 
-    owner_phone = Column(String)
+    owner_phone = Column(String, index=True)
 
     customer_phone = Column(String, nullable=True)
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=utcnow
     )
 
 
@@ -54,7 +59,7 @@ class User(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=utcnow
     )
 
 
@@ -67,7 +72,8 @@ class Transaction(Base):
     customer_id = Column(
         Integer,
         ForeignKey("customers.id"),
-        nullable=True
+        nullable=True,
+        index=True,
     )
 
     type = Column(String)
@@ -82,11 +88,11 @@ class Transaction(Base):
 
     unit_price = Column(Integer, nullable=True)
 
-    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=utcnow
     )
 
     due_date = Column(
@@ -120,7 +126,7 @@ class TransactionItem(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=utcnow
     )
 
 
@@ -138,7 +144,7 @@ class TransactionNote(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=utcnow
     )
 
 
@@ -150,9 +156,9 @@ class Supplier(Base):
 
     name = Column(String)
 
-    owner_phone = Column(String)
+    owner_phone = Column(String, index=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class SupplierPurchase(Base):
@@ -163,7 +169,7 @@ class SupplierPurchase(Base):
 
     supplier_id = Column(Integer, ForeignKey("suppliers.id"))
 
-    owner_phone = Column(String)
+    owner_phone = Column(String, index=True)
 
     product = Column(String)
 
@@ -181,7 +187,7 @@ class SupplierPurchase(Base):
 
     recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class SupplierPayment(Base):
@@ -200,7 +206,7 @@ class SupplierPayment(Base):
 
     recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class InventoryItem(Base):
@@ -209,7 +215,7 @@ class InventoryItem(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    owner_phone = Column(String)
+    owner_phone = Column(String, index=True)
 
     name = Column(String)
 
@@ -237,9 +243,9 @@ class InventoryItem(Base):
 
     low_stock_alert = Column(Integer, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class InventoryMovement(Base):
@@ -266,7 +272,7 @@ class InventoryMovement(Base):
 
     recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class AutomationSettings(Base):
@@ -297,9 +303,9 @@ class AutomationSettings(Base):
 
     uncertainty_alerts_enabled = Column(Boolean, default=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class CustomerConversation(Base):
@@ -328,9 +334,9 @@ class CustomerConversation(Base):
 
     last_bot_message = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class SalesOrder(Base):
@@ -365,9 +371,9 @@ class SalesOrder(Base):
 
     notes = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class SalesOrderItem(Base):
@@ -394,7 +400,7 @@ class SalesOrderItem(Base):
 
     total = Column(Integer)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class SalesOrderPayment(Base):
@@ -413,7 +419,7 @@ class SalesOrderPayment(Base):
 
     evidence_ref = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class SubscriptionPayment(Base):
@@ -442,7 +448,7 @@ class SubscriptionPayment(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=utcnow
     )
 
     approved_at = Column(DateTime, nullable=True)
@@ -466,7 +472,7 @@ class AppAdminRole(Base):
 
     deactivated_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     deactivated_at = Column(DateTime, nullable=True)
 
@@ -477,7 +483,7 @@ class PendingAction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    phone = Column(String)
+    phone = Column(String, index=True)
 
     customer_name = Column(String)
 
@@ -518,7 +524,7 @@ class PendingAction(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=utcnow
     )
 
 
@@ -530,7 +536,7 @@ class ProcessedMessage(Base):
 
     message_id = Column(String, unique=True, index=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class CustomerMemory(Base):
@@ -582,9 +588,9 @@ class ReminderAutomationSettings(Base):
 
     reminder_time = Column(String, default="08:00")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class ReminderQueue(Base):
@@ -613,9 +619,9 @@ class ReminderQueue(Base):
 
     status = Column(String, default="PENDING_OWNER_CONFIRMATION")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class ReminderSendLog(Base):
@@ -636,4 +642,4 @@ class ReminderSendLog(Base):
 
     sent_date = Column(String)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
