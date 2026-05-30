@@ -1,4 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from models import (
     ReminderAutomationSettings,
@@ -41,7 +45,7 @@ def reminder_status_message(settings):
 
 
 def today_key():
-    return datetime.utcnow().strftime("%Y-%m-%d")
+    return _utcnow().strftime("%Y-%m-%d")
 
 
 def already_sent_today(db, owner_phone, reminder):
@@ -205,7 +209,7 @@ def handle_reminder_queue_action(db, phone, clean, normalized, owner_phone, send
 
     if skip_match:
         item.status = "SKIPPED"
-        item.updated_at = datetime.utcnow()
+        item.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Reminder #{item.id} skipped.")
         return {"status": "reminder_queue_skipped"}
@@ -216,7 +220,7 @@ def handle_reminder_queue_action(db, phone, clean, normalized, owner_phone, send
             return {"status": "reminder_queue_edit_missing"}
         item.message_text = clean_edit_text.strip()
         item.status = "PENDING_OWNER_CONFIRMATION"
-        item.updated_at = datetime.utcnow()
+        item.updated_at = _utcnow()
         db.commit()
         send_message(
             phone,
@@ -234,7 +238,7 @@ def handle_reminder_queue_action(db, phone, clean, normalized, owner_phone, send
         return {"status": "reminder_queue_already_sent"}
     send_message(item.customer_phone, item.message_text)
     item.status = "SENT"
-    item.updated_at = datetime.utcnow()
+    item.updated_at = _utcnow()
     create_send_log(db, owner_phone, item)
     db.commit()
     send_message(phone, f"Reminder #{item.id} sent to {item.customer_name.title()}.")
@@ -291,7 +295,7 @@ def handle_reminder_automation_command(db, phone, text, user, send_message):
 
     if normalized in ["reminder preview on", "reminder preview off"]:
         settings.preview_enabled = normalized.endswith("on")
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Reminder preview is {'ON' if settings.preview_enabled else 'OFF'}.")
         return {"status": "reminder_preview_updated"}
@@ -301,14 +305,14 @@ def handle_reminder_automation_command(db, phone, text, user, send_message):
             send_message(phone, "Auto-send reminders are for PRO. GO can queue previews for owner confirmation.")
             return {"status": "reminder_auto_send_pro_required"}
         settings.auto_send_enabled = normalized.endswith("on")
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Auto reminders are {'ON' if settings.auto_send_enabled else 'OFF'}.")
         return {"status": "reminder_auto_send_updated"}
 
     if normalized.startswith("reminder time "):
         settings.reminder_time = clean.split(" ", 2)[2].strip()
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Reminder time saved: {settings.reminder_time}")
         return {"status": "reminder_time_updated"}

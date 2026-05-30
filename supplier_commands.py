@@ -70,13 +70,23 @@ def handle_supplier_command(
             send_message(phone, "Not understood. Try:\nadd stock rice cost 3000 sell 4000")
             return {"status": "stock_add_prices_invalid"}
 
-        # Show confirmation
+        # Show confirmation — flag items where sell < cost
         lines = ["Confirm stock:\n"]
+        warnings = []
         for i, item in enumerate(items, start=1):
             unit_label = f" ({item['unit']})" if item.get("unit") else ""
+            margin_note = ""
+            if item["sell"] < item["cost"]:
+                margin_note = " ⚠ sell below cost"
+                warnings.append(item["product"].title())
             lines.append(
                 f"{i}. {item['product'].title()}{unit_label}\n"
-                f"   Cost: N{item['cost']:,}  Sell: N{item['sell']:,}"
+                f"   Cost: N{item['cost']:,}  Sell: N{item['sell']:,}{margin_note}"
+            )
+        if warnings:
+            lines.append(
+                f"\nWarning: {', '.join(warnings)} — selling price is below cost price.\n"
+                "Reply YES to save anyway or EDIT to change."
             )
         lines.append("\nReply YES to save or EDIT to change.")
 

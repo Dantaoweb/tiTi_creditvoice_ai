@@ -1,6 +1,8 @@
+from datetime import datetime, timezone
 from sqlalchemy import func
 
-from models import Customer, Transaction, TransactionNote
+from business_templates import DEFAULT_RECEIPT_CONFIG, receipt_config_for_user
+from models import Customer, Transaction, TransactionItem, TransactionNote, User
 from reports import (
     format_transaction_note_thread,
     get_balance,
@@ -8,6 +10,51 @@ from reports import (
     get_visible_transaction,
 )
 from subscriptions import ensure_feature_allowed
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx, balance, config):
+    cfg = config or DEFAULT_RECEIPT_CONFIG
+    now = _utcnow()
+    date_str = tx.created_at.strftime("%d/%m/%Y  %H:%M") if tx.created_at else now.strftime("%d/%m/%Y  %H:%M")
+
+    lines = [
+        business_name.upper(),
+        date_str,
+        "--------------------",
+        f"{cfg['customer_label']}: {customer.name.title()}",
+        "--------------------",
+    ]
+
+    # Use TransactionItems if they exist, otherwise use the transaction's own fields
+    items = db.query(TransactionItem).filter(TransactionItem.transaction_id == tx.id).all()
+    if items:
+        for item in items:
+            lines.append(f"{item.product.title()}")
+            qty_label = f"x{item.quantity} " if item.quantity and item.quantity > 1 else ""
+            lines.append(f"  {qty_label}@ N{item.unit_price:,} = N{item.total:,}")
+    elif tx.product:
+        qty = tx.quantity or 1
+        lines.append(f"{tx.product.title()}")
+        lines.append(f"  x{qty} = N{tx.amount:,}")
+    else:
+        lines.append(f"N{tx.amount:,}")
+
+    lines.append("--------------------")
+    lines.append(f"{cfg['amount_label']}:    N{tx.amount:,}")
+    if balance > 0:
+        lines.append(f"Balance:  N{balance:,}")
+    elif balance < 0:
+        lines.append(f"Credit:   N{abs(balance):,}")
+    else:
+        lines.append("Settled:  Fully paid")
+    lines.append("--------------------")
+    lines.append(f"Ref: TXN-{tx.id}")
+    lines.append(cfg["footer"])
+    return "\n".join(lines)
 
 
 def handle_customer_command(
@@ -128,6 +175,60 @@ def handle_customer_command(
             f"{recent_lines}"
         )
         return {"status": "customer_transactions"}
+
+    if command_type == "PRINT_RECEIPT":
+        # Look up owner for niche receipt config
+        owner = db.query(User).filter(User.phone == business_owner_phone).first()
+        receipt_cfg = receipt_config_for_user(owner) if owner else DEFAULT_RECEIPT_CONFIG
+        business_name = (owner.name if owner else "") or "Business"
+
+        # Find by transaction ID or by customer name (most recent BUY)
+        tx_id = parsed.get("transaction_id")
+        customer = None
+
+        if tx_id:
+            tx = db.query(Transaction).filter(
+                Transaction.id == tx_id,
+                Transaction.type == "BUY",
+            ).first()
+            if not tx or not tx.customer_id:
+                send_message(phone, f"Transaction #{tx_id} not found.")
+                return {"status": "print_receipt_tx_not_found"}
+            customer = db.query(Customer).filter(Customer.id == tx.customer_id).first()
+        else:
+            name = parsed.get("customer_name", "").lower()
+            customer = db.query(Customer).filter(
+                Customer.owner_phone == business_owner_phone,
+                Customer.name == name,
+            ).first()
+            if not customer:
+                send_message(phone, f"Customer not found: {name.title()}\nTry: print receipt [exact name]")
+                return {"status": "print_receipt_not_found"}
+            tx = db.query(Transaction).filter(
+                Transaction.customer_id == customer.id,
+                Transaction.type == "BUY",
+            ).order_by(Transaction.created_at.desc()).first()
+            if not tx:
+                send_message(phone, f"No purchase record found for {name.title()}.")
+                return {"status": "print_receipt_no_tx"}
+
+        balance = get_balance(db, customer.id, visible_recorded_by_id)
+        receipt = _build_reprint_receipt(
+            db, business_name, business_owner_phone,
+            customer, tx, balance, receipt_cfg,
+        )
+
+        send_message(phone, receipt)
+
+        if customer.customer_phone:
+            send_message(customer.customer_phone, receipt)
+        else:
+            send_message(
+                phone,
+                f"Tip: Save {customer.name.title()}'s number to send receipts:\n"
+                f"{customer.name} phone 08012345678"
+            )
+        return {"status": "print_receipt_sent"}
 
     if command_type == "BALANCE":
         name = text.replace("balance", "").strip().lower()

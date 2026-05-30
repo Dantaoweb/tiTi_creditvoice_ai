@@ -86,36 +86,41 @@ def handle_staff_home_menu(
     if normalized in ["1", "record", "record transaction", "transaction"]:
         db.delete(pending)
         db.commit()
-        send_message(phone, "Send a transaction like:\nAde bought rice 5000\nAde paid 3000")
+        send_message(phone, "Record a sale:\nAde bought rice 5000\nAde paid 3000")
         return {"status": "staff_home_record_help"}
 
-    if normalized in ["2", "customers", "customer list", "list customers"]:
+    if normalized in ["2", "select product", "sell", "product", "products"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "SELECT_PRODUCT"}}
+
+    if normalized in ["3", "customers", "customer list", "list customers"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "CUSTOMER_LIST", "period": None}}
 
-    if normalized in ["3", "dashboard"]:
+    if normalized in ["4", "dashboard"]:
         pending.action = "DASHBOARD_MENU"
         db.commit()
         send_message(phone, build_dashboard_menu_message())
         return {"status": "staff_home_dashboard"}
 
-    if normalized in ["4", "stock", "inventory", "my stock", "my inventory"]:
+    if normalized in ["5", "stock", "inventory", "my stock", "my inventory"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "INVENTORY_LIST"}}
 
-    if normalized in ["5", "supplier", "suppliers", "supplier list", "my suppliers"]:
+    if normalized in ["6", "supplier", "suppliers", "supplier list", "my suppliers"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "SUPPLIER_LIST"}}
 
-    if normalized in ["6", "formats", "help", "format"]:
+    if normalized in ["7", "formats", "help", "format"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "FORMATS"}}
 
-    if normalized in ["7", "resign"]:
+    if normalized in ["8", "resign"]:
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "RESIGN_REQUEST"}}

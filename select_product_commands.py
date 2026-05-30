@@ -16,8 +16,6 @@ from inventory_suppliers import deduct_inventory_for_items
 from models import Customer, InventoryItem, PendingAction, Transaction, User
 from parser import add_transaction_items
 from plans import plan_allows_feature
-from reports import get_balance
-from messages import balance_status_line
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

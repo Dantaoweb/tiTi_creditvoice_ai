@@ -1,4 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from admin import (
     ROLE_APP_ADMIN,
@@ -259,7 +263,7 @@ def handle_admin_subscription_command(db, phone, parsed, user, send_message, not
         target_owner.subscription_plan = normalize_plan(parsed["plan"])
         target_owner.subscription_status = "ACTIVE"
         if parsed.get("days"):
-            target_owner.subscription_expires_at = datetime.utcnow() + timedelta(days=parsed["days"])
+            target_owner.subscription_expires_at = _utcnow() + timedelta(days=parsed["days"])
         else:
             target_owner.subscription_expires_at = None
         db.commit()

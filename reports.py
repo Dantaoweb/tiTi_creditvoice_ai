@@ -1,4 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from sqlalchemy import func, or_
 
@@ -113,7 +117,7 @@ def get_yearly_sales(db, owner_phone=None, recorded_by_id=None):
 
 
 def get_period_range(period):
-    now = datetime.utcnow()
+    now = _utcnow()
     if period == "TODAY":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
@@ -537,7 +541,7 @@ def get_product_sales_by_date(db, owner_phone, date_text, recorded_by_id=None):
 
 
 def get_total_paid_today(db, owner_phone=None, recorded_by_id=None):
-    today = datetime.utcnow().date()
+    today = _utcnow().date()
     query = db.query(func.coalesce(func.sum(Transaction.amount), 0)).join(Customer, Transaction.customer_id == Customer.id)
     if owner_phone:
         query = query.filter(Customer.owner_phone == owner_phone)
@@ -603,7 +607,7 @@ def get_overdue_debtors(db, owner_phone=None, recorded_by_id=None):
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
 
-    today = datetime.utcnow()
+    today = _utcnow()
 
     for customer in customers:
 
@@ -661,7 +665,7 @@ def get_due_today(db, owner_phone=None, recorded_by_id=None):
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
 
-    today = datetime.utcnow().date()
+    today = _utcnow().date()
 
     for customer in customers:
 
@@ -716,7 +720,7 @@ def get_due_in_2_days(db, owner_phone=None, recorded_by_id=None):
     customers = customers.all()
 
     target_date = (
-        datetime.utcnow().date()
+        _utcnow().date()
         + timedelta(days=2)
     )
 

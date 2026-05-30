@@ -75,9 +75,9 @@ def test_industry_matrix_and_messages():
         home_menu = build_owner_home_menu(user, {"plan": "BASIC"})
         upgrade = format_upgrade_message("BASIC", "GO", feature_label, user, feature)
 
-        assert_contains(post_onboarding, "Quick actions:")
-        assert_contains(post_onboarding, "How to move around:")
-        assert_contains(home_menu, "Send MENU anytime to return here")
+        assert_contains(post_onboarding, "1. Help & formats")
+        assert_contains(post_onboarding, "4. Upgrade")
+        assert_contains(home_menu, "MENU to return here anytime")
         assert_contains(upgrade, expected_value)
 
 
@@ -617,9 +617,9 @@ def run_onboarding_flow(category_choice, business_choice, expected_category, exp
     assert next_pending is not None
     assert next_pending.action == "POST_ONBOARDING_MENU"
     assert_contains(sent_messages[-1][1], "Account created.")
-    assert_contains(sent_messages[-1][1], "1. See formats")
-    assert_contains(sent_messages[-1][1], "4. Add stock")
-    assert_contains(sent_messages[-1][1], "5. Upgrade")
+    assert_contains(sent_messages[-1][1], "1. Help & formats")
+    assert_contains(sent_messages[-1][1], "3. Dashboard")
+    assert_contains(sent_messages[-1][1], "4. Upgrade")
 
 
 def test_industry_onboarding_paths():

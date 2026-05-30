@@ -1,4 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from messages import get_plan_price
 from models import Customer, SubscriptionPayment, User
@@ -28,7 +32,7 @@ def get_business_subscription(db, user):
     status = (getattr(owner, "subscription_status", None) or "ACTIVE").upper()
     expires_at = getattr(owner, "subscription_expires_at", None)
 
-    if expires_at and expires_at < datetime.utcnow():
+    if expires_at and expires_at < _utcnow():
         status = "EXPIRED"
 
     if status not in ["ACTIVE", "TRIAL"]:
@@ -59,7 +63,7 @@ def ensure_feature_allowed(db, user, feature, feature_label):
 
 
 def get_month_start():
-    now = datetime.utcnow()
+    now = _utcnow()
     return datetime(now.year, now.month, 1)
 
 
@@ -131,7 +135,7 @@ def create_subscription_payment_request(db, user, plan):
         existing.payment_method = "BANK_TRANSFER"
         existing.evidence_type = None
         existing.evidence_ref = None
-        existing.created_at = datetime.utcnow()
+        existing.created_at = _utcnow()
         return existing
 
     payment = SubscriptionPayment(
@@ -166,9 +170,9 @@ def approve_subscription_payment(db, payment, admin_user):
 
     owner.subscription_plan = normalize_plan(payment.plan)
     owner.subscription_status = "ACTIVE"
-    owner.subscription_expires_at = datetime.utcnow() + timedelta(days=30)
+    owner.subscription_expires_at = _utcnow() + timedelta(days=30)
     payment.status = "APPROVED"
-    payment.approved_at = datetime.utcnow()
+    payment.approved_at = _utcnow()
     payment.approved_by_user_id = admin_user.id if admin_user else None
     return owner
 
@@ -176,7 +180,7 @@ def approve_subscription_payment(db, payment, admin_user):
 def app_user_effective_plan(user):
     status = (getattr(user, "subscription_status", None) or "ACTIVE").upper()
     expires_at = getattr(user, "subscription_expires_at", None)
-    if expires_at and expires_at < datetime.utcnow():
+    if expires_at and expires_at < _utcnow():
         return "EXPIRED"
     if status not in ["ACTIVE", "TRIAL"]:
         return status

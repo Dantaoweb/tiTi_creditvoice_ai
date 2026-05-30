@@ -1,5 +1,9 @@
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from sqlalchemy import func
 
@@ -124,7 +128,7 @@ def upsert_product_from_command(db, owner_phone, parsed):
     item.size = parsed["size"]
     item.color = parsed["color"]
     item.is_available = True
-    item.updated_at = datetime.utcnow()
+    item.updated_at = _utcnow()
     return item
 
 
@@ -491,7 +495,7 @@ def handle_order_owner_command(db, phone, normalized, owner_phone, send_message)
         if decision == "reject":
             payment.status = "REJECTED"
             order.payment_status = "PAYMENT_REJECTED"
-            order.updated_at = datetime.utcnow()
+            order.updated_at = _utcnow()
             db.commit()
             send_message(phone, f"Payment evidence rejected for order #{order.id}.")
             notify_customer_order_update(
@@ -506,7 +510,7 @@ def handle_order_owner_command(db, phone, normalized, owner_phone, send_message)
         order.paid_amount = (order.paid_amount or 0) + (payment.amount or 0)
         order.balance_amount = max((order.total_amount or 0) - order.paid_amount, 0)
         order.payment_status = "PAID" if order.balance_amount == 0 else "PART_PAID"
-        order.updated_at = datetime.utcnow()
+        order.updated_at = _utcnow()
         if order.balance_amount:
             db.add(
                 ReminderMemory(
@@ -514,7 +518,7 @@ def handle_order_owner_command(db, phone, normalized, owner_phone, send_message)
                     customer_name=order.customer_name or order.customer_phone,
                     customer_phone=order.customer_phone,
                     balance=order.balance_amount,
-                    due_date=datetime.utcnow() + timedelta(days=1),
+                    due_date=_utcnow() + timedelta(days=1),
                     reminder_type="ORDER_BALANCE",
                 )
             )
@@ -524,7 +528,7 @@ def handle_order_owner_command(db, phone, normalized, owner_phone, send_message)
                     customer_name=order.customer_name or order.customer_phone,
                     customer_phone=order.customer_phone,
                     balance=order.balance_amount,
-                    due_date=datetime.utcnow() + timedelta(days=1),
+                    due_date=_utcnow() + timedelta(days=1),
                     reminder_type="CUSTOMER_ORDER_BALANCE",
                 )
             )
@@ -568,7 +572,7 @@ def handle_order_owner_command(db, phone, normalized, owner_phone, send_message)
             send_message(phone, f"Order #{order_id} not found.")
             return {"status": "automation_order_not_found"}
         order.payment_status = "PAYMENT_EVIDENCE_RECEIVED"
-        order.updated_at = datetime.utcnow()
+        order.updated_at = _utcnow()
         db.add(
             SalesOrderPayment(
                 order_id=order.id,
@@ -616,7 +620,7 @@ def handle_order_owner_command(db, phone, normalized, owner_phone, send_message)
         order.delivery_status = "DELIVERED"
         message = f"Order #{order.id} marked as delivered."
         customer_message = f"Your order #{order.id} has been marked delivered."
-    order.updated_at = datetime.utcnow()
+    order.updated_at = _utcnow()
     db.commit()
     send_message(phone, message)
     notify_customer_order_update(db, send_message, order, customer_message)
@@ -669,7 +673,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
             send_message(phone, f"Product not found: {product_name.title()}\n\nSend: add product {product_name} price 20000 qty 5")
             return {"status": "automation_product_not_found"}
         item.selling_price = parse_money_value(price_match.group(2))
-        item.updated_at = datetime.utcnow()
+        item.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"{item.name.title()} price set to N{item.selling_price:,}.")
         return {"status": "automation_product_price_updated"}
@@ -682,7 +686,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
             send_message(phone, f"Product not found: {product_name.title()}")
             return {"status": "automation_product_not_found"}
         item.is_available = product_toggle.group(2) == "on"
-        item.updated_at = datetime.utcnow()
+        item.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"{item.name.title()} is now {'available' if item.is_available else 'unavailable'}.")
         return {"status": "automation_product_availability_updated"}
@@ -694,7 +698,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     )
     if setting_match:
         settings.payment_modes = setting_match.group(1).strip()
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Payment mode saved: {settings.payment_modes}")
         return {"status": "automation_payment_mode_updated"}
@@ -702,7 +706,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     setting_match = re.match(r"^(?:set\s+delivery|delivery note)\s+(.+)$", clean, re.I)
     if setting_match:
         settings.delivery_note = setting_match.group(1).strip()
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Delivery note saved: {settings.delivery_note}")
         return {"status": "automation_delivery_note_updated"}
@@ -710,7 +714,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     setting_match = re.match(r"^pickup address\s+(.+)$", clean, re.I)
     if setting_match:
         settings.pickup_address = setting_match.group(1).strip()
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Pickup address saved: {settings.pickup_address}")
         return {"status": "automation_pickup_address_updated"}
@@ -718,7 +722,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     setting_match = re.match(r"^business hours\s+(.+)$", clean, re.I)
     if setting_match:
         settings.business_hours = setting_match.group(1).strip()
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Business hours saved: {settings.business_hours}")
         return {"status": "automation_business_hours_updated"}
@@ -726,7 +730,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     setting_match = re.match(r"^min deposit\s+(\d{1,3})%?$", normalized)
     if setting_match:
         settings.min_deposit_percent = int(setting_match.group(1))
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Minimum deposit set to {settings.min_deposit_percent}%.")
         return {"status": "automation_min_deposit_updated"}
@@ -744,7 +748,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     if normalized == "bot on":
         settings.bot_enabled = True
         settings.auto_reply_enabled = True
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(
             phone,
@@ -757,14 +761,14 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
 
     if normalized == "bot off":
         settings.bot_enabled = False
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(phone, "Customer bot is OFF. You will handle customers manually.")
         return {"status": "automation_bot_off"}
 
     if normalized in ["auto order on", "auto order off"]:
         settings.auto_order_enabled = normalized.endswith("on")
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(
             phone,
@@ -774,7 +778,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
 
     if normalized in ["auto reply on", "auto reply off"]:
         settings.auto_reply_enabled = normalized.endswith("on")
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(
             phone,
@@ -784,7 +788,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
 
     if normalized in ["part payment on", "part payment off"]:
         settings.allow_part_payment = normalized.endswith("on")
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = _utcnow()
         db.commit()
         send_message(
             phone,
@@ -813,7 +817,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
         conversation = get_or_create_conversation(db, owner_phone, target_phone)
         conversation.status = "HUMAN_TAKEOVER"
         conversation.stage = "OWNER_HANDLING"
-        conversation.updated_at = datetime.utcnow()
+        conversation.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Bot stopped for {target_phone}. You can take it from here.")
         return {"status": "automation_takeover"}
@@ -825,7 +829,7 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
         conversation = get_or_create_conversation(db, owner_phone, target_phone)
         conversation.status = "AUTO"
         conversation.stage = "START"
-        conversation.updated_at = datetime.utcnow()
+        conversation.updated_at = _utcnow()
         db.commit()
         send_message(phone, f"Bot resumed for {target_phone}.")
         return {"status": "automation_resume"}
@@ -989,7 +993,7 @@ def add_order_payment_evidence(db, order, amount, evidence_ref=None, payment_mod
     )
     db.add(payment)
     order.payment_status = "PAYMENT_EVIDENCE_RECEIVED"
-    order.updated_at = datetime.utcnow()
+    order.updated_at = _utcnow()
     return payment
 
 
@@ -1008,7 +1012,7 @@ def create_order_from_conversation(db, conversation, item, quantity, payment_amo
         balance_amount=total,
         payment_status="PAYMENT_EVIDENCE_RECEIVED" if payment_amount else "UNPAID",
         payment_mode=payment_mode,
-        due_date=datetime.utcnow() + timedelta(days=1),
+        due_date=_utcnow() + timedelta(days=1),
     )
     db.add(order)
     db.flush()
@@ -1034,7 +1038,7 @@ def create_order_from_conversation(db, conversation, item, quantity, payment_amo
             payment_mode=payment_mode,
         )
     conversation.stage = "ORDER_CREATED"
-    conversation.updated_at = datetime.utcnow()
+    conversation.updated_at = _utcnow()
     return order
 
 
@@ -1054,7 +1058,7 @@ def handle_customer_automation_message(db, phone, text, send_message):
     settings = get_or_create_automation_settings(db, owner.phone)
     conversation.last_customer_message = text
     conversation.product_query = text[:200]
-    conversation.updated_at = datetime.utcnow()
+    conversation.updated_at = _utcnow()
 
     if not settings.bot_enabled or not settings.auto_reply_enabled:
         conversation.status = "NEEDS_OWNER"

@@ -8,7 +8,6 @@ from business_templates import (
 )
 from messages import (
     build_onboarding_start_message,
-    build_account_ready_menu,
     build_post_onboarding_menu,
     build_supported_formats_message,
     build_upgrade_message,
@@ -74,7 +73,7 @@ def complete_user_onboarding(
         )
     )
     db.commit()
-    return user, build_account_ready_menu()
+    return user, build_post_onboarding_menu(name, user)
 
 
 def start_onboarding(db, phone, pending, send_message):
@@ -128,23 +127,11 @@ def handle_post_onboarding_pending(
         send_message(phone, add_stock_option_to_dashboard_menu(build_dashboard_menu_message()))
         return {"status": "post_onboarding_dashboard"}
 
-    if normalized in ["5", "upgrade"]:
+    if normalized in ["4", "upgrade"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
         send_message(phone, build_upgrade_message(user))
         return {"status": "post_onboarding_upgrade"}
-
-    if normalized in ["4", "add stock", "stock", "inventory"]:
-        db.delete(pending)
-        db.commit()
-        send_message(
-            phone,
-            "To add stock, send it like:\n"
-            "I buy 10 packs paracetamol from Ayo at 1800 each\n\n"
-            "You can also check stock by sending:\n"
-            "stock"
-        )
-        return {"status": "post_onboarding_add_stock"}
 
     if normalized in ["cancel", "exit", "back", "done", "stop"]:
         db.delete(pending)

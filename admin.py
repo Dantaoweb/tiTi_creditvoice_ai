@@ -1,5 +1,9 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from sqlalchemy import func
 
@@ -125,7 +129,7 @@ def set_admin_role(db, target_phone, role, is_active, actor_user=None):
         override.deactivated_at = None
         override.deactivated_by_user_id = None
     else:
-        override.deactivated_at = datetime.utcnow()
+        override.deactivated_at = _utcnow()
         override.deactivated_by_user_id = actor_user.id if actor_user else None
 
     return override

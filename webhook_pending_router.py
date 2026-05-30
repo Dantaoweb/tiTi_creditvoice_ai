@@ -20,6 +20,7 @@ from home_menu_commands import handle_home_menu_pending
 from messages import edit_prompt_for_pending
 from models import Customer, PendingAction, Transaction
 from onboarding_commands import (
+    add_stock_option_to_menu,
     handle_onboarding_pending,
     handle_post_onboarding_pending,
     start_onboarding,
@@ -46,12 +47,6 @@ def _wrap(result):
     if isinstance(result, dict):
         return PendingRouteResult(response=result)
     return result
-
-
-def add_stock_option_to_menu(message):
-    if "add stock" in (message or "").lower():
-        return message
-    return f"{message}\n10. Add stock"
 
 
 def build_add_stock_help_message():
@@ -243,7 +238,6 @@ def handle_pending_actions(
 
     # ── Select product cart flow ─────────────────────────────────────────────
     if pending and pending.action in SELECT_PRODUCT_ACTIONS and not is_command:
-        from webhook_context import load_webhook_user_context
         result = handle_select_product_pending(
             db, phone, text, pending, user,
             business_owner_phone, visible_recorded_by_id,

@@ -1935,6 +1935,17 @@ def parse_message(text):
     ]:
         return {"type": "REONBOARD"}
 
+    # "print receipt Mary"  |  "receipt Mary"  |  "receipt 42"
+    receipt_match = re.match(
+        r"^(?:print\s+)?receipt\s+(?P<query>.+)$",
+        clean_text,
+    )
+    if receipt_match:
+        query = receipt_match.group("query").strip()
+        if query.isdigit():
+            return {"type": "PRINT_RECEIPT", "transaction_id": int(query)}
+        return {"type": "PRINT_RECEIPT", "customer_name": query}
+
     if clean_text.startswith("remind"):
         return {
             "type": "REMIND",

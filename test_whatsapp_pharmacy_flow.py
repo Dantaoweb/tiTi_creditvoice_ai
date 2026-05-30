@@ -159,9 +159,9 @@ def test_next_business_categories_onboard_through_real_whatsapp_flow(
             PendingAction.action == "POST_ONBOARDING_MENU",
         ).one()
         assert "Account created." in sent_messages[-1][1]
-        assert "1. See formats" in sent_messages[-1][1]
-        assert "4. Add stock" in sent_messages[-1][1]
-        assert "5. Upgrade" in sent_messages[-1][1]
+        assert "1. Help & formats" in sent_messages[-1][1]
+        assert "3. Dashboard" in sent_messages[-1][1]
+        assert "4. Upgrade" in sent_messages[-1][1]
     finally:
         db.close()
 
@@ -317,7 +317,7 @@ def test_next_business_categories_record_transactions_through_real_whatsapp_flow
         db.close()
 
 
-def test_post_onboarding_menu_has_add_stock_and_routes_to_stock_help(monkeypatch):
+def test_post_onboarding_menu_has_expected_options(monkeypatch):
     phone = "2348000001201"
     SessionTesting, sent_messages, send = make_webhook_flow(
         monkeypatch,
@@ -327,10 +327,11 @@ def test_post_onboarding_menu_has_add_stock_and_routes_to_stock_help(monkeypatch
 
     onboard_business(send, "Demo Store", 1, 1)
 
-    assert "4. Add stock" in sent_messages[-1][1]
-    assert send("4") == {"status": "post_onboarding_add_stock"}
-    assert "To add stock" in sent_messages[-1][1]
-    assert "I buy 10 packs paracetamol from Ayo at 1800 each" in sent_messages[-1][1]
+    last_msg = sent_messages[-1][1]
+    assert "1. Help & formats" in last_msg
+    assert "2. Add customer" in last_msg
+    assert "3. Dashboard" in last_msg
+    assert "4. Upgrade" in last_msg
 
 
 def test_dashboard_menu_has_add_stock_and_routes_to_stock_help(monkeypatch):
