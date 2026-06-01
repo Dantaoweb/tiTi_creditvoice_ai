@@ -48,6 +48,11 @@ SELECT_PRODUCT_ACTIONS = {
 # ── Add stock with prices confirm ────────────────────────────────────────────
 ACTION_STOCK_ADD_CONFIRM = "STOCK_ADD_CONFIRM"
 
+# ── Fast Capture Mode ────────────────────────────────────────────────────────
+ACTION_FAST_CAPTURE_REVIEW = "FAST_CAPTURE_REVIEW"
+
+FAST_CAPTURE_REVIEW_ACTIONS = {ACTION_FAST_CAPTURE_REVIEW}
+
 # ─────────────────────────────────────────────
 # Transaction parsing keyword lists.
 # Defined once here, imported by parser.py and any other file that needs them.

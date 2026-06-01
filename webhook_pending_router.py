@@ -12,8 +12,10 @@ from constants import (
     ACTION_ONBOARD_CUSTOMER,
     ACTION_RESIGN_CONFIRM,
     ACTION_STOCK_ADD_CONFIRM,
+    FAST_CAPTURE_REVIEW_ACTIONS,
     SELECT_PRODUCT_ACTIONS,
 )
+from fast_capture_commands import handle_fast_capture_review_pending
 from inventory_suppliers import upsert_stock_with_prices
 from select_product_commands import handle_select_product_pending
 from home_menu_commands import handle_home_menu_pending
@@ -30,6 +32,7 @@ from reports import build_dashboard_menu_message, build_dashboard_selection_mess
 from staff_commands import handle_resign_pending
 from subscription_flow import handle_subscription_pending_flow
 from transaction_save import save_confirmed_pending_transaction
+from transaction_setup import update_parse_log_outcome
 from webhook_admin_handlers import handle_app_admin_dashboard_pending
 from webhook_context import can_view_all_business_transactions
 from whatsapp_client import send_whatsapp_message
@@ -111,6 +114,7 @@ def _handle_transaction_confirm(
     normalized = text.lower().strip()
 
     if normalized in ["yes", "1", "save"]:
+        update_parse_log_outcome(db, phone, was_confirmed=True)
         pending_items = json.loads(pending.items_json or "[]")
         save_result = save_confirmed_pending_transaction(
             db, phone, pending, user, business_owner_phone,
@@ -127,6 +131,7 @@ def _handle_transaction_confirm(
         return PendingRouteResult(response={"status": "voice_retry_requested"})
 
     elif normalized in ["edit", "2", "change"]:
+        update_parse_log_outcome(db, phone, was_confirmed=False)
         is_voice_edit = bool(pending.source_text)
         edit_msg = edit_prompt_for_pending(pending, user)
         db.delete(pending)
@@ -235,6 +240,14 @@ def handle_pending_actions(
         ))
         if result and result.response:
             return result
+
+    # ── Fast Capture end-of-day review ──────────────────────────────────────
+    if pending and pending.action in FAST_CAPTURE_REVIEW_ACTIONS and not is_command:
+        result = handle_fast_capture_review_pending(
+            db, phone, text, pending, business_owner_phone, send_whatsapp_message,
+        )
+        if result:
+            return _wrap(result)
 
     # ── Select product cart flow ─────────────────────────────────────────────
     if pending and pending.action in SELECT_PRODUCT_ACTIONS and not is_command:

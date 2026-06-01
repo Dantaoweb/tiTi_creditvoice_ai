@@ -148,6 +148,105 @@ def ensure_schema_updates(engine):
                 text("ALTER TABLE pending_actions ADD COLUMN payload_json VARCHAR")
             )
 
+    # ── Training data capture ────────────────────────────────────────────────
+    existing_tables = inspector.get_table_names()
+
+    if "parse_logs" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE parse_logs (
+                    id SERIAL PRIMARY KEY,
+                    phone VARCHAR,
+                    owner_phone VARCHAR,
+                    business_type VARCHAR,
+                    business_category VARCHAR,
+                    raw_input TEXT,
+                    parsed_type VARCHAR,
+                    parsed_data TEXT,
+                    was_confirmed BOOLEAN,
+                    correction_input TEXT,
+                    source VARCHAR DEFAULT 'text',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """ if engine.dialect.name == "postgresql" else """
+                CREATE TABLE parse_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone VARCHAR,
+                    owner_phone VARCHAR,
+                    business_type VARCHAR,
+                    business_category VARCHAR,
+                    raw_input TEXT,
+                    parsed_type VARCHAR,
+                    parsed_data TEXT,
+                    was_confirmed BOOLEAN,
+                    correction_input TEXT,
+                    source VARCHAR DEFAULT 'text',
+                    created_at TIMESTAMP
+                )
+            """))
+
+    if "fast_capture_settings" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE fast_capture_settings (
+                    id SERIAL PRIMARY KEY,
+                    owner_phone VARCHAR UNIQUE,
+                    enabled BOOLEAN DEFAULT FALSE,
+                    market_start_hour INTEGER DEFAULT 8,
+                    market_end_hour INTEGER DEFAULT 18,
+                    auto_close_hour INTEGER DEFAULT 21,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP
+                )
+            """ if engine.dialect.name == "postgresql" else """
+                CREATE TABLE fast_capture_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_phone VARCHAR UNIQUE,
+                    enabled INTEGER DEFAULT 0,
+                    market_start_hour INTEGER DEFAULT 8,
+                    market_end_hour INTEGER DEFAULT 18,
+                    auto_close_hour INTEGER DEFAULT 21,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            """))
+
+    if "fast_capture_entries" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE fast_capture_entries (
+                    id SERIAL PRIMARY KEY,
+                    owner_phone VARCHAR,
+                    recorded_by_id INTEGER,
+                    raw_input TEXT,
+                    parsed_type VARCHAR,
+                    parsed_data TEXT,
+                    confidence VARCHAR DEFAULT 'medium',
+                    confidence_reason TEXT,
+                    status VARCHAR DEFAULT 'pending',
+                    correction_input TEXT,
+                    session_date VARCHAR,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    reviewed_at TIMESTAMP
+                )
+            """ if engine.dialect.name == "postgresql" else """
+                CREATE TABLE fast_capture_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_phone VARCHAR,
+                    recorded_by_id INTEGER,
+                    raw_input TEXT,
+                    parsed_type VARCHAR,
+                    parsed_data TEXT,
+                    confidence VARCHAR DEFAULT 'medium',
+                    confidence_reason TEXT,
+                    status VARCHAR DEFAULT 'pending',
+                    correction_input TEXT,
+                    session_date VARCHAR,
+                    created_at TIMESTAMP,
+                    reviewed_at TIMESTAMP
+                )
+            """))
+
     # ── Performance indexes for existing databases ───────────────────────────
     # SQLAlchemy index=True only creates indexes on CREATE TABLE.
     # For existing databases we run CREATE INDEX IF NOT EXISTS here.

@@ -11,10 +11,45 @@ from inventory_suppliers import (
     get_supplier_balance,
 )
 from messages import balance_status_line, pending_transaction_summary
-from models import Customer, CustomerMemory, SupplierPayment, SupplierPurchase, Transaction
+from models import (
+    Customer, CustomerMemory, InventoryItem,
+    SupplierPayment, SupplierPurchase, Transaction, TransactionNote,
+)
 from parser import add_transaction_items
 from plans import plan_allows_feature
 from reports import get_balance
+from transaction_setup import update_parse_log_outcome
+
+
+def _add_price_deviation_note(db, owner_phone, tx_id, product, unit_price, recorder_name):
+    """
+    If unit_price deviates from the inventory selling_price, write a TransactionNote
+    recording the deviation and who made it.  Internal only — never shown in customer receipt.
+    """
+    if not product or not unit_price:
+        return
+    try:
+        from sqlalchemy import func
+        item = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            func.lower(InventoryItem.name) == product.lower().strip(),
+            InventoryItem.selling_price.isnot(None),
+        ).first()
+        if not item or not item.selling_price:
+            return
+        diff = unit_price - item.selling_price
+        if diff == 0:
+            return
+        direction = "discount" if diff < 0 else "premium"
+        sign = "−" if diff < 0 else "+"
+        note = (
+            f"Price {direction}: {product.title()} sold at N{unit_price:,} "
+            f"(standard N{item.selling_price:,}, {sign}N{abs(diff):,}). "
+            f"Recorded by {recorder_name.title()}."
+        )
+        db.add(TransactionNote(transaction_id=tx_id, note=note))
+    except Exception:
+        pass
 
 
 def pending_stock_items(pending, pending_items):
@@ -101,6 +136,10 @@ def save_direct_sale(
     )
     db.add(tx)
     db.flush()
+    _add_price_deviation_note(
+        db, business_owner_phone, tx.id,
+        pending.product, pending.unit_price, user.name,
+    )
     stock_updates = []
     stock_missing = []
     low_stock_alerts = []
@@ -241,6 +280,10 @@ def save_customer_pending(
         )
         db.add(tx)
         db.flush()
+        _add_price_deviation_note(
+            db, business_owner_phone, tx.id,
+            pending.product, pending.unit_price, user.name,
+        )
         if inventory_enabled:
             stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
                 db, business_owner_phone, tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
@@ -282,6 +325,10 @@ def save_customer_pending(
         )
         db.add(buy_tx)
         db.flush()
+        _add_price_deviation_note(
+            db, business_owner_phone, buy_tx.id,
+            pending.product, pending.unit_price, user.name,
+        )
         if inventory_enabled:
             stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
                 db, business_owner_phone, buy_tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",

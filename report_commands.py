@@ -2,11 +2,13 @@ from models import PendingAction
 from reports import (
     build_dashboard_menu_message,
     build_dashboard_summary_message,
+    build_margin_summary_message,
     get_biggest_debtor,
     get_customer_count,
     get_customer_summary,
     get_dashboard_summary,
     get_debtor_leaderboard,
+    get_margin_summary,
     get_monthly_sales,
     get_most_sold_product,
     get_new_customer_count,
@@ -15,6 +17,7 @@ from reports import (
     get_paid_customer_count,
     get_product_sales_by_date,
     get_product_sales_by_period,
+    get_products_below_cost,
     get_today_sales,
     get_transaction_stats,
     get_unpaid_debtors,
@@ -323,5 +326,39 @@ def handle_report_command(
         msg += f"\nTotal Outstanding: N{total_outstanding:,}"
         send_message(phone, msg)
         return {"status": "unpaid_debtors"}
+
+    if command_type == "MARGIN_REPORT":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "ADVANCED_REPORTS", "Margin reports")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "margin_report_plan_blocked"}
+
+        period = parsed.get("period")
+        summary = get_margin_summary(db, business_owner_phone, period, visible_recorded_by_id)
+        send_message(phone, build_margin_summary_message(summary, period))
+        return {"status": "margin_report"}
+
+    if command_type == "BELOW_COST_PRODUCTS":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "below_cost_plan_blocked"}
+
+        items = get_products_below_cost(db, business_owner_phone)
+        if not items:
+            send_message(phone, "No products are currently set below cost price.")
+            return {"status": "no_below_cost"}
+
+        lines = ["Products selling below cost:\n"]
+        for item in items:
+            unit_label = f" {item.unit}" if item.unit else ""
+            diff = item.cost_price - item.selling_price
+            lines.append(
+                f"- {item.name.title()}{unit_label}\n"
+                f"  Cost: N{item.cost_price:,}  Sell: N{item.selling_price:,}  "
+                f"Loss/unit: N{diff:,}"
+            )
+        send_message(phone, "\n".join(lines))
+        return {"status": "below_cost_products"}
 
     return None

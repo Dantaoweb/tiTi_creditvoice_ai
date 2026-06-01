@@ -1,10 +1,87 @@
 import json
 
 from messages import apply_voice_confirmation_options
-from models import Customer, CustomerMemory, PendingAction, Transaction
+from models import Customer, CustomerMemory, InventoryItem, ParseLog, PendingAction, Transaction
 from parser import format_invoice_items
 from reports import get_balance, get_owner_transaction_query
 from subscriptions import check_customer_limit, ensure_feature_allowed, get_month_start
+
+
+def log_parse(db, phone, owner_phone, raw_input, parsed, source="text", user=None):
+    """Write one ParseLog row. Errors are silently swallowed — logging must never break the flow."""
+    try:
+        db.add(ParseLog(
+            phone=phone,
+            owner_phone=owner_phone,
+            business_type=getattr(user, "business_type", None),
+            business_category=getattr(user, "business_category", None),
+            raw_input=raw_input,
+            parsed_type=parsed.get("type") if parsed else None,
+            parsed_data=json.dumps(parsed) if parsed else None,
+            source=source,
+        ))
+        db.flush()
+    except Exception:
+        pass
+
+
+def update_parse_log_outcome(db, phone, was_confirmed, correction_input=None):
+    """Mark the most recent ParseLog for this phone as confirmed or corrected."""
+    try:
+        from sqlalchemy import desc
+        log = db.query(ParseLog).filter(
+            ParseLog.phone == phone,
+            ParseLog.was_confirmed.is_(None),
+        ).order_by(desc(ParseLog.created_at)).first()
+        if log:
+            log.was_confirmed = was_confirmed
+            if correction_input:
+                log.correction_input = correction_input
+            db.flush()
+    except Exception:
+        pass
+
+
+def _price_deviation_alert(db, owner_phone, product, unit_price):
+    """
+    Return an internal alert string for the owner/staff confirmation screen.
+    Shows if unit_price deviates from selling_price (discount or premium),
+    and adds a separate ⚠ line if the price is also below cost price.
+    Never shown to the customer.
+    """
+    if not product or not unit_price:
+        return ""
+    try:
+        from sqlalchemy import func
+        item = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            func.lower(InventoryItem.name) == product.lower().strip(),
+        ).first()
+        if not item:
+            return ""
+
+        lines = []
+
+        if item.selling_price:
+            diff = unit_price - item.selling_price
+            if diff < 0:
+                lines.append(
+                    f"↓ Standard price for {product.title()} is N{item.selling_price:,}. "
+                    f"You are giving a N{abs(diff):,} discount."
+                )
+            # Above standard: silent on screen — recorded as internal note only
+
+        if item.cost_price and unit_price < item.cost_price:
+            loss = item.cost_price - unit_price
+            lines.append(
+                f"⚠ Also below your cost price (N{item.cost_price:,}). "
+                f"You are selling at a N{loss:,} loss per unit."
+            )
+
+        return ("\n\n" + "\n".join(lines)) if lines else ""
+    except Exception:
+        pass
+    return ""
 
 
 def check_monthly_transaction_limit(db, owner_phone, subscription, planned_rows=1):
@@ -148,6 +225,10 @@ def handle_transaction_setup(
     if not parsed or "action" not in parsed:
         return None
 
+    # Log every parsed transaction for tiTi training
+    source = "voice" if voice_transcript_text else "text"
+    log_parse(db, phone, business_owner_phone, voice_transcript_text or parsed.get("raw_text", ""), parsed, source, user)
+
     if parsed["action"] == "SALE":
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "DIRECT_SALE", "Direct sales")
         if not allowed:
@@ -266,6 +347,12 @@ def handle_transaction_setup(
     )
     confirm_msg = build_customer_confirm_message(customer, parsed)
 
+    # Note any deviation from the standard selling price (internal only)
+    below_cost = _price_deviation_alert(
+        db, business_owner_phone,
+        parsed.get("product"), parsed.get("unit_price"),
+    )
+
     phone_warning = ""
     if not customer.customer_phone:
         setup_hint = f"{customer.name} phone 08012345678"
@@ -282,7 +369,7 @@ def handle_transaction_setup(
                 f"{setup_hint}"
             )
 
-    confirm_msg = f"{confirm_msg}\n{balance_after_line}{phone_warning}"
+    confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}"
     if parsed.get("artisan_note"):
         confirm_msg = (
             f"{confirm_msg}\n"

@@ -59,7 +59,24 @@ def build_cart_message(cart):
     total = _cart_total(cart)
     msg = "Cart:\n\n"
     for i, item in enumerate(cart, start=1):
-        msg += f"{i}. {item['product'].title()} x {item['quantity']} = N{item['total']:,}\n"
+        deviation = item.get("deviation", 0)
+        standard = item.get("standard_price", 0)
+        cost = item.get("cost_price")
+        price = item.get("unit_price", 0)
+
+        notes = []
+        if deviation < 0:
+            notes.append(f"↓ N{abs(deviation):,} below standard (N{standard:,})")
+        # Above standard: silent on screen — recorded as internal note only
+        if cost and price < cost:
+            loss = cost - price
+            notes.append(f"⚠ N{loss:,} below cost price (N{cost:,}) — selling at a loss")
+
+        note_str = ("\n   " + "\n   ".join(notes)) if notes else ""
+        msg += (
+            f"{i}. {item['product'].title()} x {item['quantity']} "
+            f"@ N{item['unit_price']:,} = N{item['total']:,}{note_str}\n"
+        )
     msg += f"\nTotal: N{total:,}\n\n"
     msg += "1. Add another product\n2. Checkout\n3. Cancel"
     return msg
@@ -67,17 +84,35 @@ def build_cart_message(cart):
 
 def build_confirm_message(cart, customer_name, paid, total, due_date_str=None):
     balance = total - paid
+    total_discount = sum(
+        abs(item.get("deviation", 0)) * item.get("quantity", 1)
+        for item in cart
+        if item.get("deviation", 0) < 0
+    )
+    has_loss = any(item.get("below_cost") for item in cart)
+
     msg = "Confirm sale:\n\n"
     msg += f"Customer: {customer_name.title()}\n"
     for item in cart:
         msg += f"{item['product'].title()} x {item['quantity']} = N{item['total']:,}\n"
     msg += f"\nTotal:   N{total:,}\n"
+
+    if total_discount > 0:
+        standard_total = total + total_discount
+        msg += f"Standard: N{standard_total:,}\n"
+        msg += f"Discount: N{total_discount:,}\n"
+    if has_loss:
+        msg += "⚠ One or more items sold below cost price.\n"
+
     msg += f"Paid:    N{paid:,}\n"
     if balance > 0:
         msg += f"Balance: N{balance:,}\n"
         if due_date_str:
             msg += f"Due:     {due_date_str}\n"
-    msg += "\nReply YES to save."
+
+    msg += "\nYES to save."
+    if total_discount > 0:
+        msg += "\nYES RECEIPT to save and show discount on customer receipt."
     return msg
 
 
@@ -108,7 +143,10 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
     return "\n".join(lines)
 
 
-def build_customer_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id, config=None):
+def build_customer_receipt(
+    business_name, customer_name, cart, total, paid,
+    balance, due_date_str, tx_id, config=None, show_discount=False,
+):
     cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
     date_str = now.strftime("%d/%m/%Y  %H:%M")
@@ -120,11 +158,30 @@ def build_customer_receipt(business_name, customer_name, cart, total, paid, bala
         f"{cfg['customer_label']}: {customer_name.title()}",
         "--------------------",
     ]
+
+    total_saved = 0
     for item in cart:
+        deviation = item.get("deviation", 0)
+        standard = item.get("standard_price", 0)
         lines.append(f"{item['product'].title()}")
-        lines.append(f"  x{item['quantity']} @ N{item['unit_price']:,} = N{item['total']:,}")
+        if show_discount and deviation < 0 and standard:
+            # Show standard price crossed out, then actual
+            item_saving = abs(deviation) * item["quantity"]
+            total_saved += item_saving
+            lines.append(
+                f"  x{item['quantity']} @ N{standard:,} = N{standard * item['quantity']:,}"
+            )
+            lines.append(f"  Discount:  -N{item_saving:,}")
+            lines.append(f"  You pay:    N{item['total']:,}")
+        else:
+            lines.append(
+                f"  x{item['quantity']} @ N{item['unit_price']:,} = N{item['total']:,}"
+            )
+
     lines.append("--------------------")
     lines.append(f"{cfg['amount_label']}:    N{total:,}")
+    if show_discount and total_saved > 0:
+        lines.append(f"You saved: N{total_saved:,}")
     lines.append(f"Paid:     N{paid:,}")
     if balance > 0:
         lines.append(f"Balance:  N{balance:,}")
@@ -199,7 +256,8 @@ def _handle_list_selection(db, phone, text, pending, business_owner_phone, send_
 
     payload["selected_id"] = item.id
     payload["selected_name"] = item.name
-    payload["selected_price"] = item.selling_price
+    payload["selected_price"] = item.selling_price    # standard selling price
+    payload["selected_cost_price"] = item.cost_price  # for below-cost alert
     payload["selected_unit"] = item.unit
     _save_payload(pending, payload)
     pending.action = ACTION_SELECT_PRODUCT_QTY
@@ -209,22 +267,60 @@ def _handle_list_selection(db, phone, text, pending, business_owner_phone, send_
     send_message(
         phone,
         f"Quantity for {item.name.title()}?\n"
-        f"Price: N{item.selling_price:,}{unit_label} each"
+        f"Price: N{item.selling_price:,}{unit_label} each\n"
+        f"Different price: 3 at 2500"
     )
     return {"status": "select_product_qty_asked"}
+
+
+def _parse_qty_price(text):
+    """
+    Parse trader input at the quantity step.
+    Accepts:  "3"  |  "3 at 2500"  |  "3 2500"  |  "3 @ 2500"  |  "3 at 2.5k"
+    Returns (qty, price_override) — price_override is None if not given.
+    """
+    import re as _re
+    text = text.strip()
+    m = _re.match(
+        r"^(?P<qty>\d+)(?:\s*(?:at|@|,)?\s*(?P<price>\d[\d,\.]*(?:k|m)?))?$",
+        text, _re.I,
+    )
+    if not m or not m.group("qty"):
+        return None, None
+    qty = int(m.group("qty"))
+    if qty < 1:
+        return None, None
+    price_str = m.group("price")
+    if not price_str:
+        return qty, None
+    ps = price_str.lower().replace(",", "").strip()
+    try:
+        if ps.endswith("k"):
+            price = int(float(ps[:-1]) * 1_000)
+        elif ps.endswith("m"):
+            price = int(float(ps[:-1]) * 1_000_000)
+        else:
+            price = int(float(ps))
+    except ValueError:
+        return qty, None
+    return qty, price
 
 
 def _handle_qty_input(db, phone, text, pending, business_owner_phone, send_message):
     payload = _load_payload(pending)
     cart = _load_cart(pending)
 
-    if not text.strip().isdigit() or int(text.strip()) < 1:
-        send_message(phone, "Send a valid quantity. Example: 3")
+    qty, price_override = _parse_qty_price(text)
+    if qty is None:
+        send_message(phone, "Send quantity. Examples:\n3\n3 at 2500 (custom price)")
         return {"status": "select_product_invalid_qty"}
 
-    qty = int(text.strip())
-    price = payload.get("selected_price", 0)
+    standard_price = payload.get("selected_price", 0)    # = selling_price
+    cost_price = payload.get("selected_cost_price")
+    price = price_override if price_override is not None else standard_price
     item_total = qty * price
+    deviation = (price - standard_price) if price_override is not None else 0
+    below_cost = bool(cost_price and price < cost_price)
 
     cart.append({
         "product": payload["selected_name"],
@@ -233,6 +329,10 @@ def _handle_qty_input(db, phone, text, pending, business_owner_phone, send_messa
         "unit": payload.get("selected_unit"),
         "total": item_total,
         "inv_id": payload.get("selected_id"),
+        "standard_price": standard_price,
+        "deviation": deviation,      # negative=discount, positive=premium, 0=standard
+        "cost_price": cost_price,
+        "below_cost": below_cost,
     })
 
     total = _cart_total(cart)
@@ -240,10 +340,9 @@ def _handle_qty_input(db, phone, text, pending, business_owner_phone, send_messa
     pending.buy_amount = total
 
     # Clear selected item from payload but keep item_ids
-    payload.pop("selected_id", None)
-    payload.pop("selected_name", None)
-    payload.pop("selected_price", None)
-    payload.pop("selected_unit", None)
+    for k in ("selected_id", "selected_name", "selected_price",
+              "selected_cost_price", "selected_unit"):
+        payload.pop(k, None)
     _save_payload(pending, payload)
 
     pending.action = ACTION_SELECT_PRODUCT_CART
@@ -402,7 +501,8 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
         send_message(phone, "Cancelled. Send 'select product' to start again.")
         return {"status": "select_product_confirm_cancelled"}
 
-    if normalized != "yes":
+    show_discount = normalized in ["yes receipt", "yes d", "yes discount", "yes r"]
+    if normalized not in ["yes", "yes receipt", "yes d", "yes discount", "yes r"]:
         cart = _load_cart(pending)
         payload = _load_payload(pending)
         send_message(
@@ -447,6 +547,24 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     )
     db.add(buy_tx)
     db.flush()
+
+    # Internal price deviation notes (by recorder name — never on customer receipt)
+    from models import TransactionNote
+    for item in cart:
+        deviation = item.get("deviation", 0)
+        if deviation != 0:
+            direction = "discount" if deviation < 0 else "premium"
+            sign = "−" if deviation < 0 else "+"
+            db.add(TransactionNote(
+                transaction_id=buy_tx.id,
+                note=(
+                    f"Price {direction}: {item['product'].title()} sold at "
+                    f"N{item['unit_price']:,} "
+                    f"(standard N{item.get('standard_price', 0):,}, "
+                    f"{sign}N{abs(deviation):,}). "
+                    f"Recorded by {user.name.title()}."
+                ),
+            ))
 
     # Record individual items
     add_transaction_items(db, buy_tx.id, [
@@ -511,7 +629,8 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     # ── Forward receipt to customer if phone exists ───────────────────────────
     if customer_phone:
         customer_receipt = build_customer_receipt(
-            business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id, receipt_cfg
+            business_name, customer_name, cart, total, paid, balance,
+            due_date_str, buy_tx.id, receipt_cfg, show_discount=show_discount,
         )
         send_message(customer_phone, customer_receipt)
     else:

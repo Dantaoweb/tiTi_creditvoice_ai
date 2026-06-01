@@ -530,6 +530,60 @@ class PendingAction(Base):
     )
 
 
+class ParseLog(Base):
+    """Records every parsed transaction for tiTi training and quality feedback."""
+
+    __tablename__ = "parse_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    phone = Column(String, index=True)
+    owner_phone = Column(String, index=True, nullable=True)
+    business_type = Column(String, nullable=True)
+    business_category = Column(String, nullable=True)
+    raw_input = Column(Text, nullable=True)
+    parsed_type = Column(String, nullable=True)
+    parsed_data = Column(Text, nullable=True)
+    was_confirmed = Column(Boolean, nullable=True)  # True=YES, False=EDIT, None=unresolved
+    correction_input = Column(Text, nullable=True)
+    source = Column(String, default="text")          # text / voice
+    created_at = Column(DateTime, default=utcnow)
+
+
+class FastCaptureSettings(Base):
+    """Per-business fast capture mode configuration."""
+
+    __tablename__ = "fast_capture_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, unique=True, index=True)
+    enabled = Column(Boolean, default=False)
+    market_start_hour = Column(Integer, default=8)   # WAT hour, inclusive
+    market_end_hour = Column(Integer, default=18)    # WAT hour, exclusive
+    auto_close_hour = Column(Integer, default=21)    # WAT hour for nightly prompt
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class FastCaptureEntry(Base):
+    """Individual entry captured during fast mode, pending end-of-day review."""
+
+    __tablename__ = "fast_capture_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    recorded_by_id = Column(Integer, nullable=True)
+    raw_input = Column(Text)
+    parsed_type = Column(String, nullable=True)
+    parsed_data = Column(Text, nullable=True)
+    confidence = Column(String, default="medium")    # high / medium / low
+    confidence_reason = Column(Text, nullable=True)  # plain language, never shown as score
+    status = Column(String, default="pending")       # pending / approved / corrected / skipped
+    correction_input = Column(Text, nullable=True)
+    session_date = Column(String, index=True)        # YYYY-MM-DD WAT
+    created_at = Column(DateTime, default=utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
+
+
 class ProcessedMessage(Base):
 
     __tablename__ = "processed_messages"

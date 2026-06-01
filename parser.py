@@ -1935,6 +1935,58 @@ def parse_message(text):
     ]:
         return {"type": "REONBOARD"}
 
+    # ── Fast Capture Mode commands ───────────────────────────────────────────
+    if clean_text in ["fast mode", "fast capture", "fast mode status"]:
+        return {"type": "FAST_CAPTURE_STATUS"}
+
+    if clean_text in ["fast mode off", "fast capture off", "stop fast mode", "normal mode"]:
+        return {"type": "FAST_MODE_OFF"}
+
+    if clean_text in ["close sales", "end of day", "review sales",
+                      "review entries", "daily review", "close day"]:
+        return {"type": "CLOSE_SALES"}
+
+    # "fast mode on"  |  "fast mode on 8am to 6pm"
+    fast_on_match = re.match(
+        r"^(?:fast\s+mode|fast\s+capture)\s+on"
+        r"(?:\s+(?P<start>\d{1,2})(?:am|pm)?\s+(?:to|-)\s+(?P<end>\d{1,2})(?:am|pm)?)?$",
+        clean_text,
+    )
+    if fast_on_match:
+        hours = {}
+        if fast_on_match.group("start"):
+            h = int(fast_on_match.group("start"))
+            if "pm" in clean_text.split("to")[0] and h < 12:
+                h += 12
+            hours["start"] = h
+        if fast_on_match.group("end"):
+            h = int(fast_on_match.group("end"))
+            if "pm" in clean_text.split("to")[-1] and h < 12:
+                h += 12
+            hours["end"] = h
+        return {"type": "FAST_MODE_ON", "hours": hours}
+
+    # ── Margin / profitability commands ─────────────────────────────────────
+    if clean_text in [
+        "margin", "margin report", "margin today", "margin this week",
+        "margin this month", "profit", "profit today", "profit this week",
+        "profit this month", "discount report", "margin summary",
+    ]:
+        period_map = {
+            "today": "TODAY", "this week": "WEEK",
+            "this month": "MONTH", "this year": "YEAR",
+        }
+        period = next(
+            (v for k, v in period_map.items() if k in clean_text), None
+        )
+        return {"type": "MARGIN_REPORT", "period": period}
+
+    if clean_text in [
+        "products below cost", "below cost", "loss products",
+        "selling below cost", "which products losing money",
+    ]:
+        return {"type": "BELOW_COST_PRODUCTS"}
+
     # "print receipt Mary"  |  "receipt Mary"  |  "receipt 42"
     receipt_match = re.match(
         r"^(?:print\s+)?receipt\s+(?P<query>.+)$",

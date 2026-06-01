@@ -1,4 +1,10 @@
 ﻿from admin_commands import notify_subscription_admins
+from fast_capture_commands import (
+    handle_fast_capture_command,
+    is_fast_mode_active,
+    save_fast_entry,
+    _ack_message,
+)
 from customer_automation import (
     handle_automation_owner_command,
     handle_customer_automation_message,
@@ -178,6 +184,31 @@ def handle_webhook_body(body):
                 return subscription_media_result
 
             return {"status": "ignored_non_text"}
+        # ── Fast Capture Mode intercept ───────────────────────────────────────
+        # Fast-mode commands (on/off/close sales) always route normally.
+        # A plain TRANSACTION during active market hours skips confirmation.
+        if user and parsed and parsed.get("type") in (
+            "FAST_MODE_ON", "FAST_MODE_OFF", "FAST_CAPTURE_STATUS", "CLOSE_SALES",
+        ):
+            fc_result = handle_fast_capture_command(
+                db, phone, parsed, user, business_owner_phone, send_whatsapp_message,
+            )
+            if fc_result:
+                return fc_result
+
+        if (
+            user
+            and parsed
+            and parsed.get("type") == "TRANSACTION"
+            and not is_command
+            and is_fast_mode_active(db, business_owner_phone)
+        ):
+            raw_text = voice_transcript_text or text
+            entry = save_fast_entry(db, business_owner_phone, user.id, raw_text, parsed)
+            db.commit()
+            send_whatsapp_message(phone, _ack_message(entry, parsed))
+            return {"status": "fast_capture_saved"}
+
         pending_result = handle_pending_actions(
             db,
             phone,

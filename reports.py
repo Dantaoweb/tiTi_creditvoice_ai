@@ -229,6 +229,77 @@ def build_dashboard_summary_message(summary, period=None):
     )
 
 
+def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None):
+    """
+    Compare expected revenue (at selling price) vs actual revenue recorded.
+    Returns a dict with: expected, actual, discount_gap, below_cost_products.
+    Only meaningful when inventory items have selling_price set.
+    """
+    from models import InventoryItem, TransactionItem
+    start, end = get_period_range(period) if period else (None, None)
+
+    tx_query = db.query(TransactionItem).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).filter(Transaction.type == "BUY")
+
+    if recorded_by_id:
+        tx_query = tx_query.filter(Transaction.recorded_by_id == recorded_by_id)
+    if start:
+        tx_query = tx_query.filter(Transaction.created_at >= start, Transaction.created_at < end)
+
+    items = tx_query.all()
+    actual = sum(i.total or 0 for i in items)
+    expected = 0
+    for i in items:
+        inv = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            func.lower(InventoryItem.name) == (i.product or "").lower(),
+        ).first()
+        if inv and inv.selling_price:
+            expected += (i.quantity or 1) * inv.selling_price
+        else:
+            expected += i.total or 0
+
+    below_cost = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.cost_price.isnot(None),
+        InventoryItem.selling_price.isnot(None),
+        InventoryItem.selling_price < InventoryItem.cost_price,
+    ).all()
+
+    return {
+        "expected": expected,
+        "actual": actual,
+        "discount_gap": max(expected - actual, 0),
+        "below_cost_products": [i.name for i in below_cost],
+    }
+
+
+def get_products_below_cost(db, owner_phone):
+    """Return inventory items where selling_price < cost_price."""
+    from models import InventoryItem
+    return db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.cost_price.isnot(None),
+        InventoryItem.selling_price.isnot(None),
+        InventoryItem.selling_price < InventoryItem.cost_price,
+    ).all()
+
+
+def build_margin_summary_message(summary, period=None):
+    label = dashboard_period_label(period) if period else "all time"
+    lines = [f"Margin summary — {label}:"]
+    lines.append(f"Expected revenue: N{summary['expected']:,}")
+    lines.append(f"Actual revenue:   N{summary['actual']:,}")
+    gap = summary["discount_gap"]
+    if gap > 0:
+        lines.append(f"Discount gap:     N{gap:,}")
+    if summary["below_cost_products"]:
+        products = ", ".join(p.title() for p in summary["below_cost_products"][:5])
+        lines.append(f"\n⚠ Selling below cost: {products}")
+    return "\n".join(lines)
+
+
 def build_dashboard_menu_message():
     return (
         "Dashboard\n\n"
