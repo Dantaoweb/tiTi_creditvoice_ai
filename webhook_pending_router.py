@@ -322,20 +322,25 @@ def _handle_stock_add_confirm(db, phone, text, pending, user, business_owner_pho
 
     items = json.loads(pending.items_json or "[]")
     saved = []
-    for item_data in items:
-        item = upsert_stock_with_prices(
-            db,
-            business_owner_phone,
-            item_data["product"],
-            item_data.get("unit"),
-            item_data["cost"],
-            item_data["sell"],
-        )
-        unit_label = f" {item.unit}" if item.unit else ""
-        saved.append(f"{item.name.title()}{unit_label} — sell N{item.selling_price:,}")
 
-    db.delete(pending)
-    db.commit()
+    try:
+        for item_data in items:
+            item = upsert_stock_with_prices(
+                db,
+                business_owner_phone,
+                item_data["product"],
+                item_data.get("unit"),
+                item_data["cost"],
+                item_data["sell"],
+            )
+            unit_label = f" {item.unit}" if item.unit else ""
+            saved.append(f"{item.name.title()}{unit_label} — sell N{item.selling_price:,}")
+        db.delete(pending)
+        db.commit()
+    except Exception:
+        db.rollback()
+        send_message(phone, "Something went wrong saving your stock. Please try again.")
+        return {"status": "stock_add_confirm_error"}
 
     send_message(
         phone,

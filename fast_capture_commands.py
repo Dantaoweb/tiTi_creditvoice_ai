@@ -304,11 +304,16 @@ def handle_fast_capture_review_pending(
         return {"status": "fast_capture_review_complete"}
 
     if normalized == "all ok":
-        for entry in entries:
-            parsed = json.loads(entry.parsed_data or "{}")
-            _commit_entry(db, owner_phone, entry, parsed)
-        db.delete(pending)
-        db.commit()
+        try:
+            for entry in entries:
+                parsed = json.loads(entry.parsed_data or "{}")
+                _commit_entry(db, owner_phone, entry, parsed)
+            db.delete(pending)
+            db.commit()
+        except Exception:
+            db.rollback()
+            send_message(phone, "Something went wrong. Please try again.")
+            return {"status": "fast_capture_approve_error"}
         send_message(phone, f"Done. {len(entries)} entries approved and saved.")
         return {"status": "fast_capture_all_approved"}
 
@@ -427,33 +432,37 @@ def handle_fast_capture_command(db, phone, parsed, user, business_owner_phone, s
             send_message(phone, "No entries to review today.")
             return {"status": "close_sales_empty"}
 
-        # Auto-approve high-confidence entries immediately
+        # Auto-approve high-confidence entries + queue the unclear ones
         high_entries = [e for e in all_entries if e.confidence == "high"]
-        for entry in high_entries:
-            parsed_data = json.loads(entry.parsed_data or "{}")
-            _commit_entry(db, business_owner_phone, entry, parsed_data)
-        db.flush()
+        try:
+            for entry in high_entries:
+                parsed_data = json.loads(entry.parsed_data or "{}")
+                _commit_entry(db, business_owner_phone, entry, parsed_data)
+            db.flush()
 
-        if not needs_review:
+            if not needs_review:
+                db.commit()
+                send_message(
+                    phone,
+                    f"End of day done.\n"
+                    f"{len(high_entries)} entries saved automatically.\n"
+                    "Nothing unclear — great day!"
+                )
+                return {"status": "close_sales_all_clean"}
+
+            db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+            db.add(PendingAction(
+                phone=phone,
+                action=ACTION_FAST_CAPTURE_REVIEW,
+                customer_name="",
+                last_customer="",
+                payload_json=json.dumps({"entry_ids": [e.id for e in needs_review]}),
+            ))
             db.commit()
-            send_message(
-                phone,
-                f"End of day done.\n"
-                f"{len(high_entries)} entries saved automatically.\n"
-                "Nothing unclear — great day!"
-            )
-            return {"status": "close_sales_all_clean"}
-
-        # Save review pending with the unclear entry IDs
-        db.query(PendingAction).filter(PendingAction.phone == phone).delete()
-        db.add(PendingAction(
-            phone=phone,
-            action=ACTION_FAST_CAPTURE_REVIEW,
-            customer_name="",
-            last_customer="",
-            payload_json=json.dumps({"entry_ids": [e.id for e in needs_review]}),
-        ))
-        db.commit()
+        except Exception:
+            db.rollback()
+            send_message(phone, "Something went wrong during end-of-day save. Please try again.")
+            return {"status": "close_sales_error"}
 
         send_message(phone, build_review_opening_message(
             len(all_entries), auto_count, needs_review

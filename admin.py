@@ -5,21 +5,39 @@ from datetime import datetime, timezone
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+
+# ── Role constants and normalize_admin_role are defined here (before any
+# external imports) so that parser.py can import normalize_admin_role from
+# admin without hitting a circular import mid-load. ──────────────────────────
+ROLE_CUSTOMER_SUPPORT = "CUSTOMER_SUPPORT"
+ROLE_SUBSCRIPTION_ADMIN = "SUBSCRIPTION_ADMIN"
+ROLE_APP_ADMIN = "APP_ADMIN"
+
+
+def normalize_admin_role(role):
+    role = (role or "").upper().replace(" ", "_").strip()
+    aliases = {
+        "SUPPORT": ROLE_CUSTOMER_SUPPORT,
+        "CUSTOMER_SUPPORT": ROLE_CUSTOMER_SUPPORT,
+        "SUBSCRIPTION": ROLE_SUBSCRIPTION_ADMIN,
+        "SUBSCRIPTION_ADMIN": ROLE_SUBSCRIPTION_ADMIN,
+        "APP": ROLE_APP_ADMIN,
+        "APP_ADMIN": ROLE_APP_ADMIN,
+    }
+    return aliases.get(role)
+
+
+# ── Remaining imports (safe now that normalize_admin_role is already defined) ─
 from sqlalchemy import func
 
 from models import AppAdminRole, SubscriptionPayment, User
-from parser import normalize_phone
+from phone_utils import normalize_phone
 from plans import PLAN_BASIC, PLAN_GO, PLAN_PRO, normalize_plan
 from subscriptions import (
     app_user_effective_plan,
     get_business_users_by_effective_plan,
     get_month_start,
 )
-
-
-ROLE_CUSTOMER_SUPPORT = "CUSTOMER_SUPPORT"
-ROLE_SUBSCRIPTION_ADMIN = "SUBSCRIPTION_ADMIN"
-ROLE_APP_ADMIN = "APP_ADMIN"
 
 
 def phone_list_from_env(name):
@@ -46,19 +64,6 @@ def subscription_admin_phones():
 
 def app_admin_phones():
     return phone_list_from_env("APP_ADMIN_PHONES")
-
-
-def normalize_admin_role(role):
-    role = (role or "").upper().replace(" ", "_").strip()
-    aliases = {
-        "SUPPORT": ROLE_CUSTOMER_SUPPORT,
-        "CUSTOMER_SUPPORT": ROLE_CUSTOMER_SUPPORT,
-        "SUBSCRIPTION": ROLE_SUBSCRIPTION_ADMIN,
-        "SUBSCRIPTION_ADMIN": ROLE_SUBSCRIPTION_ADMIN,
-        "APP": ROLE_APP_ADMIN,
-        "APP_ADMIN": ROLE_APP_ADMIN,
-    }
-    return aliases.get(role)
 
 
 def get_admin_role_override(db, phone, role):

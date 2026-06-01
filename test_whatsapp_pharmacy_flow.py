@@ -347,7 +347,7 @@ def test_dashboard_menu_has_add_stock_and_routes_to_stock_help(monkeypatch):
     assert send("3") == {"status": "post_onboarding_dashboard"}
     assert "10. Add stock" in sent_messages[-1][1]
     assert send("10") == {"status": "dashboard_add_stock"}
-    assert "To add stock" in sent_messages[-1][1]
+    assert "Add stock" in sent_messages[-1][1]
     assert "stock" in sent_messages[-1][1].lower()
     assert send("Mary bought 2 packs paracetamol at 2500") == {"status": "pending"}
     assert "Confirm:" in sent_messages[-1][1]
@@ -372,6 +372,18 @@ def test_dashboard_menu_has_add_stock_and_routes_to_stock_help(monkeypatch):
         assert sale.unit_price == 2500
     finally:
         db.close()
+
+    # Supplier transactions require GO plan — upgrade before this step
+    db_upgrade = SessionTesting()
+    try:
+        from models import User as _User
+        u = db_upgrade.query(_User).filter(_User.phone == phone).first()
+        if u:
+            u.subscription_plan = "GO"
+            u.subscription_status = "ACTIVE"
+            db_upgrade.commit()
+    finally:
+        db_upgrade.close()
 
     assert send("Ayo supplied me 10 packs malaria drug for 18000") == {
         "status": "confirm_supplier_transaction"

@@ -273,7 +273,7 @@ def test_pack_stock_purchase_and_customer_sale_match_inventory():
     )
     db.commit()
 
-    updates, missing = deduct_inventory_for_items(
+    updates, missing, _ = deduct_inventory_for_items(
         db,
         owner_phone,
         [{
@@ -322,7 +322,7 @@ def test_unitless_invoice_item_matches_single_stock_unit():
     )
     db.commit()
 
-    updates, missing = deduct_inventory_for_items(
+    updates, missing, _ = deduct_inventory_for_items(
         db,
         owner_phone,
         [{
@@ -434,7 +434,7 @@ def test_bulk_sale_can_deduct_from_converted_retail_stock():
     )
     db.commit()
 
-    updates, missing = deduct_inventory_for_items(
+    updates, missing, _ = deduct_inventory_for_items(
         db,
         owner_phone,
         [{

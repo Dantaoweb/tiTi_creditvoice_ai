@@ -514,7 +514,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
         )
         return {"status": "select_product_confirm_reprompt"}
 
-    # ── Save the sale ─────────────────────────────────────────────────────────
+    # ── Capture fields before any write (pending is deleted inside try) ─────────
     cart = _load_cart(pending)
     payload = _load_payload(pending)
     total = pending.buy_amount
@@ -525,93 +525,102 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     customer_name = pending.customer_name
     customer_phone = pending.customer_phone
 
+    # Customer lookup — pure read, outside try
     customer = db.query(Customer).filter(
         Customer.owner_phone == business_owner_phone,
         Customer.name == customer_name,
     ).first()
-    if not customer:
-        customer = Customer(name=customer_name, owner_phone=business_owner_phone)
-        db.add(customer)
-        db.flush()
 
-    # BUY transaction
-    buy_tx = Transaction(
-        customer_id=customer.id,
-        type="BUY",
-        amount=total,
-        product=", ".join(i["product"] for i in cart),
-        due_date=due_date,
-        recorded_by_id=user.id,
-        message_id=f"{message_id}_sp_buy",
-        created_at=_utcnow(),
-    )
-    db.add(buy_tx)
-    db.flush()
-
-    # Internal price deviation notes (by recorder name — never on customer receipt)
-    from models import TransactionNote
-    for item in cart:
-        deviation = item.get("deviation", 0)
-        if deviation != 0:
-            direction = "discount" if deviation < 0 else "premium"
-            sign = "−" if deviation < 0 else "+"
-            db.add(TransactionNote(
-                transaction_id=buy_tx.id,
-                note=(
-                    f"Price {direction}: {item['product'].title()} sold at "
-                    f"N{item['unit_price']:,} "
-                    f"(standard N{item.get('standard_price', 0):,}, "
-                    f"{sign}N{abs(deviation):,}). "
-                    f"Recorded by {user.name.title()}."
-                ),
-            ))
-
-    # Record individual items
-    add_transaction_items(db, buy_tx.id, [
-        {
-            "product": i["product"],
-            "quantity": i["quantity"],
-            "unit": i["unit"],
-            "unit_price": i["unit_price"],
-            "total": i["total"],
-        }
-        for i in cart
-    ])
-
-    # PAY transaction (if any payment made)
-    pay_tx = None
-    if paid > 0:
-        pay_tx = Transaction(
-            customer_id=customer.id,
-            type="PAY",
-            amount=paid,
-            recorded_by_id=user.id,
-            message_id=f"{message_id}_sp_pay",
-            created_at=_utcnow(),
-        )
-        db.add(pay_tx)
-
-    # Deduct inventory
     inventory_enabled = bool(
         subscription and plan_allows_feature(subscription.get("plan"), "INVENTORY")
     )
     stock_lines = []
-    if inventory_enabled:
-        stock_items = [
-            {"product": i["product"], "quantity": i["quantity"],
-             "unit": i["unit"], "unit_price": i["unit_price"]}
-            for i in cart
-        ]
-        updates, missing, low_alerts = deduct_inventory_for_items(
-            db, business_owner_phone, stock_items, "CUSTOMER_SALE", buy_tx.id, user.id,
-        )
-        stock_lines = updates
-        if low_alerts:
-            from transaction_save import send_low_stock_alerts
-            send_low_stock_alerts(send_message, business_owner_phone, low_alerts)
+    low_alerts = []
+    buy_tx = None
 
-    db.delete(pending)
-    db.commit()
+    try:
+        if not customer:
+            customer = Customer(name=customer_name, owner_phone=business_owner_phone)
+            db.add(customer)
+            db.flush()
+
+        # BUY transaction
+        buy_tx = Transaction(
+            customer_id=customer.id,
+            type="BUY",
+            amount=total,
+            product=", ".join(i["product"] for i in cart),
+            due_date=due_date,
+            recorded_by_id=user.id,
+            message_id=f"{message_id}_sp_buy",
+            created_at=_utcnow(),
+        )
+        db.add(buy_tx)
+        db.flush()
+
+        # Internal price deviation notes
+        from models import TransactionNote
+        for item in cart:
+            deviation = item.get("deviation", 0)
+            if deviation != 0:
+                direction = "discount" if deviation < 0 else "premium"
+                sign = "−" if deviation < 0 else "+"
+                db.add(TransactionNote(
+                    transaction_id=buy_tx.id,
+                    note=(
+                        f"Price {direction}: {item['product'].title()} sold at "
+                        f"N{item['unit_price']:,} "
+                        f"(standard N{item.get('standard_price', 0):,}, "
+                        f"{sign}N{abs(deviation):,}). "
+                        f"Recorded by {user.name.title()}."
+                    ),
+                ))
+
+        # Record individual items
+        add_transaction_items(db, buy_tx.id, [
+            {
+                "product": i["product"],
+                "quantity": i["quantity"],
+                "unit": i["unit"],
+                "unit_price": i["unit_price"],
+                "total": i["total"],
+            }
+            for i in cart
+        ])
+
+        # PAY transaction
+        if paid > 0:
+            db.add(Transaction(
+                customer_id=customer.id,
+                type="PAY",
+                amount=paid,
+                recorded_by_id=user.id,
+                message_id=f"{message_id}_sp_pay",
+                created_at=_utcnow(),
+            ))
+
+        # Inventory deduction
+        if inventory_enabled:
+            stock_items = [
+                {"product": i["product"], "quantity": i["quantity"],
+                 "unit": i["unit"], "unit_price": i["unit_price"]}
+                for i in cart
+            ]
+            stock_lines, _missing, low_alerts = deduct_inventory_for_items(
+                db, business_owner_phone, stock_items, "CUSTOMER_SALE", buy_tx.id, user.id,
+            )
+
+        db.delete(pending)
+        db.commit()
+    except Exception:
+        db.rollback()
+        send_message(phone, "Something went wrong saving this sale. Please try again.")
+        return {"status": "save_error"}
+
+    # Low-stock alerts sent after commit
+    if low_alerts:
+        from transaction_save import send_low_stock_alerts
+        send_low_stock_alerts(send_message, business_owner_phone, low_alerts)
 
     # ── Get niche receipt config from owner's business type ───────────────────
     owner_user = db.query(User).filter(User.phone == business_owner_phone).first()

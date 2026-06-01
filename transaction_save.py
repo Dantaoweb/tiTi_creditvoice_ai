@@ -107,7 +107,10 @@ def save_direct_sale(
     inventory_enabled,
     send_message,
 ):
+    # Read before any write — summary uses pending fields that are deleted below
     sale_saved_msg = pending_transaction_summary(pending)
+
+    # Duplicate guard (pure read — outside try)
     recent_tx = db.query(Transaction).filter(
         Transaction.type == "SALE",
         Transaction.amount == pending.buy_amount,
@@ -115,42 +118,47 @@ def save_direct_sale(
         Transaction.recorded_by_id == user.id,
         Transaction.created_at >= _utcnow() - timedelta(minutes=2),
     ).first()
-
     if recent_tx:
         send_message(phone, "A similar direct sale was already recorded just a moment ago.")
         db.delete(pending)
         db.commit()
         return {"status": "duplicate_sale_prevention"}
 
-    tx = Transaction(
-        customer_id=None,
-        type="SALE",
-        amount=pending.buy_amount,
-        product=pending.product,
-        quantity=pending.quantity,
-        unit=pending.unit,
-        unit_price=pending.unit_price,
-        recorded_by_id=user.id,
-        message_id=message_id,
-        created_at=_utcnow(),
-    )
-    db.add(tx)
-    db.flush()
-    _add_price_deviation_note(
-        db, business_owner_phone, tx.id,
-        pending.product, pending.unit_price, user.name,
-    )
     stock_updates = []
     stock_missing = []
     low_stock_alerts = []
-    if inventory_enabled:
-        stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
-            db, business_owner_phone, tx.id, user.id, pending, pending_items, "SALE",
+
+    try:
+        tx = Transaction(
+            customer_id=None,
+            type="SALE",
+            amount=pending.buy_amount,
+            product=pending.product,
+            quantity=pending.quantity,
+            unit=pending.unit,
+            unit_price=pending.unit_price,
+            recorded_by_id=user.id,
+            message_id=message_id,
+            created_at=_utcnow(),
         )
+        db.add(tx)
+        db.flush()
+        _add_price_deviation_note(
+            db, business_owner_phone, tx.id,
+            pending.product, pending.unit_price, user.name,
+        )
+        if inventory_enabled:
+            stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
+                db, business_owner_phone, tx.id, user.id, pending, pending_items, "SALE",
+            )
+        db.delete(pending)
+        db.commit()
+    except Exception:
+        db.rollback()
+        send_message(phone, "Something went wrong saving this sale. Please try again.")
+        return {"status": "save_error"}
 
-    db.delete(pending)
-    db.commit()
-
+    # Notifications sent after commit — a send failure does not undo the save
     stock_msg = build_stock_save_message(stock_updates, stock_missing)
     send_message(phone, f"{sale_saved_msg}{stock_msg}")
     send_low_stock_alerts(send_message, business_owner_phone, low_stock_alerts)
@@ -158,58 +166,68 @@ def save_direct_sale(
 
 
 def save_supplier_pending(db, phone, pending, user, business_owner_phone, pending_items, send_message):
-    supplier = find_or_create_supplier(db, business_owner_phone, pending.customer_name)
+    # Capture fields that will be lost when pending is deleted inside try
     saved_summary = pending_transaction_summary(pending)
+    action = pending.action
+    supplier_name_key = pending.customer_name
 
-    if pending.action == "SUPPLIER_PURCHASE":
-        purchase = SupplierPurchase(
-            supplier_id=supplier.id,
-            owner_phone=business_owner_phone,
-            product=pending.product,
-            quantity=pending.quantity,
-            unit=pending.unit,
-            unit_price=pending.unit_price,
-            total=pending.buy_amount,
-            paid_amount=pending.paid_amount,
-            due_date=pending.due_date,
-            recorded_by_id=user.id,
-            created_at=_utcnow(),
-        )
-        db.add(purchase)
-        db.flush()
-        stock_item = pending_items[0] if pending_items else None
-        stock_product = stock_item.get("product") if stock_item else pending.product
-        stock_quantity = stock_item.get("quantity") if stock_item else (pending.quantity or 1)
-        stock_unit = stock_item.get("unit") if stock_item else pending.unit
-        stock_unit_price = stock_item.get("unit_price") if stock_item else pending.unit_price
-        add_inventory_movement(
-            db,
-            business_owner_phone,
-            stock_product,
-            stock_quantity,
-            stock_unit,
-            stock_unit_price,
-            "IN",
-            "SUPPLIER_PURCHASE",
-            purchase.id,
-            user.id,
-            f"Supplied by {supplier.name.title()}",
-        )
-    else:
-        payment = SupplierPayment(
-            supplier_id=supplier.id,
-            owner_phone=business_owner_phone,
-            amount=pending.paid_amount,
-            product=pending.product,
-            recorded_by_id=user.id,
-            created_at=_utcnow(),
-        )
-        db.add(payment)
+    supplier = None
+    try:
+        supplier = find_or_create_supplier(db, business_owner_phone, supplier_name_key)
+        if action == "SUPPLIER_PURCHASE":
+            purchase = SupplierPurchase(
+                supplier_id=supplier.id,
+                owner_phone=business_owner_phone,
+                product=pending.product,
+                quantity=pending.quantity,
+                unit=pending.unit,
+                unit_price=pending.unit_price,
+                total=pending.buy_amount,
+                paid_amount=pending.paid_amount,
+                due_date=pending.due_date,
+                recorded_by_id=user.id,
+                created_at=_utcnow(),
+            )
+            db.add(purchase)
+            db.flush()
+            stock_item = pending_items[0] if pending_items else None
+            stock_product = stock_item.get("product") if stock_item else pending.product
+            stock_quantity = stock_item.get("quantity") if stock_item else (pending.quantity or 1)
+            stock_unit = stock_item.get("unit") if stock_item else pending.unit
+            stock_unit_price = stock_item.get("unit_price") if stock_item else pending.unit_price
+            add_inventory_movement(
+                db,
+                business_owner_phone,
+                stock_product,
+                stock_quantity,
+                stock_unit,
+                stock_unit_price,
+                "IN",
+                "SUPPLIER_PURCHASE",
+                purchase.id,
+                user.id,
+                f"Supplied by {supplier.name.title()}",
+            )
+        else:
+            payment = SupplierPayment(
+                supplier_id=supplier.id,
+                owner_phone=business_owner_phone,
+                amount=pending.paid_amount,
+                product=pending.product,
+                recorded_by_id=user.id,
+                created_at=_utcnow(),
+            )
+            db.add(payment)
 
-    db.delete(pending)
-    db.commit()
+        db.delete(pending)
+        db.commit()
+    except Exception:
+        db.rollback()
+        send_message(phone, "Something went wrong saving this record. Please try again.")
+        return {"status": "save_error"}
+
     balance = get_supplier_balance(db, supplier.id)
-    debt_label = "Total debt" if pending.action == "SUPPLIER_PURCHASE" else "Total debt remaining"
+    debt_label = "Total debt" if action == "SUPPLIER_PURCHASE" else "Total debt remaining"
     send_message(
         phone,
         f"{saved_summary}\n{debt_label} to {supplier.name.title()}: N{balance:,}"
@@ -259,104 +277,109 @@ def save_customer_pending(
         db.commit()
         return {"status": "duplicate_manual_prevention"}
 
+    # Read before writes — summary uses pending fields that are deleted inside try
     saved_summary = pending_transaction_summary(pending, customer)
     stock_updates = []
     stock_missing = []
     low_stock_alerts = []
 
-    if pending.action == "BUY":
-        tx = Transaction(
-            customer_id=customer.id,
-            type="BUY",
-            amount=pending.buy_amount,
-            product=pending.product,
-            quantity=pending.quantity,
-            unit=pending.unit,
-            unit_price=pending.unit_price,
-            due_date=pending.due_date,
-            recorded_by_id=user.id,
-            message_id=message_id,
-            created_at=_utcnow(),
-        )
-        db.add(tx)
-        db.flush()
-        _add_price_deviation_note(
-            db, business_owner_phone, tx.id,
-            pending.product, pending.unit_price, user.name,
-        )
-        if inventory_enabled:
-            stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
-                db, business_owner_phone, tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
+    try:
+        if pending.action == "BUY":
+            tx = Transaction(
+                customer_id=customer.id,
+                type="BUY",
+                amount=pending.buy_amount,
+                product=pending.product,
+                quantity=pending.quantity,
+                unit=pending.unit,
+                unit_price=pending.unit_price,
+                due_date=pending.due_date,
+                recorded_by_id=user.id,
+                message_id=message_id,
+                created_at=_utcnow(),
             )
-
-    elif pending.action == "PAY":
-        tx = Transaction(
-            customer_id=customer.id,
-            type="PAY",
-            amount=pending.paid_amount,
-            recorded_by_id=user.id,
-            message_id=message_id,
-            created_at=_utcnow(),
-        )
-        db.add(tx)
-        if pending.due_date:
-            latest_buy = db.query(Transaction).filter(
-                Transaction.customer_id == customer.id,
-                Transaction.type == "BUY",
-            ).order_by(
-                Transaction.created_at.desc()
-            ).first()
-            if latest_buy:
-                latest_buy.due_date = pending.due_date
-
-    elif pending.action == "COMBINED":
-        buy_tx = Transaction(
-            customer_id=customer.id,
-            type="BUY",
-            amount=pending.buy_amount,
-            product=pending.product,
-            quantity=pending.quantity,
-            unit=pending.unit,
-            unit_price=pending.unit_price,
-            due_date=pending.due_date,
-            recorded_by_id=user.id,
-            message_id=f"{message_id}_buy",
-            created_at=_utcnow(),
-        )
-        db.add(buy_tx)
-        db.flush()
-        _add_price_deviation_note(
-            db, business_owner_phone, buy_tx.id,
-            pending.product, pending.unit_price, user.name,
-        )
-        if inventory_enabled:
-            stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
-                db, business_owner_phone, buy_tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
+            db.add(tx)
+            db.flush()
+            _add_price_deviation_note(
+                db, business_owner_phone, tx.id,
+                pending.product, pending.unit_price, user.name,
             )
+            if inventory_enabled:
+                stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
+                    db, business_owner_phone, tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
+                )
 
-        pay_tx = Transaction(
-            customer_id=customer.id,
-            type="PAY",
-            amount=pending.paid_amount,
-            recorded_by_id=user.id,
-            message_id=f"{message_id}_pay",
-            created_at=_utcnow(),
-        )
-        db.add(pay_tx)
+        elif pending.action == "PAY":
+            tx = Transaction(
+                customer_id=customer.id,
+                type="PAY",
+                amount=pending.paid_amount,
+                recorded_by_id=user.id,
+                message_id=message_id,
+                created_at=_utcnow(),
+            )
+            db.add(tx)
+            if pending.due_date:
+                latest_buy = db.query(Transaction).filter(
+                    Transaction.customer_id == customer.id,
+                    Transaction.type == "BUY",
+                ).order_by(
+                    Transaction.created_at.desc()
+                ).first()
+                if latest_buy:
+                    latest_buy.due_date = pending.due_date
 
-    memory = db.query(CustomerMemory).filter(CustomerMemory.phone == phone).first()
-    if not memory:
-        db.add(CustomerMemory(phone=phone, last_customer=customer.name))
-    else:
-        memory.last_customer = customer.name
+        elif pending.action == "COMBINED":
+            buy_tx = Transaction(
+                customer_id=customer.id,
+                type="BUY",
+                amount=pending.buy_amount,
+                product=pending.product,
+                quantity=pending.quantity,
+                unit=pending.unit,
+                unit_price=pending.unit_price,
+                due_date=pending.due_date,
+                recorded_by_id=user.id,
+                message_id=f"{message_id}_buy",
+                created_at=_utcnow(),
+            )
+            db.add(buy_tx)
+            db.flush()
+            _add_price_deviation_note(
+                db, business_owner_phone, buy_tx.id,
+                pending.product, pending.unit_price, user.name,
+            )
+            if inventory_enabled:
+                stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
+                    db, business_owner_phone, buy_tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
+                )
+            pay_tx = Transaction(
+                customer_id=customer.id,
+                type="PAY",
+                amount=pending.paid_amount,
+                recorded_by_id=user.id,
+                message_id=f"{message_id}_pay",
+                created_at=_utcnow(),
+            )
+            db.add(pay_tx)
 
-    db.delete(pending)
-    db.commit()
+        memory = db.query(CustomerMemory).filter(CustomerMemory.phone == phone).first()
+        if not memory:
+            db.add(CustomerMemory(phone=phone, last_customer=customer.name))
+        else:
+            memory.last_customer = customer.name
 
+        db.delete(pending)
+        db.commit()
+    except Exception:
+        db.rollback()
+        send_message(phone, "Something went wrong saving this transaction. Please try again.")
+        return {"status": "save_error"}
+
+    # Post-commit reads and notifications
     balance = get_balance(db, customer.id, visible_recorded_by_id)
     msg = f"{saved_summary}\n{balance_status_line(balance)}"
     msg += build_stock_save_message(stock_updates, stock_missing)
-
     send_message(phone, msg)
     send_low_stock_alerts(send_message, business_owner_phone, low_stock_alerts)
     return {"status": "saved"}
