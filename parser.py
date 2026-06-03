@@ -2103,6 +2103,27 @@ def parse_message(text):
     has_direct_sale = bool(re.match(r"^(?:i\s+)?(" + "|".join(SALE_KEYWORDS) + r")\b", clean_text.lower()))
 
     if has_direct_sale:
+        # If "to [name]" is present, this is a customer sale, not a direct SALE.
+        # Reconstruct as "[name] bought ..." and re-parse through the BUY path.
+        _sale_body_for_to = re.sub(
+            r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+",
+            "", clean_text, count=1, flags=re.I,
+        ).strip()
+        _to_match = re.search(
+            r"\bto\s+(?P<name>[a-zA-Z][a-zA-Z'-]*"
+            r"(?:\s+(?!at\b|for\b|paid\b|balance\b|\d)[a-zA-Z][a-zA-Z'-]*){0,2})"
+            r"\s+(?=at\b|for\b|paid\b|balance\b|\d)",
+            _sale_body_for_to, re.I,
+        )
+        if _to_match:
+            _name = _to_match.group("name").strip()
+            _item_part = _sale_body_for_to[:_to_match.start()].strip()
+            _rest = _sale_body_for_to[_to_match.end():].strip()
+            _rewritten = f"{_name} bought {_item_part} {_rest}".strip()
+            _result = parse_message(_rewritten)
+            if _result and _result.get("type") == "TRANSACTION" and _result.get("name"):
+                return _result
+
         sale_body = re.sub(
             r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+",
             "",

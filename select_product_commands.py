@@ -267,8 +267,7 @@ def _handle_list_selection(db, phone, text, pending, business_owner_phone, send_
     send_message(
         phone,
         f"Quantity for {item.name.title()}?\n"
-        f"Price: N{item.selling_price:,}{unit_label} each\n"
-        f"Different price: 3 at 2500"
+        f"Price: N{item.selling_price:,}{unit_label} each"
     )
     return {"status": "select_product_qty_asked"}
 
@@ -414,8 +413,8 @@ def _handle_customer_name(db, phone, text, pending, business_owner_phone, send_m
     send_message(
         phone,
         f"How much did {name.title()} pay?\n"
-        f"Total: N{total:,}\n"
-        "Send 0 to record as full credit."
+        f"Total debt: N{total:,}\n"
+        "Send 0 if nothing was paid."
     )
     return {"status": "select_product_payment_asked"}
 
