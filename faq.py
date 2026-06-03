@@ -37,6 +37,26 @@ def detect_faq(text):
     if any(k in q for k in ["receipt", "print receipt", "send receipt"]):
         return "receipt"
 
+    # ── Shop tag ──────────────────────────────────────────────────────────────
+    if any(k in q for k in ["shop tag", "my shop tag", "change shop tag",
+                              "shop name", "what is shop tag", "set shop tag"]):
+        return "shop_tag"
+
+    # ── Customer bot / WhatsApp Status selling ────────────────────────────────
+    if any(k in q for k in [
+        "customer bot", "whatsapp status", "status selling", "sell on status",
+        "bot on", "bot off", "how does bot", "how do customer order",
+        "how do customers order", "customer order", "customers order",
+        "online selling", "sell online", "status order", "from my status",
+        "from status", "set up bot", "setup bot", "enable bot", "activate bot",
+        "auto order", "delivery note", "payment mode",
+    ]):
+        return "customer_bot"
+    if "bot" in q and any(k in q for k in ["how", "set", "enable", "what", "turn"]):
+        return "customer_bot"
+    if "status" in q and any(k in q for k in ["sell", "order", "customer", "selling", "how"]):
+        return "customer_bot"
+
     # ── Fast mode ─────────────────────────────────────────────────────────────
     if "fast mode" in q or ("fast" in q and "mode" in q):
         return "fast_mode"
@@ -58,14 +78,20 @@ def detect_faq(text):
     if "select" in q and "product" in q:
         return "sell_from_stock"
 
+    # ── Restock at new price → add_stock (check before add_supplier) ─────────
+    if "restock" in q and any(k in q for k in ["price", "cost", "new", "update"]):
+        return "add_stock"
+
     # ── Supplier (before generic stock) ──────────────────────────────────────
     if any(k in q for k in [
         "add supplier", "record supplier", "supplier purchase",
-        "bought from supplier", "restock", "supply me", "i buy from",
+        "bought from supplier", "supply me", "i buy from",
         "stock i bought", "bought stock",
     ]):
         return "add_supplier"
     if "supplier" in q and any(k in q for k in ["how", "add", "record", "save"]):
+        return "add_supplier"
+    if "restock" in q and "supplier" in q:
         return "add_supplier"
 
     # ── Check / view stock (before generic stock) ─────────────────────────────
@@ -134,7 +160,8 @@ def detect_faq(text):
     if any(k in q for k in [
         "add stock", "set price", "add product", "add item", "new product",
         "selling price", "cost price", "stock price", "set up product",
-        "setup product", "create product",
+        "setup product", "create product", "restock at", "new cost",
+        "update price", "change price",
     ]):
         return "add_stock"
     if "product" in q and any(k in q for k in ["add", "create", "set up", "new", "how"]):
@@ -153,12 +180,17 @@ def detect_faq(text):
 
 FAQ_ANSWERS = {
     "add_stock": (
-        "How to add stock with prices:\n\n"
+        "How to add stock:\n\n"
+        "With quantity + price in one message:\n"
         "add stock honey 10 liters at 10000, selling price 12000\n\n"
-        "Or set price only:\n"
+        "Price only (no quantity):\n"
         "add stock rice cost 3000 sell 4000\n\n"
-        "Then add quantity separately:\n"
+        "Quantity only (keeps existing price):\n"
         "add stock 10 bags rice\n\n"
+        "Restock at a new price (adds to what is already there):\n"
+        "add stock eggs 150 crates at 5600, selling price 6200\n\n"
+        "Update price only (no quantity change):\n"
+        "add stock eggs crate cost 5600 sell 6200\n\n"
         "Send  formats  to see all examples."
     ),
     "record_sale": (
@@ -264,6 +296,42 @@ FAQ_ANSWERS = {
         "select product\n\n"
         "Save the customer number first:\n"
         "Ade phone 08012345678"
+    ),
+    "shop_tag": (
+        "Your shop tag is a short name customers use to find your shop.\n\n"
+        "When you turn the bot on, tiTi creates one automatically.\n"
+        "You can change it anytime:\n\n"
+        "shop tag demopharmacy\n\n"
+        "Rules:\n"
+        "- One word, no spaces\n"
+        "- Letters and numbers only\n"
+        "- Must be unique across all shops\n\n"
+        "Customers use it like this:\n"
+        "shop demopharmacy\n\n"
+        "To see your current tag:\n"
+        "bot settings"
+    ),
+    "customer_bot": (
+        "The customer bot lets people order from your WhatsApp Status.\n\n"
+        "Setup steps:\n\n"
+        "1. Add your products with selling prices\n"
+        "2. Turn the bot on:\n"
+        "   bot on\n"
+        "3. Set delivery info:\n"
+        "   delivery note Same day delivery within Lagos\n"
+        "4. Set payment info:\n"
+        "   payment mode Transfer to 0123456789 GTB\n"
+        "5. Post the caption tiTi gives you on your WhatsApp Status\n\n"
+        "Customers message you with your shop tag:\n"
+        "shop demopharmacy\n\n"
+        "tiTi shows your products, takes orders, and alerts you.\n\n"
+        "Other bot commands:\n"
+        "auto order on\n"
+        "bot off\n"
+        "bot settings\n"
+        "pending orders\n"
+        "confirm payment 1\n"
+        "deliver order 1"
     ),
     "formats": (
         "Send this to see all examples and commands:\n\n"

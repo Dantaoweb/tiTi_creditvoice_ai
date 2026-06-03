@@ -152,6 +152,30 @@ BUSINESS_CATEGORIES = [
         ],
     },
     {
+        "key": "energy_fuel",
+        "label": "Energy & Fuel",
+        "businesses": [
+            ("filling_station", "Filling Station / Fuel Station"),
+            ("fuel_marketer", "Petroleum / Fuel Marketer"),
+            ("kerosene_diesel", "Kerosene / Diesel Seller"),
+            ("lpg_gas", "LPG / Cooking Gas Seller"),
+            ("lubricants", "Lubricants / Engine Oil Seller"),
+            ("other_energy", "Other Energy Business"),
+        ],
+    },
+    {
+        "key": "quarry_raw_materials",
+        "label": "Quarry & Raw Materials",
+        "businesses": [
+            ("sand_seller", "Sand Seller"),
+            ("granite_supplier", "Granite / Gravel Supplier"),
+            ("quarry_owner", "Quarry Owner"),
+            ("block_making", "Block Maker"),
+            ("laterite_seller", "Laterite / Red Soil Seller"),
+            ("other_raw_materials", "Other Raw Materials Business"),
+        ],
+    },
+    {
         "key": "other",
         "label": "Other",
         "businesses": [
@@ -235,6 +259,46 @@ INDUSTRY_EXAMPLES = {
         "Amina contributed 5000",
         "Tunde paid thrift 2000",
         "customer summary Amina",
+    ],
+    "filling_station": [
+        "I sold 200 liters petrol at 750",
+        "Tunde bought diesel 100 liters at 1200",
+        "depot supplied 10000 liters PMS at 700 each",
+    ],
+    "fuel_marketer": [
+        "Ade bought 5000 liters diesel at 1150 each",
+        "I supply 10000 liters AGO to Bayo at 1100",
+        "depot supplied 20000 liters at 1050 paid 15000000",
+    ],
+    "kerosene_diesel": [
+        "I sold 50 liters kerosene at 800",
+        "Ayo bought 30 liters diesel at 1200 paid 20000",
+        "stock",
+    ],
+    "lpg_gas": [
+        "Ade refilled 12.5kg cylinder at 15000",
+        "I sold 3 cylinders gas at 12000 each",
+        "today sales",
+    ],
+    "sand_seller": [
+        "I sold 5 trips sand to Bayo at 35000",
+        "Ade bought 3 trips sand at 30000 paid 50000",
+        "stock",
+    ],
+    "granite_supplier": [
+        "Ade bought 10 tonnes granite at 8000",
+        "I supply 5 loads gravel to site A at 25000",
+        "Bayo balance 50000 due Friday",
+    ],
+    "quarry_owner": [
+        "I sold 3 trips granite to Emeka at 40000",
+        "Bayo bought 5 tonnes stone at 7500 paid 25000",
+        "dashboard",
+    ],
+    "block_making": [
+        "Ade bought 500 blocks at 200 each",
+        "I sold 1000 blocks to Bayo at 180 paid 150000",
+        "stock",
     ],
 }
 
@@ -321,6 +385,18 @@ BUSINESS_TEMPLATE_ALIASES = {
     "savings_group": "thrift_contribution",
     "daily_contribution": "thrift_contribution",
     "cooperative_savings": "thrift_contribution",
+    "filling_station": "energy_fuel",
+    "fuel_marketer": "energy_fuel",
+    "kerosene_diesel": "energy_fuel",
+    "lpg_gas": "energy_fuel",
+    "lubricants": "energy_fuel",
+    "other_energy": "energy_fuel",
+    "sand_seller": "quarry_raw_materials",
+    "granite_supplier": "quarry_raw_materials",
+    "quarry_owner": "quarry_raw_materials",
+    "block_making": "quarry_raw_materials",
+    "laterite_seller": "quarry_raw_materials",
+    "other_raw_materials": "quarry_raw_materials",
 }
 
 INDUSTRY_TEMPLATES = {
@@ -742,6 +818,82 @@ INDUSTRY_TEMPLATES = {
         "recommended_go": "GO removes the 10-participant BASIC limit and adds reminders plus participant history.",
         "recommended_pro": "PRO helps thrift businesses with staff or collectors recording contributions.",
     },
+    "energy_fuel": {
+        "label": "Energy & Fuel",
+        "fit": "fuel stations, kerosene/diesel sellers, LPG dealers, and petroleum marketers tracking litres, cylinders, and bulk sales",
+        "basic_value": [
+            "Record fuel and product sales",
+            "Track customer credit and balances",
+            "Record direct pump/counter sales",
+        ],
+        "go_value": [
+            "Stock tracking by litre, cylinder, or drum",
+            "Depot/supplier purchase records",
+            "Product and profit reports",
+        ],
+        "pro_value": [
+            "Staff recording for pump attendants",
+            "Permission control per attendant",
+            "Owner dashboard across all pumps and staff",
+        ],
+        "examples": [
+            "I sold 200 liters petrol at 750",
+            "Ade bought diesel 100 liters at 1200 paid 80000",
+            "depot supplied 10000 liters PMS at 700 each",
+        ],
+        "quick_actions": [
+            ("Record sale", "Send: I sold 200 liters petrol at 750"),
+            ("Customer credit", "Send: Ade bought diesel 100 liters at 1200 paid 80000"),
+            ("Stock", "Send: stock"),
+            ("Dashboard", "Send: dashboard"),
+        ],
+        "next_steps": [
+            "After a sale is detected, confirm with YES or correct with EDIT.",
+            "Send stock to check fuel or product levels.",
+            "Send suppliers to track depot purchases and balances.",
+            "Send MENU to see the main menu, or BACK/CANCEL/DONE to close the current step.",
+        ],
+        "recommended_go": "GO is valuable for fuel businesses needing stock tracking, depot supplier records, and product reports.",
+        "recommended_pro": "PRO fits stations with attendants or multiple pumps recording sales.",
+    },
+    "quarry_raw_materials": {
+        "label": "Quarry & Raw Materials",
+        "fit": "sand sellers, granite/gravel suppliers, quarry owners, and block makers tracking trips, tonnes, and bulk deliveries",
+        "basic_value": [
+            "Record bulk material sales by trip, tonne, or load",
+            "Track customer credit and site balances",
+            "Record direct cash sales",
+        ],
+        "go_value": [
+            "Stock tracking by trip, tonne, or crate",
+            "Supplier and haulage records",
+            "Customer debt reports and reminders",
+        ],
+        "pro_value": [
+            "Staff and driver recording",
+            "Control what drivers can record",
+            "Owner-level dashboard across sites and staff",
+        ],
+        "examples": [
+            "I sold 5 trips sand to Bayo at 35000",
+            "Ade bought 10 tonnes granite at 8000 paid 50000",
+            "Ade bought 500 blocks at 200 each",
+        ],
+        "quick_actions": [
+            ("Record sale", "Send: I sold 5 trips sand to Bayo at 35000"),
+            ("Customer credit", "Send: Ade bought 10 tonnes granite at 8000 paid 50000"),
+            ("Stock", "Send: stock"),
+            ("Dashboard", "Send: dashboard"),
+        ],
+        "next_steps": [
+            "After a sale is detected, confirm with YES or correct with EDIT.",
+            "Send stock to check material levels.",
+            "Send dashboard to see sales, debtors, and totals.",
+            "Send MENU to see the main menu, or BACK/CANCEL/DONE to close the current step.",
+        ],
+        "recommended_go": "GO adds inventory tracking, supplier records, and debt reminders — important for bulk material businesses with many site customers.",
+        "recommended_pro": "PRO fits quarries and block makers with multiple drivers or workers recording deliveries.",
+    },
 }
 
 
@@ -811,6 +963,18 @@ RECEIPT_CONFIG = {
         "customer_label": "Participant",
         "amount_label": "Amount",
         "footer": "Thank you for your contribution.",
+    },
+    "energy_fuel": {
+        "title": "Sales Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you for your business.",
+    },
+    "quarry_raw_materials": {
+        "title": "Delivery Receipt",
+        "customer_label": "Customer / Site",
+        "amount_label": "Total",
+        "footer": "Thank you for your business.",
     },
 }
 
