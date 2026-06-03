@@ -16,7 +16,7 @@ from constants import (
     SELECT_PRODUCT_ACTIONS,
 )
 from fast_capture_commands import handle_fast_capture_review_pending
-from inventory_suppliers import upsert_stock_with_prices
+from inventory_suppliers import manual_stock_add, upsert_stock_with_prices
 from select_product_commands import handle_select_product_pending
 from home_menu_commands import handle_home_menu_pending
 from messages import edit_prompt_for_pending
@@ -333,8 +333,12 @@ def _handle_stock_add_confirm(db, phone, text, pending, user, business_owner_pho
                 item_data["cost"],
                 item_data["sell"],
             )
+            qty = item_data.get("quantity")
+            if qty:
+                manual_stock_add(db, business_owner_phone, item_data["product"], qty, item_data.get("unit"), user.id)
             unit_label = f" {item.unit}" if item.unit else ""
-            saved.append(f"{item.name.title()}{unit_label} — sell N{item.selling_price:,}")
+            qty_label = f" | {qty:,}{unit_label} in stock" if qty else ""
+            saved.append(f"{item.name.title()}{unit_label} — sell N{item.selling_price:,}{qty_label}")
         db.delete(pending)
         db.commit()
     except Exception:

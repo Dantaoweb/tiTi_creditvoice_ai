@@ -74,15 +74,18 @@ def handle_supplier_command(
         lines = ["Confirm stock:\n"]
         warnings = []
         for i, item in enumerate(items, start=1):
-            unit_label = f" ({item['unit']})" if item.get("unit") else ""
+            unit_label = f" {item['unit']}" if item.get("unit") else ""
+            qty = item.get("quantity")
+            qty_label = f"{qty:,}{unit_label}" if qty else ""
             margin_note = ""
             if item["sell"] < item["cost"]:
                 margin_note = " ⚠ sell below cost"
                 warnings.append(item["product"].title())
-            lines.append(
-                f"{i}. {item['product'].title()}{unit_label}\n"
-                f"   Cost: N{item['cost']:,}  Sell: N{item['sell']:,}{margin_note}"
-            )
+            line = f"{i}. {item['product'].title()}"
+            if qty_label:
+                line += f" — {qty_label}"
+            line += f"\n   Cost: N{item['cost']:,}  Sell: N{item['sell']:,}{margin_note}"
+            lines.append(line)
         if warnings:
             lines.append(
                 f"\nWarning: {', '.join(warnings)} — selling price is below cost price.\n"

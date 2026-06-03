@@ -90,6 +90,15 @@ def normalize_item(product, unit=None):
         if not normalized_unit:
             normalized_unit = detected_unit
         product = unit_match.group("product").strip()
+    elif not normalized_unit:
+        # Also recognise trailing unit: "honey liter" -> product="honey", unit="litre"
+        suffix_match = re.match(
+            rf"^(?P<product>.+?)\s+(?P<unit>{UNIT_PATTERN})$",
+            product,
+        )
+        if suffix_match:
+            normalized_unit = normalize_unit(suffix_match.group("unit"))
+            product = suffix_match.group("product").strip()
 
     product = re.sub(r"^of\s+", "", product).strip()
     product = re.sub(r"\s+", " ", product).strip()

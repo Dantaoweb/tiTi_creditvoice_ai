@@ -1342,6 +1342,11 @@ def parse_message(text):
     )
     if stock_add_match:
         body = (stock_add_match.group("body") or "").strip()
+        # Detect "product qty unit at cost, selling price sell" format
+        if body and re.search(r"\bselling\s+price\b", body, re.I):
+            item = _parse_stock_item_full(body)
+            if item:
+                return {"type": "STOCK_ADD_WITH_PRICES", "items": [item]}
         # Detect cost+sell format
         if body and re.search(r"\bcost\b", body, re.I) and re.search(r"\bsell\b", body, re.I):
             items = _parse_stock_items_with_prices(body)
@@ -2292,6 +2297,51 @@ def parse_message(text):
 # =========================
 # 💰 BALANCE
 # =========================
+
+def _parse_stock_item_full(body):
+    """
+    Parse the combined qty + prices format (one item only):
+      honey 10 liters at 10,000, selling price 12,000
+      10 liters honey at 10000 selling price 12000
+    Returns {"product", "unit", "quantity", "cost", "sell"} or None.
+    """
+    selling_split = re.split(r"\bselling\s+price\b", body.strip(), maxsplit=1, flags=re.I)
+    if len(selling_split) != 2:
+        return None
+
+    sell = parse_amount_token(selling_split[1].strip().replace(",", ""))
+    if sell is None:
+        return None
+
+    left = selling_split[0].strip().rstrip(",").strip()
+    at_split = re.split(r"\s+at\s+", left, maxsplit=1, flags=re.I)
+    if len(at_split) != 2:
+        return None
+
+    cost = parse_amount_token(at_split[1].strip().replace(",", ""))
+    if cost is None:
+        return None
+
+    item_part = at_split[0].strip()
+
+    pat_product_first = re.compile(
+        rf"^(?P<product>.+?)\s+(?P<qty>\d+)\s*(?P<unit>{UNIT_PATTERN})$", re.I
+    )
+    pat_qty_first = re.compile(
+        rf"^(?P<qty>\d+)\s*(?P<unit>{UNIT_PATTERN})\s+(?P<product>.+)$", re.I
+    )
+
+    for pat in (pat_product_first, pat_qty_first):
+        m = pat.match(item_part)
+        if m:
+            qty = int(m.group("qty"))
+            if qty < 1:
+                continue
+            product, unit = normalize_item(m.group("product").strip(), m.group("unit"))
+            return {"product": product, "unit": unit, "quantity": qty, "cost": cost, "sell": sell}
+
+    return None
+
 
 def _parse_stock_items_with_prices(body):
     """
