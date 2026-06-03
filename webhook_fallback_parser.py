@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from faq import detect_faq, get_faq_answer
 from messages import build_invalid_message
 from parser import interpret_text_with_openai, parse_message
 from whatsapp_client import send_whatsapp_message
@@ -22,6 +23,11 @@ def handle_fallback_parse(phone, text, parsed, user):
 
     if text.lower().strip() in PLEASANTRIES or len(text) < 2:
         return FallbackParseResult(response={"status": "ignored_pleasantry"})
+
+    faq_key = detect_faq(text)
+    if faq_key:
+        send_whatsapp_message(phone, get_faq_answer(faq_key))
+        return FallbackParseResult(response={"status": f"faq_{faq_key}"})
 
     fallback = interpret_text_with_openai(text)
     if fallback:
