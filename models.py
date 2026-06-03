@@ -57,6 +57,8 @@ class User(Base):
 
     subscription_expires_at = Column(DateTime, nullable=True)
 
+    shop_tag = Column(String, unique=True, nullable=True)
+
     created_at = Column(
         DateTime,
         default=utcnow

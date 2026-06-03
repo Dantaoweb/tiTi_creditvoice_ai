@@ -43,9 +43,11 @@ def get_or_create_automation_settings(db, owner_phone):
     return settings
 
 
-def automation_status_message(settings):
+def automation_status_message(settings, owner_user=None):
+    tag = (owner_user.shop_tag if owner_user else None) or "not set"
     return (
         "Customer Bot Settings\n\n"
+        f"Shop tag: {tag}\n"
         f"Bot: {'ON' if settings.bot_enabled else 'OFF'}\n"
         f"Auto reply: {'ON' if settings.auto_reply_enabled else 'OFF'}\n"
         f"Auto order: {'ON' if settings.auto_order_enabled else 'OFF'}\n"
@@ -54,12 +56,10 @@ def automation_status_message(settings):
         f"Delivery: {settings.delivery_note or 'Not set'}\n"
         f"Pickup: {settings.pickup_address or 'Not set'}\n\n"
         "Controls:\n"
-        "bot on\n"
-        "bot off\n"
-        "auto order on\n"
-        "auto order off\n"
-        "part payment on\n"
-        "part payment off\n"
+        "bot on / bot off\n"
+        "auto order on / off\n"
+        "part payment on / off\n"
+        "shop tag [yournewtag]\n"
         "take over 2348012345678\n"
         "bot resume 2348012345678"
     )
@@ -645,7 +645,8 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     settings = get_or_create_automation_settings(db, owner_phone)
 
     if normalized in ["automation", "customer bot", "bot status", "bot settings"]:
-        send_message(phone, automation_status_message(settings))
+        owner_user = db.query(User).filter(User.phone == owner_phone).first()
+        send_message(phone, automation_status_message(settings, owner_user))
         return {"status": "automation_status"}
 
     allowed, upgrade_message = ensure_feature_allowed(
@@ -749,15 +750,60 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
         settings.bot_enabled = True
         settings.auto_reply_enabled = True
         settings.updated_at = _utcnow()
+
+        # Auto-generate shop tag the first time bot is turned on
+        owner_user = db.query(User).filter(User.phone == owner_phone).first()
+        if owner_user and not owner_user.shop_tag:
+            owner_user.shop_tag = generate_shop_tag(owner_user.name or "shop", db)
+
+        tag = (owner_user.shop_tag if owner_user else None) or owner_phone
         db.commit()
+
         send_message(
             phone,
             "Customer bot is ON.\n\n"
-            "Customers can start by sending:\n"
-            f"shop {owner_phone}\n\n"
-            "The bot will answer from your saved stock and alert you when it is unsure."
+            f"Your shop tag is:  {tag}\n\n"
+            "Post this caption on your WhatsApp Status:\n\n"
+            "- - - - - - - - - - - - -\n"
+            "See something you like? Message us!\n"
+            "Send this to start:\n"
+            f"shop {tag}\n"
+            "- - - - - - - - - - - - -\n\n"
+            f"Every customer must send  shop {tag}  in their first message.\n"
+            "To change your shop tag send:\n"
+            "shop tag [yournewtag]"
         )
         return {"status": "automation_bot_on"}
+
+    shop_tag_match = re.match(r"^shop\s+tag\s+(\w+)$", normalized)
+    if shop_tag_match:
+        new_tag = shop_tag_match.group(1).lower().strip()
+        existing = db.query(User).filter(
+            func.lower(User.shop_tag) == new_tag,
+            User.phone != owner_phone,
+        ).first()
+        if existing:
+            send_message(
+                phone,
+                f"'{new_tag}' is already taken by another shop.\n"
+                "Please choose a different tag."
+            )
+            return {"status": "automation_shop_tag_taken"}
+        owner_user = db.query(User).filter(User.phone == owner_phone).first()
+        if owner_user:
+            owner_user.shop_tag = new_tag
+            db.commit()
+        send_message(
+            phone,
+            f"Shop tag updated to:  {new_tag}\n\n"
+            "Update your WhatsApp Status caption with:\n\n"
+            "- - - - - - - - - - - - -\n"
+            "See something you like? Message us!\n"
+            "Send this to start:\n"
+            f"shop {new_tag}\n"
+            "- - - - - - - - - - - - -"
+        )
+        return {"status": "automation_shop_tag_updated"}
 
     if normalized == "bot off":
         settings.bot_enabled = False
@@ -837,15 +883,45 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
     return None
 
 
-def find_owner_from_customer_text(db, text):
-    match = re.search(r"\b(?:shop|business|store)\s+(\+?\d[\d\s\-]{6,})\b", text or "", re.I)
-    if not match:
-        return None
-    owner_phone = normalize_phone(match.group(1))
+def generate_shop_tag(name, db):
+    """Derive a unique lowercase alphanumeric tag from the business name."""
+    base = re.sub(r"[^a-z0-9]", "", (name or "shop").lower())
+    if not base:
+        base = "shop"
+    tag = base
+    counter = 1
+    while db.query(User).filter(func.lower(User.shop_tag) == tag).first():
+        tag = f"{base}{counter}"
+        counter += 1
+    return tag
+
+
+_SHOPPING_SIGNALS = re.compile(
+    r"\b(buy|price|order|want|how much|available|do you have|"
+    r"in stock|delivery|i need|send me|purchase|honey|rice|product)\b",
+    re.I,
+)
+
+
+def _looks_like_customer_inquiry(text):
+    return bool(_SHOPPING_SIGNALS.search(text or ""))
+
+
+def find_owner_by_shop_tag(db, tag):
     return db.query(User).filter(
-        User.phone == owner_phone,
-        User.parent_id == None,
+        func.lower(User.shop_tag) == tag.lower().strip(),
+        User.parent_id.is_(None),
     ).first()
+
+
+def find_owner_from_customer_text(db, text):
+    """Find business owner by shop tag embedded in the customer message."""
+    match = re.search(r"\bshop\s+(\w+)\b", text or "", re.I)
+    if not match:
+        return None, None          # (owner, tag_attempted)
+    tag = match.group(1).lower()
+    owner = find_owner_by_shop_tag(db, tag)
+    return owner, tag
 
 
 def get_active_customer_conversation(db, customer_phone):
@@ -1042,18 +1118,81 @@ def create_order_from_conversation(db, conversation, item, quantity, payment_amo
     return order
 
 
+def _build_welcome_product_list(db, owner_phone):
+    items = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.is_available == True,
+        InventoryItem.selling_price > 0,
+    ).order_by(InventoryItem.name.asc()).limit(10).all()
+
+    if not items:
+        return "Send us the name of what you are looking for and we will check for you."
+
+    lines = ["Here is what we have:\n"]
+    for i, item in enumerate(items, start=1):
+        unit = f"/{item.unit}" if item.unit else ""
+        stock = f" ({item.quantity:,}{' ' + item.unit if item.unit else ''} available)" if item.quantity else ""
+        lines.append(f"{i}. {item.name.title()} - N{item.selling_price:,}{unit}{stock}")
+    lines.append("\nReply with the product name to get details or place an order.")
+    return "\n".join(lines)
+
+
 def handle_customer_automation_message(db, phone, text, send_message):
     owner = None
     conversation = get_active_customer_conversation(db, phone)
     if conversation:
         owner = db.query(User).filter(User.phone == conversation.owner_phone).first()
     else:
-        owner = find_owner_from_customer_text(db, text)
+        owner, tag_attempted = find_owner_from_customer_text(db, text)
         if owner:
             conversation = get_or_create_conversation(db, owner.phone, phone)
+        elif tag_attempted:
+            # "shop [tag]" was present but didn't match any business
+            send_message(
+                phone,
+                f"Sorry, we could not find a shop with the name '{tag_attempted}'.\n\n"
+                "Please check the name and try again.\n"
+                "Example: shop demopharmacy"
+            )
+            return {"status": "customer_bot_tag_not_found"}
+        elif _looks_like_customer_inquiry(text):
+            # Looks like a shopping message but no shop tag included
+            send_message(
+                phone,
+                "Hi! To buy from a shop please include the shop name.\n\n"
+                "Example: shop demopharmacy\n\n"
+                "You can find the shop name on the business WhatsApp Status post."
+            )
+            return {"status": "customer_bot_no_tag"}
 
     if not owner or not conversation:
         return None
+
+    # ── Timeout: close conversations idle for more than 24 hours ─────────────
+    TIMEOUT_HOURS = 24
+    if conversation.updated_at:
+        idle_seconds = (_utcnow() - conversation.updated_at).total_seconds()
+        if idle_seconds > TIMEOUT_HOURS * 3600 and conversation.stage != "ORDER_CREATED":
+            conversation.status = "CLOSED"
+            db.commit()
+            # Treat this message as a fresh start — re-enter as new conversation
+            conversation = get_or_create_conversation(db, owner.phone, phone)
+
+    # ── Customer exit: "stop", "cancel", "not interested", etc. ──────────────
+    _EXIT_PATTERN = re.compile(
+        r"^(stop|cancel|exit|quit|bye|goodbye|no thanks|not interested|"
+        r"nevermind|never mind|end|close|i('m| am) good|forget it|leave me)$",
+        re.I,
+    )
+    if _EXIT_PATTERN.match((text or "").strip()):
+        conversation.status = "CLOSED"
+        db.commit()
+        send_message(
+            phone,
+            f"No problem. Thanks for reaching out to {owner.name}.\n"
+            "Feel free to message us again anytime."
+        )
+        return {"status": "customer_bot_exited"}
 
     settings = get_or_create_automation_settings(db, owner.phone)
     conversation.last_customer_message = text
@@ -1101,9 +1240,7 @@ def handle_customer_automation_message(db, phone, text, send_message):
         send_message(
             phone,
             f"Welcome to {owner.name}.\n\n"
-            "What product are you asking about? You can send for example:\n"
-            "price rice\n"
-            "do you have black shoe"
+            + _build_welcome_product_list(db, owner.phone)
         )
         conversation.stage = "ASK_PRODUCT"
         db.commit()

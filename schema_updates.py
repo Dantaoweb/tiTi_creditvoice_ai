@@ -69,6 +69,7 @@ def ensure_schema_updates(engine):
         "subscription_plan": "VARCHAR DEFAULT 'BASIC'",
         "subscription_status": "VARCHAR DEFAULT 'ACTIVE'",
         "subscription_expires_at": "TIMESTAMP",
+        "shop_tag": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
