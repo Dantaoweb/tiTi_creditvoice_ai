@@ -37,6 +37,30 @@ def detect_faq(text):
     if any(k in q for k in ["receipt", "print receipt", "send receipt"]):
         return "receipt"
 
+    # ── Account recovery / PIN ────────────────────────────────────────────────
+    if any(k in q for k in [
+        "recover account", "account recovery", "lost my number", "lost phone",
+        "lost phone number", "change my number", "new number", "transfer account",
+        "move account", "recover my account", "how do i recover",
+    ]):
+        return "account_recovery"
+
+    if any(k in q for k in [
+        "recovery pin", "set pin", "set a pin", "create pin",
+        "protect my account", "account protection", "how do i protect",
+        "change pin", "remove pin", "what is pin",
+    ]):
+        return "recovery_pin"
+
+    # ── Linked phones / multi-phone ───────────────────────────────────────────
+    if any(k in q for k in [
+        "link phone", "linked phone", "second phone", "two phones",
+        "another phone", "multiple phones", "second number",
+        "unlink phone", "unlink a phone", "unlink number", "remove linked",
+        "my phones", "second device", "use two phones",
+    ]):
+        return "linked_phones"
+
     # ── Shop tag ──────────────────────────────────────────────────────────────
     if any(k in q for k in ["shop tag", "my shop tag", "change shop tag",
                               "shop name", "what is shop tag", "set shop tag"]):
@@ -332,6 +356,39 @@ FAQ_ANSWERS = {
         "pending orders\n"
         "confirm payment 1\n"
         "deliver order 1"
+    ),
+    "recovery_pin": (
+        "A recovery PIN protects your account if you ever lose or change your phone number.\n\n"
+        "Set a PIN (4 to 6 digits):\n"
+        "set pin 1234\n\n"
+        "Change your PIN:\n"
+        "change pin 1234 5678\n\n"
+        "Remove your PIN:\n"
+        "remove pin 1234\n\n"
+        "Keep your PIN somewhere safe — tiTi cannot reset it for you."
+    ),
+    "account_recovery": (
+        "If you lose or change your phone number, you can recover your account using your PIN.\n\n"
+        "From your new number, send:\n"
+        "recover 08012345678 1234\n\n"
+        "Replace 08012345678 with your old number and 1234 with your PIN.\n\n"
+        "All your data, customers, stock, and transactions will transfer to the new number.\n\n"
+        "No PIN set? Recovery is not possible without one.\n"
+        "Set yours now before you need it:\n"
+        "set pin 1234"
+    ),
+    "linked_phones": (
+        "You can link a second phone number to access your account from two devices.\n\n"
+        "From your main phone:\n"
+        "link phone 08012345678\n\n"
+        "tiTi sends a code to you. Tell the second phone to send:\n"
+        "link confirm [code]\n\n"
+        "The linked phone gets full owner access — same as your main number.\n\n"
+        "To see your linked phones:\n"
+        "my phones\n\n"
+        "To remove a linked phone:\n"
+        "unlink phone 08012345678\n\n"
+        "Maximum 2 linked phones per account."
     ),
     "formats": (
         "Send this to see all examples and commands:\n\n"

@@ -1,4 +1,5 @@
 ﻿from admin_commands import notify_subscription_admins
+from rate_limiter import check_rate_limit, rate_limit_exceeded_message
 from fast_capture_commands import (
     handle_fast_capture_command,
     is_fast_mode_active,
@@ -68,7 +69,65 @@ def handle_webhook_body(body):
             )
             return {"status": "unregistered_voice"}
 
+        # ── Rate limiting ─────────────────────────────────────────────────────
+        # Registered owners and staff are never rate-limited (fast mode safe).
+        # Only unregistered phones and customer bot users are throttled.
+        if message_type == "text" and not user:
+            from customer_automation import get_active_customer_conversation
+            _has_bot_convo = bool(get_active_customer_conversation(db, phone))
+            if not check_rate_limit(phone, is_registered=False, has_active_bot_conversation=_has_bot_convo):
+                send_whatsapp_message(phone, rate_limit_exceeded_message())
+                return {"status": "rate_limited"}
+
         if not user and message_type == "text":
+            # Account recovery and phone linking must be checked before
+            # customer bot and onboarding — these come from unregistered numbers.
+            _recovery_parsed = parse_message(text)
+            if _recovery_parsed:
+                _rtype = _recovery_parsed.get("type")
+
+                if _rtype == "RECOVER_ACCOUNT":
+                    from recovery_commands import handle_recover_account
+                    return handle_recover_account(
+                        db,
+                        phone,
+                        _recovery_parsed["old_phone"],
+                        _recovery_parsed["pin"],
+                        send_whatsapp_message,
+                    )
+
+                if _rtype == "LINK_CONFIRM":
+                    from linked_phone_commands import handle_link_confirm
+                    return handle_link_confirm(
+                        db, phone, _recovery_parsed["code"], send_whatsapp_message
+                    )
+
+                if _rtype == "LINK_DECLINE":
+                    from linked_phone_commands import handle_link_decline
+                    result = handle_link_decline(db, phone, send_whatsapp_message)
+                    if result:
+                        return result
+
+            # If the phone has a PENDING link (not yet confirmed), intercept
+            # all messages and redirect to the link prompt — don't let it
+            # fall through to onboarding or customer bot.
+            from linked_phone_commands import get_pending_link
+            _pending_link = get_pending_link(db, phone)
+            if _pending_link:
+                from models import User as _User
+                _link_owner = db.query(_User).filter(
+                    _User.id == _pending_link.owner_user_id
+                ).first()
+                _owner_name = _link_owner.name.title() if _link_owner else "the owner"
+                send_whatsapp_message(
+                    phone,
+                    f"You have a pending link request from *{_owner_name}*.\n\n"
+                    f"Ask {_owner_name} for your confirm code and reply:\n"
+                    "link confirm [code]\n\n"
+                    "To decline: link decline"
+                )
+                return {"status": "link_pending_reminder"}
+
             customer_bot_result = handle_customer_automation_message(
                 db,
                 phone,

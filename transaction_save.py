@@ -9,6 +9,7 @@ from inventory_suppliers import (
     deduct_inventory_for_items,
     find_or_create_supplier,
     get_supplier_balance,
+    upsert_stock_with_prices,
 )
 from messages import balance_status_line, pending_transaction_summary
 from models import (
@@ -208,6 +209,15 @@ def save_supplier_pending(db, phone, pending, user, business_owner_phone, pendin
                 user.id,
                 f"Supplied by {supplier.name.title()}",
             )
+            import json as _json
+            _payload = _json.loads(pending.payload_json or "{}")
+            _selling_price = _payload.get("selling_price")
+            if _selling_price:
+                upsert_stock_with_prices(
+                    db, business_owner_phone,
+                    stock_product, stock_unit,
+                    stock_unit_price, _selling_price,
+                )
         else:
             payment = SupplierPayment(
                 supplier_id=supplier.id,

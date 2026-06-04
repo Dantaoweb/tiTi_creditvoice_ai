@@ -308,8 +308,9 @@ def extract_item_details(text):
 
     clean = text.lower().replace(",", "")
 
+    _qty_pat = r"\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?"
     match = re.search(
-        r"(?P<quantity>\d+)\s*"
+        r"(?P<quantity>" + _qty_pat + r")\s*"
         r"(?P<container>[a-z/]+)\s+of\s+"
         r"(?P<product>[a-z ]+?)\s+(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?",
         clean
@@ -317,7 +318,7 @@ def extract_item_details(text):
     compact_unit_match = None
     if not match:
         compact_unit_match = re.search(
-            r"(?P<quantity>\d+)\s*"
+            r"(?P<quantity>" + _qty_pat + r")\s*"
             r"(?P<unit>kg|g|ml|l)\s+(?:of\s+)?"
             r"(?P<product>[a-z ]+?)\s+(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?",
             clean
@@ -325,7 +326,7 @@ def extract_item_details(text):
     no_of_match = None
     if not match and not compact_unit_match:
         no_of_match = re.search(
-            r"(?P<quantity>\d+)\s*"
+            r"(?P<quantity>" + _qty_pat + r")\s*"
             r"(?P<product>[a-z/]+(?:\s+[a-z/]+){0,3})\s+"
             r"(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?",
             clean
@@ -399,9 +400,9 @@ def extract_direct_sale_details(text):
     unit = None
     product = item_text
 
-    quantity_match = re.match(r"(?P<quantity>\d+)\s+(?P<rest>.+)$", item_text)
+    quantity_match = re.match(r"(?P<quantity>\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?)\s+(?P<rest>.+)$", item_text)
     if quantity_match:
-        quantity = int(quantity_match.group("quantity"))
+        quantity = parse_quantity_token(quantity_match.group("quantity")) or 1
         rest = quantity_match.group("rest").strip()
         rest = re.sub(r"\s+of\s+", " ", rest, count=1)
 
@@ -683,9 +684,9 @@ def parse_invoice_item(item_text):
     unit = None
     product = item_body
 
-    quantity_match = re.match(r"(?P<quantity>\d+)\s+(?P<rest>.+)$", item_body)
+    quantity_match = re.match(r"(?P<quantity>\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?)\s+(?P<rest>.+)$", item_body)
     if quantity_match:
-        quantity = int(quantity_match.group("quantity"))
+        quantity = parse_quantity_token(quantity_match.group("quantity")) or 1
         rest = re.sub(r"\s+of\s+", " ", quantity_match.group("rest").strip(), count=1)
 
         for unit_phrase in UNIT_PHRASES:
@@ -786,6 +787,27 @@ def parse_amount_token(token):
         return None
 
 
+def parse_quantity_token(token):
+    """Like parse_amount_token but for quantities — handles 5m, 1.5k, 5,000,000."""
+    if not token:
+        return None
+    token = str(token).lower().replace(",", "").strip()
+    if token.endswith("k") and not token[:-1].isalpha():
+        multiplier = 1000
+        token = token[:-1]
+    elif token.endswith("m") and not token[:-1].isalpha():
+        multiplier = 1000000
+        token = token[:-1]
+    else:
+        multiplier = 1
+    try:
+        if "." in token:
+            return int(float(token) * multiplier)
+        return int(token) * multiplier
+    except ValueError:
+        return None
+
+
 def extract_amounts(text):
     # Improved regex to identify amounts with k/m suffixes.
     # Uses negative lookahead to ensure k/m aren't part of a larger unit word (like kg, ml, etc.)
@@ -808,11 +830,11 @@ def parse_stock_item_body(body):
     clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", body.lower()).strip()
     clean = re.sub(r"\s+", " ", clean)
     quantity_match = re.match(
-        rf"(?P<quantity>\d+)\s*(?P<unit>{UNIT_PATTERN})?\s*(?:of\s+)?(?P<product>.*)$",
+        rf"(?P<quantity>\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?)\s*(?P<unit>{UNIT_PATTERN})?\s*(?:of\s+)?(?P<product>.*)$",
         clean
     )
     if quantity_match:
-        quantity = int(quantity_match.group("quantity"))
+        quantity = parse_quantity_token(quantity_match.group("quantity")) or 1
         unit = quantity_match.group("unit")
         product = quantity_match.group("product").strip()
         if not product:
@@ -969,6 +991,13 @@ def extract_supplier_transaction(text):
         )
         if paid_match:
             paid_amount = parse_amount_token(paid_match.group("paid")) or 0
+        selling_price = None
+        sell_match = re.search(
+            rf"\bselling\s+price\s+(?P<sell>{amount_pattern})",
+            clean, re.I
+        )
+        if sell_match:
+            selling_price = parse_amount_token(sell_match.group("sell"))
         return {
             "type": "SUPPLIER_TRANSACTION",
             "action": "SUPPLIER_PURCHASE",
@@ -981,7 +1010,8 @@ def extract_supplier_transaction(text):
             "paid_amount": paid_amount,
             "total": total,
             "stock_item": stock_item,
-            "due_date": due_date
+            "due_date": due_date,
+            "selling_price": selling_price,
         }
 
     # ── Stock purchase with no named supplier ───────────────────────────────
@@ -1006,6 +1036,10 @@ def extract_supplier_transaction(text):
                 rf"\b(?:paid|pay)\s+(?P<paid>{amount_pattern})", clean
             )
             paid_amount = parse_amount_token(paid_match.group("paid")) if paid_match else price_info["total"]
+            sell_match = re.search(
+                rf"\bselling\s+price\s+(?P<sell>{amount_pattern})", clean, re.I
+            )
+            selling_price = parse_amount_token(sell_match.group("sell")) if sell_match else None
             return {
                 "type": "SUPPLIER_TRANSACTION",
                 "action": "SUPPLIER_PURCHASE",
@@ -1019,6 +1053,7 @@ def extract_supplier_transaction(text):
                 "total": price_info["total"],
                 "stock_item": None,
                 "due_date": due_date,
+                "selling_price": selling_price,
             }
 
     return None
@@ -1940,6 +1975,99 @@ def parse_message(text):
     ]:
         return {"type": "REONBOARD"}
 
+    # ── Conversational analytics ─────────────────────────────────────────────
+    # "who owes me the most" / "who is my biggest debtor"
+    if re.search(r"\b(who|which).*(ow(?:e|es|ed|ing)|debt|borrow|balance)\b", clean_text) or \
+       re.search(r"\b(biggest|top|most|highest).*(debt|debtor|ow(?:e|es|ing)|balance)\b", clean_text):
+        return {"type": "CONVO_TOP_DEBTORS"}
+
+    # "why are my sales declining / dropping / down / slow"
+    if re.search(r"\b(why|how|what).*(sales|revenue|income|money).*\b(declin|drop|fall|slow|down|low|less|decreas)", clean_text) or \
+       re.search(r"\b(sales|revenue).*(declin|drop|slow|down|trend|compar|last month|this month)\b", clean_text) or \
+       clean_text in ["sales trend", "sales comparison", "compare sales", "month comparison"]:
+        return {"type": "CONVO_SALES_TREND"}
+
+    # "what sells most / best product / top product this month"
+    if re.search(r"\b(what|which).*(sell|selling|product|item).*(most|best|top|high)\b", clean_text) or \
+       re.search(r"\b(best|top|most).*(sell|selling|product|item)\b", clean_text):
+        period = None
+        if "today" in clean_text:
+            period = "TODAY"
+        elif "week" in clean_text:
+            period = "WEEK"
+        elif "month" in clean_text:
+            period = "MONTH"
+        elif "year" in clean_text:
+            period = "YEAR"
+        return {"type": "CONVO_BEST_PRODUCT", "period": period}
+
+    # "when am I busiest / my busy days / peak day"
+    if re.search(r"\b(when|what day|which day).*(busy|busiest|peak|most sales|highest)\b", clean_text) or \
+       re.search(r"\b(busiest|peak).*(day|time|period|hour)?\b", clean_text) or \
+       re.search(r"\b(when).*(busiest|most)\b", clean_text) or \
+       clean_text in ["busy days", "peak days", "busiest day", "my busy day", "busiest"]:
+        return {"type": "CONVO_BUSIEST_PERIOD"}
+
+    # "is rice profitable / how is rice doing / profit on rice"
+    _profit_match = re.match(
+        r"^(?:is\s+|how\s+is\s+|profit\s+on\s+|margin\s+on\s+|how\s+profitable\s+is\s+)(?P<product>.+?)(?:\s+profitable|\s+doing|\s+performing)?$",
+        clean_text
+    )
+    if _profit_match and re.search(r"\b(profit(?:able)?|margin|cost|earn(?:ing)?|making)\b", clean_text):
+        return {"type": "CONVO_PRODUCT_PROFIT", "product": _profit_match.group("product").strip()}
+
+    # ── Linked phones ────────────────────────────────────────────────────────
+    # "link phone 08012345678"
+    _link_ph = re.match(r"^link\s+phone\s+(?P<phone>[\d\s\+\-]{7,15})$", clean_text)
+    if _link_ph:
+        return {"type": "LINK_PHONE", "phone": _link_ph.group("phone").strip()}
+
+    # "link confirm 483920"
+    _link_confirm = re.match(r"^link\s+confirm\s+(?P<code>\d{4,8})$", clean_text)
+    if _link_confirm:
+        return {"type": "LINK_CONFIRM", "code": _link_confirm.group("code")}
+
+    # "link decline"
+    if clean_text == "link decline":
+        return {"type": "LINK_DECLINE"}
+
+    # "unlink phone 08012345678"
+    _unlink = re.match(r"^unlink\s+phone\s+(?P<phone>[\d\s\+\-]{7,15})$", clean_text)
+    if _unlink:
+        return {"type": "UNLINK_PHONE", "phone": _unlink.group("phone").strip()}
+
+    # "my phones" | "linked phones"
+    if clean_text in ["my phones", "linked phones", "my numbers", "linked numbers"]:
+        return {"type": "MY_PHONES"}
+
+    # ── Account recovery PIN ─────────────────────────────────────────────────
+    # "set pin 1234"
+    _set_pin = re.match(r"^(?:set|create|add)\s+pin\s+(?P<pin>\d{4,6})$", clean_text)
+    if _set_pin:
+        return {"type": "SET_PIN", "pin": _set_pin.group("pin")}
+
+    # "change pin 1234 5678"
+    _chg_pin = re.match(r"^change\s+pin\s+(?P<old>\d{4,6})\s+(?P<new>\d{4,6})$", clean_text)
+    if _chg_pin:
+        return {"type": "CHANGE_PIN", "old_pin": _chg_pin.group("old"), "new_pin": _chg_pin.group("new")}
+
+    # "remove pin 1234"
+    _rem_pin = re.match(r"^remove\s+pin\s+(?P<pin>\d{4,6})$", clean_text)
+    if _rem_pin:
+        return {"type": "REMOVE_PIN", "pin": _rem_pin.group("pin")}
+
+    # "recover 08012345678 1234"  |  "recover account 08012345678 pin 1234"
+    _recover = re.match(
+        r"^recover(?:\s+account)?\s+(?P<phone>[\d\s\+\-]{7,15}?)\s+(?:pin\s+)?(?P<pin>\d{4,6})$",
+        clean_text
+    )
+    if _recover:
+        return {
+            "type": "RECOVER_ACCOUNT",
+            "old_phone": _recover.group("phone").strip(),
+            "pin": _recover.group("pin"),
+        }
+
     # ── Fast Capture Mode commands ───────────────────────────────────────────
     if clean_text in ["fast mode", "fast capture", "fast mode status"]:
         return {"type": "FAST_CAPTURE_STATUS"}
@@ -2345,17 +2473,18 @@ def _parse_stock_item_full(body):
 
     item_part = at_split[0].strip()
 
+    _qty_tok = r"\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?"
     pat_product_first = re.compile(
-        rf"^(?P<product>.+?)\s+(?P<qty>\d+)\s*(?P<unit>{UNIT_PATTERN})$", re.I
+        rf"^(?P<product>.+?)\s+(?P<qty>{_qty_tok})\s*(?P<unit>{UNIT_PATTERN})$", re.I
     )
     pat_qty_first = re.compile(
-        rf"^(?P<qty>\d+)\s*(?P<unit>{UNIT_PATTERN})\s+(?P<product>.+)$", re.I
+        rf"^(?P<qty>{_qty_tok})\s*(?P<unit>{UNIT_PATTERN})\s+(?P<product>.+)$", re.I
     )
 
     for pat in (pat_product_first, pat_qty_first):
         m = pat.match(item_part)
         if m:
-            qty = int(m.group("qty"))
+            qty = parse_quantity_token(m.group("qty")) or 1
             if qty < 1:
                 continue
             product, unit = normalize_item(m.group("product").strip(), m.group("unit"))

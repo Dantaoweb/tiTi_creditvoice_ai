@@ -1,4 +1,5 @@
 ﻿from admin_commands import handle_admin_subscription_command, notify_subscription_admins
+from analytics_commands import handle_analytics_command
 from customer_commands import handle_customer_command
 from messages import (
     build_plan_message,
@@ -7,6 +8,10 @@ from messages import (
 )
 from models import PendingAction
 from onboarding_commands import handle_profile_command
+from linked_phone_commands import (
+    handle_link_phone, handle_unlink_phone, handle_my_phones,
+)
+from recovery_commands import handle_set_pin, handle_change_pin, handle_remove_pin
 from reminder_commands import handle_reminder_command
 from report_commands import handle_report_command
 from select_product_commands import start_select_product
@@ -36,6 +41,32 @@ def handle_parsed_command(
 
     if parsed["type"] == "SELECT_PRODUCT":
         return start_select_product(db, phone, business_owner_phone, send_whatsapp_message)
+
+    if parsed["type"].startswith("CONVO_"):
+        analytics_result = handle_analytics_command(
+            db, phone, parsed, user, business_owner_phone,
+            visible_recorded_by_id, send_whatsapp_message,
+        )
+        if analytics_result:
+            return analytics_result
+
+    if parsed["type"] == "SET_PIN":
+        return handle_set_pin(db, user, parsed["pin"], send_whatsapp_message, phone)
+
+    if parsed["type"] == "CHANGE_PIN":
+        return handle_change_pin(db, user, parsed["old_pin"], parsed["new_pin"], send_whatsapp_message, phone)
+
+    if parsed["type"] == "REMOVE_PIN":
+        return handle_remove_pin(db, user, parsed["pin"], send_whatsapp_message, phone)
+
+    if parsed["type"] == "LINK_PHONE":
+        return handle_link_phone(db, user, parsed["phone"], send_whatsapp_message, phone)
+
+    if parsed["type"] == "UNLINK_PHONE":
+        return handle_unlink_phone(db, user, parsed["phone"], send_whatsapp_message, phone)
+
+    if parsed["type"] == "MY_PHONES":
+        return handle_my_phones(db, user, send_whatsapp_message, phone)
 
     supplier_result = handle_supplier_command(
         db,

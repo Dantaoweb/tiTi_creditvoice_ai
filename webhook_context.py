@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from models import User
+from linked_phone_commands import find_owner_via_linked_phone
 
 
 @dataclass
@@ -34,6 +35,21 @@ def load_webhook_user_context(db, phone: str, message_type: str) -> WebhookUserC
     user = db.query(User).filter(User.phone == phone).first()
     business_owner_phone = phone
     business_name = "your business"
+
+    if not user:
+        # Check if this is a linked (secondary) phone — if so, load the real owner
+        linked_owner = find_owner_via_linked_phone(db, phone)
+        if linked_owner:
+            # Treat this phone exactly as if it were the owner's primary phone
+            user = linked_owner
+            business_owner_phone = linked_owner.phone
+            business_name = linked_owner.name
+            return WebhookUserContext(
+                user=user,
+                business_owner_phone=business_owner_phone,
+                business_name=business_name,
+                is_unregistered_voice=False,
+            )
 
     if user:
         if user.role in ["delegate", "delegate_pending"] and user.parent_id:

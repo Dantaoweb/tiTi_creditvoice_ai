@@ -164,7 +164,9 @@ def build_post_onboarding_menu(business_name, user=None):
         "2. Add customer\n"
         "3. Dashboard\n"
         "4. Upgrade\n\n"
-        "Send MENU anytime."
+        "Send MENU anytime.\n\n"
+        "Protect your account: set a recovery PIN in case you ever change your phone number.\n"
+        "set pin 1234"
     )
 
 
@@ -295,6 +297,17 @@ def build_supported_formats_message(user=None):
         "delivery note Same day delivery within Lagos\n"
         "payment mode Transfer to 0123456789 GTB\n"
         "bot settings\n\n"
+        "Account security\n"
+        "set pin 1234\n"
+        "change pin 1234 5678\n"
+        "remove pin 1234\n"
+        "recover 08012345678 1234\n\n"
+        "Linked phones (access from a second number)\n"
+        "link phone 08012345678\n"
+        "link confirm 483920\n"
+        "link decline\n"
+        "my phones\n"
+        "unlink phone 08012345678\n\n"
         "Other commands\n"
         "dashboard\n"
         "my plan\n"

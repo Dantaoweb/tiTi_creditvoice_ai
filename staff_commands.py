@@ -1,7 +1,19 @@
+import random
+import string
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import func
 
 from models import PendingAction, Transaction, User
 from subscriptions import check_staff_limit, ensure_feature_allowed
+
+
+def _generate_invite_code():
+    return "".join(random.choices(string.digits, k=6))
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def handle_staff_command(db, phone, parsed, user, subscription, business_name, send_message):
@@ -185,19 +197,31 @@ def handle_staff_command(db, phone, parsed, user, subscription, business_name, s
             )
             db.add(staff_user)
 
+        invite_code = _generate_invite_code()
+        staff_user.invite_code = invite_code
+        staff_user.invite_code_attempts = 0
+        staff_user.invite_expires_at = _utcnow() + timedelta(hours=24)
         db.commit()
 
+        # Staff message — does NOT contain the code
         send_message(
             staff_phone,
-            f"Hello {staff_name.title()}! *{user.name.title()}* has added you as a staff member on CreditVoice.\n\n"
-            "Please reply to this message to view and accept your invitation."
+            f"Hello {staff_name.title()}!\n\n"
+            f"*{user.name.title()}* has invited you to join their business on CreditVoice as staff.\n\n"
+            f"Ask {user.name.title()} for your accept code, then reply:\n"
+            f"accept [code]\n\n"
+            "Example: accept 483920\n\n"
+            "To decline: decline"
         )
 
+        # Owner message — contains the code
         send_message(
             phone,
-            f"âœ… Staff invitation for *{staff_name.title()}* ({staff_phone}) has been initiated.\n\n"
-            "I have sent an alert to them. We are now waiting for their interaction. "
-            "You can continue with other tasks, and I will notify you once they accept."
+            f"Staff invitation sent to {staff_name.title()} ({staff_phone}).\n\n"
+            f"Their accept code is: *{invite_code}*\n\n"
+            f"Tell {staff_name.title()} to send:\n"
+            f"accept {invite_code}\n\n"
+            "The code expires in 24 hours."
         )
         return {"status": "staff_invited"}
 

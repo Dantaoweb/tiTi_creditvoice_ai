@@ -307,6 +307,7 @@ def handle_supplier_command(
             items_json=json.dumps([parsed["stock_item"]] if parsed.get("stock_item") else []),
             source_text=voice_transcript_text,
             due_date=parsed.get("due_date"),
+            payload_json=json.dumps({"selling_price": parsed.get("selling_price")}),
         )
         db.add(pending)
         db.commit()
@@ -317,12 +318,15 @@ def handle_supplier_command(
             due_line = ""
             if parsed.get("due_date"):
                 due_line = f"\nDue: {parsed['due_date'].strftime('%d/%m/%Y')}"
+            selling_line = ""
+            if parsed.get("selling_price"):
+                selling_line = f"\nSelling price: N{parsed['selling_price']:,}"
             confirm_msg = (
                 "Confirm stock from supplier:\n"
                 f"Supplier: {parsed['name'].title()}\n"
                 f"Item: {parsed['product'].title()}\n"
                 f"Qty: {parsed['quantity']:,}{unit_label}\n"
-                f"Cost each: N{parsed['unit_price']:,}\n"
+                f"Cost each: N{parsed['unit_price']:,}{selling_line}\n"
                 f"Total: N{parsed['buy_amount']:,}\n"
                 f"Paid: N{parsed['paid_amount']:,}\n"
                 f"You owe: N{balance:,}"

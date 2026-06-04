@@ -830,3 +830,154 @@ def get_due_in_2_days(db, owner_phone=None, recorded_by_id=None):
 
     return due_list
 
+
+# =========================
+# 📊 CONVERSATIONAL ANALYTICS
+# =========================
+
+def get_period_comparison(db, owner_phone, recorded_by_id=None):
+    """
+    Compare this calendar month vs last calendar month.
+    Returns totals, change, and top customers who went quiet.
+    """
+    now = _utcnow()
+    # This month: 1st of current month → now
+    this_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    this_end = now
+    # Last month: 1st of prev month → last day of prev month
+    if this_start.month == 1:
+        last_start = this_start.replace(year=this_start.year - 1, month=12)
+    else:
+        last_start = this_start.replace(month=this_start.month - 1)
+    last_end = this_start
+
+    def _sales(start, end):
+        return db.query(
+            func.coalesce(func.sum(Transaction.amount), 0)
+        ).outerjoin(
+            Customer, Transaction.customer_id == Customer.id
+        ).filter(
+            func.coalesce(Customer.owner_phone, owner_phone) == owner_phone,
+            Transaction.type.in_(["BUY", "SALE"]),
+            Transaction.created_at >= start,
+            Transaction.created_at < end,
+        ).scalar()
+
+    def _active_customers(start, end):
+        rows = db.query(Customer.name, func.coalesce(func.sum(Transaction.amount), 0)).join(
+            Transaction, Transaction.customer_id == Customer.id
+        ).filter(
+            Customer.owner_phone == owner_phone,
+            Transaction.type == "BUY",
+            Transaction.created_at >= start,
+            Transaction.created_at < end,
+        ).group_by(Customer.name).order_by(
+            func.coalesce(func.sum(Transaction.amount), 0).desc()
+        ).limit(5).all()
+        return [(name, amt) for name, amt in rows]
+
+    this_sales = _sales(this_start, this_end)
+    last_sales = _sales(last_start, last_end)
+    this_customers = _active_customers(this_start, this_end)
+    last_customers = _active_customers(last_start, last_end)
+
+    this_names = {name for name, _ in this_customers}
+    quiet = [(name, amt) for name, amt in last_customers if name not in this_names]
+
+    change = this_sales - last_sales
+    pct = int(abs(change) * 100 / last_sales) if last_sales else 0
+
+    return {
+        "this_month": this_sales,
+        "last_month": last_sales,
+        "change": change,
+        "change_pct": pct,
+        "direction": "up" if change >= 0 else "down",
+        "this_top_customers": this_customers,
+        "quiet_customers": quiet,  # bought last month, silent this month
+    }
+
+
+def get_sales_by_day_of_week(db, owner_phone, recorded_by_id=None):
+    """
+    Aggregate sales by day of week over last 90 days.
+    Returns list of (day_name, total_sales) sorted by total desc.
+    """
+    cutoff = _utcnow() - timedelta(days=90)
+    rows = db.query(
+        Transaction.created_at, Transaction.amount
+    ).outerjoin(
+        Customer, Transaction.customer_id == Customer.id
+    ).filter(
+        func.coalesce(Customer.owner_phone, owner_phone) == owner_phone,
+        Transaction.type.in_(["BUY", "SALE"]),
+        Transaction.created_at >= cutoff,
+    ).all()
+
+    day_totals = {i: 0 for i in range(7)}
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    for created_at, amount in rows:
+        if created_at:
+            day_totals[created_at.weekday()] += (amount or 0)
+
+    ranked = sorted(
+        [(day_names[i], day_totals[i]) for i in range(7)],
+        key=lambda x: x[1],
+        reverse=True
+    )
+    return ranked
+
+
+def get_product_profit_detail(db, owner_phone, product_name, recorded_by_id=None):
+    """
+    For a specific product: sales volume, actual revenue, cost price,
+    expected revenue at standard selling price, margin.
+    """
+    from models import InventoryItem, TransactionItem
+
+    product_lower = product_name.lower().strip()
+
+    item = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        func.lower(InventoryItem.name).like(f"%{product_lower}%"),
+    ).first()
+
+    tx_items = db.query(TransactionItem).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).outerjoin(
+        Customer, Transaction.customer_id == Customer.id
+    ).filter(
+        func.coalesce(Customer.owner_phone, owner_phone) == owner_phone,
+        Transaction.type.in_(["BUY", "SALE"]),
+        func.lower(TransactionItem.product).like(f"%{product_lower}%"),
+    ).all()
+
+    total_qty = sum(ti.quantity or 1 for ti in tx_items)
+    total_revenue = sum(ti.total or 0 for ti in tx_items)
+    unit_prices = [ti.unit_price for ti in tx_items if ti.unit_price]
+    avg_sell_price = int(sum(unit_prices) / len(unit_prices)) if unit_prices else 0
+
+    cost_price = item.cost_price if item else None
+    selling_price = item.selling_price if item else None
+    stock_qty = item.quantity if item else None
+    unit = item.unit if item else None
+
+    expected_revenue = (selling_price * total_qty) if selling_price and total_qty else None
+    cost_of_sales = (cost_price * total_qty) if cost_price and total_qty else None
+    gross_profit = (total_revenue - cost_of_sales) if cost_of_sales is not None else None
+
+    return {
+        "product": product_name,
+        "unit": unit,
+        "total_qty_sold": total_qty,
+        "total_revenue": total_revenue,
+        "avg_sell_price": avg_sell_price,
+        "standard_sell_price": selling_price,
+        "cost_price": cost_price,
+        "expected_revenue": expected_revenue,
+        "cost_of_sales": cost_of_sales,
+        "gross_profit": gross_profit,
+        "stock_remaining": stock_qty,
+        "transaction_count": len(tx_items),
+    }
+

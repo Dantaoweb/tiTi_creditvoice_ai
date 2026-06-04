@@ -59,6 +59,18 @@ class User(Base):
 
     shop_tag = Column(String, unique=True, nullable=True)
 
+    recovery_pin_hash = Column(String, nullable=True)
+
+    pin_attempts = Column(Integer, default=0)
+
+    pin_locked_until = Column(DateTime, nullable=True)
+
+    invite_code = Column(String, nullable=True)
+
+    invite_code_attempts = Column(Integer, default=0)
+
+    invite_expires_at = Column(DateTime, nullable=True)
+
     created_at = Column(
         DateTime,
         default=utcnow
@@ -680,6 +692,25 @@ class ReminderQueue(Base):
     created_at = Column(DateTime, default=utcnow)
 
     updated_at = Column(DateTime, default=utcnow)
+
+
+class LinkedPhone(Base):
+
+    __tablename__ = "linked_phones"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_user_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+    linked_phone = Column(String, unique=True, nullable=False, index=True)
+
+    link_code = Column(String, nullable=True)
+
+    link_code_expires_at = Column(DateTime, nullable=True)
+
+    is_active = Column(Boolean, default=False)
+
+    created_at = Column(DateTime, default=utcnow)
 
 
 class ReminderSendLog(Base):
