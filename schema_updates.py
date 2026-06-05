@@ -70,6 +70,12 @@ def ensure_schema_updates(engine):
         "subscription_status": "VARCHAR DEFAULT 'ACTIVE'",
         "subscription_expires_at": "TIMESTAMP",
         "shop_tag": "VARCHAR",
+        "recovery_pin_hash": "VARCHAR",
+        "pin_attempts": "INTEGER DEFAULT 0",
+        "pin_locked_until": "TIMESTAMP",
+        "invite_code": "VARCHAR",
+        "invite_code_attempts": "INTEGER DEFAULT 0",
+        "invite_expires_at": "TIMESTAMP",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
@@ -148,6 +154,26 @@ def ensure_schema_updates(engine):
             connection.execute(
                 text("ALTER TABLE pending_actions ADD COLUMN payload_json VARCHAR")
             )
+
+    transaction_columns = {
+        column["name"]
+        for column in inspector.get_columns("transactions")
+    }
+    boolean_false = "FALSE" if engine.dialect.name == "postgresql" else "0"
+    transaction_updates = {
+        "is_voided": f"BOOLEAN DEFAULT {boolean_false}",
+        "void_reason": "VARCHAR",
+        "voided_by_id": "VARCHAR",
+        "voided_at": "TIMESTAMP",
+    }
+    with engine.begin() as connection:
+        for column_name, column_type in transaction_updates.items():
+            if column_name not in transaction_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE transactions ADD COLUMN {column_name} {column_type}"
+                    )
+                )
 
     # ── Training data capture ────────────────────────────────────────────────
     existing_tables = inspector.get_table_names()

@@ -952,10 +952,30 @@ def get_product_profit_detail(db, owner_phone, product_name, recorded_by_id=None
         func.lower(TransactionItem.product).like(f"%{product_lower}%"),
     ).all()
 
-    total_qty = sum(ti.quantity or 1 for ti in tx_items)
-    total_revenue = sum(ti.total or 0 for ti in tx_items)
-    unit_prices = [ti.unit_price for ti in tx_items if ti.unit_price]
+    # Also pick up simple transactions recorded with Transaction.product directly
+    direct_txns = db.query(Transaction).outerjoin(
+        Customer, Transaction.customer_id == Customer.id
+    ).filter(
+        func.coalesce(Customer.owner_phone, owner_phone) == owner_phone,
+        Transaction.type.in_(["BUY", "SALE"]),
+        func.lower(Transaction.product).like(f"%{product_lower}%"),
+        ~Transaction.id.in_([ti.transaction_id for ti in tx_items]),
+    ).all() if not tx_items else []
+
+    total_qty = (
+        sum(ti.quantity or 1 for ti in tx_items) +
+        sum(tx.quantity or 1 for tx in direct_txns)
+    )
+    total_revenue = (
+        sum(ti.total or 0 for ti in tx_items) +
+        sum(tx.amount or 0 for tx in direct_txns)
+    )
+    unit_prices = (
+        [ti.unit_price for ti in tx_items if ti.unit_price] +
+        [tx.unit_price for tx in direct_txns if tx.unit_price]
+    )
     avg_sell_price = int(sum(unit_prices) / len(unit_prices)) if unit_prices else 0
+    tx_count = len(tx_items) + len(direct_txns)
 
     cost_price = item.cost_price if item else None
     selling_price = item.selling_price if item else None
@@ -978,6 +998,6 @@ def get_product_profit_detail(db, owner_phone, product_name, recorded_by_id=None
         "cost_of_sales": cost_of_sales,
         "gross_profit": gross_profit,
         "stock_remaining": stock_qty,
-        "transaction_count": len(tx_items),
+        "transaction_count": tx_count,
     }
 

@@ -216,6 +216,29 @@ def handle_webhook_body(body):
             PendingAction.created_at.desc()
         ).first()
 
+        # ── Expire stale pending actions ──────────────────────────────────────
+        if pending and pending.created_at:
+            from datetime import datetime, timezone, timedelta
+            _PENDING_TTL = {
+                "RESIGN_CONFIRM": 1,
+                "STOCK_ADD_CONFIRM": 4,
+                "ARTISAN_PAYMENT_CHOICE": 2,
+                "DASHBOARD_MENU": 1,
+            }
+            _ttl_hours = _PENDING_TTL.get(pending.action, 4)
+            _age_hours = (
+                datetime.now(timezone.utc).replace(tzinfo=None) - pending.created_at
+            ).total_seconds() / 3600
+            if _age_hours > _ttl_hours:
+                db.delete(pending)
+                db.commit()
+                pending = None
+                send_whatsapp_message(
+                    phone,
+                    "Your previous session has expired.\n\n"
+                    "Send your message again to continue."
+                )
+
         if not user and message_type == "text":
             app_admin_dashboard_result = handle_app_admin_dashboard_pending(
                 db,

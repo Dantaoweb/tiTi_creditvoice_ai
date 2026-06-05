@@ -1975,6 +1975,23 @@ def parse_message(text):
     ]:
         return {"type": "REONBOARD"}
 
+    # ── Transaction void / correction ────────────────────────────────────────
+    # "void 42 wrong customer"  |  "void last wrong product"
+    _void_match = re.match(
+        r"^(?:void|cancel\s+transaction|correct\s+transaction|reverse\s+transaction)\s+"
+        r"(?P<ref>last|\d+)"
+        r"(?:\s+(?P<reason>.+))?$",
+        clean_text,
+    )
+    if _void_match:
+        ref = _void_match.group("ref")
+        reason = (_void_match.group("reason") or "").strip()
+        return {
+            "type": "VOID_TRANSACTION",
+            "ref": ref,
+            "reason": reason,
+        }
+
     # ── Conversational analytics ─────────────────────────────────────────────
     # "who owes me the most" / "who is my biggest debtor"
     if re.search(r"\b(who|which).*(ow(?:e|es|ed|ing)|debt|borrow|balance)\b", clean_text) or \
@@ -2013,7 +2030,10 @@ def parse_message(text):
         r"^(?:is\s+|how\s+is\s+|profit\s+on\s+|margin\s+on\s+|how\s+profitable\s+is\s+)(?P<product>.+?)(?:\s+profitable|\s+doing|\s+performing)?$",
         clean_text
     )
-    if _profit_match and re.search(r"\b(profit(?:able)?|margin|cost|earn(?:ing)?|making)\b", clean_text):
+    if _profit_match and re.search(
+        r"\b(profit(?:able)?|margin|cost|earn(?:ing)?|making|doing|performing|selling)\b",
+        clean_text
+    ):
         return {"type": "CONVO_PRODUCT_PROFIT", "product": _profit_match.group("product").strip()}
 
     # ── Linked phones ────────────────────────────────────────────────────────

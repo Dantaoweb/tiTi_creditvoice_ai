@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CreditVoice</title>
+    <link rel="stylesheet" href="/web/static/app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">CV</span>
+          <div>
+            <strong>CreditVoice</strong>
+            <span>Business desk</span>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-item active" data-view="capture">Capture</button>
+          <button class="nav-item" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" data-view="customers">Customers</button>
+          <button class="nav-item" data-view="transactions">Transactions</button>
+          <button class="nav-item" data-view="inventory">Inventory</button>
+          <button class="nav-item" data-view="reminders">Reminders</button>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Web app preview</p>
+            <h1 id="page-title">Dashboard</h1>
+          </div>
+          <form class="filters" id="filters">
+            <label>
+              Owner phone
+              <input id="owner-phone" name="owner_phone" autocomplete="tel" placeholder="optional" />
+            </label>
+            <label>
+              Period
+              <select id="period" name="period">
+                <option value="TODAY">Today</option>
+                <option value="WEEK">Week</option>
+                <option value="MONTH">Month</option>
+                <option value="YEAR">Year</option>
+                <option value="">All time</option>
+              </select>
+            </label>
+            <button type="submit">Refresh</button>
+          </form>
+        </header>
+
+        <section id="view" class="content" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <script src="/web/static/app.js"></script>
+  </body>
+</html>

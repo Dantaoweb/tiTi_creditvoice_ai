@@ -119,6 +119,14 @@ class Transaction(Base):
         unique=True
     )
 
+    is_voided = Column(Boolean, default=False, nullable=True)
+
+    void_reason = Column(String, nullable=True)
+
+    voided_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    voided_at = Column(DateTime, nullable=True)
+
 
 class TransactionItem(Base):
 
