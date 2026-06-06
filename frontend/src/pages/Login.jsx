@@ -268,7 +268,21 @@ export default function Login() {
               </span>
             </label>
 
-            {err && <div className="login-error">{err}</div>}
+            {err && (
+              <div className="login-error">
+                {err}
+                {err.toLowerCase().includes("sign in") && (
+                  <button
+                    type="button"
+                    className="login-text-btn"
+                    style={{ marginTop: 8, display: "flex" }}
+                    onClick={() => { goMode("login"); setPhone(regPhone); }}
+                  >
+                    Go to sign in →
+                  </button>
+                )}
+              </div>
+            )}
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
               {busy ? "Creating account…" : "Create Account & Sign In"}
