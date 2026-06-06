@@ -262,29 +262,35 @@ def build_supplier_list_message(db, owner_phone):
     return msg
 
 
-def build_supplier_due_message(db, owner_phone):
+def build_supplier_due_message(db, owner_phone, days=1):
     start = _utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=1)
+    end = start + timedelta(days=days)
     purchases = db.query(SupplierPurchase, Supplier).join(
         Supplier,
         SupplierPurchase.supplier_id == Supplier.id
     ).filter(
         SupplierPurchase.owner_phone == owner_phone,
         SupplierPurchase.due_date >= start,
-        SupplierPurchase.due_date < end
+        SupplierPurchase.due_date < end,
     ).order_by(SupplierPurchase.due_date.asc()).all()
-    if not purchases:
-        return "No supplier payment due today."
 
-    msg = "Supplier Due Today\n\n"
+    period_label = "Today" if days == 1 else f"Next {days} Days"
+    none_msg = f"No supplier payment due {'today' if days == 1 else f'in the next {days} days'}."
+
+    if not purchases:
+        return none_msg
+
+    msg = f"Supplier Payments Due — {period_label}\n\n"
     count = 0
     for purchase, supplier in purchases:
         balance = max((purchase.total or 0) - (purchase.paid_amount or 0), 0)
         if balance == 0:
             continue
         count += 1
-        msg += f"{count}. {supplier.name.title()} - N{balance:,} for {purchase.product.title()}\n"
-    return msg.strip() if count else "No supplier payment due today."
+        due_label = purchase.due_date.strftime("%d/%m") if purchase.due_date else ""
+        due_str = f" (due {due_label})" if days > 1 and due_label else ""
+        msg += f"{count}. {supplier.name.title()} - N{balance:,} for {purchase.product.title()}{due_str}\n"
+    return msg.strip() if count else none_msg
 
 
 # ── Manual stock operations ──────────────────────────────────────────────────

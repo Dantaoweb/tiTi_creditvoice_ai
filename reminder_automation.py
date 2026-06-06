@@ -327,14 +327,22 @@ def handle_reminder_automation_command(db, phone, text, user, send_message):
 
     if normalized == "run reminder automation":
         result = run_reminder_automation(db, owner.phone, send_message)
-        send_message(
-            phone,
+        summary = (
             "Reminder automation run complete.\n\n"
             f"Queued: {result['queued']}\n"
             f"Sent: {result['sent']}\n"
             f"Skipped: {result['skipped']}\n\n"
             "Send reminder queue to review previews."
         )
+        send_message(phone, summary)
+        # Also send supplier due payments for the next 3 days
+        try:
+            from inventory_suppliers import build_supplier_due_message
+            supplier_msg = build_supplier_due_message(db, owner.phone, days=3)
+            if "No supplier payment" not in supplier_msg:
+                send_message(phone, supplier_msg)
+        except Exception:
+            pass
         return {"status": "reminder_automation_run"}
 
     if normalized == "reminder queue":

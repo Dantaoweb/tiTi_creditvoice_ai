@@ -300,7 +300,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             period_key = period.upper() if period else None
-            query = get_owner_transaction_query(db, owner_phone, period_key)
+            query = get_owner_transaction_query(db, owner_phone, period_key, include_voided=True)
             rows = query.order_by(Transaction.created_at.desc()).limit(100).all()
             customer_ids = [row.customer_id for row in rows if row.customer_id]
             customers = {}
@@ -309,7 +309,11 @@ def register_web_routes(app):
                     customer.id: customer
                     for customer in db.query(Customer).filter(Customer.id.in_(customer_ids)).all()
                 }
-            user_ids = [row.recorded_by_id for row in rows if row.recorded_by_id]
+            user_ids = list({
+                uid for row in rows
+                for uid in [row.recorded_by_id, row.voided_by_id]
+                if uid
+            })
             users = {}
             if user_ids:
                 users = {
@@ -331,6 +335,9 @@ def register_web_routes(app):
                         "due_date": _iso(tx.due_date),
                         "created_at": _iso(tx.created_at),
                         "is_voided": bool(tx.is_voided),
+                        "void_reason": tx.void_reason,
+                        "voided_by": users.get(tx.voided_by_id).name if tx.voided_by_id and users.get(tx.voided_by_id) else None,
+                        "voided_at": _iso(tx.voided_at),
                     }
                     for tx in rows
                 ]

@@ -275,6 +275,15 @@ def handle_supplier_command(
         send_message(phone, build_supplier_due_message(db, business_owner_phone))
         return {"status": "supplier_due"}
 
+    if command_type == "SUPPLIER_DUE_WEEK":
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "SUPPLIERS", "Supplier reminders")
+        if not allowed:
+            send_message(phone, upgrade_msg)
+            return {"status": "supplier_due_week_plan_blocked"}
+
+        send_message(phone, build_supplier_due_message(db, business_owner_phone, days=7))
+        return {"status": "supplier_due_week"}
+
     if command_type == "SELF_PURCHASE_NEEDS_SUPPLIER":
         send_message(
             phone,

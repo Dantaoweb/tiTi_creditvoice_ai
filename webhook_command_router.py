@@ -1,5 +1,6 @@
 ﻿from admin_commands import handle_admin_subscription_command, notify_subscription_admins
 from analytics_commands import handle_analytics_command
+from void_commands import handle_void_transaction
 from customer_commands import handle_customer_command
 from messages import (
     build_plan_message,
@@ -68,6 +69,40 @@ def handle_parsed_command(
     if parsed["type"] == "MY_PHONES":
         return handle_my_phones(db, user, send_whatsapp_message, phone)
 
+    if parsed["type"] == "VOID_TRANSACTION":
+        return handle_void_transaction(
+            db, phone, parsed, user, business_owner_phone,
+            visible_recorded_by_id, send_whatsapp_message,
+        )
+
+    if parsed["type"] == "STAFF_REPORT":
+        from reports import get_staff_performance
+        from subscriptions import ensure_feature_allowed
+        allowed, upgrade_msg = ensure_feature_allowed(db, user, "STAFF", "Staff report")
+        if not allowed:
+            send_whatsapp_message(phone, upgrade_msg)
+            return {"status": "staff_report_plan_blocked"}
+        period = parsed.get("period")
+        staff_data = get_staff_performance(db, business_owner_phone, period)
+        if not staff_data:
+            send_whatsapp_message(phone, "No staff found. Add staff with the staff menu.")
+            return {"status": "staff_report_empty"}
+        period_label = {"TODAY": "Today", "WEEK": "This Week", "MONTH": "This Month"}.get(period, "This Month")
+        msg = f"Staff Performance — {period_label}\n\n"
+        for i, s in enumerate(staff_data, 1):
+            msg += (
+                f"{i}. {s['name'].title()}\n"
+                f"   Sales: N{s['sales']:,}  |  Payments: N{s['payments']:,}\n"
+                f"   Transactions: {s['transactions']}  |  Customers: {s['customers_served']}\n"
+            )
+            if s["top_products"]:
+                msg += "   Sold:\n"
+                for p in s["top_products"]:
+                    msg += f"   - {p['product']}: {p['qty']} unit(s), N{p['total']:,}\n"
+            msg += "\n"
+        send_whatsapp_message(phone, msg.strip())
+        return {"status": "staff_report"}
+
     supplier_result = handle_supplier_command(
         db,
         phone,
@@ -106,6 +141,33 @@ def handle_parsed_command(
     if parsed["type"] == "MY_PLAN":
         send_whatsapp_message(phone, build_plan_message(subscription))
         return {"status": "my_plan"}
+
+    if parsed["type"] == "MY_QUOTA":
+        from datetime import datetime, timedelta, timezone
+        from models import Transaction as _Tx
+        from transaction_setup import get_month_start
+        from reports import get_owner_transaction_query
+        limits = subscription["limits"]
+        tx_limit = limits.get("monthly_transactions")
+        if tx_limit is None:
+            send_whatsapp_message(phone, f"Your {subscription['plan']} plan has no transaction limit.\n\nRecord as many as you need.")
+        else:
+            used = get_owner_transaction_query(db, business_owner_phone).filter(
+                _Tx.created_at >= get_month_start()
+            ).count()
+            remaining = max(0, tx_limit - used)
+            now = datetime.now(timezone.utc)
+            next_month = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
+            reset_date = next_month.strftime("%d %B %Y")
+            warn = "You are close to your limit. Send UPGRADE for unlimited transactions." if remaining <= 10 else "Send UPGRADE to remove this limit."
+            send_whatsapp_message(
+                phone,
+                f"Transactions this month: {used} of {tx_limit}\n"
+                f"Remaining: {remaining}\n"
+                f"Resets on: {reset_date}\n\n"
+                f"{warn}"
+            )
+        return {"status": "my_quota"}
 
     if parsed["type"] == "UPGRADE_MENU":
         db.query(PendingAction).filter(

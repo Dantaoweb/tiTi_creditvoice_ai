@@ -265,6 +265,24 @@ def handle_webhook_body(body):
             if subscription_media_result:
                 return subscription_media_result
 
+            if user:
+                _media_hints = {
+                    "image": "an image",
+                    "video": "a video",
+                    "document": "a document",
+                    "sticker": "a sticker",
+                    "audio": "an audio file",
+                }
+                _media_label = _media_hints.get(message_type, "a media file")
+                send_whatsapp_message(
+                    phone,
+                    f"tiTi received {_media_label} but can only read text messages.\n\n"
+                    "To record a transaction, type it out — or send a voice note and tiTi will transcribe it.\n\n"
+                    "Examples:\n"
+                    "Ade bought rice 5000\n"
+                    "void last\n"
+                    "stock"
+                )
             return {"status": "ignored_non_text"}
         # ── Fast Capture Mode intercept ───────────────────────────────────────
         # Fast-mode commands (on/off/close sales) always route normally.

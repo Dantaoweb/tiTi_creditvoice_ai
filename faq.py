@@ -81,6 +81,32 @@ def detect_faq(text):
     if "status" in q and any(k in q for k in ["sell", "order", "customer", "selling", "how"]):
         return "customer_bot"
 
+    # ── Void / undo transaction ───────────────────────────────────────────────
+    if any(k in q for k in [
+        "void transaction", "undo transaction", "cancel transaction",
+        "reverse transaction", "correct transaction", "delete transaction",
+        "remove transaction", "void a sale", "undo a sale", "cancel a sale",
+        "how do i void", "how do i undo", "how to void", "how to undo",
+    ]):
+        return "void_transaction"
+    if "void" in q and any(k in q for k in ["how", "what", "transaction", "sale", "last"]):
+        return "void_transaction"
+
+    # ── Conversational analytics ──────────────────────────────────────────────
+    if any(k in q for k in [
+        "why are my sales", "why is my sale", "why sales declining",
+        "who owes me the most", "biggest debtor", "top debtors", "top debtor",
+        "best selling product", "best product", "most popular product",
+        "what sells most", "what do i sell most",
+        "when am i busiest", "my peak period", "busiest day", "peak time",
+        "most sales day", "when do i make most",
+        "is this product profitable", "is it profitable", "product profit",
+        "how profitable", "should i keep selling",
+    ]):
+        return "analytics"
+    if any(k in q for k in ["ask titi", "titi can answer", "analyse", "analyze"]):
+        return "analytics"
+
     # ── Fast mode ─────────────────────────────────────────────────────────────
     if "fast mode" in q or ("fast" in q and "mode" in q):
         return "fast_mode"
@@ -258,7 +284,11 @@ FAQ_ANSWERS = {
         "To record payment to supplier:\n"
         "I paid Ayo 14000 for rice\n\n"
         "To see all suppliers:\n"
-        "suppliers"
+        "suppliers\n\n"
+        "To see supplier payments due today:\n"
+        "supplier due\n\n"
+        "To see payments due this week:\n"
+        "supplier due this week"
     ),
     "check_stock": (
         "To see your current stock:\n\n"
@@ -389,6 +419,28 @@ FAQ_ANSWERS = {
         "To remove a linked phone:\n"
         "unlink phone 08012345678\n\n"
         "Maximum 2 linked phones per account."
+    ),
+    "void_transaction": (
+        "To void (undo) a transaction:\n\n"
+        "void last\n"
+        "void 42\n"
+        "void last customer returned goods\n\n"
+        "The transaction will no longer count in balances or reports.\n"
+        "A note is saved recording who voided it and when.\n\n"
+        "If a staff member voids a transaction, the business owner gets an alert immediately.\n\n"
+        "Staff can only void transactions they personally recorded.\n"
+        "To void a transaction recorded by someone else, the owner must do it."
+    ),
+    "analytics": (
+        "You can ask tiTi questions about your business and get answers from your actual records.\n\n"
+        "Examples:\n\n"
+        "who owes me the most\n"
+        "why are my sales declining\n"
+        "what is my best selling product\n"
+        "when am i busiest\n"
+        "is honey profitable\n\n"
+        "tiTi will check your records and give you an honest answer with suggestions.\n\n"
+        "Send  formats  to see all commands."
     ),
     "formats": (
         "Send this to see all examples and commands:\n\n"

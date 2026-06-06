@@ -1361,10 +1361,29 @@ def parse_message(text):
     if clean_text in ["supplier due", "suppliers due", "supplier due today", "suppliers due today"]:
         return {"type": "SUPPLIER_DUE"}
 
+    if clean_text in [
+        "supplier due this week", "suppliers due this week",
+        "supplier due week", "upcoming supplier payments",
+        "supplier upcoming", "upcoming suppliers",
+    ]:
+        return {"type": "SUPPLIER_DUE_WEEK"}
+
     if clean_text.startswith("stock "):
+        _stock_body = clean_text[6:].strip()
+        # "stock detergent 60 bags cost 100000 selling price 120000" → add stock
+        _has_cost = bool(re.search(r"\bcost\b\s*\d", _stock_body, re.I))
+        _has_sell = bool(re.search(r"\b(?:selling\s+price|sell)\b\s*\d", _stock_body, re.I))
+        if _has_cost and _has_sell:
+            if re.search(r"\bselling\s+price\b", _stock_body, re.I):
+                _full_item = _parse_stock_item_full(_stock_body)
+                if _full_item:
+                    return {"type": "STOCK_ADD_WITH_PRICES", "items": [_full_item]}
+            _priced_items = _parse_stock_items_with_prices(_stock_body)
+            if _priced_items:
+                return {"type": "STOCK_ADD_WITH_PRICES", "items": _priced_items}
         return {
             "type": "INVENTORY_ITEM",
-            "product": clean_text.replace("stock", "", 1).strip()
+            "product": _stock_body,
         }
 
     # ── Add stock (new format with cost + sell prices) ──────────────────────
@@ -1382,8 +1401,8 @@ def parse_message(text):
             item = _parse_stock_item_full(body)
             if item:
                 return {"type": "STOCK_ADD_WITH_PRICES", "items": [item]}
-        # Detect cost+sell format
-        if body and re.search(r"\bcost\b", body, re.I) and re.search(r"\bsell\b", body, re.I):
+        # Detect cost+sell / cost+selling price format
+        if body and re.search(r"\bcost\b", body, re.I) and re.search(r"\bsell(?:ing\s+price)?\b", body, re.I):
             items = _parse_stock_items_with_prices(body)
             if items:
                 return {"type": "STOCK_ADD_WITH_PRICES", "items": items}
@@ -1714,6 +1733,9 @@ def parse_message(text):
     ]:
         return {"type": "MY_PLAN"}
 
+    if clean_text in ["my quota", "quota", "my limit", "transaction limit", "how many transactions"]:
+        return {"type": "MY_QUOTA"}
+
     if clean_text in [
         "upgrade",
         "pricing",
@@ -1966,6 +1988,21 @@ def parse_message(text):
         "my staff"
     ]:
         return {"type": "STAFF_MENU"}
+
+    _staff_report_patterns = [
+        "staff report", "staff performance", "staff activity",
+        "staff report today", "staff report this week", "staff report this month",
+        "staff performance today", "staff performance this week", "staff performance this month",
+    ]
+    if clean_text in _staff_report_patterns:
+        _period = None
+        if "today" in clean_text:
+            _period = "TODAY"
+        elif "week" in clean_text:
+            _period = "WEEK"
+        elif "month" in clean_text:
+            _period = "MONTH"
+        return {"type": "STAFF_REPORT", "period": _period}
 
     if clean_text in [
         "reonboard",
@@ -2241,6 +2278,21 @@ def parse_message(text):
     invoice_clean_text = re.sub(due_clause_pattern, "", invoice_clean_text).strip()
     clean_text = re.sub(due_clause_pattern, "", clean_text, flags=re.IGNORECASE).strip()
 
+    # ── Early stock-add intercept ─────────────────────────────────────────────
+    # "selling price" never appears in a normal customer transaction.
+    # If the message has both "cost" and "selling price" it is inventory intent,
+    # even if the user forgot to write "add stock" at the front.
+    if (
+        re.search(r"\bselling\s+price\b", clean_text, re.I)
+        and re.search(r"\bcost\b", clean_text, re.I)
+    ):
+        _early_item = _parse_stock_item_full(clean_text)
+        if _early_item:
+            return {"type": "STOCK_ADD_WITH_PRICES", "items": [_early_item]}
+        _early_items = _parse_stock_items_with_prices(clean_text)
+        if _early_items:
+            return {"type": "STOCK_ADD_WITH_PRICES", "items": _early_items}
+
     # =========================
     # 🧠 DETECT TYPE
     # =========================
@@ -2483,15 +2535,23 @@ def _parse_stock_item_full(body):
         return None
 
     left = selling_split[0].strip().rstrip(",").strip()
-    at_split = re.split(r"\s+at\s+", left, maxsplit=1, flags=re.I)
-    if len(at_split) != 2:
-        return None
 
-    cost = parse_amount_token(at_split[1].strip().replace(",", ""))
+    # Try "at" separator first (honey 10 liters at 10000, selling price 12000)
+    # then fall back to "cost" (Paracetamol 5 packets cost 2000 selling price 3000)
+    at_split = re.split(r"\s+at\s+", left, maxsplit=1, flags=re.I)
+    if len(at_split) == 2:
+        cost_str = at_split[1].strip()
+        item_part = at_split[0].strip()
+    else:
+        cost_split = re.split(r"\s+cost\s+", left, maxsplit=1, flags=re.I)
+        if len(cost_split) != 2:
+            return None
+        cost_str = cost_split[1].strip()
+        item_part = cost_split[0].strip()
+
+    cost = parse_amount_token(cost_str.replace(",", ""))
     if cost is None:
         return None
-
-    item_part = at_split[0].strip()
 
     _qty_tok = r"\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?"
     pat_product_first = re.compile(
@@ -2526,7 +2586,7 @@ def _parse_stock_items_with_prices(body):
     """
     amount_pat = r"\d[\d,\.]*(?:k|m)?"
     item_pat = re.compile(
-        rf"^(?P<product>.+?)\s+cost\s+(?P<cost>{amount_pat})\s+sell\s+(?P<sell>{amount_pat})$",
+        rf"^(?P<product>.+?)\s+cost\s+(?P<cost>{amount_pat})\s+(?:selling\s+price|sell)\s+(?P<sell>{amount_pat})$",
         re.I,
     )
     parts = [p.strip() for p in re.split(r"[,\n]+", body) if p.strip()]

@@ -69,7 +69,8 @@ def get_balance(db, customer_id, recorded_by_id=None):
         )
     ).filter(
         Transaction.customer_id == customer_id,
-        Transaction.type == "BUY"
+        Transaction.type == "BUY",
+        Transaction.is_voided != True,
     )
 
     pay_query = db.query(
@@ -79,7 +80,8 @@ def get_balance(db, customer_id, recorded_by_id=None):
         )
     ).filter(
         Transaction.customer_id == customer_id,
-        Transaction.type == "PAY"
+        Transaction.type == "PAY",
+        Transaction.is_voided != True,
     )
 
     if recorded_by_id:
@@ -134,8 +136,10 @@ def get_period_range(period):
     return None, None
 
 
-def get_owner_transaction_query(db, owner_phone, period=None, recorded_by_id=None):
+def get_owner_transaction_query(db, owner_phone, period=None, recorded_by_id=None, include_voided=False):
     query = db.query(Transaction).outerjoin(Customer, Transaction.customer_id == Customer.id)
+    if not include_voided:
+        query = query.filter(Transaction.is_voided != True)
     if owner_phone:
         business_user_ids = []
         admin_user = db.query(User).filter(User.phone == owner_phone).first()
@@ -431,6 +435,107 @@ def get_paid_customer_count(db, owner_phone=None, period=None, recorded_by_id=No
 
 def get_total_transaction_count(db, owner_phone=None, period=None, recorded_by_id=None):
     return get_owner_transaction_query(db, owner_phone, period, recorded_by_id).count()
+
+
+def _get_staff_top_products(db, owner_phone, staff_id, period=None, top_n=5):
+    """
+    Returns a list of {product, qty, total} sorted by total revenue
+    for transactions recorded by a specific staff member.
+    Merges TransactionItem rows (multi-item) with Transaction.product (single-item).
+    """
+    sale_tx_ids = get_owner_transaction_query(
+        db, owner_phone, period, recorded_by_id=staff_id
+    ).filter(
+        Transaction.type.in_(["BUY", "SALE"])
+    ).with_entities(Transaction.id, Transaction.product, Transaction.quantity, Transaction.amount).all()
+
+    if not sale_tx_ids:
+        return []
+
+    tx_id_list = [row[0] for row in sale_tx_ids]
+
+    # Aggregate from TransactionItem (covers multi-item transactions)
+    item_rows = db.query(
+        TransactionItem.product,
+        func.coalesce(func.sum(TransactionItem.quantity), 0),
+        func.coalesce(func.sum(TransactionItem.total), 0),
+    ).filter(
+        TransactionItem.transaction_id.in_(tx_id_list)
+    ).group_by(TransactionItem.product).all()
+
+    # Build product map: {product_lower: [qty, total]}
+    product_map = {}
+    for product, qty, total in item_rows:
+        key = (product or "").lower().strip()
+        if not key:
+            continue
+        if key not in product_map:
+            product_map[key] = [0, 0]
+        product_map[key][0] += qty
+        product_map[key][1] += total
+
+    # Transactions that have no items — use Transaction.product + amount
+    tx_ids_with_items = set(
+        row[0] for row in db.query(TransactionItem.transaction_id).filter(
+            TransactionItem.transaction_id.in_(tx_id_list)
+        ).all()
+    )
+    for tx_id, product, qty, amount in sale_tx_ids:
+        if tx_id in tx_ids_with_items:
+            continue
+        key = (product or "").lower().strip()
+        if not key:
+            continue
+        if key not in product_map:
+            product_map[key] = [0, 0]
+        product_map[key][0] += qty or 1
+        product_map[key][1] += amount or 0
+
+    sorted_products = sorted(product_map.items(), key=lambda x: x[1][1], reverse=True)
+    return [
+        {"product": p.title(), "qty": v[0], "total": v[1]}
+        for p, v in sorted_products[:top_n]
+    ]
+
+
+def get_staff_performance(db, owner_phone, period=None):
+    admin_user = db.query(User).filter(User.phone == owner_phone).first()
+    if not admin_user:
+        return []
+
+    staff_members = db.query(User).filter(User.parent_id == admin_user.id).all()
+    if not staff_members:
+        return []
+
+    results = []
+    for staff in staff_members:
+        base = get_owner_transaction_query(db, owner_phone, period, recorded_by_id=staff.id)
+        sales = base.filter(
+            Transaction.type.in_(["BUY", "SALE"])
+        ).with_entities(
+            func.coalesce(func.sum(Transaction.amount), 0)
+        ).scalar()
+        payments = base.filter(
+            Transaction.type == "PAY"
+        ).with_entities(
+            func.coalesce(func.sum(Transaction.amount), 0)
+        ).scalar()
+        tx_count = base.count()
+        customer_ids = base.filter(
+            Transaction.customer_id != None
+        ).with_entities(Transaction.customer_id).distinct().count()
+        top_products = _get_staff_top_products(db, owner_phone, staff.id, period)
+        results.append({
+            "name": staff.name,
+            "sales": sales,
+            "payments": payments,
+            "transactions": tx_count,
+            "customers_served": customer_ids,
+            "top_products": top_products,
+        })
+
+    results.sort(key=lambda r: r["sales"], reverse=True)
+    return results
 
 
 def list_customers(db, owner_phone=None, period=None, recorded_by_id=None):
