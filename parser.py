@@ -292,6 +292,83 @@ def interpret_text_with_openai(text_value):
     return result
 
 
+def interpret_text_with_openai_followup(original_message, clarification_question, user_answer):
+    if not OPENAI_API_KEY:
+        return None
+    original_message = (original_message or "").strip()
+    user_answer = (user_answer or "").strip()
+    if not original_message or not user_answer or len(original_message) > 600:
+        return None
+
+    system_prompt = (
+        "You help normalize Nigerian WhatsApp business accounting messages for CreditVoice. "
+        "Return only strict JSON. Do not explain. Do not save anything. "
+        "Convert messy wording into one supported command sentence that the local parser can understand. "
+        "Supported command styles include: "
+        "'Ayo bought rice 5000', 'Ayo paid 3000', 'Amina contributed 5000', "
+        "'Ayo bought rice 4000, beans 3000 paid 2000', "
+        "'I sold phone 45k', 'I received 1000 for doing chair', "
+        "'Ayo supply me 12kg cocoa at 5000', "
+        "'I paid Ayo 14000 for egg', "
+        "'Ayo paid 6000 for gate and balance is 5600', "
+        "'add customer Ayo', 'Ayo phone 08012345678', "
+        "'add stock rice cost 3000 sell 4000'. "
+        "Preserve customer names, products, amounts, paid amounts, balances, units, and due dates. "
+        "If still ambiguous after the user's answer, set understood false."
+    )
+    user_prompt = (
+        "I received a message I could not parse. I asked the user for clarification and they answered.\n\n"
+        f"Original message: {original_message}\n"
+        f"I asked: {clarification_question}\n"
+        f"User answered: {user_answer}\n\n"
+        "Using the user's answer, normalize the original message into a tiTi command.\n\n"
+        "Return JSON with exactly these keys:\n"
+        "{"
+        "\"understood\": true|false, "
+        "\"normalized_text\": \"\", "
+        "\"confidence\": \"high|medium|low\", "
+        "\"clarification_question\": \"\""
+        "}"
+    )
+
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": OPENAI_PARSE_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0,
+                "response_format": {"type": "json_object"}
+            },
+            timeout=30
+        )
+    except requests.RequestException as exc:
+        print("OpenAI followup parser error:", repr(exc), flush=True)
+        return None
+
+    if response.status_code >= 400:
+        print("OpenAI followup parser error:", response.text, flush=True)
+        return None
+
+    content = (
+        response.json()
+        .get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+    )
+    result = extract_json_object(content)
+    if not isinstance(result, dict):
+        return None
+    return result
+
+
 def normalize_phone(phone_str):
     """Converts local Nigerian numbers to international format for Meta API."""
     if not phone_str:
@@ -1343,8 +1420,11 @@ def parse_message(text):
     if clean_text in ["formats", "format", "f"]:
         return {"type": "FORMATS"}
 
-    if clean_text in ["stock", "my stock", "inventory", "my inventory"]:
+    if clean_text in ["stock", "stocks", "my stock", "my stocks", "inventory", "my inventory"]:
         return {"type": "INVENTORY_LIST"}
+
+    if re.match(r"^(?:i\s+am\s+adding|i\s+want\s+to\s+add|i\s+would\s+like\s+to\s+add|adding|want\s+to\s+add)\s+stock$", clean_text):
+        return {"type": "STOCK_ADD", "body": ""}
 
     if clean_text in [
         "suppliers",

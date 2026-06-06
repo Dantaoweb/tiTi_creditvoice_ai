@@ -1,0 +1,334 @@
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { Search, Plus, Minus, Trash2, ShoppingCart, User, X } from "lucide-react";
+import { useApp } from "../context/AppContext";
+import { apiFetch, apiPost } from "../lib/api";
+import { naira } from "../lib/format";
+
+function ProductSearch({ ownerPhone, onAdd }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const timeout = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(timeout.current);
+    if (!q.trim()) { setResults([]); return; }
+    timeout.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const data = await apiFetch("pos/products", { owner_phone: ownerPhone, q });
+        setResults(data.products || []);
+      } catch { setResults([]); }
+      finally { setLoading(false); }
+    }, 250);
+  }, [q, ownerPhone]);
+
+  function pick(p) {
+    onAdd({
+      inventory_item_id: p.id,
+      name: p.name,
+      unit: p.unit,
+      unit_price: p.selling_price,
+      qty: 1,
+      stock: p.quantity,
+    });
+    setQ("");
+    setResults([]);
+  }
+
+  return (
+    <div className="pos-search-wrap">
+      <div className="pos-search-row">
+        <Search size={15} className="pos-search-icon" />
+        <input
+          className="pos-search-input"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search product name…"
+        />
+      </div>
+      {results.length > 0 && (
+        <div className="pos-search-results">
+          {results.map(p => (
+            <button key={p.id} className="pos-product-row" onClick={() => pick(p)}>
+              <span className="pos-product-name">{p.name}{p.unit ? ` (${p.unit})` : ""}</span>
+              <span className="pos-product-meta">
+                {naira(p.selling_price)}
+                <span className="pos-stock">{p.quantity} in stock</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {loading && <div className="pos-search-loading">Searching…</div>}
+    </div>
+  );
+}
+
+function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const timeout = useRef(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    clearTimeout(timeout.current);
+    if (!q.trim()) { setResults([]); return; }
+    timeout.current = setTimeout(async () => {
+      try {
+        const data = await apiFetch("customers", { owner_phone: ownerPhone });
+        const lower = q.toLowerCase();
+        setResults((data.customers || []).filter(c =>
+          c.name.toLowerCase().includes(lower) ||
+          (c.phone || "").includes(lower)
+        ).slice(0, 8));
+      } catch { setResults([]); }
+    }, 250);
+  }, [q, ownerPhone]);
+
+  if (customer) {
+    return (
+      <div className="pos-customer-pill">
+        <User size={13} />
+        <span>{customer.name}</span>
+        {customer.balance > 0 && (
+          <span className="pos-customer-debt">owes {naira(customer.balance)}</span>
+        )}
+        <button onClick={onClear}><X size={13} /></button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pos-search-wrap">
+      <div className="pos-search-row">
+        <User size={15} className="pos-search-icon" />
+        <input
+          className="pos-search-input"
+          value={q}
+          onChange={e => { setQ(e.target.value); setOpen(true); }}
+          placeholder="Search customer (optional)…"
+        />
+      </div>
+      {open && results.length > 0 && (
+        <div className="pos-search-results">
+          {results.map(c => (
+            <button key={c.id} className="pos-product-row" onClick={() => { onSelect(c); setQ(""); setOpen(false); }}>
+              <span className="pos-product-name">{c.name}</span>
+              <span className="pos-product-meta">
+                {c.phone || "no phone"}
+                {c.balance > 0 && <span className="pos-stock">owes {naira(c.balance)}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function POS() {
+  const { ownerPhone } = useApp();
+  const navigate = useNavigate();
+
+  const [cart, setCart] = useState([]);
+  const [customer, setCustomer] = useState(null);
+  const [payment, setPayment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+
+  const total = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
+  const paid = Math.min(Number(payment) || 0, total);
+  const change = Math.max(0, (Number(payment) || 0) - total);
+  const owed = customer ? total - paid : 0;
+
+  function addToCart(product) {
+    setCart(prev => {
+      const idx = prev.findIndex(it =>
+        it.inventory_item_id === product.inventory_item_id && it.name === product.name
+      );
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], qty: updated[idx].qty + 1 };
+        return updated;
+      }
+      return [...prev, { ...product }];
+    });
+  }
+
+  function addCustomItem() {
+    setCart(prev => [...prev, {
+      inventory_item_id: null,
+      name: "",
+      unit: "",
+      unit_price: 0,
+      qty: 1,
+    }]);
+  }
+
+  function updateItem(idx, field, value) {
+    setCart(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: value };
+      return updated;
+    });
+  }
+
+  function removeItem(idx) {
+    setCart(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleSave() {
+    if (cart.length === 0) { setSaveErr("Add at least one item to the cart."); return; }
+    if (cart.some(it => !it.name.trim())) { setSaveErr("All items need a name."); return; }
+    if (cart.some(it => it.unit_price <= 0)) { setSaveErr("All items need a price greater than zero."); return; }
+    setSaveErr("");
+    setSaving(true);
+    try {
+      const result = await apiPost("pos/save", {
+        owner_phone: ownerPhone,
+        customer_id: customer?.id || null,
+        items: cart.map(it => ({
+          inventory_item_id: it.inventory_item_id || null,
+          name: it.name,
+          qty: it.qty,
+          unit: it.unit || null,
+          unit_price: it.unit_price,
+        })),
+        payment_amount: paid,
+      });
+      navigate(`/pos/receipt/${result.receipt_id}`);
+    } catch (e) {
+      setSaveErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="pos-shell">
+      {/* Left — cart */}
+      <div className="pos-cart">
+        <div className="pos-cart-header">
+          <ShoppingCart size={16} />
+          <span>Cart</span>
+          <span className="pos-cart-count">{cart.length} item{cart.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        <ProductSearch ownerPhone={ownerPhone} onAdd={addToCart} />
+
+        {cart.length === 0 ? (
+          <div className="pos-empty">
+            Search for a product or add a custom item.
+          </div>
+        ) : (
+          <div className="pos-items">
+            {cart.map((it, idx) => (
+              <div key={idx} className="pos-item">
+                <div className="pos-item-row">
+                  <input
+                    className="pos-item-name"
+                    value={it.name}
+                    onChange={e => updateItem(idx, "name", e.target.value)}
+                    placeholder="Item name"
+                  />
+                  <button className="pos-remove" onClick={() => removeItem(idx)}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div className="pos-item-controls">
+                  <div className="pos-qty">
+                    <button onClick={() => updateItem(idx, "qty", Math.max(1, it.qty - 1))}>
+                      <Minus size={12} />
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      value={it.qty}
+                      onChange={e => updateItem(idx, "qty", Math.max(1, parseInt(e.target.value) || 1))}
+                    />
+                    <button onClick={() => updateItem(idx, "qty", it.qty + 1)}>
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                  <span className="pos-x">×</span>
+                  <div className="pos-price-wrap">
+                    <span className="pos-currency">₦</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={it.unit_price || ""}
+                      onChange={e => updateItem(idx, "unit_price", parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <span className="pos-line-total">{naira(it.qty * it.unit_price)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button className="pos-add-custom" onClick={addCustomItem}>
+          <Plus size={13} /> Add custom item
+        </button>
+      </div>
+
+      {/* Right — summary & payment */}
+      <div className="pos-summary">
+        <div className="pos-summary-section">
+          <div className="pos-summary-label">Customer</div>
+          <CustomerSearch
+            ownerPhone={ownerPhone}
+            customer={customer}
+            onSelect={setCustomer}
+            onClear={() => setCustomer(null)}
+          />
+          {!customer && (
+            <span className="form-hint">Leave blank for walk-in / cash sale</span>
+          )}
+        </div>
+
+        <div className="pos-summary-section">
+          <div className="pos-total-row">
+            <span>Subtotal</span>
+            <span>{naira(total)}</span>
+          </div>
+        </div>
+
+        <div className="pos-summary-section">
+          <label className="pos-summary-label">Payment Received</label>
+          <div className="pos-price-wrap" style={{ marginTop: 6 }}>
+            <span className="pos-currency">₦</span>
+            <input
+              type="number"
+              min={0}
+              value={payment}
+              onChange={e => setPayment(e.target.value)}
+              placeholder="0"
+              style={{ flex: 1, fontSize: "1.1rem", fontWeight: 600 }}
+            />
+          </div>
+          {change > 0 && (
+            <div className="pos-change">Change: {naira(change)}</div>
+          )}
+          {customer && owed > 0 && (
+            <div className="pos-owed">Credit: {naira(owed)} will be recorded as debt</div>
+          )}
+        </div>
+
+        {saveErr && <div className="pos-error">{saveErr}</div>}
+
+        <button
+          className="btn btn-primary"
+          style={{ width: "100%", justifyContent: "center", marginTop: "auto" }}
+          onClick={handleSave}
+          disabled={saving || cart.length === 0}
+        >
+          {saving ? "Saving…" : `Save Sale · ${naira(total)}`}
+        </button>
+      </div>
+    </div>
+  );
+}

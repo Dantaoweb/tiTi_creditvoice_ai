@@ -8,6 +8,7 @@ from admin_commands import (
 from artisan_commands import handle_artisan_payment_pending
 from constants import (
     ACTION_ARTISAN_PAYMENT_CHOICE,
+    ACTION_AWAITING_CLARIFICATION,
     ACTION_DASHBOARD_MENU,
     ACTION_ONBOARD_CUSTOMER,
     ACTION_RESIGN_CONFIRM,
@@ -19,7 +20,8 @@ from fast_capture_commands import handle_fast_capture_review_pending
 from inventory_suppliers import manual_stock_add, upsert_stock_with_prices
 from select_product_commands import handle_select_product_pending
 from home_menu_commands import handle_home_menu_pending
-from messages import edit_prompt_for_pending
+from messages import build_invalid_message, edit_prompt_for_pending
+from parser import interpret_text_with_openai_followup, parse_message
 from models import Customer, PendingAction, Transaction
 from onboarding_commands import (
     add_stock_option_to_menu,
@@ -158,6 +160,23 @@ def handle_pending_actions(
     parsed,
     is_command,
 ):
+    # ── Awaiting clarification follow-up ────────────────────────────────────
+    if pending and pending.action == ACTION_AWAITING_CLARIFICATION and not is_command:
+        original_text = pending.source_text or ""
+        clarification_question = pending.product or ""
+        followup = interpret_text_with_openai_followup(original_text, clarification_question, text)
+        db.delete(pending)
+        db.commit()
+        if followup and followup.get("understood"):
+            normalized = (followup.get("normalized_text") or "").strip()
+            if normalized:
+                followup_parsed = parse_message(normalized)
+                if followup_parsed:
+                    print(f"OpenAI clarification resolved: {normalized}", flush=True)
+                    return PendingRouteResult(parsed=followup_parsed, is_command=followup_parsed["type"] != "TRANSACTION")
+        send_whatsapp_message(phone, build_invalid_message(user))
+        return PendingRouteResult(response={"status": "clarification_unresolved"})
+
     # ── Subscription admin selection ─────────────────────────────────────────
     if pending and not is_command:
         result = _wrap(handle_subscription_admin_pending_selection(

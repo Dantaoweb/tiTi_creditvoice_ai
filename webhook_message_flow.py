@@ -327,7 +327,7 @@ def handle_webhook_body(body):
             return pending_result.response
         parsed = pending_result.parsed
         is_command = pending_result.is_command
-        fallback_result = handle_fallback_parse(phone, text, parsed, user)
+        fallback_result = handle_fallback_parse(db, phone, text, parsed, user)
         if fallback_result.response:
             return fallback_result.response
         parsed = fallback_result.parsed

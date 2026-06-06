@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 
+from constants import ACTION_AWAITING_CLARIFICATION
 from faq import detect_faq, get_faq_answer
 from messages import build_invalid_message
+from models import PendingAction
 from parser import interpret_text_with_openai, parse_message
 from whatsapp_client import send_whatsapp_message
 
@@ -17,7 +19,20 @@ class FallbackParseResult:
     is_command: bool = False
 
 
-def handle_fallback_parse(phone, text, parsed, user):
+def _save_clarification_pending(db, phone, original_text, clarification_question):
+    db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+    db.add(PendingAction(
+        phone=phone,
+        customer_name="",
+        last_customer="",
+        action=ACTION_AWAITING_CLARIFICATION,
+        source_text=original_text,
+        product=clarification_question,
+    ))
+    db.commit()
+
+
+def handle_fallback_parse(db, phone, text, parsed, user):
     if parsed:
         return FallbackParseResult(parsed=parsed, text=text, is_command=parsed["type"] != "TRANSACTION")
 
@@ -44,10 +59,12 @@ def handle_fallback_parse(phone, text, parsed, user):
                     is_command=fallback_parsed["type"] != "TRANSACTION",
                 )
             if clarification:
+                _save_clarification_pending(db, phone, text, clarification)
                 send_whatsapp_message(phone, clarification)
                 return FallbackParseResult(response={"status": "openai_parser_clarification"})
 
         elif clarification:
+            _save_clarification_pending(db, phone, text, clarification)
             send_whatsapp_message(phone, clarification)
             return FallbackParseResult(response={"status": "openai_parser_clarification"})
 
