@@ -59,6 +59,12 @@ class User(Base):
 
     shop_tag = Column(String, unique=True, nullable=True)
 
+    email = Column(String, unique=True, nullable=True)
+
+    newsletter_consent = Column(Boolean, default=False, nullable=True)
+
+    whatsapp_linked = Column(Boolean, default=False, nullable=True)
+
     recovery_pin_hash = Column(String, nullable=True)
 
     pin_attempts = Column(Integer, default=0)

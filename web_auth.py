@@ -57,10 +57,9 @@ def require_web_auth(authorization: str = Header(default="")) -> dict:
 
 
 def web_login(db: Session, phone: str, pin: str) -> dict:
-    """Validate phone + PIN and return token + user info."""
     user = db.query(User).filter(User.phone == phone).first()
     if not user:
-        raise HTTPException(status_code=401, detail="Phone number not registered. Start on WhatsApp first.")
+        raise HTTPException(status_code=401, detail="Phone number not registered. Create an account first.")
 
     if not user.recovery_pin_hash:
         raise HTTPException(
@@ -83,22 +82,46 @@ def web_login(db: Session, phone: str, pin: str) -> dict:
     user.pin_attempts = 0
     user.pin_locked_until = None
     db.commit()
-
     return _build_auth_response(user)
 
 
-def request_web_otp(db: Session, phone: str) -> dict:
-    """Send a 6-digit OTP to the user's WhatsApp for PIN set/reset."""
+def get_otp_channels(db: Session, phone: str) -> dict:
+    """Return what OTP delivery channels are available for this phone."""
+    from email_service import mask_email
+    user = db.query(User).filter(User.phone == phone).first()
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="Phone number not registered. Create an account first.",
+        )
+    return {
+        "email_hint": mask_email(user.email) if user.email else None,
+        "has_whatsapp": bool(user.whatsapp_linked),
+    }
+
+
+def request_web_otp(db: Session, phone: str, channel: str = "auto") -> dict:
+    """Send a 6-digit OTP via email or WhatsApp depending on channel."""
+    from email_service import send_otp_email
     from whatsapp_client import send_whatsapp_message
 
     user = db.query(User).filter(User.phone == phone).first()
     if not user:
         raise HTTPException(
             status_code=404,
-            detail="Phone number not registered. Message tiTi on WhatsApp first to create your account.",
+            detail="Phone number not registered. Create an account first.",
         )
 
-    # Remove any existing OTP for this phone
+    # Resolve channel
+    if channel == "auto":
+        channel = "email" if user.email else "whatsapp"
+
+    if channel == "email" and not user.email:
+        raise HTTPException(status_code=400, detail="No email address on this account. Use WhatsApp instead.")
+    if channel == "whatsapp" and not user.whatsapp_linked:
+        raise HTTPException(status_code=400, detail="WhatsApp not linked yet. Use email instead.")
+
+    # Clear old OTP
     db.query(PendingAction).filter(
         PendingAction.phone == phone,
         PendingAction.action == _OTP_ACTION,
@@ -117,15 +140,20 @@ def request_web_otp(db: Session, phone: str) -> dict:
     ))
     db.commit()
 
-    send_whatsapp_message(
-        phone,
-        f"Your CreditVoice PIN reset code is: *{otp}*\n\nValid for 10 minutes. Do not share this with anyone.",
-    )
-    return {"sent": True, "phone": phone}
+    if channel == "email":
+        ok = send_otp_email(user.email, otp)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to send email. Check SMTP configuration.")
+        return {"sent": True, "channel": "email", "hint": user.email[:2] + "***"}
+    else:
+        send_whatsapp_message(
+            phone,
+            f"Your CreditVoice PIN reset code: *{otp}*\n\nValid for 10 minutes. Do not share this.",
+        )
+        return {"sent": True, "channel": "whatsapp", "hint": phone}
 
 
 def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> dict:
-    """Verify OTP code then hash and save the new PIN. Returns auth token on success."""
     if not new_pin or len(new_pin.strip()) < 4:
         raise HTTPException(status_code=400, detail="PIN must be at least 4 digits.")
 
@@ -155,15 +183,15 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
     user.pin_locked_until = None
     db.delete(pending)
     db.commit()
-
-    # Auto-login after PIN set
     return _build_auth_response(user)
 
 
 def web_register(db: Session, name: str, phone: str, pin: str,
+                 email: str = None, newsletter_consent: bool = False,
                  business_category: str = None, business_type: str = None,
                  business_type_label: str = None) -> dict:
-    """Create a new user account from the web and return an auth token."""
+    from email_service import send_welcome_email
+
     if not name.strip():
         raise HTTPException(status_code=400, detail="Full name is required.")
     if not phone.strip():
@@ -171,16 +199,18 @@ def web_register(db: Session, name: str, phone: str, pin: str,
     if not pin.strip() or len(pin.strip()) < 4:
         raise HTTPException(status_code=400, detail="PIN must be at least 4 digits.")
 
-    existing = db.query(User).filter(User.phone == phone.strip()).first()
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail="This phone number is already registered. Sign in instead.",
-        )
+    if db.query(User).filter(User.phone == phone.strip()).first():
+        raise HTTPException(status_code=409, detail="This phone number is already registered. Sign in instead.")
+
+    clean_email = email.strip().lower() if email and email.strip() else None
+    if clean_email and db.query(User).filter(User.email == clean_email).first():
+        raise HTTPException(status_code=409, detail="This email is already registered.")
 
     user = User(
         name=name.strip(),
         phone=phone.strip(),
+        email=clean_email,
+        newsletter_consent=newsletter_consent,
         role="owner",
         subscription_plan="BASIC",
         subscription_status="ACTIVE",
@@ -188,10 +218,15 @@ def web_register(db: Session, name: str, phone: str, pin: str,
         business_type=business_type or None,
         business_type_label=business_type_label or None,
         recovery_pin_hash=_hash_pin(pin.strip()),
+        whatsapp_linked=False,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    if clean_email:
+        send_welcome_email(clean_email, user.name)
+
     return _build_auth_response(user)
 
 
@@ -203,8 +238,11 @@ def _build_auth_response(user: User) -> dict:
             "id": user.id,
             "name": user.name,
             "phone": user.phone,
+            "email": user.email,
             "role": user.role,
             "plan": user.subscription_plan,
             "business_category": user.business_category,
+            "whatsapp_linked": bool(user.whatsapp_linked),
+            "newsletter_consent": bool(user.newsletter_consent),
         },
     }

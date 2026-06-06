@@ -2,7 +2,9 @@ import { Navigate, Routes, Route } from "react-router-dom";
 import { ToastProvider } from "./components/Toast";
 import { useAuth } from "./context/AuthContext";
 import Layout       from "./components/Layout";
+import Landing      from "./pages/Landing";
 import Login        from "./pages/Login";
+import Chat         from "./pages/Chat";
 import Dashboard    from "./pages/Dashboard";
 import Capture      from "./pages/Capture";
 import Customers    from "./pages/Customers";
@@ -23,7 +25,11 @@ export default function App() {
   return (
     <ToastProvider>
       <Routes>
+        {/* Public */}
+        <Route index element={<Landing />} />
         <Route path="login" element={<Login />} />
+
+        {/* Authenticated — all inside sidebar Layout */}
         <Route
           element={
             <RequireAuth>
@@ -31,17 +37,20 @@ export default function App() {
             </RequireAuth>
           }
         >
-          <Route index                          element={<Dashboard />}    />
-          <Route path="capture"                 element={<Capture />}      />
-          <Route path="pos"                     element={<POS />}          />
-          <Route path="pos/receipt/:id"         element={<Receipt />}      />
-          <Route path="customers"               element={<Customers />}    />
-          <Route path="transactions"            element={<Transactions />} />
-          <Route path="inventory"               element={<Inventory />}    />
-          <Route path="suppliers"               element={<Suppliers />}    />
-          <Route path="staff"                   element={<Staff />}        />
-          <Route path="reminders"               element={<Reminders />}    />
+          <Route path="home"         element={<Chat />}         />
+          <Route path="dashboard"    element={<Dashboard />}    />
+          <Route path="capture"      element={<Capture />}      />
+          <Route path="pos"          element={<POS />}          />
+          <Route path="pos/receipt/:id" element={<Receipt />}   />
+          <Route path="customers"    element={<Customers />}    />
+          <Route path="transactions" element={<Transactions />} />
+          <Route path="inventory"    element={<Inventory />}    />
+          <Route path="suppliers"    element={<Suppliers />}    />
+          <Route path="staff"        element={<Staff />}        />
+          <Route path="reminders"    element={<Reminders />}    />
         </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ToastProvider>
   );

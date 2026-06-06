@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from app_routes import register_http_routes
 from database import Base, engine
@@ -15,3 +16,8 @@ ensure_schema_updates(engine)
 register_http_routes(app)
 register_web_routes(app)
 register_webhook_routes(app)
+
+
+@app.get("/")
+def root_redirect():
+    return RedirectResponse(url="/app/", status_code=302)

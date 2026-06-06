@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { MessageCircle, ArrowLeft, KeyRound, UserPlus } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowLeft, KeyRound, UserPlus } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 
@@ -8,8 +8,9 @@ import { apiFetch, apiPost } from "../lib/api";
 export default function Login() {
   const { login, authLoading, authError, persistSession } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
 
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState(params.get("mode") === "register" ? "register" : "login");
   const [titiNumber, setTitiNumber] = useState("");
   const [categories, setCategories] = useState([]);
 
@@ -20,6 +21,8 @@ export default function Login() {
   // Register fields
   const [regName, setRegName] = useState("");
   const [regPhone, setRegPhone] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regNewsletter, setRegNewsletter] = useState(false);
   const [regCat, setRegCat] = useState("");
   const [regType, setRegType] = useState("");
   const [regPin, setRegPin] = useState("");
@@ -27,6 +30,7 @@ export default function Login() {
 
   // OTP / set-pin fields
   const [otpPhone, setOtpPhone] = useState("");
+  const [selectedChannel, setSelectedChannel] = useState(""); // "email" | "whatsapp"
   const [otp, setOtp] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -56,7 +60,7 @@ export default function Login() {
     if (!pin.trim())   { setErr("Enter your PIN."); return; }
     try {
       await login(phone.trim(), pin.trim());
-      navigate("/", { replace: true });
+      navigate("/home", { replace: true });
     } catch (e) { setErr(e.message); }
   }
 
@@ -75,26 +79,30 @@ export default function Login() {
         name: regName.trim(),
         phone: regPhone.trim(),
         pin: regPin.trim(),
+        email: regEmail.trim() || null,
+        newsletter_consent: regNewsletter,
         business_category: regCat || null,
         business_type: regType || null,
         business_type_label: typLabel || null,
       });
       persistSession(data.token, data.user);
-      navigate("/", { replace: true });
+      navigate("/home", { replace: true });
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
 
-  // ── Request OTP ───────────────────────────────────────────────────────────
+  // ── Request OTP (auto channel: email if set, else WhatsApp) ──────────────
   async function handleRequestOtp(e) {
     e.preventDefault();
-    setErr(""); setInfo("");
+    setErr("");
     if (!otpPhone.trim()) { setErr("Enter your phone number."); return; }
     setBusy(true);
     try {
-      await apiPost("auth/request-otp", { phone: otpPhone.trim() });
-      setInfo(`A 6-digit code was sent to ${otpPhone.trim()} on WhatsApp.`);
-      setMode("set_pin");
+      const res = await apiPost("auth/request-otp", { phone: otpPhone.trim(), channel: "auto" });
+      setSelectedChannel(res.channel);
+      const dest = res.channel === "email" ? `email (${res.hint})` : `WhatsApp`;
+      setInfo(`A 6-digit code was sent to your ${dest}.`);
+      goMode("set_pin");
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -103,7 +111,8 @@ export default function Login() {
   async function handleSetPin(e) {
     e.preventDefault();
     setErr("");
-    if (!otp.trim())    { setErr("Enter the code from your WhatsApp."); return; }
+    const channelLabel = selectedChannel === "email" ? "your email" : "your WhatsApp";
+    if (!otp.trim())    { setErr(`Enter the code from ${channelLabel}.`); return; }
     if (!newPin.trim()) { setErr("Choose a PIN."); return; }
     if (newPin.trim().length < 4) { setErr("PIN must be at least 4 digits."); return; }
     if (newPin.trim() !== confirmPin.trim()) { setErr("PINs do not match."); return; }
@@ -115,7 +124,7 @@ export default function Login() {
         new_pin: newPin.trim(),
       });
       persistSession(data.token, data.user);
-      navigate("/", { replace: true });
+      navigate("/home", { replace: true });
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -206,6 +215,19 @@ export default function Login() {
             </div>
 
             <div className="form-group">
+              <label className="form-label">Email Address</label>
+              <input
+                type="email"
+                value={regEmail}
+                onChange={e => setRegEmail(e.target.value)}
+                placeholder="your@email.com"
+                autoComplete="email"
+                disabled={busy}
+              />
+              <span className="form-hint">Optional — used for PIN recovery and updates</span>
+            </div>
+
+            <div className="form-group">
               <label className="form-label">Business Type</label>
               <select value={regCat} onChange={e => { setRegCat(e.target.value); setRegType(""); }} disabled={busy}>
                 <option value="">Select category…</option>
@@ -233,6 +255,19 @@ export default function Login() {
               <input type="password" inputMode="numeric" value={regConfirm} onChange={e => setRegConfirm(e.target.value)} placeholder="Repeat PIN" maxLength={8} disabled={busy} />
             </div>
 
+            <label className="login-checkbox-row">
+              <input
+                type="checkbox"
+                checked={regNewsletter}
+                onChange={e => setRegNewsletter(e.target.checked)}
+                disabled={busy}
+              />
+              <span>
+                Send me tips and product updates by email.{" "}
+                <span className="login-hint-muted" style={{ display: "inline" }}>Unsubscribe any time.</span>
+              </span>
+            </label>
+
             {err && <div className="login-error">{err}</div>}
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
@@ -247,15 +282,15 @@ export default function Login() {
           </form>
         )}
 
-        {/* ── Request OTP ── */}
+        {/* ── Request OTP: enter phone ── */}
         {mode === "request_otp" && (
           <form onSubmit={handleRequestOtp} className="login-form">
             <button type="button" className="login-back-btn" onClick={() => goMode("login")}>
               <ArrowLeft size={14} /> Back to sign in
             </button>
 
-            <div className="login-section-title">Set or Reset Your PIN</div>
-            <p className="login-hint-muted">Enter your phone number. We'll send a one-time code via WhatsApp to verify it's you.</p>
+            <div className="login-section-title">Reset Your PIN</div>
+            <p className="login-hint-muted">Enter your phone number. We'll send a one-time code to your email or WhatsApp.</p>
 
             <div className="form-group">
               <label className="form-label">Phone Number</label>
@@ -265,7 +300,7 @@ export default function Login() {
             {err && <div className="login-error">{err}</div>}
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
-              {busy ? "Sending…" : "Send Code via WhatsApp"}
+              {busy ? "Sending code…" : "Send Code"}
             </button>
           </form>
         )}
@@ -282,8 +317,19 @@ export default function Login() {
 
             <div className="form-group">
               <label className="form-label">Verification Code</label>
-              <input type="text" inputMode="numeric" value={otp} onChange={e => setOtp(e.target.value)} placeholder="6-digit code" maxLength={6} autoFocus disabled={busy} />
-              <span className="form-hint">Check your WhatsApp messages</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={otp}
+                onChange={e => setOtp(e.target.value)}
+                placeholder="6-digit code"
+                maxLength={6}
+                autoFocus
+                disabled={busy}
+              />
+              <span className="form-hint">
+                {selectedChannel === "email" ? "Check your email inbox (and spam folder)" : "Check your WhatsApp messages"}
+              </span>
             </div>
 
             <div className="form-group">

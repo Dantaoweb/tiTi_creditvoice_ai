@@ -1,27 +1,29 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Zap, Users, ArrowLeftRight,
+  MessageSquare, LayoutDashboard, Zap, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 
 const NAV = [
-  { to: "/",             label: "Dashboard",    icon: LayoutDashboard },
-  { to: "/capture",      label: "Capture",      icon: Zap             },
-  { to: "/pos",          label: "Point of Sale", icon: ShoppingCart   },
+  { to: "/home",         label: "Chat with tiTi", icon: MessageSquare   },
+  { to: "/dashboard",    label: "Dashboard",       icon: LayoutDashboard },
+  { to: "/capture",      label: "Capture",         icon: Zap             },
+  { to: "/pos",          label: "Point of Sale",   icon: ShoppingCart    },
   { section: "Data" },
-  { to: "/customers",    label: "Customers",    icon: Users           },
-  { to: "/transactions", label: "Transactions", icon: ArrowLeftRight  },
-  { to: "/inventory",    label: "Inventory",    icon: Package         },
-  { to: "/suppliers",    label: "Suppliers",    icon: Truck           },
+  { to: "/customers",    label: "Customers",       icon: Users           },
+  { to: "/transactions", label: "Transactions",    icon: ArrowLeftRight  },
+  { to: "/inventory",    label: "Inventory",       icon: Package         },
+  { to: "/suppliers",    label: "Suppliers",       icon: Truck           },
   { section: "Reports" },
-  { to: "/staff",        label: "Staff",        icon: UserCheck       },
-  { to: "/reminders",    label: "Reminders",    icon: Bell            },
+  { to: "/staff",        label: "Staff",           icon: UserCheck       },
+  { to: "/reminders",    label: "Reminders",       icon: Bell            },
 ];
 
 const TITLES = {
-  "/":             "Dashboard",
+  "/home":         "Chat with tiTi",
+  "/dashboard":    "Dashboard",
   "/capture":      "Capture",
   "/pos":          "Point of Sale",
   "/customers":    "Customers",
@@ -37,7 +39,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const path = window.location.pathname.replace("/app", "") || "/";
+  const path = window.location.pathname.replace("/app", "") || "/home";
   const title = TITLES[path] || "CreditVoice";
 
   function handleLogout() {
@@ -64,7 +66,6 @@ export default function Layout() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === "/"}
                 className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
               >
                 <item.icon size={16} />

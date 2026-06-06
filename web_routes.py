@@ -27,7 +27,7 @@ from reports import (
 from subscriptions import get_business_subscription
 from transaction_save import save_confirmed_pending_transaction
 from transaction_setup import handle_transaction_setup
-from web_auth import require_web_auth, web_login, web_register, request_web_otp, verify_otp_and_set_pin
+from web_auth import get_otp_channels, require_web_auth, web_login, web_register, request_web_otp, verify_otp_and_set_pin
 from web_pos import get_pos_receipt, save_pos_sale
 from webhook_context import load_webhook_user_context, visibility_recorded_by_id
 
@@ -56,18 +56,27 @@ class RegisterRequest(BaseModel):
     name: str
     phone: str
     pin: str
+    email: Optional[str] = None
+    newsletter_consent: bool = False
     business_category: Optional[str] = None
     business_type: Optional[str] = None
     business_type_label: Optional[str] = None
 
 class OtpRequest(BaseModel):
     phone: str
+    channel: str = "auto"  # "email", "whatsapp", or "auto"
 
 class SetPinRequest(BaseModel):
     phone: str
     otp: str
     new_pin: str
 
+
+class DemoChatRequest(BaseModel):
+    text: str
+
+class ChatSendRequest(BaseModel):
+    text: str
 
 class CapturePreviewRequest(BaseModel):
     phone: str
@@ -240,6 +249,58 @@ def _preview_capture(db, phone, text, voice_transcript_text=None):
     }
 
 
+# ── Demo chat response formatter ─────────────────────────────────────────────
+
+def _format_demo_reply(parsed) -> str:
+    if not parsed or "action" not in parsed:
+        return (
+            "I didn't catch that 🤔\n\n"
+            "Try something like:\n"
+            "• Sold 5 bags of rice to Emeka for ₦10,000\n"
+            "• Emeka paid ₦2,000\n"
+            "• Bought 10 cartons of malt from supplier for ₦15,000"
+        )
+
+    action  = (parsed.get("action") or "").upper()
+    product = (parsed.get("product") or "").strip()
+    qty     = parsed.get("quantity")
+    unit    = (parsed.get("unit") or "").strip()
+    price   = int(parsed.get("total_price") or parsed.get("unit_price") or 0)
+    customer = (parsed.get("customer_name") or "").strip()
+
+    price_str = f"₦{price:,}" if price else ""
+    if qty and unit and product:
+        item = f"{qty} {unit} of {product}"
+    elif qty and product:
+        item = f"{qty} {product}"
+    elif product:
+        item = product
+    else:
+        item = "that item"
+
+    if action in ("SELL", "SALE") and customer:
+        msg = f"Sale of {item} to *{customer}*"
+        if price_str: msg += f" — {price_str}"
+    elif action in ("SELL", "SALE"):
+        msg = f"Cash sale of {item}"
+        if price_str: msg += f" — {price_str}"
+    elif action == "BUY" and customer:
+        msg = f"Credit sale of {item} to *{customer}*"
+        if price_str: msg += f" — {price_str}"
+        msg += f"\n{customer}'s balance would increase."
+    elif action == "PAY" and customer:
+        msg = f"Payment of {price_str} from *{customer}*" if price_str else f"Payment from *{customer}*"
+        msg += "\nTheir balance reduces."
+    elif action in ("SUPPLY", "RESTOCK", "BUY"):
+        msg = f"Stock-in: {item}"
+        if price_str: msg += f" — cost {price_str}"
+        msg += "\nYour inventory would go up."
+    else:
+        msg = f"Transaction understood ({action.lower()})"
+
+    return f"Got it! 👍\n\n{msg}\n\nSign up to record real transactions."
+
+
 # ── Route registration ───────────────────────────────────────────────────────
 
 def register_web_routes(app):
@@ -288,9 +349,11 @@ def register_web_routes(app):
                 payload.name.strip(),
                 payload.phone.strip(),
                 payload.pin.strip(),
-                payload.business_category,
-                payload.business_type,
-                payload.business_type_label,
+                email=payload.email,
+                newsletter_consent=payload.newsletter_consent,
+                business_category=payload.business_category,
+                business_type=payload.business_type,
+                business_type_label=payload.business_type_label,
             )
         finally:
             db.close()
@@ -301,11 +364,19 @@ def register_web_routes(app):
         titi_number = os.getenv("TITI_WHATSAPP", "").strip()
         return {"titi_whatsapp": titi_number}
 
+    @app.get("/app/api/auth/otp-channels")
+    def web_otp_channels(phone: str = Query(...)):
+        db = SessionLocal()
+        try:
+            return get_otp_channels(db, phone.strip())
+        finally:
+            db.close()
+
     @app.post("/app/api/auth/request-otp")
     def web_request_otp(payload: OtpRequest):
         db = SessionLocal()
         try:
-            return request_web_otp(db, payload.phone.strip())
+            return request_web_otp(db, payload.phone.strip(), payload.channel)
         finally:
             db.close()
 
@@ -329,9 +400,12 @@ def register_web_routes(app):
                 "id": user.id,
                 "name": user.name,
                 "phone": user.phone,
+                "email": user.email,
                 "role": user.role,
                 "plan": user.subscription_plan,
                 "business_category": user.business_category,
+                "whatsapp_linked": bool(user.whatsapp_linked),
+                "newsletter_consent": bool(user.newsletter_consent),
             }
         finally:
             db.close()
@@ -367,6 +441,57 @@ def register_web_routes(app):
                     reverse=True,
                 )[:5],
             }
+        finally:
+            db.close()
+
+    # ── Chat ─────────────────────────────────────────────────────────────
+    @app.post("/app/api/chat/demo")
+    def web_chat_demo(payload: DemoChatRequest):
+        """Parse a message for the public demo — no auth, no database write."""
+        parsed = parse_message(payload.text.strip()) if payload.text.strip() else None
+        return {"reply": _format_demo_reply(parsed)}
+
+    @app.post("/app/api/chat/send")
+    def web_chat_send(payload: ChatSendRequest, session: dict = Depends(require_web_auth)):
+        """One-shot: parse + auto-confirm in one step for the post-login chat."""
+        db = SessionLocal()
+        try:
+            owner_phone = session["phone"]
+            preview = _preview_capture(db, owner_phone, payload.text.strip())
+            status = preview.get("status", "preview")
+
+            if status in ("error", "unsupported", "unregistered"):
+                msgs = preview.get("messages") or []
+                return {
+                    "reply": msgs[0] if msgs else "I didn't quite get that. Try: 'Sold 5 bags of rice to Emeka for ₦4,500'",
+                    "ok": False,
+                }
+
+            context = load_webhook_user_context(db, owner_phone, "text")
+            pending = db.query(PendingAction).filter(
+                PendingAction.phone == owner_phone,
+                PendingAction.action != None,
+                PendingAction.action != "WEB_OTP",
+            ).order_by(PendingAction.created_at.desc()).first()
+
+            if not pending:
+                msgs = preview.get("messages", [])
+                return {"reply": msgs[0] if msgs else "Done! ✅", "ok": True}
+
+            try:
+                pending_items = json.loads(pending.items_json or "[]")
+            except Exception:
+                pending_items = []
+
+            subscription = get_business_subscription(db, context.user)
+            messages, send_message = _capture_messages()
+            result = save_confirmed_pending_transaction(
+                db, owner_phone, pending, context.user, context.business_owner_phone,
+                visibility_recorded_by_id(context.user), f"web-{uuid.uuid4()}",
+                pending_items, subscription, send_message,
+            )
+            reply = messages[0] if messages else "✅ Recorded!"
+            return {"reply": reply, "ok": True}
         finally:
             db.close()
 

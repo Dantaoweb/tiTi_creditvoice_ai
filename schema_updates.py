@@ -76,6 +76,9 @@ def ensure_schema_updates(engine):
         "invite_code": "VARCHAR",
         "invite_code_attempts": "INTEGER DEFAULT 0",
         "invite_expires_at": "TIMESTAMP",
+        "email": "VARCHAR",
+        "newsletter_consent": "BOOLEAN DEFAULT FALSE",
+        "whatsapp_linked": "BOOLEAN DEFAULT FALSE",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():

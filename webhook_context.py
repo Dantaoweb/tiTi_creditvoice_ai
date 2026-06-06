@@ -60,6 +60,11 @@ def load_webhook_user_context(db, phone: str, message_type: str) -> WebhookUserC
         else:
             business_name = user.name
 
+        # Mark WhatsApp as linked if this is the first time a web-registered user messages
+        if not user.whatsapp_linked:
+            user.whatsapp_linked = True
+            db.commit()
+
     return WebhookUserContext(
         user=user,
         business_owner_phone=business_owner_phone,
