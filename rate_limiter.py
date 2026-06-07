@@ -68,14 +68,14 @@ _limiter = _SlidingWindowLimiter()
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def check_rate_limit(phone: str, is_registered: bool, has_active_bot_conversation: bool) -> bool:
+def check_rate_limit(phone: str, is_registered: bool, is_onboarding: bool, has_active_bot_conversation: bool) -> bool:
     """
     Return True if the request is allowed, False if it should be dropped.
 
-    Registered owners and staff are always allowed — no limit applied.
+    Registered owners, staff, and users actively onboarding are always allowed.
     """
-    if is_registered:
-        return True   # fast mode, busy owners, staff — never blocked
+    if is_registered or is_onboarding:
+        return True   # fast mode, busy owners, staff, onboarding — never blocked
 
     if has_active_bot_conversation:
         return _limiter.is_allowed(phone, CUSTOMER_BOT_LIMIT, CUSTOMER_BOT_WINDOW)
@@ -85,6 +85,6 @@ def check_rate_limit(phone: str, is_registered: bool, has_active_bot_conversatio
 
 def rate_limit_exceeded_message() -> str:
     return (
-        "You are sending too many messages too quickly.\n\n"
-        "Please wait a few minutes and try again."
+        "I want to give you my best because you are special.\n\n"
+        "Please wait 5 minutes and send me any message- I'ill remember exactly where we stopped."
     )

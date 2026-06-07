@@ -340,9 +340,9 @@ def handle_profile_command(
 
         phone_line = f" with phone {target_phone}" if target_phone else " without a phone number"
         if existing_customer:
-            message = f"I found an existing customer {target_name.title()}{phone_line}.\n"
+            message = f"You already have a customer named {target_name.title()}{phone_line}.\n"
         else:
-            message = f"I found customer {target_name.title()}{phone_line}.\n"
+            message = f"You added a new customer {target_name.title()}{phone_line}.\n"
         send_message(phone, message + "Reply YES or 1 to save, EDIT or 2 to send it again.")
         return {"status": "confirm_onboard_customer"}
 

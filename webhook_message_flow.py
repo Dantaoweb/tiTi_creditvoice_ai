@@ -74,8 +74,11 @@ def handle_webhook_body(body):
         # Only unregistered phones and customer bot users are throttled.
         if message_type == "text" and not user:
             from customer_automation import get_active_customer_conversation
+            from onboarding_commands import ONBOARDING_ACTIONS
             _has_bot_convo = bool(get_active_customer_conversation(db, phone))
-            if not check_rate_limit(phone, is_registered=False, has_active_bot_conversation=_has_bot_convo):
+            _pending = db.query(PendingAction).filter(PendingAction.phone == phone).first()
+            _is_onboarding = bool(_pending and _pending.action in ONBOARDING_ACTIONS)
+            if not check_rate_limit(phone, is_registered=False, is_onboarding=_is_onboarding, has_active_bot_conversation=_has_bot_convo):
                 send_whatsapp_message(phone, rate_limit_exceeded_message())
                 return {"status": "rate_limited"}
 
