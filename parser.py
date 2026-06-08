@@ -2484,10 +2484,26 @@ def parse_message(text):
             if _result and _result.get("type") == "TRANSACTION" and _result.get("name"):
                 return _result
 
+        # Strip "and received/recieved (the) payment of N" suffix.
+        # Captures payment in phrases like "i sold X at 5000 and received the payment of 25000".
+        _amt_pat = r"\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?"
+        _pay_sfx = re.search(
+            rf"\s+and\s+(?:received?|recieved?|got\s+(?:the\s+)?(?:paid|payment)|collected?)\s+"
+            rf"(?:the\s+)?(?:payment\s+of\s+|cash\s+of\s+)?(?P<paid_sfx>{_amt_pat})\s*$",
+            invoice_clean_text, re.I,
+        )
+        _direct_paid = 0
+        _invoice_clean_stripped = invoice_clean_text
+        _text_stripped = text
+        if _pay_sfx:
+            _direct_paid = parse_amount_token(_pay_sfx.group("paid_sfx")) or 0
+            _invoice_clean_stripped = invoice_clean_text[:_pay_sfx.start()].strip()
+            _text_stripped = text[:_pay_sfx.start()].strip()
+
         sale_body = re.sub(
             r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+",
             "",
-            invoice_clean_text,
+            _invoice_clean_stripped,
             count=1
         ).strip()
         invoice = parse_invoice_items(sale_body)
@@ -2497,7 +2513,7 @@ def parse_message(text):
                 "name": "",
                 "action": "SALE",
                 "buy_amount": invoice["total"],
-                "paid_amount": 0,
+                "paid_amount": _direct_paid,
                 "quantity": None,
                 "unit": None,
                 "product": None,
@@ -2508,21 +2524,36 @@ def parse_message(text):
             }
 
     if has_direct_sale:
-        if not direct_sale_details:
+        # Re-run detail extraction on the suffix-stripped text when applicable.
+        _amt_pat = r"\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?"
+        _pay_sfx2 = re.search(
+            rf"\s+and\s+(?:received?|recieved?|got\s+(?:the\s+)?(?:paid|payment)|collected?)\s+"
+            rf"(?:the\s+)?(?:payment\s+of\s+|cash\s+of\s+)?(?P<paid_sfx>{_amt_pat})\s*$",
+            clean_text, re.I,
+        )
+        _resolved_paid = 0
+        _resolved_sale_details = direct_sale_details
+        if _pay_sfx2:
+            _resolved_paid = parse_amount_token(_pay_sfx2.group("paid_sfx")) or 0
+            _resolved_sale_details = extract_direct_sale_details(
+                text[:_pay_sfx2.start()].strip()
+            )
+
+        if not _resolved_sale_details:
             return None
 
         return {
             "type": "TRANSACTION",
             "name": "",
             "action": "SALE",
-            "buy_amount": direct_sale_details["total"],
-            "paid_amount": 0,
-            "quantity": direct_sale_details["quantity"],
-            "unit": direct_sale_details["unit"],
-            "product": direct_sale_details["product"],
-            "unit_price": direct_sale_details["unit_price"],
+            "buy_amount": _resolved_sale_details["total"],
+            "paid_amount": _resolved_paid,
+            "quantity": _resolved_sale_details["quantity"],
+            "unit": _resolved_sale_details["unit"],
+            "product": _resolved_sale_details["product"],
+            "unit_price": _resolved_sale_details["unit_price"],
             "invoice_items": None,
-            "total": direct_sale_details["total"],
+            "total": _resolved_sale_details["total"],
             "due_date": None
         }
 

@@ -155,17 +155,20 @@ def direct_sale_item_line(parsed):
 def build_customer_confirm_message(customer, parsed):
     action = parsed["action"]
     if action == "BUY":
+        _amount = parsed.get("total") or parsed.get("buy_amount") or 0
+        _credit = f"\n\n{customer.name.title()} is owing you N{_amount:,}"
+
         if parsed.get("invoice_items"):
             item_line = f"{format_invoice_items(parsed['invoice_items'])}\n\nTotal: N{parsed['total']:,}"
             if parsed["due_date"]:
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 return (
                     f"Confirm invoice for {customer.name}:\n{item_line}\n"
-                    f"Due: {due_date_text}\n\nReply YES or 1 to save, EDIT or 2 to change."
+                    f"Due: {due_date_text}{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             return (
-                f"Confirm invoice for {customer.name}:\n{item_line}\n\n"
-                "Reply YES or 1 to save, EDIT or 2 to change."
+                f"Confirm invoice for {customer.name}:\n{item_line}"
+                f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
 
         if parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
@@ -176,22 +179,22 @@ def build_customer_confirm_message(customer, parsed):
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 return (
                     f"Confirm:\n{customer.name} bought {item_line}\n"
-                    f"Due: {due_date_text}{hint}\n\nReply YES or 1 to save, EDIT or 2 to change."
+                    f"Due: {due_date_text}{hint}{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             return (
-                f"Confirm:\n{customer.name} bought {item_line}{hint}\n\n"
-                "Reply YES or 1 to save, EDIT or 2 to change."
+                f"Confirm:\n{customer.name} bought {item_line}{hint}"
+                f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
 
         if parsed["due_date"]:
             due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
             return (
                 f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}\n"
-                f"Due: {due_date_text}\n\nReply YES or 1 to save, EDIT or 2 to change."
+                f"Due: {due_date_text}{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
         return (
-            f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}?\n\n"
-            "Reply YES or 1 to save, EDIT or 2 to change."
+            f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}"
+            f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
         )
 
     if action == "PAY":
