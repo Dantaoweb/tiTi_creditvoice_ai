@@ -12,6 +12,7 @@ from inventory_suppliers import (
     set_low_stock_alert,
     upsert_stock_with_prices,
 )
+from business_templates import build_stock_add_guide
 from messages import apply_voice_confirmation_options
 from models import PendingAction
 from parser import parse_stock_item_body
@@ -116,18 +117,7 @@ def handle_supplier_command(
 
         body = parsed.get("body", "").strip()
         if not body:
-            # Bare "add stock" — show the guide
-            send_message(
-                phone,
-                "Add stock with prices:\n"
-                "add stock rice cost 3000 sell 4000\n"
-                "add stock paracetamol 500mg cost 150 sell 200, "
-                "paracetamol 1g cost 250 sell 350\n\n"
-                "Add quantity only (no price change):\n"
-                "add stock 10 bags rice\n\n"
-                "With supplier:\n"
-                "Ayo supply me 12 bags rice at 5000"
-            )
+            send_message(phone, build_stock_add_guide(user))
             return {"status": "stock_add_guide"}
 
         item_data = parse_stock_item_body(body)

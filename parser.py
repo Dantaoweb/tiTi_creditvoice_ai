@@ -1572,6 +1572,11 @@ def parse_message(text):
             "unit": reorder_match.group("unit"),
         }
 
+    # ── Update business type ────────────────────────────────────────────────
+    # "update business type"  |  "change my business type"  |  "change business"
+    if re.match(r"^(?:update|change|set)\s+(?:my\s+)?business(?:\s+type)?$", clean_text):
+        return {"type": "UPDATE_BUSINESS_TYPE"}
+
     # =========================
     # 📊 COMMANDS
     # =========================

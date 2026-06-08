@@ -1196,3 +1196,227 @@ def industry_plan_matrix():
             "pro_reason": template["recommended_pro"],
         }
     return matrix
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Industry product catalog — (product_canonical_name, category) pairs.
+# Used to auto-assign categories to new inventory items and to build
+# industry-specific stock-add guides.
+# ─────────────────────────────────────────────────────────────────────────────
+
+INDUSTRY_PRODUCT_CATALOG = {
+    "pharmacy": [
+        ("paracetamol", "analgesic"),
+        ("ibuprofen", "analgesic"),
+        ("aspirin", "analgesic"),
+        ("amoxicillin", "antibiotic"),
+        ("ampicillin", "antibiotic"),
+        ("metronidazole", "antibiotic"),
+        ("coartem", "antimalarial"),
+        ("artemether", "antimalarial"),
+        ("chloroquine", "antimalarial"),
+        ("vitamin c", "supplement"),
+        ("vitamin b complex", "supplement"),
+        ("zinc", "supplement"),
+        ("cough syrup", "cough remedy"),
+        ("piriton", "antihistamine"),
+        ("loratadine", "antihistamine"),
+        ("omeprazole", "antacid"),
+        ("antacid", "antacid"),
+        ("ors", "rehydration"),
+        ("oral rehydration", "rehydration"),
+        ("condom", "family planning"),
+        ("glove", "consumable"),
+        ("syringe", "consumable"),
+        ("cotton wool", "consumable"),
+        ("bandage", "consumable"),
+        ("plaster", "consumable"),
+        ("maggi", "common otc"),
+        ("panadol", "analgesic"),
+    ],
+    "agriculture": [
+        ("garri", "staple food"),
+        ("rice", "staple food"),
+        ("beans", "staple food"),
+        ("yam", "staple food"),
+        ("maize", "grain"),
+        ("sorghum", "grain"),
+        ("wheat", "grain"),
+        ("groundnut", "seed & oil"),
+        ("palm oil", "oil"),
+        ("soybean", "seed & oil"),
+        ("cassava", "tuber"),
+        ("potato", "tuber"),
+        ("tomato", "vegetable"),
+        ("pepper", "vegetable"),
+        ("onion", "vegetable"),
+        ("plantain", "fruit"),
+        ("banana", "fruit"),
+        ("orange", "fruit"),
+        ("egg", "poultry"),
+        ("broiler", "poultry"),
+        ("day old chick", "poultry"),
+        ("catfish", "fish"),
+        ("tilapia", "fish"),
+        ("feed", "animal feed"),
+        ("poultry feed", "animal feed"),
+        ("fish feed", "animal feed"),
+        ("fertilizer", "farm input"),
+        ("pesticide", "farm input"),
+        ("herbicide", "farm input"),
+        ("fungicide", "farm input"),
+    ],
+    "retail_trading": [
+        ("rice", "food"),
+        ("garri", "food"),
+        ("beans", "food"),
+        ("sugar", "food"),
+        ("salt", "food"),
+        ("palm oil", "food"),
+        ("noodles", "food"),
+        ("indomie", "food"),
+        ("tomato paste", "food"),
+        ("maggi", "food"),
+        ("biscuit", "snack"),
+        ("bread", "bakery"),
+        ("detergent", "cleaning"),
+        ("soap", "cleaning"),
+        ("bleach", "cleaning"),
+        ("matches", "household"),
+        ("candle", "household"),
+        ("battery", "household"),
+        ("toothpaste", "personal care"),
+        ("toilet roll", "personal care"),
+        ("tissue", "personal care"),
+    ],
+    "food_hospitality": [
+        ("rice", "food"),
+        ("beans", "food"),
+        ("yam", "food"),
+        ("plantain", "food"),
+        ("chicken", "protein"),
+        ("beef", "protein"),
+        ("fish", "protein"),
+        ("tomato", "vegetable"),
+        ("pepper", "vegetable"),
+        ("onion", "vegetable"),
+        ("palm oil", "oil"),
+        ("vegetable oil", "oil"),
+        ("water", "beverage"),
+        ("soft drink", "beverage"),
+        ("beer", "beverage"),
+        ("malt", "beverage"),
+        ("bread", "bakery"),
+        ("flour", "ingredient"),
+        ("egg", "protein"),
+    ],
+    "energy_fuel": [
+        ("petrol", "fuel"),
+        ("pms", "fuel"),
+        ("diesel", "fuel"),
+        ("ago", "fuel"),
+        ("kerosene", "fuel"),
+        ("lpg", "gas"),
+        ("cooking gas", "gas"),
+        ("engine oil", "lubricant"),
+        ("brake fluid", "lubricant"),
+        ("gear oil", "lubricant"),
+    ],
+    "salon_beauty": [
+        ("shampoo", "hair care"),
+        ("conditioner", "hair care"),
+        ("relaxer", "hair care"),
+        ("hair color", "hair care"),
+        ("hair cream", "hair care"),
+        ("gel", "styling"),
+        ("edge control", "styling"),
+        ("weave", "hair extension"),
+        ("wigs", "hair extension"),
+        ("lace front", "hair extension"),
+        ("nail polish", "nail care"),
+        ("acrylic nail", "nail care"),
+        ("foundation", "makeup"),
+        ("lipstick", "makeup"),
+        ("mascara", "makeup"),
+        ("moisturizer", "skin care"),
+        ("serum", "skin care"),
+        ("sunscreen", "skin care"),
+        ("manicure set", "tool"),
+        ("hair dryer", "tool"),
+    ],
+    "quarry_raw_materials": [
+        ("sand", "aggregate"),
+        ("sharp sand", "aggregate"),
+        ("granite", "aggregate"),
+        ("gravel", "aggregate"),
+        ("laterite", "soil"),
+        ("block", "building material"),
+        ("cement", "binding material"),
+        ("stone", "aggregate"),
+        ("clay", "raw material"),
+    ],
+}
+
+# Preferred units per industry — shown in stock-add guides and as hints
+INDUSTRY_DEFAULT_UNITS = {
+    "pharmacy": ["pack", "strip", "tablet", "sachet", "bottle", "vial"],
+    "agriculture": ["bag", "mudu", "congo", "crate", "tray", "kg"],
+    "retail_trading": ["carton", "bag", "pack", "piece", "dozen"],
+    "food_hospitality": ["kg", "litre", "carton", "pack", "piece"],
+    "energy_fuel": ["litre", "drum", "cylinder", "kg"],
+    "salon_beauty": ["piece", "bottle", "pack", "set"],
+    "quarry_raw_materials": ["trip", "tonne", "load", "truck load"],
+    "thrift_contribution": [],
+    "school": [],
+    "artisan_services": [],
+    "transport_logistics": [],
+    "real_estate_rentals": [],
+    "professional_services": [],
+}
+
+
+def get_product_category_suggestion(template_key, product):
+    """Return a category string for a product based on the business template, or None."""
+    if not template_key or not product:
+        return None
+    catalog = INDUSTRY_PRODUCT_CATALOG.get(template_key, [])
+    product_lower = product.lower().strip()
+    for catalog_name, category in catalog:
+        if catalog_name == product_lower or product_lower in catalog_name or catalog_name in product_lower:
+            return category
+    return None
+
+
+def build_stock_add_guide(user=None):
+    """Return a personalised add-stock guide using industry-specific product examples."""
+    key = template_key_for_user(user) if user else None
+    catalog = INDUSTRY_PRODUCT_CATALOG.get(key, [])
+    units = INDUSTRY_DEFAULT_UNITS.get(key, [])
+
+    if catalog and len(catalog) >= 2:
+        p1_name, _ = catalog[0]
+        p2_name, _ = catalog[1]
+        unit1 = units[0] if units else "pack"
+        unit2 = units[1] if len(units) > 1 else "piece"
+        price_example = (
+            f"add stock {p1_name} cost 1500 sell 2000\n"
+            f"add stock {p2_name} cost 800 sell 1000\n\n"
+            f"With quantity:\n"
+            f"add stock {p1_name} 50 {unit1}s at 1500, selling price 2000\n\n"
+            f"Quantity only (keeps existing price):\n"
+            f"add stock 10 {unit1}s {p1_name}\n\n"
+            f"With supplier:\n"
+            f"Supplier supply me 50 {unit2}s {p2_name} at 800 each"
+        )
+    else:
+        price_example = (
+            "add stock rice cost 3000 sell 4000\n\n"
+            "With quantity:\n"
+            "add stock honey 10 liters at 10000, selling price 12000\n\n"
+            "Quantity only (keeps existing price):\n"
+            "add stock 10 bags rice\n\n"
+            "With supplier:\n"
+            "Ayo supply me 12 bags rice at 5000"
+        )
+
+    return f"Add stock with prices:\n{price_example}"

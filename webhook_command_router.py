@@ -1,4 +1,5 @@
 ﻿from admin_commands import handle_admin_subscription_command, notify_subscription_admins
+from business_templates import build_business_category_menu
 from analytics_commands import handle_analytics_command
 from void_commands import handle_void_transaction
 from customer_commands import handle_customer_command
@@ -95,6 +96,21 @@ def handle_parsed_command(
             "tiTi will flag it in your stock list when you reach this level."
         )
         return {"status": "set_reorder_saved"}
+
+    if parsed["type"] == "UPDATE_BUSINESS_TYPE":
+        if not user:
+            send_whatsapp_message(phone, "Register first to set your business type.")
+            return {"status": "update_biz_type_no_user"}
+        db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+        db.add(PendingAction(
+            phone=phone,
+            action="ONBOARD_USER_CATEGORY",
+            customer_name=user.name or "",
+            last_customer="",
+        ))
+        db.commit()
+        send_whatsapp_message(phone, build_business_category_menu())
+        return {"status": "update_business_type"}
 
     if parsed["type"] == "SELECT_PRODUCT":
         return start_select_product(db, phone, business_owner_phone, send_whatsapp_message)

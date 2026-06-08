@@ -169,6 +169,16 @@ def find_converted_inventory_for_sale(db, owner_phone, product, sale_unit, sale_
     return None, None
 
 
+def _auto_category(db, owner_phone, product):
+    """Look up a suggested category for a product based on the owner's business template."""
+    from models import User
+    from business_templates import template_key_for_user, get_product_category_suggestion
+    owner = db.query(User).filter(User.phone == owner_phone).first()
+    if not owner:
+        return None
+    return get_product_category_suggestion(template_key_for_user(owner), product)
+
+
 def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None):
     if not product or not quantity:
         return None
@@ -180,7 +190,8 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
             name=product.lower(),
             unit=unit,
             quantity=0,
-            cost_price=unit_price
+            cost_price=unit_price,
+            category=_auto_category(db, owner_phone, product),
         )
         db.add(item)
         db.flush()
@@ -423,6 +434,7 @@ def upsert_stock_with_prices(db, owner_phone, product, unit, cost_price, selling
             cost_price=cost_price,
             selling_price=selling_price,
             is_available=True,
+            category=_auto_category(db, owner_phone, product),
         )
         db.add(item)
     else:
