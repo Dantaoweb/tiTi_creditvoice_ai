@@ -2,12 +2,13 @@
 from analytics_commands import handle_analytics_command
 from void_commands import handle_void_transaction
 from customer_commands import handle_customer_command
+from inventory_suppliers import save_product_alias, set_product_category, set_reorder_quantity
 from messages import (
     build_plan_message,
     build_supported_formats_message,
     build_upgrade_message,
 )
-from models import PendingAction
+from models import PendingAction, ProductAlias
 from onboarding_commands import handle_profile_command
 from linked_phone_commands import (
     handle_link_phone, handle_unlink_phone, handle_my_phones,
@@ -39,6 +40,61 @@ def handle_parsed_command(
         msg = build_supported_formats_message(user)
         send_whatsapp_message(phone, msg)
         return {"status": "formats"}
+
+    if parsed["type"] == "PRODUCT_ALIAS":
+        alias = parsed["alias"].lower().strip()
+        canonical = parsed["canonical"].lower().strip()
+        if not user:
+            send_whatsapp_message(phone, "Register first before setting product aliases.")
+            return {"status": "product_alias_no_user"}
+        save_product_alias(db, business_owner_phone, alias, canonical)
+        send_whatsapp_message(
+            phone,
+            f"Got it. *{alias.title()}* will now be treated as *{canonical.title()}* "
+            f"in your inventory.\n\nTo remove it, send: alias {alias} = {alias}"
+        )
+        return {"status": "product_alias_saved"}
+
+    if parsed["type"] == "SET_PRODUCT_CATEGORY":
+        product = parsed["product"]
+        category = parsed["category"]
+        items = set_product_category(db, business_owner_phone, product, category)
+        if not items:
+            send_whatsapp_message(
+                phone,
+                f"No stock item found for *{product.title()}*.\n"
+                "Add it first, then set the category."
+            )
+            return {"status": "set_category_not_found"}
+        db.commit()
+        send_whatsapp_message(
+            phone,
+            f"*{product.title()}* tagged as *{category.title()}*.\n\n"
+            "Send *stock* to see your updated inventory."
+        )
+        return {"status": "set_category_saved"}
+
+    if parsed["type"] == "SET_REORDER_QUANTITY":
+        product = parsed["product"]
+        quantity = parsed["quantity"]
+        unit = parsed.get("unit")
+        item = set_reorder_quantity(db, business_owner_phone, product, unit, quantity)
+        if not item:
+            send_whatsapp_message(
+                phone,
+                f"No stock item found for *{product.title()}*.\n"
+                "Add it first, then set your reorder point."
+            )
+            return {"status": "set_reorder_not_found"}
+        db.commit()
+        unit_label = f" {item.unit}" if item.unit else ""
+        send_whatsapp_message(
+            phone,
+            f"Reorder point set for *{item.name.title()}*: "
+            f"N{quantity:,}{unit_label}.\n\n"
+            "tiTi will flag it in your stock list when you reach this level."
+        )
+        return {"status": "set_reorder_saved"}
 
     if parsed["type"] == "SELECT_PRODUCT":
         return start_select_product(db, phone, business_owner_phone, send_whatsapp_message)

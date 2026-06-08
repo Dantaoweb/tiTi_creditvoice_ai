@@ -271,6 +271,10 @@ class InventoryItem(Base):
 
     low_stock_alert = Column(Integer, nullable=True)
 
+    category = Column(String, nullable=True)       # e.g. "grains", "dairy", "pharmacy"
+
+    reorder_quantity = Column(Integer, nullable=True)  # trigger a reorder reminder below this level
+
     created_at = Column(DateTime, default=utcnow)
 
     updated_at = Column(DateTime, default=utcnow)
@@ -629,12 +633,16 @@ class CustomerMemory(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    phone = Column(
-        String,
-        unique=True
-    )
+    phone = Column(String, unique=True)
 
     last_customer = Column(String)
+
+    # Context memory — what the user was doing last
+    last_menu = Column(String, nullable=True)       # e.g. "HOME_MENU", "DASHBOARD_MENU", "DUE_MENU"
+    last_command = Column(String, nullable=True)    # e.g. "BUY", "PAY", "STOCK_ADD"
+    last_topic = Column(String, nullable=True)      # e.g. "stock", "suppliers", "dashboard"
+    last_amount = Column(Integer, nullable=True)    # last confirmed transaction amount
+    session_expires_at = Column(DateTime, nullable=True)  # context valid until this time
 
 
 class ReminderMemory(Base):
@@ -724,6 +732,20 @@ class LinkedPhone(Base):
 
     is_active = Column(Boolean, default=False)
 
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ProductAlias(Base):
+    """Per-business product synonyms: alias → canonical name.
+    e.g. eba → garri, panadol → paracetamol, para → paracetamol.
+    """
+
+    __tablename__ = "product_aliases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    alias = Column(String)          # what the user types
+    canonical = Column(String)      # what it maps to (must match InventoryItem.name)
     created_at = Column(DateTime, default=utcnow)
 
 

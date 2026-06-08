@@ -12,7 +12,7 @@ _QUESTION_STARTERS = (
     "how", "what", "where", "when", "why",
     "can i", "do i", "is there", "show me",
     "help me", "help with", "i don't know", "i dont know",
-    "teach me", "explain",
+    "teach me", "explain", "check", "list of",
 )
 
 
@@ -36,6 +36,27 @@ def detect_faq(text):
     # ── Receipt (specific — check before customer) ────────────────────────────
     if any(k in q for k in ["receipt", "print receipt", "send receipt"]):
         return "receipt"
+
+    # ── Overdue / unpaid debtors ──────────────────────────────────────────────
+    if any(k in q for k in [
+        "overdue", "who owes me", "who owe me", "who are owing me",
+        "who are owning me", "who is owing me", "owing me",
+        "unpaid debtor", "debtors", "due debtor", "check debtor",
+        "overdue customer", "who owe", "check due", "due customer",
+        "my debtors", "all debtors", "people owing me",
+        "those who owe me", "customers owing me", "who still owe",
+        "past due", "check who owes",
+    ]):
+        return "overdue_debtors"
+
+    # ── Customer list ─────────────────────────────────────────────────────────
+    if any(k in q for k in [
+        "customer list", "list of customer", "list of my customer",
+        "check customer list", "see customer", "view customer",
+        "all customer", "all customers", "my customer", "show customer",
+        "check customers", "list customers", "show customers",
+    ]):
+        return "customer_list"
 
     # ── Account recovery / PIN ────────────────────────────────────────────────
     if any(k in q for k in [
@@ -119,6 +140,8 @@ def detect_faq(text):
     if any(k in q for k in [
         "due date", "payment due", "set reminder", "remind customer",
         "when to pay", "debt reminder", "payment reminder",
+        "check due", "due debtor", "check overdue", "how to check due",
+        "how do i check due", "see due", "view due",
     ]):
         return "due_date"
 
@@ -132,7 +155,14 @@ def detect_faq(text):
     if "restock" in q and any(k in q for k in ["price", "cost", "new", "update"]):
         return "add_stock"
 
-    # ── Supplier (before generic stock) ──────────────────────────────────────
+    # ── Supplier list (before generic supplier add) ───────────────────────────
+    if any(k in q for k in [
+        "supplier list", "list suppliers", "my suppliers", "show suppliers",
+        "check suppliers", "view suppliers", "see suppliers", "all suppliers",
+    ]):
+        return "supplier_list"
+
+    # ── Supplier (add / record) ───────────────────────────────────────────────
     if any(k in q for k in [
         "add supplier", "record supplier", "supplier purchase",
         "bought from supplier", "supply me", "i buy from",
@@ -147,10 +177,14 @@ def detect_faq(text):
     # ── Check / view stock (before generic stock) ─────────────────────────────
     if any(k in q for k in [
         "check stock", "view stock", "see stock", "my stock",
+        "show stock", "show my stock", "show inventory",
         "inventory", "stock list", "how much stock", "quantity left",
+        "what is in stock", "what i have in stock",
     ]):
         return "check_stock"
     if "stock" in q and any(k in q for k in ["check", "view", "see", "list", "show", "left", "remaining"]):
+        return "check_stock"
+    if "inventory" in q and any(k in q for k in ["check", "view", "see", "show", "list"]):
         return "check_stock"
 
     # ── Dashboard / reports (before record_sale) ──────────────────────────────
@@ -229,6 +263,21 @@ def detect_faq(text):
 # ── Answers ───────────────────────────────────────────────────────────────────
 
 FAQ_ANSWERS = {
+    "overdue_debtors": (
+        "To see who owes you:\n\n"
+        "Send: due\n"
+        "Then choose:\n"
+        "1. Debts due in 2 days\n"
+        "2. Debts due today\n"
+        "3. Overdue debtors\n\n"
+        "Or send: dashboard → then choose 8 for Unpaid Debtors."
+    ),
+    "customer_list": (
+        "To see your customer list, send:\n\n"
+        "customer list\n\n"
+        "Or go to dashboard → choose 7 for Customer List.\n\n"
+        "To see who owes you the most, send: due"
+    ),
     "add_stock": (
         "How to add stock:\n\n"
         "With quantity + price in one message:\n"
@@ -276,6 +325,16 @@ FAQ_ANSWERS = {
         "To sell at a different price send:\n"
         "3 at 2500\n"
         "instead of just the quantity."
+    ),
+    "supplier_list": (
+        "To see your supplier list, send:\n\n"
+        "suppliers\n\n"
+        "To see what you owe each supplier:\n"
+        "supplier debts\n\n"
+        "To see payments due today:\n"
+        "supplier due\n\n"
+        "To see upcoming supplier payments:\n"
+        "supplier due this week"
     ),
     "add_supplier": (
         "How to record a supplier purchase:\n\n"

@@ -343,7 +343,7 @@ def handle_profile_command(
             message = f"You already have a customer named {target_name.title()}{phone_line}.\n"
         else:
             message = f"You added a new customer {target_name.title()}{phone_line}.\n"
-        send_message(phone, message + "Reply YES or 1 to save, EDIT or 2 to send it again.")
+        send_message(phone, message + "\nReply YES or 1 to save, EDIT or 2 to send it again.")
         return {"status": "confirm_onboard_customer"}
 
     return None

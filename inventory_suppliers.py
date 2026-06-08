@@ -12,6 +12,7 @@ def _utcnow():
 from models import (
     InventoryItem,
     InventoryMovement,
+    ProductAlias,
     Supplier,
     SupplierPayment,
     SupplierPurchase,
@@ -45,12 +46,53 @@ def find_inventory_item(db, owner_phone, product, unit=None):
     return query.first()
 
 
+def resolve_product_alias(db, owner_phone, product):
+    """Return the canonical product name from the per-business alias table, or product unchanged."""
+    if not product:
+        return product
+    alias_row = db.query(ProductAlias).filter(
+        ProductAlias.owner_phone == owner_phone,
+        func.lower(ProductAlias.alias) == product.lower().strip(),
+    ).first()
+    return alias_row.canonical if alias_row else product
+
+
+def save_product_alias(db, owner_phone, alias, canonical):
+    """Upsert a per-business product alias."""
+    alias = alias.lower().strip()
+    canonical = canonical.lower().strip()
+    existing = db.query(ProductAlias).filter(
+        ProductAlias.owner_phone == owner_phone,
+        func.lower(ProductAlias.alias) == alias,
+    ).first()
+    if existing:
+        existing.canonical = canonical
+    else:
+        db.add(ProductAlias(owner_phone=owner_phone, alias=alias, canonical=canonical))
+    db.commit()
+
+
 def find_matching_inventory_item(db, owner_phone, product, unit=None):
     product, unit = normalize_item(product, unit)
+
+    # 1. Exact match
     item = find_inventory_item(db, owner_phone, product, unit)
     if item:
         return item
 
+    # 2. Per-business alias (e.g. "eba" → "garri")
+    resolved = resolve_product_alias(db, owner_phone, product)
+    if resolved != product:
+        item = find_inventory_item(db, owner_phone, resolved, unit)
+        if item:
+            return item
+        # Also try without unit constraint after alias
+        if unit:
+            item = find_inventory_item(db, owner_phone, resolved, None)
+            if item:
+                return item
+
+    # 3. Any item with matching name, ignoring unit (when no unit given)
     if not unit:
         product_matches = db.query(InventoryItem).filter(
             InventoryItem.owner_phone == owner_phone,
@@ -59,12 +101,14 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
         if len(product_matches) == 1:
             return product_matches[0]
 
+    # 4. Legacy "unit of product" composite name
     if unit:
         legacy_name = f"{unit} of {product}".lower()
         item = find_inventory_item(db, owner_phone, legacy_name, None)
         if item:
             return item
 
+    # 5. Strip embedded unit prefix from product string
     unit_match = re.match(r"^(?P<unit>[a-z]+)\s+of\s+(?P<product>.+)$", product.lower())
     if unit_match:
         item = find_inventory_item(
@@ -215,22 +259,93 @@ def get_supplier_balance(db, supplier_id):
 
 
 def build_inventory_list_message(db, owner_phone, product=None):
+    from collections import defaultdict
+
     query = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone)
     if product:
         query = query.filter(func.lower(InventoryItem.name).like(f"%{product.lower()}%"))
-    items = query.order_by(InventoryItem.name.asc()).limit(20).all()
+    items = query.order_by(
+        InventoryItem.category.asc(), InventoryItem.name.asc(), InventoryItem.unit.asc()
+    ).limit(50).all()
+
     if not items:
-        return "No stock found yet.\n\nTo add stock, send:\nAyo supply me 12kg cocoa at 5000"
+        return "No stock found yet.\n\nTo add stock:\nadd stock rice cost 3000 sell 4000"
+
+    # Group variants (same product, different units) together
+    grouped = defaultdict(list)
+    for item in items:
+        grouped[item.name.lower()].append(item)
 
     title = "Stock" if not product else f"Stock: {product.title()}"
-    msg = f"{title}\n\n"
-    for index, item in enumerate(items, start=1):
-        unit = f" {item.unit}" if item.unit else ""
-        value = (item.quantity or 0) * (item.cost_price or 0)
-        msg += f"{index}. {item.name.title()}: {item.quantity:,}{unit}"
-        if item.cost_price:
-            msg += f" | Cost: N{item.cost_price:,} | Value: N{value:,}"
-        msg += "\n"
+    msg = f"*{title}*\n\n"
+    current_category = None
+    total_value = 0
+    idx = 0
+
+    for name_key in sorted(grouped.keys()):
+        variants = grouped[name_key]
+        idx += 1
+
+        # Category header when it changes
+        category = (variants[0].category or "").strip().lower()
+        if category and category != current_category:
+            msg += f"— {category.title()} —\n"
+            current_category = category
+
+        display_name = variants[0].name.title()
+
+        if len(variants) == 1:
+            v = variants[0]
+            qty = v.quantity or 0
+            unit_label = f" {v.unit}" if v.unit else ""
+            total_value += qty * (v.cost_price or 0)
+
+            # Stock status indicator
+            if qty == 0:
+                indicator = "🔴 "
+            elif v.low_stock_alert is not None and qty <= v.low_stock_alert:
+                indicator = "⚠️ "
+            else:
+                indicator = ""
+
+            line = f"{idx}. {indicator}{display_name}: {qty:,}{unit_label}"
+            prices = []
+            if v.cost_price:
+                prices.append(f"Cost N{v.cost_price:,}")
+            if v.selling_price:
+                prices.append(f"Sell N{v.selling_price:,}")
+            if prices:
+                line += f"\n   {' | '.join(prices)}"
+            if v.reorder_quantity is not None and qty <= v.reorder_quantity:
+                line += f"\n   ↩️ Reorder at {v.reorder_quantity:,}{unit_label}"
+            msg += line + "\n\n"
+        else:
+            # Multi-unit product — show each variant indented
+            msg += f"{idx}. {display_name}\n"
+            for v in variants:
+                qty = v.quantity or 0
+                unit_label = f" {v.unit}" if v.unit else ""
+                total_value += qty * (v.cost_price or 0)
+
+                if qty == 0:
+                    indicator = "🔴 "
+                elif v.low_stock_alert is not None and qty <= v.low_stock_alert:
+                    indicator = "⚠️ "
+                else:
+                    indicator = ""
+
+                line = f"   {indicator}{qty:,}{unit_label}"
+                prices = []
+                if v.cost_price:
+                    prices.append(f"Cost N{v.cost_price:,}")
+                if v.selling_price:
+                    prices.append(f"Sell N{v.selling_price:,}")
+                if prices:
+                    line += f" | {' | '.join(prices)}"
+                msg += line + "\n"
+            msg += "\n"
+
+    msg += f"Total stock value: N{total_value:,}"
     return msg.strip()
 
 
@@ -373,6 +488,32 @@ def set_low_stock_alert(db, owner_phone, product, unit, threshold):
     if not item:
         return None
     item.low_stock_alert = threshold
+    item.updated_at = _utcnow()
+    return item
+
+
+def set_product_category(db, owner_phone, product, category):
+    """Tag all unit-variants of a product with a category label."""
+    product, _ = normalize_item(product)
+    items = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        func.lower(InventoryItem.name) == product.lower(),
+    ).all()
+    if not items:
+        return []
+    for item in items:
+        item.category = category.lower().strip()
+        item.updated_at = _utcnow()
+    return items
+
+
+def set_reorder_quantity(db, owner_phone, product, unit, quantity):
+    """Set the reorder-point threshold for an inventory item."""
+    product, unit = normalize_item(product, unit)
+    item = find_matching_inventory_item(db, owner_phone, product, unit)
+    if not item:
+        return None
+    item.reorder_quantity = quantity
     item.updated_at = _utcnow()
     return item
 

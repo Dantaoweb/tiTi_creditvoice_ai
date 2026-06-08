@@ -110,7 +110,7 @@ def build_confirm_message(cart, customer_name, paid, total, due_date_str=None):
         if due_date_str:
             msg += f"Due:     {due_date_str}\n"
 
-    msg += "\nYES to save."
+    msg += "\n\nYES to save."
     if total_discount > 0:
         msg += "\nYES RECEIPT to save and show discount on customer receipt."
     return msg

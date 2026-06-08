@@ -1,3 +1,4 @@
+from context_memory import save_context
 from messages import build_upgrade_message
 from plans import PLAN_PRO
 from reports import build_dashboard_menu_message
@@ -26,27 +27,32 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
     if normalized in ["4", "dashboard"]:
         pending.action = "DASHBOARD_MENU"
         db.commit()
+        save_context(db, phone, last_menu="DASHBOARD_MENU", last_topic="dashboard")
         send_message(phone, build_dashboard_menu_message())
         return {"status": "owner_home_dashboard"}
 
     if normalized in ["5", "stock", "inventory", "my stock", "my inventory"]:
         db.delete(pending)
         db.commit()
+        save_context(db, phone, last_topic="stock")
         return {"parsed": {"type": "INVENTORY_LIST"}}
 
     if normalized in ["6", "supplier", "suppliers", "supplier list", "my suppliers"]:
         db.delete(pending)
         db.commit()
+        save_context(db, phone, last_topic="suppliers")
         return {"parsed": {"type": "SUPPLIER_LIST"}}
 
     if normalized in ["7", "due", "reminders", "due reminders", "debt reminders"]:
         db.delete(pending)
         db.commit()
+        save_context(db, phone, last_menu="DUE_MENU", last_topic="due")
         return {"parsed": {"type": "DUE_MENU"}}
 
     if normalized in ["8", "upgrade", "my plan", "plan"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
+        save_context(db, phone, last_topic="upgrade")
         send_message(phone, build_upgrade_message(user))
         return {"status": "owner_home_upgrade"}
 
@@ -102,6 +108,7 @@ def handle_staff_home_menu(
     if normalized in ["4", "dashboard"]:
         pending.action = "DASHBOARD_MENU"
         db.commit()
+        save_context(db, phone, last_menu="DASHBOARD_MENU", last_topic="dashboard")
         send_message(phone, build_dashboard_menu_message())
         return {"status": "staff_home_dashboard"}
 

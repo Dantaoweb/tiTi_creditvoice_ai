@@ -379,11 +379,36 @@ def normalize_phone(phone_str):
     return clean
 
 
+_NUMBER_WORDS_MAP = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+    "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+    "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
+    "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+    "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100,
+}
+
+def _normalize_text_for_parsing(text):
+    """Strip currency symbols, normalize price markers and number words."""
+    clean = text.lower().replace(",", "").replace("#", "").replace("₦", "")
+    # "at the rate of" / "at a rate of" → "at"
+    clean = re.sub(r"\bat\s+(?:a\s+)?rate\s+of\b", "at", clean)
+    # "at the cost of" / "at a cost of" → "for"
+    clean = re.sub(r"\bat\s+(?:a\s+)?cost\s+of\b", "for", clean)
+    # number words → digits (only when isolated, so "twenty bags" → "20 bags")
+    clean = re.sub(
+        r"\b(" + "|".join(_NUMBER_WORDS_MAP) + r")\b",
+        lambda m: str(_NUMBER_WORDS_MAP[m.group(0)]),
+        clean,
+    )
+    return clean
+
+
 def extract_item_details(text):
     # Matches numbers with optional k/m suffixes (e.g., 5000, 5k, 5.5m)
     amount_pattern = r"\d[\d,\.]*\s*[kKmM]?"
 
-    clean = text.lower().replace(",", "")
+    clean = _normalize_text_for_parsing(text)
 
     _qty_pat = r"\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?"
     match = re.search(
@@ -733,7 +758,7 @@ def extract_artisan_transaction(text):
 
 
 def parse_invoice_item(item_text):
-    clean = item_text.lower().replace(",", "").strip()
+    clean = item_text.lower().replace(",", "").replace("#", "").replace("₦", "").strip()
     clean = re.sub(r"\b(per\s+unit|per\s+piece)\b", "each", clean).strip()
 
     amount_matches = list(re.finditer(
@@ -1420,22 +1445,18 @@ def parse_message(text):
     if clean_text in ["formats", "format", "f"]:
         return {"type": "FORMATS"}
 
-    if clean_text in ["stock", "stocks", "my stock", "my stocks", "inventory", "my inventory"]:
+    if clean_text in ["stock", "stocks", "my stock", "my stocks", "inventory", "my inventory"] or \
+            re.match(r"^(?:show|check|view|see|display)\s+(?:my\s+)?(?:stocks?|inventory)$", clean_text):
         return {"type": "INVENTORY_LIST"}
 
     if re.match(r"^(?:i\s+am\s+adding|i\s+want\s+to\s+add|i\s+would\s+like\s+to\s+add|adding|want\s+to\s+add)\s+stock$", clean_text):
         return {"type": "STOCK_ADD", "body": ""}
 
     if clean_text in [
-        "suppliers",
-        "supplier",
-        "supplier list",
-        "list supplier",
-        "list suppliers",
-        "my suppliers",
-        "supplier debts",
-        "suppliers i owe"
-    ]:
+        "suppliers", "supplier", "supplier list", "list supplier",
+        "list suppliers", "my suppliers", "my supplier",
+        "supplier debts", "suppliers i owe",
+    ] or re.match(r"^(?:show|check|view|see|list)\s+(?:my\s+)?suppliers?$", clean_text):
         return {"type": "SUPPLIER_LIST"}
 
     if clean_text in ["supplier due", "suppliers due", "supplier due today", "suppliers due today"]:
@@ -1519,6 +1540,38 @@ def parse_message(text):
             "quantity": int(stock_alert_match.group("quantity")),
         }
 
+    # ── Product category ────────────────────────────────────────────────────
+    # "set category eggs = dairy"  |  "category eggs grains"
+    category_match = re.match(
+        r"^(?:set\s+)?category\s+(?P<product>[a-z][a-z ]+?)\s*[=:]\s*(?P<category>[a-z][a-z ]+)$",
+        clean_text,
+    ) or re.match(
+        r"^(?:set\s+)?category\s+(?P<product>[a-z][a-z ]+?)\s+(?P<category>[a-z][a-z]+)$",
+        clean_text,
+    )
+    if category_match:
+        return {
+            "type": "SET_PRODUCT_CATEGORY",
+            "product": category_match.group("product").strip(),
+            "category": category_match.group("category").strip(),
+        }
+
+    # ── Reorder quantity ────────────────────────────────────────────────────
+    # "reorder eggs 5 crates"  |  "set reorder eggs 5"  |  "reorder point rice 2 bags"
+    _qty_reorder = r"\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?"
+    reorder_match = re.match(
+        rf"^(?:set\s+)?reorder(?:\s+point)?\s+(?P<product>[a-z][a-z ]+?)\s+(?P<quantity>{_qty_reorder})(?:\s+(?P<unit>[a-z]+))?$",
+        clean_text,
+    )
+    if reorder_match:
+        raw_qty = reorder_match.group("quantity").replace(",", "")
+        return {
+            "type": "SET_REORDER_QUANTITY",
+            "product": reorder_match.group("product").strip(),
+            "quantity": int(float(raw_qty)),
+            "unit": reorder_match.group("unit"),
+        }
+
     # =========================
     # 📊 COMMANDS
     # =========================
@@ -1539,33 +1592,38 @@ def parse_message(text):
         return {"type": "YEARLY_SALES"}
 
     if clean_text in [
-        "unpaid debtors",
-        "unpaid",
-        "debtor",
-        "debtors"
-    ]:
-        return {
-            "type": "UNPAID_DEBTORS"
-        }
+        "unpaid debtors", "unpaid", "debtor", "debtors",
+        "who owes me", "who owe me", "who are owning me", "who are owing me",
+        "who is owing me", "who dey owe me", "who still owe me",
+        "customer owing", "customers owing", "who owe",
+        "my debtors", "all debtors", "show debtors", "people owing me",
+        "customers owing me", "all owing customers",
+        "those who owe me", "those owing me",
+    ] or re.match(
+        r"^(?:show|check|list|see|view|all)\s+(?:my\s+)?(?:debtors?|unpaid(?:\s+debtors?)?)$",
+        clean_text,
+    ) or re.match(
+        r"^(?:show|list|see|all)\s+(?:customers?\s+)?owing(?:\s+me)?$",
+        clean_text,
+    ) or re.match(
+        r"^(?:people|customers?)\s+(?:still\s+)?ow(?:ing|e)\s+me$",
+        clean_text,
+    ):
+        return {"type": "UNPAID_DEBTORS"}
 
     if clean_text in [
-        "overdue debtors",
-        "overdue",
-        "over due"
+        "overdue debtors", "overdue", "over due",
+        "overdue customer", "overdue customers",
+        "overdue debts", "past due", "past due debtors",
     ]:
-        return {
-            "type": "OVERDUE_DEBTORS"
-        }
+        return {"type": "OVERDUE_DEBTORS"}
 
     if clean_text == "due" or clean_text in [
-        "notify due customer",
-        "notify due customers",
-        "notify due",
-        "send due reminders"
+        "reminders", "due reminders", "debt reminders", "payment reminders",
+        "notify due customer", "notify due customers",
+        "notify due", "send due reminders",
     ]:
-        return {
-            "type": "DUE_MENU"
-        }
+        return {"type": "DUE_MENU"}
 
     if clean_text in [
         "daily transactions",
@@ -1730,15 +1788,14 @@ def parse_message(text):
             "date": parse_date_phrase(clean_text)
         }
 
-    # Matches "list customers", "my customers", "customer list this week", etc.
+    # Matches "list customers", "my customers", "customer list this week",
+    # "show my customers", "check customers", "all customers", etc.
     customer_list_phrases = [
-        "list customers",
-        "list customer",
-        "list my customers",
-        "list my customer",
-        "list of customers",
-        "customer list",
-        "my customers",
+        "list customers", "list customer", "list my customers", "list my customer",
+        "list of customers", "customer list", "my customers", "all customers",
+        "all my customers", "check customers", "check my customers",
+        "show customers", "show my customers", "see customers", "see my customers",
+        "view customers", "view my customers",
     ]
     if any(clean_text == cmd or clean_text.startswith(f"{cmd} ") for cmd in customer_list_phrases) or clean_text.startswith("customers"):
         # Ensure we don't accidentally catch "customers count" or "total customers"
@@ -2257,9 +2314,12 @@ def parse_message(text):
     ]:
         return {"type": "BELOW_COST_PRODUCTS"}
 
-    # "print receipt Mary"  |  "receipt Mary"  |  "receipt 42"
+    # "print receipt Mary"  |  "receipt Mary"  |  "receipt 42"  |  "Mary receipt"
     receipt_match = re.match(
         r"^(?:print\s+)?receipt\s+(?P<query>.+)$",
+        clean_text,
+    ) or re.match(
+        r"^(?P<query>[a-z][a-z ]+?)\s+receipt$",
         clean_text,
     )
     if receipt_match:
@@ -2267,6 +2327,21 @@ def parse_message(text):
         if query.isdigit():
             return {"type": "PRINT_RECEIPT", "transaction_id": int(query)}
         return {"type": "PRINT_RECEIPT", "customer_name": query}
+
+    # "product alias eba = garri" / "alias eba = garri" / "eba is same as garri"
+    alias_match = re.match(
+        r"^(?:product\s+)?alias\s+(?P<alias>[a-z][a-z ]+?)\s*=\s*(?P<canonical>[a-z][a-z ]+)$",
+        clean_text,
+    ) or re.match(
+        r"^(?P<alias>[a-z][a-z ]+?)\s+(?:is\s+)?(?:same\s+as|means|is)\s+(?P<canonical>[a-z][a-z ]+)$",
+        clean_text,
+    )
+    if alias_match:
+        return {
+            "type": "PRODUCT_ALIAS",
+            "alias": alias_match.group("alias").strip(),
+            "canonical": alias_match.group("canonical").strip(),
+        }
 
     if clean_text.startswith("remind"):
         return {
@@ -2324,7 +2399,7 @@ def parse_message(text):
     # =========================
 
     invoice_clean_text = text.lower().strip()
-    clean_text = text.replace(",", "")
+    clean_text = _normalize_text_for_parsing(text)
 
     words = clean_text.split()
 
@@ -2604,9 +2679,14 @@ def _parse_stock_item_full(body):
     Parse the combined qty + prices format (one item only):
       honey 10 liters at 10,000, selling price 12,000
       10 liters honey at 10000 selling price 12000
+      garri 50 bags cost 4000 selling at 5000
+      dangote 70g spaghetti cost at 400 selling at 430
     Returns {"product", "unit", "quantity", "cost", "sell"} or None.
     """
-    selling_split = re.split(r"\bselling\s+price\b", body.strip(), maxsplit=1, flags=re.I)
+    # Normalise body: strip leading "and" before selling/sell keywords
+    body = re.sub(r"\band\s+(?=selling|sell\b)", "", body.strip(), flags=re.I)
+    # Match sell price — handles "selling price", "selling at", "sell at", "sell"
+    selling_split = re.split(r"\bselling\s+(?:price\s+)?(?:at\s+)?|(?<!\w)sell\s+(?:at\s+)?", body, maxsplit=1, flags=re.I)
     if len(selling_split) != 2:
         return None
 
@@ -2616,18 +2696,18 @@ def _parse_stock_item_full(body):
 
     left = selling_split[0].strip().rstrip(",").strip()
 
-    # Try "at" separator first (honey 10 liters at 10000, selling price 12000)
-    # then fall back to "cost" (Paracetamol 5 packets cost 2000 selling price 3000)
-    at_split = re.split(r"\s+at\s+", left, maxsplit=1, flags=re.I)
-    if len(at_split) == 2:
-        cost_str = at_split[1].strip()
-        item_part = at_split[0].strip()
-    else:
-        cost_split = re.split(r"\s+cost\s+", left, maxsplit=1, flags=re.I)
-        if len(cost_split) != 2:
-            return None
+    # Try "cost [at] N" then "at N" (honey 10 liters at 10000, selling price 12000)
+    cost_split = re.split(r"\s+cost\s+(?:at\s+)?", left, maxsplit=1, flags=re.I)
+    if len(cost_split) == 2:
         cost_str = cost_split[1].strip()
         item_part = cost_split[0].strip()
+    else:
+        at_split = re.split(r"\s+at\s+", left, maxsplit=1, flags=re.I)
+        if len(at_split) == 2:
+            cost_str = at_split[1].strip()
+            item_part = at_split[0].strip()
+        else:
+            return None
 
     cost = parse_amount_token(cost_str.replace(",", ""))
     if cost is None:
@@ -2666,7 +2746,7 @@ def _parse_stock_items_with_prices(body):
     """
     amount_pat = r"\d[\d,\.]*(?:k|m)?"
     item_pat = re.compile(
-        rf"^(?P<product>.+?)\s+cost\s+(?P<cost>{amount_pat})\s+(?:selling\s+price|sell)\s+(?P<sell>{amount_pat})$",
+        rf"^(?P<product>.+?)\s+cost\s+(?:at\s+)?(?P<cost>{amount_pat})\s+(?:selling\s+(?:price\s+)?(?:at\s+)?|sell\s+(?:at\s+)?)(?P<sell>{amount_pat})$",
         re.I,
     )
     parts = [p.strip() for p in re.split(r"[,\n]+", body) if p.strip()]

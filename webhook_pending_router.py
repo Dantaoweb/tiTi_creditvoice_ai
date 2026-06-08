@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 
 from admin_commands import (
@@ -16,6 +17,7 @@ from constants import (
     FAST_CAPTURE_REVIEW_ACTIONS,
     SELECT_PRODUCT_ACTIONS,
 )
+from context_memory import get_active_menu
 from fast_capture_commands import handle_fast_capture_review_pending
 from inventory_suppliers import manual_stock_add, upsert_stock_with_prices
 from select_product_commands import handle_select_product_pending
@@ -208,6 +210,17 @@ def handle_pending_actions(
             db, phone, text, pending,
             business_owner_phone, visible_recorded_by_id, send_whatsapp_message,
         ))
+
+    # ── Context memory recovery: numbered reply after PendingAction expired ───
+    # When a user's PendingAction is gone (expired/deleted) but their session is
+    # still active within the 10-minute window, recreate a temporary PendingAction
+    # so the home/dashboard menu handlers can process the numbered selection normally.
+    if not pending and not is_command and user and re.match(r"^\d+$", text.strip()):
+        active_menu = get_active_menu(db, phone)
+        if active_menu in ("OWNER_HOME_MENU", "STAFF_HOME_MENU", "DASHBOARD_MENU"):
+            pending = PendingAction(phone=phone, action=active_menu)
+            db.add(pending)
+            db.commit()
 
     # ── Home menu navigation ─────────────────────────────────────────────────
     if pending and not is_command:

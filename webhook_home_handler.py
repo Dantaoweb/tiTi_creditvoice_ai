@@ -1,3 +1,4 @@
+from context_memory import save_context
 from messages import build_owner_home_menu, build_staff_home_menu
 from models import PendingAction
 from webhook_context import can_view_all_business_transactions
@@ -25,6 +26,7 @@ def handle_home_menu_request(db, phone, text, user, subscription, business_name)
         db.query(PendingAction).filter(PendingAction.phone == phone).delete()
         db.add(PendingAction(phone=phone, action="STAFF_HOME_MENU"))
         db.commit()
+        save_context(db, phone, last_menu="STAFF_HOME_MENU", last_topic="menu")
         send_whatsapp_message(
             phone,
             build_staff_home_menu(
@@ -39,6 +41,7 @@ def handle_home_menu_request(db, phone, text, user, subscription, business_name)
         db.query(PendingAction).filter(PendingAction.phone == phone).delete()
         db.add(PendingAction(phone=phone, action="OWNER_HOME_MENU"))
         db.commit()
+        save_context(db, phone, last_menu="OWNER_HOME_MENU", last_topic="menu")
         send_whatsapp_message(phone, build_owner_home_menu(user, subscription))
         return {"status": "owner_home_menu"}
 

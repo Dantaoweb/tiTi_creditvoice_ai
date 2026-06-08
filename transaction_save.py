@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+from context_memory import save_context
 from inventory_suppliers import (
     add_inventory_movement,
     deduct_inventory_for_items,
@@ -13,7 +14,7 @@ from inventory_suppliers import (
 )
 from messages import balance_status_line, pending_transaction_summary
 from models import (
-    Customer, CustomerMemory, InventoryItem,
+    Customer, InventoryItem,
     SupplierPayment, SupplierPurchase, Transaction, TransactionNote,
 )
 from parser import add_transaction_items
@@ -373,11 +374,13 @@ def save_customer_pending(
             )
             db.add(pay_tx)
 
-        memory = db.query(CustomerMemory).filter(CustomerMemory.phone == phone).first()
-        if not memory:
-            db.add(CustomerMemory(phone=phone, last_customer=customer.name))
-        else:
-            memory.last_customer = customer.name
+        save_context(
+            db, phone,
+            last_customer=customer.name,
+            last_command=pending.action,
+            last_amount=pending.buy_amount or pending.paid_amount,
+            last_topic="transaction",
+        )
 
         db.delete(pending)
         db.commit()

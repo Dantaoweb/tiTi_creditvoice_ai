@@ -28,7 +28,7 @@ def handle_artisan_payment_pending(
         send_message(
             phone,
             f"Confirm service income, no customer debt:\n"
-            f"{pending.product.title()} - N{pending.buy_amount:,}\n"
+            f"{pending.product.title()} - N{pending.buy_amount:,}\n\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
         return {"status": "artisan_service_confirm"}
@@ -59,7 +59,7 @@ def handle_artisan_payment_pending(
             phone,
             f"Confirm debt payment:\n"
             f"{customer.name.title()} paid N{pending.paid_amount:,}\n"
-            f"{balance_after_line}\n"
+            f"{balance_after_line}\n\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
         return {"status": "artisan_debt_payment_confirm"}

@@ -88,10 +88,10 @@ def handle_supplier_command(
             lines.append(line)
         if warnings:
             lines.append(
-                f"\nWarning: {', '.join(warnings)} — selling price is below cost price.\n"
+                f"\nWarning: {', '.join(warnings)} — selling price is below cost price.\n\n"
                 "Reply YES to save anyway or EDIT to change."
             )
-        lines.append("\nReply YES to save or EDIT to change.")
+        lines.append("\n\nReply YES to save or EDIT to change.")
 
         db.query(PendingAction).filter(PendingAction.phone == phone).delete()
         pending = PendingAction(

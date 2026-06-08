@@ -116,20 +116,40 @@ def build_projected_balance_line(db, customer_id, parsed, recorded_by_id=None):
     return f"Projected balance: N{projected_balance:,}"
 
 
+def _calc_line(qty, unit, product, unit_price, total):
+    """Show multiplication explicitly: '10 dozen of paper bags\n10 × N6,500 = N65,000'"""
+    label = f"{qty} {unit} of {product}" if unit else f"{qty} {product}"
+    return f"{label}\n{qty} × N{unit_price:,} = N{total:,}"
+
+
+def _at_hint(qty, unit_price):
+    """
+    When 'at [price]' was used without 'each', the price is ambiguous.
+    Fire a hint when: price divisible by qty (both interpretations give round numbers)
+    and unit price is above trivial threshold.
+    """
+    if qty <= 1 or not unit_price or unit_price <= 100:
+        return ""
+    if unit_price % qty != 0:
+        return ""
+    alt_unit = unit_price // qty
+    return (
+        f"\n↩️ If N{unit_price:,} was the *total* price: that's N{alt_unit:,} each.\n"
+        "Reply EDIT and resend using 'for' instead of 'at' to record as total."
+    )
+
+
 def direct_sale_item_line(parsed):
     if parsed.get("invoice_items"):
         return f"{format_invoice_items(parsed['invoice_items'])}\n\nTotal: N{parsed['total']:,}"
-    if parsed.get("quantity") and parsed.get("unit"):
-        return (
-            f"{parsed['quantity']} {parsed['unit']} of {parsed['product']} "
-            f"at N{parsed['unit_price']:,}, total: N{parsed['total']:,}"
-        )
-    if parsed.get("quantity") and parsed["quantity"] > 1:
-        return (
-            f"{parsed['quantity']} {parsed['product']} "
-            f"at N{parsed['unit_price']:,}, total: N{parsed['total']:,}"
-        )
-    return f"{parsed['product']} - N{parsed['total']:,}"
+    qty = parsed.get("quantity")
+    unit_price = parsed.get("unit_price")
+    total = parsed.get("total")
+    if qty and parsed.get("unit"):
+        return _calc_line(qty, parsed["unit"], parsed["product"], unit_price, total)
+    if qty and qty > 1:
+        return _calc_line(qty, None, parsed["product"], unit_price, total)
+    return f"{parsed['product']} - N{total:,}"
 
 
 def build_customer_confirm_message(customer, parsed):
@@ -141,26 +161,25 @@ def build_customer_confirm_message(customer, parsed):
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 return (
                     f"Confirm invoice for {customer.name}:\n{item_line}\n"
-                    f"Due: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
+                    f"Due: {due_date_text}\n\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             return (
-                f"Confirm invoice for {customer.name}:\n{item_line}\n"
+                f"Confirm invoice for {customer.name}:\n{item_line}\n\n"
                 "Reply YES or 1 to save, EDIT or 2 to change."
             )
 
         if parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
-            item_line = (
-                f"{parsed['quantity']} {parsed['unit']} of {parsed['product']} "
-                f"at N{parsed['unit_price']:,} each, total: N{parsed['total']:,}"
-            )
+            qty = parsed["quantity"]
+            item_line = _calc_line(qty, parsed["unit"], parsed["product"], parsed["unit_price"], parsed["total"])
+            hint = _at_hint(qty, parsed["unit_price"])
             if parsed["due_date"]:
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 return (
                     f"Confirm:\n{customer.name} bought {item_line}\n"
-                    f"Due: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
+                    f"Due: {due_date_text}{hint}\n\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             return (
-                f"Confirm:\n{customer.name} bought {item_line}\n"
+                f"Confirm:\n{customer.name} bought {item_line}{hint}\n\n"
                 "Reply YES or 1 to save, EDIT or 2 to change."
             )
 
@@ -168,30 +187,30 @@ def build_customer_confirm_message(customer, parsed):
             due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
             return (
                 f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}\n"
-                f"Due: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
+                f"Due: {due_date_text}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
         return (
-            f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}?\n"
+            f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}?\n\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
 
     if action == "PAY":
         return (
-            f"Confirm:\n{customer.name} paid N{parsed['paid_amount']:,}?\n"
+            f"Confirm:\n{customer.name} paid N{parsed['paid_amount']:,}?\n\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
 
     if action == "COMBINED":
+        hint = ""
         if parsed.get("invoice_items"):
             item_line = (
                 f"\n{format_invoice_items(parsed['invoice_items'])}\n\n"
                 f"Total bought: N{parsed['buy_amount']:,}"
             )
         elif parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
-            item_line = (
-                f"{parsed['quantity']} {parsed['unit']} of {parsed['product']} "
-                f"at N{parsed['unit_price']:,} each, total: N{parsed['total']:,}"
-            )
+            qty = parsed["quantity"]
+            item_line = _calc_line(qty, parsed["unit"], parsed["product"], parsed["unit_price"], parsed["total"])
+            hint = _at_hint(qty, parsed["unit_price"])
         else:
             item_line = f"N{parsed['buy_amount']:,}"
 
@@ -200,11 +219,11 @@ def build_customer_confirm_message(customer, parsed):
             return (
                 f"Confirm:\n{customer.name} bought {item_line}\n"
                 f"and paid N{parsed['paid_amount']:,}\n"
-                f"Balance due on: {due_date_text}\nReply YES or 1 to save, EDIT or 2 to change."
+                f"Balance due on: {due_date_text}{hint}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
         return (
             f"Confirm:\n{customer.name} bought {item_line}\n"
-            f"and paid N{parsed['paid_amount']:,}?\n"
+            f"and paid N{parsed['paid_amount']:,}?{hint}\n\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
 
@@ -264,7 +283,7 @@ def handle_transaction_setup(
         db.commit()
 
         confirm_msg = (
-            f"Confirm service/direct income:\n{direct_sale_item_line(parsed)}\n"
+            f"Confirm service/direct income:\n{direct_sale_item_line(parsed)}\n\n"
             "No customer debt will be recorded.\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
@@ -369,7 +388,16 @@ def handle_transaction_setup(
                 f"{setup_hint}"
             )
 
-    confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}"
+    no_details_hint = ""
+    if not parsed.get("product") and not parsed.get("invoice_items"):
+        cname = customer.name.title()
+        no_details_hint = (
+            "\n\n⚠️ No product details captured.\n"
+            "To include item + quantity, resend as:\n"
+            f"{cname} bought 10 dozen paper bags for 65000"
+        )
+
+    confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}{no_details_hint}"
     if parsed.get("artisan_note"):
         confirm_msg = (
             f"{confirm_msg}\n"

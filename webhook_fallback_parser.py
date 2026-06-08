@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 
 from constants import ACTION_AWAITING_CLARIFICATION
@@ -9,6 +10,12 @@ from whatsapp_client import send_whatsapp_message
 
 
 PLEASANTRIES = ["thanks", "thank you", "ok", "okay", "done", "bye", "good", "nice", "??"]
+
+_GREETINGS = re.compile(
+    r"^(?:hi|hello|hey|good\s+(?:morning|afternoon|evening|day)|howdy)"
+    r"(?:\s+titi|\s+there|\s+everyone|\s+all)?[!.,]?\s*$",
+    re.I,
+)
 
 
 @dataclass
@@ -38,6 +45,10 @@ def handle_fallback_parse(db, phone, text, parsed, user):
 
     if text.lower().strip() in PLEASANTRIES or len(text) < 2:
         return FallbackParseResult(response={"status": "ignored_pleasantry"})
+
+    if _GREETINGS.match(text.strip()):
+        send_whatsapp_message(phone, "Hi! Send MENU to see your options.")
+        return FallbackParseResult(response={"status": "greeting"})
 
     faq_key = detect_faq(text)
     if faq_key:

@@ -1,6 +1,51 @@
 import re
 
 
+# Maps plural (or alternate) product names to their canonical singular form.
+# Keeps the same product unified in inventory regardless of how users type it.
+# Only universal equivalences go here — business-specific aliases (eba=garri) go
+# in the per-business ProductAlias table.
+PRODUCT_CANONICALS = {
+    "eggs": "egg",
+    "tomatoes": "tomato",
+    "onions": "onion",
+    "peppers": "pepper",
+    "chillies": "chilli",
+    "chilies": "chilli",
+    "bananas": "banana",
+    "oranges": "orange",
+    "plantains": "plantain",
+    "yams": "yam",
+    "potatoes": "potato",
+    "mangoes": "mango",
+    "mangos": "mango",
+    "avocados": "avocado",
+    "cucumbers": "cucumber",
+    "carrots": "carrot",
+    "groundnuts": "groundnut",
+    "pineapples": "pineapple",
+    "pawpaws": "pawpaw",
+    "watermelons": "watermelon",
+    "cabbages": "cabbage",
+    "melons": "melon",
+    "okras": "okra",
+    "lemons": "lemon",
+    "limes": "lime",
+    "garlics": "garlic",
+    "gingers": "ginger",
+    "soaps": "soap",
+    "batteries": "battery",
+    "biscuits": "biscuit",
+    "brooms": "broom",
+    "mops": "mop",
+    "buckets": "bucket",
+    # Common misspellings / alternate spellings
+    "maggie": "maggi",
+    "maggies": "maggi",
+    "indomee": "indomie",
+    "nescafe": "nescafé",
+}
+
 UNIT_ALIASES = {
     "bags": "bag",
     "bag": "bag",
@@ -67,6 +112,11 @@ UNIT_ALIASES = {
     "roll": "roll",
     "congos": "congo",
     "congo": "congo",
+    "baskets": "basket",
+    "basket": "basket",
+    "trays": "tray",
+    "tray": "tray",
+    "creates": "crate",   # common typo for "crates"
     "kg": "kg",
     "g": "g",
     "ml": "ml",
@@ -102,6 +152,13 @@ def clean_product_name(product):
     return clean
 
 
+def normalize_product_canonical(product):
+    """Return canonical singular form for known plural/variant product names."""
+    if not product:
+        return product
+    return PRODUCT_CANONICALS.get(product.lower(), product)
+
+
 def normalize_item(product, unit=None):
     product = clean_product_name(product)
     normalized_unit = normalize_unit(unit)
@@ -130,4 +187,5 @@ def normalize_item(product, unit=None):
 
     product = re.sub(r"^of\s+", "", product).strip()
     product = re.sub(r"\s+", " ", product).strip()
+    product = normalize_product_canonical(product)
     return product, normalized_unit

@@ -123,6 +123,8 @@ def ensure_schema_updates(engine):
         "payment_modes": "VARCHAR",
         "delivery_options": "VARCHAR",
         "is_available": f"BOOLEAN DEFAULT {boolean_true}",
+        "category": "VARCHAR",
+        "reorder_quantity": "INTEGER",
     }
     with engine.begin() as connection:
         for column_name, column_type in inventory_updates.items():
@@ -274,6 +276,48 @@ def ensure_schema_updates(engine):
                     session_date VARCHAR,
                     created_at TIMESTAMP,
                     reviewed_at TIMESTAMP
+                )
+            """))
+
+    # ── Context memory columns on customer_memory ───────────────────────────
+    customer_memory_columns = {
+        column["name"]
+        for column in inspector.get_columns("customer_memory")
+    }
+    customer_memory_updates = {
+        "last_menu": "VARCHAR",
+        "last_command": "VARCHAR",
+        "last_topic": "VARCHAR",
+        "last_amount": "INTEGER",
+        "session_expires_at": "TIMESTAMP",
+    }
+    with engine.begin() as connection:
+        for column_name, column_type in customer_memory_updates.items():
+            if column_name not in customer_memory_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE customer_memory ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
+    # ── Per-business product alias table ────────────────────────────────────
+    if "product_aliases" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE product_aliases (
+                    id SERIAL PRIMARY KEY,
+                    owner_phone VARCHAR,
+                    alias VARCHAR,
+                    canonical VARCHAR,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """ if engine.dialect.name == "postgresql" else """
+                CREATE TABLE product_aliases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_phone VARCHAR,
+                    alias VARCHAR,
+                    canonical VARCHAR,
+                    created_at TIMESTAMP
                 )
             """))
 
