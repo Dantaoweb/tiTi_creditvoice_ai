@@ -16,6 +16,9 @@ BUSINESS_CATEGORIES = [
             ("electronics_shop", "Electronics Shop"),
             ("cosmetics_shop", "Cosmetics Shop"),
             ("spare_parts", "Spare Parts Seller"),
+            ("kitchen_utensils", "Kitchen Utensils / Cookware"),
+            ("hardware_store", "Hardware / Building Materials Shop"),
+            ("household_goods", "Household Goods Shop"),
             ("other_retail_trading", "Other Retail / Trading"),
         ],
     },
@@ -327,6 +330,9 @@ BUSINESS_TEMPLATE_ALIASES = {
     "electronics_shop": "retail_trading",
     "cosmetics_shop": "retail_trading",
     "spare_parts": "retail_trading",
+    "kitchen_utensils": "household_hardware",
+    "hardware_store": "household_hardware",
+    "household_goods": "household_hardware",
     "pharmacy": "pharmacy",
     "patent_medicine": "pharmacy",
     "private_school": "school",
@@ -341,12 +347,13 @@ BUSINESS_TEMPLATE_ALIASES = {
     "makeup_artist": "salon_beauty",
     "spa_massage": "salon_beauty",
     "beauty_products": "salon_beauty",
-    "tailor_fashion": "artisan_services",
-    "mechanic": "artisan_services",
+    "laundry_dry_cleaning": "laundry",
+    "car_wash":             "car_wash",
+    "tailor_fashion":       "tailor",
+    "barbing_salon":        "barber",
+    "mechanic":             "mechanic",
     "electrician": "artisan_services",
     "plumber": "artisan_services",
-    "car_wash": "artisan_services",
-    "laundry_dry_cleaning": "artisan_services",
     "carpentry_furniture": "artisan_services",
     "phone_repair": "artisan_services",
     "restaurant": "food_hospitality",
@@ -437,6 +444,44 @@ INDUSTRY_TEMPLATES = {
         ],
         "recommended_go": "Inventory, suppliers, product reports, and reminders make GO valuable for shops.",
         "recommended_pro": "PRO is best when staff record sales for the owner.",
+    },
+    "household_hardware": {
+        "label": "Kitchen / Hardware / Household",
+        "fit": "sellers of cookware, hardware items, household goods, and building materials",
+        "basic_value": [
+            "Record customer sales and payments",
+            "Record walk-in counter sales",
+            "Track customer balances and debts",
+        ],
+        "go_value": [
+            "Full inventory — pots, pans, hardware, fittings",
+            "Supplier purchases and supplier debt",
+            "Product sales reports",
+        ],
+        "pro_value": [
+            "Staff recording for shop attendants",
+            "Permission control per staff member",
+            "Owner-level dashboard across all staff",
+        ],
+        "examples": [
+            "Bello bought 2 pots at 3500 paid 2000",
+            "I sold 1 frying pan at 2800",
+            "I buy 10 dozen plates from Ayo at 4500 each",
+        ],
+        "quick_actions": [
+            ("Record sale", "Send: Bello bought pot 3500"),
+            ("Check stock", "Send: stock"),
+            ("Supplier", "Send: suppliers"),
+            ("Dashboard", "Send: dashboard"),
+        ],
+        "next_steps": [
+            "After saving a sale, reply YES to save or EDIT to correct it.",
+            "Send stock to see inventory.",
+            "Send dashboard to review sales, debtors, and top products.",
+            "Send MENU to see the main menu.",
+        ],
+        "recommended_go": "GO is valuable for tracking which items move fastest and managing supplier debt.",
+        "recommended_pro": "PRO is best when shop attendants record sales on behalf of the owner.",
     },
     "pharmacy": {
         "label": "Pharmacy / Medicine Store",
@@ -894,6 +939,196 @@ INDUSTRY_TEMPLATES = {
         "recommended_go": "GO adds inventory tracking, supplier records, and debt reminders — important for bulk material businesses with many site customers.",
         "recommended_pro": "PRO fits quarries and block makers with multiple drivers or workers recording deliveries.",
     },
+    "laundry": {
+        "label": "Laundry / Dry Cleaning",
+        "fit": "laundry and dry cleaning businesses tracking jobs, customer balances, and service prices",
+        "basic_value": [
+            "Set up your service price list (shirt, trouser, curtain, etc.)",
+            "Record jobs: John brought 10 shirts, 5 trousers — auto-total",
+            "Track customer balances and part-payments",
+        ],
+        "go_value": [
+            "Debt reminders for unpaid laundry balances",
+            "Better reports — daily jobs, top customers",
+            "Transaction notes for job details",
+        ],
+        "pro_value": [
+            "Staff recording for attendants",
+            "Owner sees all staff records",
+            "Permission control",
+        ],
+        "examples": [
+            "John brought 10 shirts, 5 trousers, 2 curtains",
+            "John paid 3000",
+            "today sales",
+        ],
+        "quick_actions": [
+            ("Record job", "Send: John brought 10 shirts, 5 trousers"),
+            ("Record payment", "Send: John paid 3000"),
+            ("Today jobs", "Send: today sales"),
+            ("Customer account", "Send: customer summary John"),
+        ],
+        "next_steps": [
+            "Set up your price list first — send: price list",
+            "Record jobs by typing: [customer] brought [items]",
+            "Confirm with YES to save, or EDIT to correct.",
+            "Send MENU to see the main menu.",
+        ],
+        "recommended_go": "GO adds reminders for unpaid laundry balances and better reports.",
+        "recommended_pro": "PRO fits laundries with attendants recording jobs for the owner.",
+    },
+    "car_wash": {
+        "label": "Car Wash",
+        "fit": "car wash businesses tracking jobs, service tiers, and customer balances",
+        "basic_value": [
+            "Set up your price list (body wash, full wash, engine wash, etc.)",
+            "Record jobs: John brought car full wash — auto-total",
+            "Track customer balances",
+        ],
+        "go_value": [
+            "Debt reminders for unpaid balances",
+            "Daily job reports",
+            "Transaction notes for job details",
+        ],
+        "pro_value": [
+            "Staff/washer recording",
+            "Owner sees all staff records",
+            "Permission control",
+        ],
+        "examples": [
+            "John brought saloon car full wash",
+            "Bayo brought jeep body wash, paid 2000",
+            "today sales",
+        ],
+        "quick_actions": [
+            ("Record job", "Send: John brought saloon car full wash"),
+            ("Record payment", "Send: John paid 3000"),
+            ("Today jobs", "Send: today sales"),
+            ("Price list", "Send: price list"),
+        ],
+        "next_steps": [
+            "Set up your price list first — send: price list",
+            "Record jobs: [customer] brought [vehicle type] [service]",
+            "Confirm with YES to save.",
+            "Send MENU to see the main menu.",
+        ],
+        "recommended_go": "GO adds reminders and better daily job reports.",
+        "recommended_pro": "PRO fits car washes with washers recording jobs.",
+    },
+    "barber": {
+        "label": "Barbing Salon",
+        "fit": "barbing salons tracking service income, customer balances, and price list",
+        "basic_value": [
+            "Set up service prices (haircut, shaving, kids cut, etc.)",
+            "Record direct income fast",
+            "Track customer balances",
+        ],
+        "go_value": [
+            "Debt reminders for unpaid balances",
+            "Daily and weekly sales reports",
+            "Transaction notes",
+        ],
+        "pro_value": [
+            "Staff barber recording",
+            "Owner view across all barbers",
+            "Permission control",
+        ],
+        "examples": [
+            "I received 1500 for haircut and shaving",
+            "Bayo got haircut 500 paid 0",
+            "today sales",
+        ],
+        "quick_actions": [
+            ("Direct income", "Send: I received 1500 for haircut"),
+            ("Customer balance", "Send: Bayo haircut 500"),
+            ("Today sales", "Send: today sales"),
+            ("Price list", "Send: price list"),
+        ],
+        "next_steps": [
+            "Set up your price list — send: price list",
+            "For cash walk-ins: I received [amount] for [service]",
+            "For balances: [name] [service] [amount]",
+            "Send MENU to see the main menu.",
+        ],
+        "recommended_go": "GO adds reminders, notes, and better reports for the barbing salon.",
+        "recommended_pro": "PRO fits salons with multiple barbers recording work.",
+    },
+    "tailor": {
+        "label": "Tailor / Fashion Designer",
+        "fit": "tailors and fashion designers tracking jobs, deposits, and customer balances",
+        "basic_value": [
+            "Record jobs with deposit and balance",
+            "Set up service prices for common sewing jobs",
+            "Track customer balances and due dates",
+        ],
+        "go_value": [
+            "Debt reminders for unpaid job balances",
+            "Better reports — jobs done, outstanding",
+            "Transaction notes for fabric/design details",
+        ],
+        "pro_value": [
+            "Staff/apprentice recording",
+            "Owner view across workers",
+            "Permission control",
+        ],
+        "examples": [
+            "Aisha sewed dress 25000 paid 15000",
+            "John brought 2 shirts, 1 trouser for sewing",
+            "customer summary Aisha",
+        ],
+        "quick_actions": [
+            ("Record job", "Send: Aisha sewed dress 25000 paid 15000"),
+            ("Job with balance", "Send: Bayo suit 30000 paid 15000 due Friday"),
+            ("Customer account", "Send: customer summary Aisha"),
+            ("Price list", "Send: price list"),
+        ],
+        "next_steps": [
+            "Record jobs: [customer] [item] sewed [amount] paid [deposit]",
+            "Set up common sewing prices — send: price list",
+            "Confirm with YES to save.",
+            "Send MENU to see the main menu.",
+        ],
+        "recommended_go": "GO adds reminders and notes for fabrics and design details.",
+        "recommended_pro": "PRO helps tailors with apprentices recording work.",
+    },
+    "mechanic": {
+        "label": "Mechanic Workshop",
+        "fit": "mechanics tracking jobs, labour charges, and customer balances",
+        "basic_value": [
+            "Record job income and customer balances",
+            "Set up common labour price list",
+            "Track unpaid balances",
+        ],
+        "go_value": [
+            "Debt reminders for unpaid jobs",
+            "Transaction notes for parts and job details",
+            "Better reports",
+        ],
+        "pro_value": [
+            "Staff/apprentice recording",
+            "Owner view across workers",
+            "Permission control",
+        ],
+        "examples": [
+            "Bayo brought car oil change",
+            "Ade car service 15000 paid 8000",
+            "customer summary Bayo",
+        ],
+        "quick_actions": [
+            ("Record job", "Send: Bayo brought car oil change"),
+            ("Job with balance", "Send: Ade car service 15000 paid 8000"),
+            ("Customer account", "Send: customer summary Bayo"),
+            ("Price list", "Send: price list"),
+        ],
+        "next_steps": [
+            "Set up labour prices — send: price list",
+            "Record jobs: [customer] brought [vehicle] [service]",
+            "Confirm with YES to save.",
+            "Send MENU to see the main menu.",
+        ],
+        "recommended_go": "GO adds notes for parts, reminders, and better job reports.",
+        "recommended_pro": "PRO fits workshops with apprentices recording jobs.",
+    },
 }
 
 
@@ -927,6 +1162,36 @@ RECEIPT_CONFIG = {
         "customer_label": "Client",
         "amount_label": "Total",
         "footer": "Thank you for your patronage.",
+    },
+    "laundry": {
+        "title": "Laundry Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you for choosing us. Your clothes are ready!",
+    },
+    "car_wash": {
+        "title": "Car Wash Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you! Drive clean.",
+    },
+    "barber": {
+        "title": "Service Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you for your patronage.",
+    },
+    "tailor": {
+        "title": "Sewing Receipt",
+        "customer_label": "Client",
+        "amount_label": "Total",
+        "footer": "Thank you for patronising us.",
+    },
+    "mechanic": {
+        "title": "Workshop Receipt",
+        "customer_label": "Customer",
+        "amount_label": "Total",
+        "footer": "Thank you for your patronage. Drive safely.",
     },
     "food_hospitality": {
         "title": "Receipt",
@@ -1056,6 +1321,8 @@ def template_key_for_user(user):
         return BUSINESS_TEMPLATE_ALIASES[business_type]
 
     category = getattr(user, "business_category", None)
+    if business_type in ("kitchen_utensils", "hardware_store", "household_goods"):
+        return "household_hardware"
     if category == "retail_trading":
         return "retail_trading"
     if category == "health":
@@ -1065,6 +1332,16 @@ def template_key_for_user(user):
     if category == "beauty_personal_care":
         return "salon_beauty"
     if category == "services_artisans":
+        if business_type == "laundry_dry_cleaning":
+            return "laundry"
+        if business_type == "car_wash":
+            return "car_wash"
+        if business_type == "tailor_fashion":
+            return "tailor"
+        if business_type == "barbing_salon":
+            return "barber"
+        if business_type == "mechanic":
+            return "mechanic"
         return "artisan_services"
     if category == "food_hospitality":
         return "food_hospitality"
@@ -1355,6 +1632,44 @@ INDUSTRY_PRODUCT_CATALOG = {
         ("stone", "aggregate"),
         ("clay", "raw material"),
     ],
+    "household_hardware": [
+        # Kitchen & cookware
+        ("pot", "cookware"),
+        ("frying pan", "cookware"),
+        ("cooking spoon", "cookware"),
+        ("spatula", "cookware"),
+        ("kettle", "cookware"),
+        ("pressure cooker", "cookware"),
+        ("plates", "tableware"),
+        ("cups", "tableware"),
+        ("bowls", "tableware"),
+        ("cutlery set", "tableware"),
+        ("tray", "tableware"),
+        ("flask", "tableware"),
+        # Household & storage
+        ("bucket", "household"),
+        ("basin", "household"),
+        ("cooler", "household"),
+        ("water dispenser", "household"),
+        ("broom", "household"),
+        ("mop", "household"),
+        ("dustbin", "household"),
+        ("lantern", "household"),
+        ("torch", "household"),
+        ("fan", "electrical"),
+        ("extension box", "electrical"),
+        # Hardware & building
+        ("padlock", "hardware"),
+        ("nail", "hardware"),
+        ("hinge", "hardware"),
+        ("paint", "building materials"),
+        ("plank", "building materials"),
+        ("tile", "building materials"),
+        ("cement", "building materials"),
+        ("wire", "hardware"),
+        ("pipe", "plumbing"),
+        ("tap", "plumbing"),
+    ],
 }
 
 # Preferred units per industry — shown in stock-add guides and as hints
@@ -1362,6 +1677,7 @@ INDUSTRY_DEFAULT_UNITS = {
     "pharmacy": ["pack", "strip", "tablet", "sachet", "bottle", "vial"],
     "agriculture": ["bag", "mudu", "congo", "crate", "tray", "kg"],
     "retail_trading": ["carton", "bag", "pack", "piece", "dozen"],
+    "household_hardware": ["piece", "set", "dozen", "carton", "pack"],
     "food_hospitality": ["kg", "litre", "carton", "pack", "piece"],
     "energy_fuel": ["litre", "drum", "cylinder", "kg"],
     "salon_beauty": ["piece", "bottle", "pack", "set"],
@@ -1373,6 +1689,110 @@ INDUSTRY_DEFAULT_UNITS = {
     "real_estate_rentals": [],
     "professional_services": [],
 }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Service price catalog — (item_name, tier_label_or_None, default_price)
+# Used to seed a service business's price list during guided setup.
+# ─────────────────────────────────────────────────────────────────────────────
+
+SERVICE_PRICE_CATALOG = {
+    "laundry": [
+        ("shirt",         "wash & iron",  800),
+        ("shirt",         "iron only",    400),
+        ("trouser",       "wash & iron",  1000),
+        ("trouser",       "iron only",    500),
+        ("dress",         "wash & iron",  1200),
+        ("dress",         "iron only",    600),
+        ("blouse",        "wash & iron",  800),
+        ("blouse",        "iron only",    400),
+        ("jeans",         "wash & iron",  1000),
+        ("jeans",         "iron only",    500),
+        ("skirt",         "wash & iron",  800),
+        ("skirt",         "iron only",    400),
+        ("suit",          "wash & iron",  3000),
+        ("suit",          "iron only",    1500),
+        ("agbada",        "wash & iron",  4000),
+        ("agbada",        "iron only",    2000),
+        ("senator",       "wash & iron",  2000),
+        ("senator",       "iron only",    1000),
+        ("bed spread",    "wash & iron",  2500),
+        ("bed spread",    "iron only",    1200),
+        ("curtain",       "wash & iron",  1500),
+        ("curtain",       "iron only",    800),
+        ("duvet",         None,           3500),
+        ("pillow case",   "wash & iron",  300),
+        ("towel",         None,           500),
+        ("baby clothes",  "wash & iron",  800),
+        ("jacket",        "wash & iron",  1500),
+        ("jacket",        "iron only",    700),
+    ],
+    "car_wash": [
+        ("saloon car",    "body only",                      2000),
+        ("saloon car",    "body + interior",                4000),
+        ("saloon car",    "full (body + interior + engine)", 7000),
+        ("jeep / SUV",    "body only",                      3000),
+        ("jeep / SUV",    "body + interior",                5000),
+        ("jeep / SUV",    "full (body + interior + engine)", 9000),
+        ("bus / van",     "body only",                      3500),
+        ("bus / van",     "body + interior",                6000),
+        ("engine wash",   None,                             3500),
+        ("interior cleaning", None,                         2500),
+        ("bike wash",     None,                             500),
+        ("tricycle wash", None,                             800),
+    ],
+    "barber": [
+        ("haircut",           None,  500),
+        ("low cut",           None,  500),
+        ("shaving",           None,  300),
+        ("barbing & shaving", None,  800),
+        ("kids cut",          None,  400),
+        ("hair treatment",    None,  1500),
+        ("lining",            None,  200),
+        ("mohawk",            None,  1000),
+        ("dyeing",            None,  2000),
+    ],
+    "tailor": [
+        ("shirt sewing",       None,  2500),
+        ("trouser sewing",     None,  2500),
+        ("skirt sewing",       None,  2000),
+        ("dress sewing",       None,  4000),
+        ("kaftan sewing",      None,  3000),
+        ("ankara top sewing",  None,  2500),
+        ("agbada sewing",      None,  8000),
+        ("suit sewing",        None,  10000),
+        ("alteration",         None,  1000),
+        ("zip fixing",         None,  500),
+        ("button fixing",      None,  200),
+        ("hemming",            None,  500),
+    ],
+    "mechanic": [
+        ("engine oil change",  "labour only",  2000),
+        ("tyre change",        "per tyre",     500),
+        ("brake pad change",   "front axle",   3000),
+        ("brake pad change",   "rear axle",    3000),
+        ("battery check",      None,           500),
+        ("wheel balancing",    "per tyre",     500),
+        ("wheel alignment",    None,           3000),
+        ("vehicle diagnostic", None,           2000),
+        ("AC service",         None,           5000),
+        ("suspension repair",  None,           5000),
+    ],
+}
+
+# Keys that have a SERVICE_PRICE_CATALOG entry
+SERVICE_CATALOG_KEYS = set(SERVICE_PRICE_CATALOG.keys())
+
+
+def service_price_catalog_for_user(user):
+    """Return list of (name, unit, price) tuples for the user's service type."""
+    key = template_key_for_user(user)
+    return SERVICE_PRICE_CATALOG.get(key, [])
+
+
+def has_service_price_catalog(user):
+    key = template_key_for_user(user)
+    return key in SERVICE_CATALOG_KEYS
 
 
 def get_product_category_suggestion(template_key, product):

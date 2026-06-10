@@ -82,7 +82,7 @@ export default function Landing() {
       <section className="landing-hero">
         <h1 className="landing-h1">Meet tiTi</h1>
         <p className="landing-tagline">
-          Your AI business assistant for Nigeria's informal economy.
+          The AI business assistant that works for you.
           <br />
           Record sales, track debts, and manage stock — in plain language.
         </p>

@@ -13,12 +13,23 @@ from constants import (
     ACTION_DASHBOARD_MENU,
     ACTION_ONBOARD_CUSTOMER,
     ACTION_RESIGN_CONFIRM,
+    ACTION_SERVICE_JOB_CONFIRM,
     ACTION_STOCK_ADD_CONFIRM,
+    ACTION_STOCK_ITEM_ADD_QTY,
+    ACTION_STOCK_ITEM_MENU,
+    ACTION_STOCK_ITEM_UPDATE_PRICE,
+    ACTION_STOCK_MENU,
     FAST_CAPTURE_REVIEW_ACTIONS,
+    GUIDED_SERVICE_SETUP_ACTIONS,
+    GUIDED_STOCK_ACTIONS,
     SELECT_PRODUCT_ACTIONS,
+    STOCK_MENU_ACTIONS,
 )
 from context_memory import get_active_menu
 from fast_capture_commands import handle_fast_capture_review_pending
+from guided_service_commands import handle_guided_service_pending
+from guided_stock_commands import handle_guided_stock_pending, start_guided_stock_flow
+from service_job_commands import handle_service_job_confirm
 from inventory_suppliers import manual_stock_add, upsert_stock_with_prices
 from select_product_commands import handle_select_product_pending
 from home_menu_commands import handle_home_menu_pending
@@ -105,10 +116,172 @@ def _handle_dashboard_menu(
         send_whatsapp_message(phone, add_stock_option_to_menu(build_dashboard_menu_message()))
         return PendingRouteResult(response={"status": "invalid_dashboard_menu_option"})
 
-    db.delete(pending)
+    # Keep pending as DASHBOARD_MENU so the user can send another number
+    # without being dropped back to the home menu.
     db.commit()
     send_whatsapp_message(phone, msg)
     return PendingRouteResult(response={"status": status})
+
+
+def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, send_message):
+    """Handle replies after the stock list — number to manage item, ADD to add new."""
+    normalized = text.strip().lower()
+    action = pending.action
+    try:
+        payload = json.loads(pending.payload_json or "{}")
+    except Exception:
+        payload = {}
+
+    # ── Main stock list menu ─────────────────────────────────────────────────
+    if action == ACTION_STOCK_MENU:
+        item_ids = payload.get("item_ids", [])
+
+        if normalized in ["add", "add stock", "new", "new product"]:
+            db.delete(pending)
+            db.commit()
+            return start_guided_stock_flow(db, phone, user, send_message)
+
+        if normalized.isdigit():
+            index = int(normalized) - 1
+            if index < 0 or index >= len(item_ids):
+                send_message(phone, f"Send a number between 1 and {len(item_ids)}, or ADD to add new stock.")
+                return {"status": "stock_menu_out_of_range"}
+
+            from inventory_suppliers import find_inventory_item as _fii
+            from models import InventoryItem as _Inv
+            item = db.query(_Inv).filter(_Inv.id == item_ids[index]).first()
+            if not item:
+                send_message(phone, "Item not found. Send *stock* to refresh.")
+                db.delete(pending)
+                db.commit()
+                return {"status": "stock_menu_item_missing"}
+
+            qty = item.quantity or 0
+            unit_label = f" {item.unit}" if item.unit else ""
+            cost_line = f"Cost: N{item.cost_price:,}" if item.cost_price else "Cost: not set"
+            sell_line = f"Sell: N{item.selling_price:,}" if item.selling_price else "Sell: not set"
+
+            pending.action = ACTION_STOCK_ITEM_MENU
+            payload["selected_id"] = item.id
+            payload["selected_name"] = item.name
+            payload["selected_unit"] = item.unit
+            pending.payload_json = json.dumps(payload)
+            db.commit()
+
+            send_message(
+                phone,
+                f"*{item.name.title()}{unit_label}*\n"
+                f"Qty: {qty:,}{unit_label}\n"
+                f"{cost_line}  |  {sell_line}\n\n"
+                "1. Add more stock\n"
+                "2. Update price\n"
+                "3. Delete item\n\n"
+                "Reply *BACK* to return to stock list."
+            )
+            return {"status": "stock_item_menu_shown"}
+
+        # Anything else — exit the stock menu and process normally
+        db.delete(pending)
+        db.commit()
+        return None
+
+    # ── Item detail menu ─────────────────────────────────────────────────────
+    if action == ACTION_STOCK_ITEM_MENU:
+        item_id = payload.get("selected_id")
+        item_name = payload.get("selected_name", "")
+        item_unit = payload.get("selected_unit")
+
+        if normalized in ["back", "menu", "cancel", "0"]:
+            db.delete(pending)
+            db.commit()
+            return None
+
+        if normalized in ["1", "add", "add more", "add stock"]:
+            pending.action = ACTION_STOCK_ITEM_ADD_QTY
+            db.commit()
+            unit_label = f" {item_unit}" if item_unit else ""
+            send_message(phone, f"How many{unit_label} of *{item_name.title()}* are you adding?")
+            return {"status": "stock_item_add_qty_prompt"}
+
+        if normalized in ["2", "price", "update price", "update"]:
+            pending.action = ACTION_STOCK_ITEM_UPDATE_PRICE
+            db.commit()
+            unit_label = f" per {item_unit}" if item_unit else ""
+            send_message(
+                phone,
+                f"New cost price{unit_label} for *{item_name.title()}*?\n"
+                "(Send 0 or SKIP to keep current)\n\n"
+                "Format: cost then sell — e.g.  500 700"
+            )
+            return {"status": "stock_item_update_price_prompt"}
+
+        if normalized in ["3", "delete", "remove"]:
+            from inventory_suppliers import delete_stock_item
+            count = delete_stock_item(db, business_owner_phone, item_name)
+            db.commit()
+            db.delete(pending)
+            db.commit()
+            send_message(phone, f"Deleted *{item_name.title()}* from your stock.\n\nSend *stock* to see your updated inventory.")
+            return {"status": "stock_item_deleted"}
+
+        send_message(
+            phone,
+            f"*{item_name.title()}*\n\n"
+            "1. Add more stock\n2. Update price\n3. Delete item\n\nReply BACK to return."
+        )
+        return {"status": "stock_item_menu_reprompt"}
+
+    # ── Add qty to existing item ─────────────────────────────────────────────
+    if action == ACTION_STOCK_ITEM_ADD_QTY:
+        item_name = payload.get("selected_name", "")
+        item_unit = payload.get("selected_unit")
+        qty_str = normalized.replace(",", "")
+        if not qty_str.isdigit() or int(qty_str) < 1:
+            send_message(phone, "Send a number greater than 0. Example: 20")
+            return {"status": "stock_item_add_qty_invalid"}
+        qty = int(qty_str)
+        manual_stock_add(db, business_owner_phone, item_name, qty, item_unit, None, "Manual add")
+        db.commit()
+        db.delete(pending)
+        db.commit()
+        unit_label = f" {item_unit}" if item_unit else ""
+        send_message(phone, f"Added {qty:,}{unit_label} to *{item_name.title()}*.\n\nSend *stock* to see your updated inventory.")
+        return {"status": "stock_item_qty_added"}
+
+    # ── Update price ─────────────────────────────────────────────────────────
+    if action == ACTION_STOCK_ITEM_UPDATE_PRICE:
+        item_name = payload.get("selected_name", "")
+        item_unit = payload.get("selected_unit")
+
+        parts = text.strip().replace(",", "").split()
+        nums = []
+        for p in parts:
+            p2 = p.lower().replace("n", "").strip()
+            try:
+                nums.append(int(float(p2)))
+            except ValueError:
+                pass
+
+        if not nums:
+            send_message(phone, "Send cost and sell price. Example:  500 700\nOr send SKIP to cancel.")
+            return {"status": "stock_item_update_price_invalid"}
+
+        cost = nums[0] if len(nums) >= 1 else 0
+        sell = nums[1] if len(nums) >= 2 else nums[0]
+
+        upsert_stock_with_prices(db, business_owner_phone, item_name, item_unit, cost, sell)
+        db.commit()
+        db.delete(pending)
+        db.commit()
+        send_message(
+            phone,
+            f"Price updated for *{item_name.title()}*.\n"
+            f"Cost: N{cost:,}  |  Sell: N{sell:,}\n\n"
+            "Send *stock* to see your updated inventory."
+        )
+        return {"status": "stock_item_price_updated"}
+
+    return None
 
 
 def _handle_transaction_confirm(
@@ -287,6 +460,38 @@ def handle_pending_actions(
             db, phone, text, pending, user,
             business_owner_phone, visible_recorded_by_id,
             subscription, message_id, business_name, send_whatsapp_message,
+        )
+        if result:
+            return _wrap(result)
+
+    # ── Guided stock add (catalog Q&A) ───────────────────────────────────────
+    if pending and pending.action in GUIDED_STOCK_ACTIONS and not is_command:
+        result = handle_guided_stock_pending(
+            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
+        )
+        if result:
+            return _wrap(result)
+
+    # ── Guided service price list setup ──────────────────────────────────────
+    if pending and pending.action in GUIDED_SERVICE_SETUP_ACTIONS and not is_command:
+        result = handle_guided_service_pending(
+            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
+        )
+        if result:
+            return _wrap(result)
+
+    # ── Service job confirm (brought/drop flow) ───────────────────────────────
+    if pending and pending.action == ACTION_SERVICE_JOB_CONFIRM and not is_command:
+        result = handle_service_job_confirm(
+            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
+        )
+        if result:
+            return _wrap(result)
+
+    # ── Stock menu (after viewing stock list) ────────────────────────────────
+    if pending and pending.action in STOCK_MENU_ACTIONS and not is_command:
+        result = _handle_stock_menu(
+            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
         )
         if result:
             return _wrap(result)

@@ -120,6 +120,26 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
         if item:
             return item
 
+    # 6. Fuzzy word match: strip prepositions then check every query word is
+    #    a prefix/substring of some word in the item name. Only return when
+    #    exactly one item matches to avoid false positives.
+    #    e.g. "basket of mangoes" → ["basket","mangoes"] matches "Baskets Mangoes"
+    _stop = {"of", "the", "and", "in", "a", "an"}
+    _qwords = [w for w in re.split(r"\W+", product.lower()) if w and w not in _stop]
+    if len(_qwords) >= 2:
+        _candidates = []
+        for _inv in db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone
+        ).all():
+            _iwords = set(re.split(r"\W+", _inv.name.lower()))
+            if all(
+                any(qw in iw or iw.startswith(qw) or qw.startswith(iw) for iw in _iwords)
+                for qw in _qwords
+            ):
+                _candidates.append(_inv)
+        if len(_candidates) == 1:
+            return _candidates[0]
+
     return None
 
 
@@ -451,6 +471,31 @@ def manual_stock_add(db, owner_phone, product, quantity, unit, user_id, note="Ma
         db, owner_phone, product, quantity, unit, None,
         "IN", "MANUAL", None, user_id, note,
     )
+
+
+def update_cost_price(db, owner_phone, product, price):
+    """Update cost price for all variants of a product. Returns list of updated items."""
+    product_norm, _ = normalize_item(product, None)
+    items = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        func.lower(InventoryItem.name).like(f"%{product_norm.lower()}%"),
+    ).all()
+    for item in items:
+        item.cost_price = price
+        item.updated_at = _utcnow()
+    return items
+
+
+def delete_stock_item(db, owner_phone, product):
+    """Delete inventory item(s) whose name contains the product string. Returns count deleted."""
+    product_norm, _ = normalize_item(product, None)
+    items = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        func.lower(InventoryItem.name).like(f"%{product_norm.lower()}%"),
+    ).all()
+    for item in items:
+        db.delete(item)
+    return len(items)
 
 
 def manual_stock_remove(db, owner_phone, product, quantity, unit, user_id, note="Manual remove"):

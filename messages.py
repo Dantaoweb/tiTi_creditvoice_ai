@@ -148,11 +148,16 @@ def build_plan_payment_message(plan):
 
 
 def build_post_onboarding_menu(business_name, user=None):
+    from business_templates import has_service_price_catalog
     type_line = f"{business_type_display(user)}\n" if user else ""
     examples = template_examples_for_user(user) if user else [
         "Ade bought rice 5000",
         "Ade paid 3000",
     ]
+    if user and has_service_price_catalog(user):
+        option4 = "4. Set up your price list ✦"
+    else:
+        option4 = "4. Add your products ✦"
     return (
         f"Account created.\n"
         f"Business: {business_name.title()}\n"
@@ -163,7 +168,8 @@ def build_post_onboarding_menu(business_name, user=None):
         "1. Help & formats\n"
         "2. Add customer\n"
         "3. Dashboard\n"
-        "4. Upgrade\n\n"
+        f"{option4}\n"
+        "5. Upgrade\n\n"
         "Send MENU anytime.\n\n"
         "Protect your account: set a recovery PIN in case you ever change your phone number.\n"
         "set pin 1234"

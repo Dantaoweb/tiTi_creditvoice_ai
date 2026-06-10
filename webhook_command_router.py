@@ -3,14 +3,19 @@ from business_templates import build_business_category_menu
 from analytics_commands import handle_analytics_command
 from void_commands import handle_void_transaction
 from customer_commands import handle_customer_command
-from inventory_suppliers import save_product_alias, set_product_category, set_reorder_quantity
+from guided_service_commands import start_guided_service_setup
+from inventory_suppliers import (
+    save_product_alias, set_product_category, set_reorder_quantity,
+    update_cost_price, delete_stock_item,
+)
 from messages import (
     build_plan_message,
     build_supported_formats_message,
     build_upgrade_message,
 )
-from models import PendingAction, ProductAlias
+from models import InventoryItem, PendingAction, ProductAlias
 from onboarding_commands import handle_profile_command
+from service_job_commands import start_service_job_confirm
 from linked_phone_commands import (
     handle_link_phone, handle_unlink_phone, handle_my_phones,
 )
@@ -55,6 +60,43 @@ def handle_parsed_command(
             f"in your inventory.\n\nTo remove it, send: alias {alias} = {alias}"
         )
         return {"status": "product_alias_saved"}
+
+    if parsed["type"] == "SET_COST_PRICE":
+        product = parsed["product"]
+        price = parsed["price"]
+        items = update_cost_price(db, business_owner_phone, product, price)
+        if not items:
+            send_whatsapp_message(
+                phone,
+                f"No stock item found for *{product.title()}*.\n"
+                "Add it first with:\nadd stock rice cost 3000 sell 4000"
+            )
+            return {"status": "set_cost_price_not_found"}
+        db.commit()
+        names = ", ".join(sorted({i.name.title() for i in items}))
+        send_whatsapp_message(
+            phone,
+            f"Cost price updated for *{names}*: N{price:,}\n\n"
+            "Send *stock* to see your updated inventory."
+        )
+        return {"status": "set_cost_price_saved"}
+
+    if parsed["type"] == "DELETE_STOCK_ITEM":
+        product = parsed["product"]
+        count = delete_stock_item(db, business_owner_phone, product)
+        if not count:
+            send_whatsapp_message(
+                phone,
+                f"No stock item found matching *{product.title()}*."
+            )
+            return {"status": "delete_stock_item_not_found"}
+        db.commit()
+        send_whatsapp_message(
+            phone,
+            f"Deleted {count} stock item(s) matching *{product.title()}*.\n\n"
+            "Send *stock* to see your updated inventory."
+        )
+        return {"status": "delete_stock_item_done"}
 
     if parsed["type"] == "SET_PRODUCT_CATEGORY":
         product = parsed["product"]
@@ -336,6 +378,54 @@ def handle_parsed_command(
     )
     if transaction_setup_result:
         return transaction_setup_result
+
+    # ── Service price list commands ──────────────────────────────────────────
+    if parsed["type"] == "PRICE_LIST":
+        if not user:
+            send_whatsapp_message(phone, "Register your business first.")
+            return {"status": "price_list_no_user"}
+        return start_guided_service_setup(db, phone, user, send_whatsapp_message)
+
+    if parsed["type"] == "SET_SERVICE_PRICE":
+        if not user:
+            send_whatsapp_message(phone, "Register your business first.")
+            return {"status": "set_service_price_no_user"}
+        item_name = parsed["item"].strip().lower()
+        price = parsed["price"]
+        from sqlalchemy import func as _func
+        existing = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == business_owner_phone,
+            _func.lower(InventoryItem.name) == item_name,
+            InventoryItem.quantity == None,
+        ).first()
+        if existing:
+            existing.selling_price = price
+            db.commit()
+            label = f"{existing.name.title()}{' (' + existing.unit + ')' if existing.unit else ''}"
+            send_whatsapp_message(phone, f"Price updated: *{label}* — N{price:,}")
+        else:
+            db.add(InventoryItem(
+                owner_phone=business_owner_phone,
+                name=item_name,
+                unit=None,
+                quantity=None,
+                selling_price=price,
+                cost_price=None,
+                is_available=True,
+                category="service",
+            ))
+            db.commit()
+            send_whatsapp_message(phone, f"Price set: *{item_name.title()}* — N{price:,}\n\nSend *price list* to see all prices.")
+        return {"status": "set_service_price_saved"}
+
+    # ── Service job (customer brought/dropped items) ─────────────────────────
+    if parsed["type"] == "SERVICE_JOB":
+        if not user:
+            send_whatsapp_message(phone, "Register your business first.")
+            return {"status": "service_job_no_user"}
+        return start_service_job_confirm(
+            db, phone, business_owner_phone, user, parsed, send_whatsapp_message
+        )
 
     return None
 

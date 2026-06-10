@@ -241,7 +241,10 @@ def _handle_list_selection(db, phone, text, pending, business_owner_phone, send_
     if not text.strip().isdigit():
         items = db.query(InventoryItem).filter(InventoryItem.id.in_(item_ids)).all()
         items.sort(key=lambda x: item_ids.index(x.id))
-        send_message(phone, build_product_list_message(items) + "\n\nReply with a number.")
+        send_message(
+            phone,
+            build_product_list_message(items) + "\n\nReply with a number.\nSend MENU to go back."
+        )
         return {"status": "select_product_invalid_selection"}
 
     index = int(text.strip()) - 1
@@ -321,6 +324,17 @@ def _handle_qty_input(db, phone, text, pending, business_owner_phone, send_messa
     deviation = (price - standard_price) if price_override is not None else 0
     below_cost = bool(cost_price and price < cost_price)
 
+    # Warn if selling more than available stock
+    _inv_id = payload.get("selected_id")
+    _stock_warning = ""
+    if _inv_id:
+        _inv_item = db.query(InventoryItem).filter(InventoryItem.id == _inv_id).first()
+        if _inv_item and _inv_item.quantity is not None and qty > _inv_item.quantity:
+            _stock_warning = (
+                f"\n\n⚠ *Low stock:* Only {_inv_item.quantity:,} {_inv_item.unit or 'unit(s)'} left. "
+                f"Selling {qty} will leave you with negative stock."
+            )
+
     cart.append({
         "product": payload["selected_name"],
         "quantity": qty,
@@ -347,7 +361,7 @@ def _handle_qty_input(db, phone, text, pending, business_owner_phone, send_messa
     pending.action = ACTION_SELECT_PRODUCT_CART
     db.commit()
 
-    send_message(phone, build_cart_message(cart))
+    send_message(phone, build_cart_message(cart) + _stock_warning)
     return {"status": "select_product_cart_shown"}
 
 

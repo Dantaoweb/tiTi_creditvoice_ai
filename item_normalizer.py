@@ -148,6 +148,8 @@ def clean_product_name(product):
     clean = str(product or "").lower().strip()
     clean = re.sub(r"[,.;:]+$", "", clean)
     clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean)
+    # Strip leading article "a"/"an" — "a bag of feed" → "bag of feed"
+    clean = re.sub(r"^an?\s+", "", clean)
     clean = re.sub(r"\s+", " ", clean).strip()
     return clean
 

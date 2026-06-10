@@ -519,6 +519,11 @@ def extract_direct_sale_details(text):
 
     product = product.strip()
     product, unit = normalize_item(product, unit)
+    # "5 crates at 5000" → unit="crate", product="" — the unit IS the product
+    # (crate sellers use "crates" as the product name).
+    if not product and unit:
+        product = unit
+        unit = None
     if not product:
         return None
 
@@ -802,6 +807,9 @@ def parse_invoice_item(item_text):
 
     product = product.strip()
     product, unit = normalize_item(product, unit)
+    if not product and unit:
+        product = unit
+        unit = None
     if not product:
         return None
 
@@ -1572,10 +1580,66 @@ def parse_message(text):
             "unit": reorder_match.group("unit"),
         }
 
+    # ── Delete garbled stock item ───────────────────────────────────────────
+    # "delete stock item egg cost 4700"  |  "remove item garri cost 4000 and selling price 5000"
+    _del_match = re.match(
+        r"^(?:delete|remove)\s+(?:stock\s+)?item\s+(?P<product>.+)$",
+        clean_text,
+    )
+    if _del_match:
+        return {"type": "DELETE_STOCK_ITEM", "product": _del_match.group("product").strip()}
+
     # ── Update business type ────────────────────────────────────────────────
     # "update business type"  |  "change my business type"  |  "change business"
     if re.match(r"^(?:update|change|set)\s+(?:my\s+)?business(?:\s+type)?$", clean_text):
         return {"type": "UPDATE_BUSINESS_TYPE"}
+
+    # ── Service price list commands ─────────────────────────────────────────
+    # "price list" / "my price list" / "service prices" → show/edit price list
+    if clean_text in [
+        "price list", "my price list", "pricelist", "service prices",
+        "service price list", "my services", "services", "view prices",
+    ] or re.match(r"^(?:show|view|check|see|edit|update)\s+(?:my\s+)?(?:price\s*list|service\s+prices?)$", clean_text):
+        return {"type": "PRICE_LIST"}
+
+    # "price shirt 1000" / "set price trouser 800" / "update price curtain 1500"
+    _set_svc_price = re.match(
+        r"^(?:set\s+|update\s+)?price\s+(?P<item>[a-z][a-z\s]+?)\s+(?P<price>[Nn]?[\d,]+)$",
+        clean_text,
+    )
+    if _set_svc_price:
+        _price_str = _set_svc_price.group("price").replace(",", "").replace("n", "").replace("N", "")
+        if _price_str.isdigit():
+            return {
+                "type": "SET_SERVICE_PRICE",
+                "item": _set_svc_price.group("item").strip(),
+                "price": int(_price_str),
+            }
+
+    # ── Service job: customer brought/dropped items ─────────────────────────
+    # "John brought 10 shirts, 5 trousers"
+    # "Bayo dropped car full wash"
+    # "Ade came with 3 dresses, 1 suit for sewing"
+    _svc_job_m = re.match(
+        r"^(?P<customer>[A-Za-z][A-Za-z\s]{1,30}?)\s+"
+        r"(?:brought|bring|dropped?\s*(?:off|in)?|came\s+with|carry\s+come)\s+"
+        r"(?P<items>.+?)(?:\s+(?:and\s+)?paid\s+(?P<paid>[Nn]?[\d,]+))?\s*$",
+        text.strip(),
+        re.I,
+    )
+    if _svc_job_m:
+        _customer = _svc_job_m.group("customer").strip()
+        _items_text = _svc_job_m.group("items").strip()
+        _paid_raw = _svc_job_m.group("paid") or "0"
+        _paid = int(_paid_raw.replace(",", "").replace("n", "").replace("N", "") or "0")
+        _raw_items = _parse_service_items(_items_text)
+        if _raw_items:
+            return {
+                "type": "SERVICE_JOB",
+                "customer": _customer,
+                "raw_items": _raw_items,
+                "paid": _paid,
+            }
 
     # =========================
     # 📊 COMMANDS
@@ -2333,12 +2397,13 @@ def parse_message(text):
             return {"type": "PRINT_RECEIPT", "transaction_id": int(query)}
         return {"type": "PRINT_RECEIPT", "customer_name": query}
 
-    # "product alias eba = garri" / "alias eba = garri" / "eba is same as garri"
+    # "product alias eba = garri" / "alias eba = garri" / "eba same as garri" / "eba means garri"
+    # Intentionally exclude bare "X is Y" — too broad, catches plain English sentences.
     alias_match = re.match(
         r"^(?:product\s+)?alias\s+(?P<alias>[a-z][a-z ]+?)\s*=\s*(?P<canonical>[a-z][a-z ]+)$",
         clean_text,
     ) or re.match(
-        r"^(?P<alias>[a-z][a-z ]+?)\s+(?:is\s+)?(?:same\s+as|means|is)\s+(?P<canonical>[a-z][a-z ]+)$",
+        r"^(?P<alias>[a-z][a-z ]+?)\s+(?:same\s+as|means)\s+(?P<canonical>[a-z][a-z ]+)$",
         clean_text,
     )
     if alias_match:
@@ -2438,6 +2503,23 @@ def parse_message(text):
     invoice_clean_text = re.sub(due_clause_pattern, "", invoice_clean_text).strip()
     clean_text = re.sub(due_clause_pattern, "", clean_text, flags=re.IGNORECASE).strip()
 
+    # ── Cost-price update intercept ───────────────────────────────────────────
+    # "egg cost price is 4700" / "garri cost 4000" with NO sell price.
+    # Must come before transaction detection so it doesn't create a garbage item.
+    if not re.search(r"\bsell(?:ing)?(?:\s+price)?\b", clean_text, re.I):
+        _cp_match = re.match(
+            r"^(?P<product>[a-z][a-z ]+?)\s+cost(?:\s+price)?\s+(?:is\s+)?(?P<price>\d[\d,]*)$",
+            clean_text,
+        )
+        if _cp_match:
+            _cp_price = parse_amount_token(_cp_match.group("price").replace(",", ""))
+            if _cp_price:
+                return {
+                    "type": "SET_COST_PRICE",
+                    "product": _cp_match.group("product").strip(),
+                    "price": _cp_price,
+                }
+
     # ── Early stock-add intercept ─────────────────────────────────────────────
     # "selling price" never appears in a normal customer transaction.
     # If the message has both "cost" and "selling price" it is inventory intent,
@@ -2484,21 +2566,29 @@ def parse_message(text):
             if _result and _result.get("type") == "TRANSACTION" and _result.get("name"):
                 return _result
 
-        # Strip "and received/recieved (the) payment of N" suffix.
-        # Captures payment in phrases like "i sold X at 5000 and received the payment of 25000".
+        # Strip payment suffixes so commas in prices like "5,000" aren't split
+        # and so the last number isn't misidentified as the sale price.
+        # Handles: "and received payment of N", "paid N", "and paid N", "N paid", "and N paid"
         _amt_pat = r"\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?"
         _pay_sfx = re.search(
+            rf"(?:"
             rf"\s+and\s+(?:received?|recieved?|got\s+(?:the\s+)?(?:paid|payment)|collected?)\s+"
-            rf"(?:the\s+)?(?:payment\s+of\s+|cash\s+of\s+)?(?P<paid_sfx>{_amt_pat})\s*$",
+            rf"(?:the\s+)?(?:payment\s+of\s+|cash\s+of\s+)?"
+            rf"|(?:\s+(?:and\s+)?(?:each\s+)?paid\s+)"
+            rf")(?P<paid_sfx>{_amt_pat})\s*$",
             invoice_clean_text, re.I,
         )
+        if not _pay_sfx:
+            # "N paid" / "and N paid" at end (reversed order)
+            _pay_sfx = re.search(
+                rf"(?:\s+and)?\s+(?P<paid_sfx>{_amt_pat})\s+paid\s*$",
+                invoice_clean_text, re.I,
+            )
         _direct_paid = 0
         _invoice_clean_stripped = invoice_clean_text
-        _text_stripped = text
         if _pay_sfx:
             _direct_paid = parse_amount_token(_pay_sfx.group("paid_sfx")) or 0
             _invoice_clean_stripped = invoice_clean_text[:_pay_sfx.start()].strip()
-            _text_stripped = text[:_pay_sfx.start()].strip()
 
         sale_body = re.sub(
             r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+",
@@ -2527,10 +2617,18 @@ def parse_message(text):
         # Re-run detail extraction on the suffix-stripped text when applicable.
         _amt_pat = r"\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?"
         _pay_sfx2 = re.search(
+            rf"(?:"
             rf"\s+and\s+(?:received?|recieved?|got\s+(?:the\s+)?(?:paid|payment)|collected?)\s+"
-            rf"(?:the\s+)?(?:payment\s+of\s+|cash\s+of\s+)?(?P<paid_sfx>{_amt_pat})\s*$",
+            rf"(?:the\s+)?(?:payment\s+of\s+|cash\s+of\s+)?"
+            rf"|(?:\s+(?:and\s+)?(?:each\s+)?paid\s+)"
+            rf")(?P<paid_sfx>{_amt_pat})\s*$",
             clean_text, re.I,
         )
+        if not _pay_sfx2:
+            _pay_sfx2 = re.search(
+                rf"(?:\s+and)?\s+(?P<paid_sfx>{_amt_pat})\s+paid\s*$",
+                clean_text, re.I,
+            )
         _resolved_paid = 0
         _resolved_sale_details = direct_sale_details
         if _pay_sfx2:
@@ -2571,6 +2669,13 @@ def parse_message(text):
             items_text = re.sub(r"[\s,;]+$", "", items_text).strip()
             payment_amounts = extract_amounts(payment_split.group("payment"))
             invoice = parse_invoice_items(items_text)
+            # Single-item transactions (no comma) return None from parse_invoice_items.
+            # Fall back to the singular parser so "a bag of feed at 15000 paid 10000"
+            # doesn't leak into extract_item_details and produce a fantasy total.
+            if not invoice:
+                _single = parse_invoice_item(items_text)
+                if _single:
+                    invoice = {"items": [_single], "total": _single["total"]}
             if invoice and payment_amounts:
                 return {
                     "type": "TRANSACTION",
@@ -2710,6 +2815,29 @@ def parse_message(text):
 # 💰 BALANCE
 # =========================
 
+def _parse_service_items(items_text):
+    """
+    Parse a comma-separated item list like:
+      "10 shirts wash and iron, 5 trousers iron only, 3 bed spreads"
+    Returns list of {"qty": int, "name": str}.
+    """
+    parts = re.split(r",\s*|\s+and\s+(?=\d)", items_text.strip())
+    results = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r"^(\d+)\s+(.+)$", part)
+        if m:
+            qty = int(m.group(1))
+            name = m.group(2).strip().lower()
+            # Strip trailing "for sewing" / "for washing" etc.
+            name = re.sub(r"\s+for\s+\w+(?:\s+\w+)?$", "", name).strip()
+            if name:
+                results.append({"qty": qty, "name": name})
+    return results
+
+
 def _parse_stock_item_full(body):
     """
     Parse the combined qty + prices format (one item only):
@@ -2787,6 +2915,9 @@ def _parse_stock_items_with_prices(body):
     )
     parts = [p.strip() for p in re.split(r"[,\n]+", body) if p.strip()]
     items = []
+    _lead_qty_pat = re.compile(
+        rf"^(?P<lqty>\d[\d,\.]*)\s+(?P<lunit>{UNIT_PATTERN})\s+(?P<lproduct>.+)$", re.I
+    )
     for part in parts:
         m = item_pat.match(part.strip())
         if not m:
@@ -2795,8 +2926,16 @@ def _parse_stock_items_with_prices(body):
         sell = parse_amount_token(m.group("sell").replace(",", ""))
         if cost is None or sell is None:
             return None
-        product, unit = normalize_item(m.group("product").strip())
-        items.append({"product": product, "unit": unit, "cost": cost, "sell": sell})
+        raw_product = m.group("product").strip()
+        # Extract leading qty+unit if present: "10 bags rice" → qty=10, product="rice"
+        lm = _lead_qty_pat.match(raw_product)
+        if lm:
+            quantity = parse_quantity_token(lm.group("lqty"))
+            product, unit = normalize_item(lm.group("lproduct").strip(), lm.group("lunit"))
+        else:
+            quantity = None
+            product, unit = normalize_item(raw_product)
+        items.append({"product": product, "unit": unit, "quantity": quantity, "cost": cost, "sell": sell})
     return items if items else None
 
 

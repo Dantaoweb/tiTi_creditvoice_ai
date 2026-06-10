@@ -6,6 +6,9 @@ from business_templates import (
     selected_business_category,
     selected_business_type,
 )
+from business_templates import has_service_price_catalog
+from guided_service_commands import start_guided_service_setup
+from guided_stock_commands import start_guided_stock_flow
 from messages import (
     build_onboarding_start_message,
     build_post_onboarding_menu,
@@ -127,7 +130,15 @@ def handle_post_onboarding_pending(
         send_message(phone, add_stock_option_to_dashboard_menu(build_dashboard_menu_message()))
         return {"status": "post_onboarding_dashboard"}
 
-    if normalized in ["4", "upgrade"]:
+    if normalized in ["4", "add products", "add your products", "products", "stock", "add stock",
+                       "price list", "set up price list", "services"]:
+        db.delete(pending)
+        db.commit()
+        if has_service_price_catalog(user):
+            return start_guided_service_setup(db, phone, user, send_message)
+        return start_guided_stock_flow(db, phone, user, send_message)
+
+    if normalized in ["5", "upgrade"]:
         pending.action = "UPGRADE_MENU"
         db.commit()
         send_message(phone, build_upgrade_message(user))
@@ -238,7 +249,7 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
             send_message(phone, "Please type your business type.\nExample: Event Decoration")
             return {"status": "onboarding_custom_type_prompt"}
 
-        _, msg = complete_user_onboarding(
+        new_user, msg = complete_user_onboarding(
             db,
             user,
             phone,
@@ -248,7 +259,7 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
             business_type_label,
         )
         send_message(phone, msg)
-        return {"status": "user_saved"}
+        return {"status": "onboarding_complete"}
 
     if pending.action == "ONBOARD_USER_CUSTOM_TYPE":
         if text.lower().strip() in ["back", "menu", "cancel"]:
@@ -262,7 +273,7 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
             send_message(phone, "Please type your business type.\nExample: Event Decoration")
             return {"status": "onboarding_custom_type_required"}
 
-        _, msg = complete_user_onboarding(
+        new_user, msg = complete_user_onboarding(
             db,
             user,
             phone,
@@ -272,7 +283,7 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
             custom_label.title(),
         )
         send_message(phone, msg)
-        return {"status": "user_saved_custom_type"}
+        return {"status": "onboarding_complete"}
 
     return None
 
@@ -300,6 +311,18 @@ def handle_profile_command(
 
     if command_type == "SET_PHONE":
         target_name = parsed["name"].lower().strip()
+
+        # Guard: reject command words masquerading as customer names.
+        # "add number 090..." / "save number 090..." → name="add"/"save"
+        _bad_names = {"add", "save", "update", "set", "enter", "new", "record", "edit"}
+        if target_name in _bad_names:
+            send_message(
+                phone,
+                "Please include the customer name.\nExample:\n"
+                "Dr Ashake Olatobi phone 09076397678"
+            )
+            return {"status": "set_phone_missing_name"}
+
         target_phone = parsed.get("customer_phone")
         target_phone = target_phone.strip() if target_phone else None
 
