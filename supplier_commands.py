@@ -105,23 +105,14 @@ def handle_supplier_command(
             return {"status": "inventory_plan_blocked"}
 
         # GO plan: full inventory list
-        msg = build_inventory_list_message(db, business_owner_phone, product_filter)
-        # Set STOCK_MENU pending for item management / ADD shortcut
-        from sqlalchemy import func as _func
-        items = (
-            db.query(InventoryItem)
-            .filter(InventoryItem.owner_phone == business_owner_phone)
-            .order_by(InventoryItem.category.asc(), InventoryItem.name.asc())
-            .limit(50)
-            .all()
-        )
+        msg, item_ids = build_inventory_list_message(db, business_owner_phone, product_filter, return_ids=True)
         db.query(PendingAction).filter(PendingAction.phone == phone).delete()
         db.add(PendingAction(
             phone=phone,
             action=ACTION_STOCK_MENU,
             customer_name="",
             last_customer="",
-            payload_json=json.dumps({"item_ids": [it.id for it in items], "is_basic": False}),
+            payload_json=json.dumps({"item_ids": item_ids, "is_basic": False}),
         ))
         db.commit()
         footer = "\n\n─────────────\nReply a *number* to manage that item.\nReply *ADD* to add a new product."

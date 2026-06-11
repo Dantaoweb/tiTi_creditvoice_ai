@@ -17,6 +17,7 @@ from constants import (
     ACTION_STOCK_ADD_CONFIRM,
     ACTION_STOCK_ITEM_ADD_QTY,
     ACTION_STOCK_ITEM_MENU,
+    ACTION_STOCK_ITEM_RENAME,
     ACTION_STOCK_ITEM_UPDATE_PRICE,
     ACTION_STOCK_MENU,
     FAST_CAPTURE_REVIEW_ACTIONS,
@@ -175,7 +176,8 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
                 f"{cost_line}  |  {sell_line}\n\n"
                 "1. Add more stock\n"
                 "2. Update price\n"
-                "3. Delete item\n\n"
+                "3. Delete item\n"
+                "4. Rename item\n\n"
                 "Reply *BACK* to return to stock list."
             )
             return {"status": "stock_item_menu_shown"}
@@ -224,10 +226,16 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             send_message(phone, f"Deleted *{item_name.title()}* from your stock.\n\nSend *stock* to see your updated inventory.")
             return {"status": "stock_item_deleted"}
 
+        if normalized in ["4", "rename", "rename item", "edit name"]:
+            pending.action = ACTION_STOCK_ITEM_RENAME
+            db.commit()
+            send_message(phone, f"New name for *{item_name.title()}*?\n\nSend the corrected product name.")
+            return {"status": "stock_item_rename_prompt"}
+
         send_message(
             phone,
             f"*{item_name.title()}*\n\n"
-            "1. Add more stock\n2. Update price\n3. Delete item\n\nReply BACK to return."
+            "1. Add more stock\n2. Update price\n3. Delete item\n4. Rename item\n\nReply BACK to return."
         )
         return {"status": "stock_item_menu_reprompt"}
 
@@ -280,6 +288,43 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             "Send *stock* to see your updated inventory."
         )
         return {"status": "stock_item_price_updated"}
+
+    # ── Rename item ──────────────────────────────────────────────────────────
+    if action == ACTION_STOCK_ITEM_RENAME:
+        item_id = payload.get("selected_id")
+        item_name = payload.get("selected_name", "")
+
+        if normalized in ["back", "cancel", "skip"]:
+            db.delete(pending)
+            db.commit()
+            return None
+
+        new_name = text.strip()
+        if len(new_name) < 2:
+            send_message(phone, "Send the new product name. Example: Paracetamol 500mg")
+            return {"status": "stock_item_rename_invalid"}
+
+        from models import InventoryItem as _Inv
+        from item_normalizer import normalize_item as _norm
+        norm_name, _ = _norm(new_name, None)
+        item = db.query(_Inv).filter(_Inv.id == item_id).first()
+        if not item:
+            db.delete(pending)
+            db.commit()
+            send_message(phone, "Item not found. Send *stock* to refresh.")
+            return {"status": "stock_item_rename_not_found"}
+
+        old_name = item.name
+        item.name = norm_name
+        db.commit()
+        db.delete(pending)
+        db.commit()
+        send_message(
+            phone,
+            f"Renamed *{old_name.title()}* → *{norm_name.title()}*.\n\n"
+            "Send *stock* to see your updated inventory."
+        )
+        return {"status": "stock_item_renamed"}
 
     return None
 
@@ -466,11 +511,15 @@ def handle_pending_actions(
 
     # ── Guided stock add (catalog Q&A) ───────────────────────────────────────
     if pending and pending.action in GUIDED_STOCK_ACTIONS and not is_command:
-        result = handle_guided_stock_pending(
-            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
-        )
-        if result:
-            return _wrap(result)
+        if parsed and parsed.get("type") == "TRANSACTION":
+            db.delete(pending)
+            db.commit()
+        else:
+            result = handle_guided_stock_pending(
+                db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
+            )
+            if result:
+                return _wrap(result)
 
     # ── Guided service price list setup ──────────────────────────────────────
     if pending and pending.action in GUIDED_SERVICE_SETUP_ACTIONS and not is_command:
@@ -490,11 +539,15 @@ def handle_pending_actions(
 
     # ── Stock menu (after viewing stock list) ────────────────────────────────
     if pending and pending.action in STOCK_MENU_ACTIONS and not is_command:
-        result = _handle_stock_menu(
-            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
-        )
-        if result:
-            return _wrap(result)
+        if parsed and parsed.get("type") == "TRANSACTION" and pending.action != ACTION_STOCK_MENU:
+            db.delete(pending)
+            db.commit()
+        else:
+            result = _handle_stock_menu(
+                db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
+            )
+            if result:
+                return _wrap(result)
 
     # ── Add stock with prices confirmation ───────────────────────────────────
     if pending and pending.action == ACTION_STOCK_ADD_CONFIRM and not is_command:
@@ -514,9 +567,13 @@ def handle_pending_actions(
 
     # ── Dashboard menu selection ─────────────────────────────────────────────
     if pending and pending.action == ACTION_DASHBOARD_MENU and not is_command:
-        return _handle_dashboard_menu(
-            db, phone, text, pending, business_owner_phone, visible_recorded_by_id,
-        )
+        if parsed and parsed.get("type") == "TRANSACTION":
+            db.delete(pending)
+            db.commit()
+        else:
+            return _handle_dashboard_menu(
+                db, phone, text, pending, business_owner_phone, visible_recorded_by_id,
+            )
 
     # ── Reminder flows ───────────────────────────────────────────────────────
     if pending and not is_command:

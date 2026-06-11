@@ -107,6 +107,19 @@ body {
 .nav-link svg { flex-shrink: 0; opacity: 0.8; }
 .nav-link.active svg { opacity: 1; }
 
+.nav-link-disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.nav-badge {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5);
+  padding: 2px 5px;
+  border-radius: 20px;
+}
+
 .nav-section {
   font-size: 10px;
   font-weight: 700;

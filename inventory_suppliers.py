@@ -10,9 +10,11 @@ from item_normalizer import normalize_item
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 from models import (
+    CustomerConversation,
     InventoryItem,
     InventoryMovement,
     ProductAlias,
+    SalesOrderItem,
     Supplier,
     SupplierPayment,
     SupplierPurchase,
@@ -124,6 +126,7 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
     #    a prefix/substring of some word in the item name. Only return when
     #    exactly one item matches to avoid false positives.
     #    e.g. "basket of mangoes" → ["basket","mangoes"] matches "Baskets Mangoes"
+    #    Unit is respected: "vitamin c sachet" won't match "vitamin c carton".
     _stop = {"of", "the", "and", "in", "a", "an"}
     _qwords = [w for w in re.split(r"\W+", product.lower()) if w and w not in _stop]
     if len(_qwords) >= 2:
@@ -131,6 +134,9 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
         for _inv in db.query(InventoryItem).filter(
             InventoryItem.owner_phone == owner_phone
         ).all():
+            # Skip items with a different unit when caller specified a unit
+            if unit and _inv.unit and _inv.unit.lower() != unit.lower():
+                continue
             _iwords = set(re.split(r"\W+", _inv.name.lower()))
             if all(
                 any(qw in iw or iw.startswith(qw) or qw.startswith(iw) for iw in _iwords)
@@ -289,14 +295,14 @@ def get_supplier_balance(db, supplier_id):
     return total_purchase - paid_on_purchase - payments
 
 
-def build_inventory_list_message(db, owner_phone, product=None):
+def build_inventory_list_message(db, owner_phone, product=None, return_ids=False):
     from collections import defaultdict
 
     query = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone)
     if product:
         query = query.filter(func.lower(InventoryItem.name).like(f"%{product.lower()}%"))
     items = query.order_by(
-        InventoryItem.category.asc(), InventoryItem.name.asc(), InventoryItem.unit.asc()
+        InventoryItem.name.asc(), InventoryItem.unit.asc()
     ).limit(50).all()
 
     if not items:
@@ -377,6 +383,18 @@ def build_inventory_list_message(db, owner_phone, product=None):
             msg += "\n"
 
     msg += f"Total stock value: N{total_value:,}"
+    if return_ids:
+        # Return IDs in the exact same order as the displayed numbers
+        ordered_ids = []
+        for name_key in sorted(grouped.keys()):
+            variants = grouped[name_key]
+            if len(variants) == 1:
+                ordered_ids.append(variants[0].id)
+            else:
+                # Multi-variant: each variant gets its own selectable slot
+                for v in sorted(variants, key=lambda x: (x.unit or "")):
+                    ordered_ids.append(v.id)
+        return msg.strip(), ordered_ids
     return msg.strip()
 
 
@@ -493,6 +511,20 @@ def delete_stock_item(db, owner_phone, product):
         InventoryItem.owner_phone == owner_phone,
         func.lower(InventoryItem.name).like(f"%{product_norm.lower()}%"),
     ).all()
+    if not items:
+        return 0
+    ids = [item.id for item in items]
+    # Null out FK references before deleting to avoid constraint violations.
+    # Movement history is preserved (item_id nulled) so audit trail is not lost.
+    db.query(InventoryMovement).filter(
+        InventoryMovement.item_id.in_(ids)
+    ).update({"item_id": None}, synchronize_session=False)
+    db.query(SalesOrderItem).filter(
+        SalesOrderItem.inventory_item_id.in_(ids)
+    ).update({"inventory_item_id": None}, synchronize_session=False)
+    db.query(CustomerConversation).filter(
+        CustomerConversation.matched_item_id.in_(ids)
+    ).update({"matched_item_id": None}, synchronize_session=False)
     for item in items:
         db.delete(item)
     return len(items)

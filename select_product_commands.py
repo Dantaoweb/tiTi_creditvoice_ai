@@ -435,6 +435,9 @@ def _handle_customer_name(db, phone, text, pending, business_owner_phone, send_m
 
 def _handle_payment(db, phone, text, pending, business_owner_phone, send_message):
     text = text.strip().replace(",", "")
+    _normalized_pay = text.lower()
+    if _normalized_pay in ["paid all", "all", "full", "full payment", "paid full", "complete"]:
+        text = str(pending.buy_amount)
     if not re.match(r"^\d+$", text):
         send_message(phone, "Send the amount paid. Example: 500\nOr send 0 for full credit.")
         return {"status": "select_product_payment_invalid"}
@@ -645,6 +648,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     )
     if stock_lines:
         owner_receipt += "\n\nStock updated:\n" + "\n".join(stock_lines)
+    owner_receipt += f"\n\nReprint: reply *receipt {customer_name}*"
 
     send_message(phone, owner_receipt)
 

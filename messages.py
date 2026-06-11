@@ -8,7 +8,7 @@ from business_templates import (
     template_next_steps_for_user,
     template_plan_value_for_user,
 )
-from plans import PLAN_GO, PLAN_PRO, normalize_plan
+from plans import PLAN_GO, PLAN_PRO, PLAN_BASIC, normalize_plan, plan_allows_feature
 
 
 def build_plan_message(subscription):
@@ -177,23 +177,37 @@ def build_post_onboarding_menu(business_name, user=None):
 
 
 def build_owner_home_menu(user, subscription):
-    if subscription["plan"] == PLAN_PRO:
-        extra_lines = "\n10. Staff"
+    plan = subscription.get("plan", PLAN_BASIC) if isinstance(subscription, dict) else PLAN_BASIC
+    if plan_allows_feature(plan, "VOICE_TEXT"):
+        tip_line = "💡 fast mode  |  🎤 voice notes  |  auto reminders"
     else:
-        extra_lines = ""
+        tip_line = "💡 fast mode  |  🎤 voice notes (GO)  |  auto reminders (GO)"
     return (
         f"Hi {user.name.title()}.\n\n"
         "1. Record sale\n"
         "2. Select product\n"
-        "3. Add customer\n"
-        "4. Dashboard\n"
-        "5. Stock\n"
-        "6. Suppliers\n"
-        "7. Reminders\n"
-        "8. My plan\n"
-        "9. Help & formats"
-        f"{extra_lines}\n\n"
+        "3. Add stock\n"
+        "4. My customers\n"
+        "5. Reminders\n"
+        "6. Dashboard\n"
+        "7. Wallet ✦\n"
+        "8. Help\n"
+        "9. More →\n\n"
+        f"{tip_line}\n\n"
         "MENU to return here anytime."
+    )
+
+
+def build_home_more_menu():
+    return (
+        "More options\n\n"
+        "1. Suppliers\n"
+        "2. My plan & upgrade\n"
+        "3. Staff (PRO)\n"
+        "4. Back\n\n"
+        "Coming soon:\n"
+        "· Service jobs  · Invoices\n"
+        "· Voice reply  · Multi-language"
     )
 
 
@@ -207,9 +221,8 @@ def build_staff_home_menu(user, business_name, can_view_all):
         "3. My customers\n"
         "4. Dashboard\n"
         "5. Stock\n"
-        "6. Suppliers\n"
-        "7. Help & formats\n"
-        "8. Resign\n\n"
+        "6. Help\n"
+        "7. Resign\n\n"
         "MENU to return here anytime."
     )
 
@@ -283,7 +296,14 @@ def build_supported_formats_message(user=None):
         "👉 stock\n"
         "👉 suppliers\n"
         "👉 supplier due\n"
-        "👉 supplier due this week\n\n"
+        "👉 supplier due this week\n"
+        "👉 supplier debts\n\n"
+
+        "📂 *Manage a stock item* (send  stock  then pick a number)\n"
+        "   1. Add more quantity\n"
+        "   2. Update price\n"
+        "   3. Delete item\n"
+        "   4. Rename item\n\n"
 
         "🔧 *Manual stock* (owner / full-access staff only for remove & set)\n"
         "👉 add stock 10 bags rice\n"
@@ -292,10 +312,25 @@ def build_supported_formats_message(user=None):
         "👉 set stock rice 50 bags\n"
         "👉 stock alert rice 10\n\n"
 
+        "🏷️ *Product aliases* (teach tiTi your shorthand)\n"
+        "👉 alias eba = garri\n"
+        "👉 paracetamol same as paracetamol 500mg\n\n"
+
         "👤 *Customer setup*\n"
         "👉 John 08012345678\n"
         "👉 add customer John\n"
         "👉 John phone 08012345678\n\n"
+
+        "🔍 *Check customer account*\n"
+        "👉 Ade balance\n"
+        "👉 Ade account\n"
+        "👉 Ade balance this month\n"
+        "👉 customer summary Ade\n\n"
+
+        "📋 *Lists & overdue*\n"
+        "👉 customer list\n"
+        "👉 due  (overdue debtors menu)\n"
+        "👉 supplier debts\n\n"
 
         "⚡ *Fast Capture Mode* (busy market hours)\n"
         "👉 fast mode on\n"
@@ -347,6 +382,24 @@ def build_supported_formats_message(user=None):
         "👉 link decline\n"
         "👉 my phones\n"
         "👉 unlink phone 08012345678\n\n"
+
+        "👥 *Staff* (PRO plan)\n"
+        "👉 add staff 08012345678 Name\n"
+        "👉 staff\n"
+        "👉 allow staff 08012345678 view all\n"
+        "👉 revoke staff 08012345678 view all\n\n"
+
+        "⏰ *Reminders*\n"
+        "👉 due  (see debtors, preview & send reminders)\n"
+        "👉 reminder automation\n"
+        "👉 auto reminders on\n"
+        "👉 reminder time 8am\n"
+        "👉 reminder queue\n\n"
+
+        "💾 *Thrift / ajo / savings*\n"
+        "👉 Amina contributed 5000\n"
+        "👉 Tunde paid thrift 2000\n"
+        "👉 Ade saved 3000\n\n"
 
         "⚙️ *Other commands*\n"
         "👉 dashboard\n"

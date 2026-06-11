@@ -1,37 +1,37 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Zap, Users, ArrowLeftRight,
-  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut,
+  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 
 const NAV = [
-  { to: "/home",         label: "Chat with tiTi", icon: MessageSquare   },
-  { to: "/dashboard",    label: "Dashboard",       icon: LayoutDashboard },
-  { to: "/capture",      label: "Capture",         icon: Zap             },
-  { to: "/pos",          label: "Point of Sale",   icon: ShoppingCart    },
-  { section: "Data" },
-  { to: "/customers",    label: "Customers",       icon: Users           },
-  { to: "/transactions", label: "Transactions",    icon: ArrowLeftRight  },
-  { to: "/inventory",    label: "Inventory",       icon: Package         },
-  { to: "/suppliers",    label: "Suppliers",       icon: Truck           },
-  { section: "Reports" },
-  { to: "/staff",        label: "Staff",           icon: UserCheck       },
-  { to: "/reminders",    label: "Reminders",       icon: Bell            },
+  { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare   },
+  { to: "/capture",      label: "Record",           icon: Zap             },
+  { to: "/pos",          label: "Select product",   icon: ShoppingCart    },
+  { to: "/inventory",    label: "Add stock",        icon: Package         },
+  { to: "/customers",    label: "My customers",     icon: Users           },
+  { to: "/reminders",    label: "Reminders",        icon: Bell            },
+  { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
+  { disabled: true,      label: "Wallet ✦",         icon: Wallet, badge: "soon" },
+  { section: "More" },
+  { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
+  { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
+  { to: "/staff",        label: "Staff",            icon: UserCheck       },
 ];
 
 const TITLES = {
   "/home":         "Chat with tiTi",
+  "/capture":      "Record",
+  "/pos":          "Select product",
+  "/inventory":    "Add stock",
+  "/customers":    "My customers",
+  "/reminders":    "Reminders",
   "/dashboard":    "Dashboard",
-  "/capture":      "Capture",
-  "/pos":          "Point of Sale",
-  "/customers":    "Customers",
   "/transactions": "Transactions",
-  "/inventory":    "Inventory",
   "/suppliers":    "Suppliers",
   "/staff":        "Staff",
-  "/reminders":    "Reminders",
 };
 
 export default function Layout() {
@@ -60,8 +60,14 @@ export default function Layout() {
 
         <nav className="sidebar-nav">
           {NAV.map((item, i) =>
-            item.section ? (
+            item.section !== undefined ? (
               <div key={i} className="nav-section">{item.section}</div>
+            ) : item.disabled ? (
+              <div key={item.label} className="nav-link nav-link-disabled">
+                <item.icon size={16} />
+                {item.label}
+                {item.badge && <span className="nav-badge">{item.badge}</span>}
+              </div>
             ) : (
               <NavLink
                 key={item.to}

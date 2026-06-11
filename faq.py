@@ -49,6 +49,19 @@ def detect_faq(text):
     ]):
         return "overdue_debtors"
 
+    # ── Customer account / balance check ─────────────────────────────────────
+    if any(k in q for k in [
+        "customer balance", "customer account", "what does balance", "what is balance",
+        "customer owe", "how much owe", "check debt", "see what customer",
+        "outstanding balance", "customer summary", "ade balance", "ade account",
+        "check balance", "view balance", "see balance",
+    ]):
+        return "check_balance"
+    if "balance" in q and any(k in q for k in ["what", "how", "check", "see", "view", "mean"]):
+        return "check_balance"
+    if re.search(r"\bowes?\b", q):
+        return "check_balance"
+
     # ── Customer list ─────────────────────────────────────────────────────────
     if any(k in q for k in [
         "customer list", "list of customer", "list of my customer",
@@ -57,6 +70,78 @@ def detect_faq(text):
         "check customers", "list customers", "show customers",
     ]):
         return "customer_list"
+
+    # ── Stock item management (edit/rename/delete from stock menu) ────────────
+    if any(k in q for k in [
+        "edit stock", "rename stock", "rename item", "delete stock", "remove item",
+        "edit item", "update stock item", "change stock name", "fix stock",
+        "wrong stock name", "fix product name", "edit product name",
+        "how do i edit", "how to edit stock", "how to rename", "how to delete stock",
+        "manage stock", "manage item",
+    ]):
+        return "stock_management"
+
+    # ── Product alias ─────────────────────────────────────────────────────────
+    if any(k in q for k in [
+        "product alias", "alias", "shorthand", "short name", "same as",
+        "eba means garri", "teach titi", "titi shorthand", "product shortcut",
+    ]):
+        return "product_alias"
+
+    # ── Change business name / profile ───────────────────────────────────────
+    if any(k in q for k in [
+        "change name", "rename business", "update name", "change my name",
+        "update business name", "change business name", "rename my business",
+        "change profile", "update profile", "change my business type",
+        "edit profile", "edit my name", "wrong name", "fix my name",
+    ]):
+        return "change_name"
+
+    # ── Send reminders to customers ───────────────────────────────────────────
+    if any(k in q for k in [
+        "send reminder", "remind customer", "send payment reminder",
+        "remind someone", "how to remind", "how do i remind",
+        "send debt reminder", "manual reminder", "reminder to customer",
+        "whatsapp reminder", "notify customer",
+    ]):
+        return "send_reminders"
+    if "reminder" in q and any(k in q for k in ["send", "how", "customer", "whatsapp"]):
+        return "send_reminders"
+
+    # ── Reminder automation ───────────────────────────────────────────────────
+    if any(k in q for k in [
+        "reminder automation", "auto reminder", "automatic reminder",
+        "daily reminder", "reminder time", "reminder queue",
+        "set up reminder", "setup reminder", "enable reminder",
+        "auto send reminder", "schedule reminder",
+    ]):
+        return "reminder_automation"
+
+    # ── Thrift / ajo / esusu ──────────────────────────────────────────────────
+    if any(k in q for k in [
+        "thrift", "ajo", "esusu", "contribution", "cooperative",
+        "how to record contribution", "record ajo", "record thrift",
+        "daily saving", "group saving", "savings group",
+    ]):
+        return "thrift_ajo"
+
+    # ── Multiple products in one sale ─────────────────────────────────────────
+    if any(k in q for k in [
+        "multiple product", "multiple items", "more than one product",
+        "sell many", "sell multiple", "multi item", "two products",
+        "record many items", "several products", "list of products",
+        "buy many", "bought many",
+    ]):
+        return "multi_item_sale"
+
+    # ── Direct sale / income without customer name ────────────────────────────
+    if any(k in q for k in [
+        "direct sale", "no customer", "without customer", "cash sale",
+        "walk in customer", "one time customer", "anonymous sale",
+        "record income", "service income", "i sold", "i received",
+        "personal sale", "sell without name",
+    ]):
+        return "direct_sale"
 
     # ── Account recovery / PIN ────────────────────────────────────────────────
     if any(k in q for k in [
@@ -209,18 +294,6 @@ def detect_faq(text):
     if "paid" in q and any(k in q for k in ["record", "save", "how do i", "how to"]):
         return "record_payment"
 
-    # ── Check balance / what a customer owes ──────────────────────────────────
-    if any(k in q for k in [
-        "customer balance", "what does balance", "what is balance",
-        "customer owe", "how much owe", "check debt", "see what customer",
-        "customer account", "outstanding balance",
-    ]):
-        return "check_balance"
-    if "balance" in q and any(k in q for k in ["what", "how", "check", "see", "view", "mean"]):
-        return "check_balance"
-    if re.search(r"\bowes?\b", q):
-        return "check_balance"
-
     # ── Add / save customer (before record_sale) ──────────────────────────────
     if "debt" not in q and any(k in q for k in [
         "add customer", "save customer", "register customer",
@@ -313,9 +386,15 @@ FAQ_ANSWERS = {
     "check_balance": (
         "To see what a customer owes:\n\n"
         "Ade balance\n"
-        "Ade account\n\n"
+        "Ade account\n"
+        "Ade balance this month\n"
+        "customer summary Ade\n\n"
         "Balance = total charged minus what they have paid.\n"
-        "tiTi tracks this with every sale and payment you record."
+        "tiTi tracks this with every sale and payment you record.\n\n"
+        "To see all customers:\n"
+        "customer list\n\n"
+        "To see overdue debtors:\n"
+        "due"
     ),
     "sell_from_stock": (
         "To sell from your product list:\n\n"
@@ -377,7 +456,10 @@ FAQ_ANSWERS = {
         "To set a due date on a sale:\n\n"
         "Ade bought rice 5000 paid 2000 due tomorrow\n"
         "Ade bought rice 5000 due 15/6/2026\n\n"
-        "tiTi will remind the customer when the balance is due."
+        "To send WhatsApp reminders when balances are due:\n"
+        "due\n\n"
+        "tiTi will show you debts due in 2 days, due today, and overdue.\n"
+        "Pick a customer number to preview and send their reminder."
     ),
     "fast_mode": (
         "Fast mode is for busy market hours.\n\n"
@@ -500,6 +582,92 @@ FAQ_ANSWERS = {
         "is honey profitable\n\n"
         "tiTi will check your records and give you an honest answer with suggestions.\n\n"
         "Send  formats  to see all commands."
+    ),
+    "change_name": (
+        "To update your business name or type:\n\n"
+        "change name\n\n"
+        "tiTi will walk you through the update step by step.\n"
+        "Your customers, records, and transactions are not affected."
+    ),
+    "send_reminders": (
+        "To send payment reminders to your debtors:\n\n"
+        "1. Send:  due\n"
+        "2. Choose a list:\n"
+        "   1. Due in 2 days\n"
+        "   2. Due today\n"
+        "   3. Overdue\n"
+        "3. Pick a customer number to preview their reminder\n"
+        "4. Reply YES to send it via WhatsApp\n\n"
+        "To skip a customer:\n"
+        "skip reminder\n\n"
+        "To set up automatic daily reminders:\n"
+        "reminder automation"
+    ),
+    "reminder_automation": (
+        "Reminder automation sends daily WhatsApp payment reminders to your debtors.\n\n"
+        "See current settings:\n"
+        "reminder automation\n\n"
+        "Preview reminders before they go out:\n"
+        "reminder preview on\n\n"
+        "Turn on automatic sending:\n"
+        "auto reminders on\n\n"
+        "Set the time reminders go out:\n"
+        "reminder time 8am\n\n"
+        "See today's reminder queue:\n"
+        "reminder queue\n\n"
+        "Turn off automatic sending:\n"
+        "auto reminders off"
+    ),
+    "thrift_ajo": (
+        "To record a thrift, ajo, or esusu contribution:\n\n"
+        "Amina contributed 5000\n"
+        "Tunde paid thrift 2000\n"
+        "Ade saved 3000\n\n"
+        "tiTi records it as a payment and updates their balance.\n\n"
+        "To check a member's total contributions:\n"
+        "Amina balance\n"
+        "customer summary Amina"
+    ),
+    "multi_item_sale": (
+        "To record a sale with multiple products at once:\n\n"
+        "Ade bought rice 4000, beans 3000\n"
+        "Ade bought rice 4000, beans 3000, oil 2000 paid 5000\n"
+        "Ade bought 2kg rice at 2000, 3 tins tomato at 500\n\n"
+        "Separate each item with a comma.\n"
+        "Add 'paid [amount]' at the end for a part payment.\n\n"
+        "To sell from your product price list:\n"
+        "select product"
+    ),
+    "direct_sale": (
+        "To record a cash sale or service income without a named customer:\n\n"
+        "I sold phone 45000\n"
+        "I received 2000 for washing\n"
+        "I supply 1 truck of sand 60000\n"
+        "I collected 5000 for haircut\n\n"
+        "tiTi records it as direct income. No customer debt is created.\n\n"
+        "To record a walk-in sale and still track stock:\n"
+        "select product"
+    ),
+    "stock_management": (
+        "To manage a stock item, first send:\n\n"
+        "stock\n\n"
+        "tiTi shows your product list with numbers.\n"
+        "Type the number of the item you want, then choose:\n\n"
+        "1. Add more quantity\n"
+        "2. Update price\n"
+        "3. Delete item\n"
+        "4. Rename item\n\n"
+        "To add stock with prices in one message:\n"
+        "add stock rice cost 3000 sell 4000"
+    ),
+    "product_alias": (
+        "Product aliases let tiTi understand your shorthand.\n\n"
+        "If your customers say 'eba' but your stock says 'garri':\n"
+        "alias eba = garri\n\n"
+        "Other ways to teach tiTi:\n"
+        "eba same as garri\n"
+        "panadol means paracetamol\n\n"
+        "After saving, tiTi will automatically match the alias to the correct product."
     ),
     "formats": (
         "Send this to see all examples and commands:\n\n"

@@ -1,4 +1,5 @@
-﻿from database import SessionLocal
+﻿from constants import GUIDED_SERVICE_SETUP_ACTIONS, GUIDED_STOCK_ACTIONS
+from database import SessionLocal
 from models import PendingAction, ReminderMemory, User
 from parser import (
     build_customer_account_summary,
@@ -72,7 +73,12 @@ def handle_early_webhook_message(incoming):
                         PendingAction.created_at.desc()
                     ).first()
 
-                    if pending and text.lower().strip() in ["exit", "exist", "cancel", "done", "back", "stop", "close", "quit", "end"]:
+                    _guided_actions = GUIDED_STOCK_ACTIONS | GUIDED_SERVICE_SETUP_ACTIONS
+                    if (
+                        pending
+                        and pending.action not in _guided_actions
+                        and text.lower().strip() in ["exit", "exist", "cancel", "done", "back", "stop", "close", "quit", "end"]
+                    ):
                         debug_db.delete(pending)
                         debug_db.commit()
                         send_whatsapp_message(
