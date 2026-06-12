@@ -14,7 +14,8 @@ import json
 import re
 
 from constants import ACTION_SERVICE_JOB_CONFIRM
-from models import Customer, InventoryItem, PendingAction, Transaction
+from models import Customer, InventoryItem, PendingAction, Transaction, TransactionItem
+from parser import add_transaction_items
 
 try:
     from sqlalchemy import func as _func
@@ -279,8 +280,7 @@ def _normalize_name(text):
 
 
 def _save_job(db, owner_phone, customer_name, items, total, paid, discount):
-    """Save a service job as a BUY (credit) transaction."""
-    # Find or create customer
+    """Save a service job: one BUY transaction + optional PAY transaction + line items."""
     customer_name_clean = customer_name.strip().lower()
     customer = db.query(Customer).filter(
         Customer.owner_phone == owner_phone,
@@ -291,28 +291,43 @@ def _save_job(db, owner_phone, customer_name, items, total, paid, discount):
         db.add(customer)
         db.flush()
 
-    # Build note with item breakdown
     item_parts = []
     for item in items:
-        name = item["name"]
-        unit = item.get("unit")
-        label = f"{name} ({unit})" if unit else name
+        label = f"{item['name']} ({item['unit']})" if item.get("unit") else item["name"]
         item_parts.append(f"{item['qty']}x {label}")
-    note = "Laundry job: " + ", ".join(item_parts)
+    note = "Service job: " + ", ".join(item_parts)
     if discount:
         note += f" (discount N{discount:,})"
 
-    balance = total - paid
-    transaction = Transaction(
-        owner_phone=owner_phone,
-        customer_name=customer_name_clean,
-        action="BUY",
+    buy_tx = Transaction(
+        customer_id=customer.id,
+        type="BUY",
         amount=total,
-        paid_amount=paid,
-        balance=balance,
         product=note[:200],
         recorded_by_id=None,
+        created_at=_utcnow(),
     )
-    db.add(transaction)
-    db.commit()
-    return transaction
+    db.add(buy_tx)
+    db.flush()
+
+    add_transaction_items(db, buy_tx.id, [
+        {
+            "product": item["name"],
+            "quantity": item["qty"],
+            "unit": item.get("unit"),
+            "unit_price": item["unit_price"],
+            "total": item["subtotal"],
+        }
+        for item in items
+    ])
+
+    if paid > 0:
+        db.add(Transaction(
+            customer_id=customer.id,
+            type="PAY",
+            amount=paid,
+            recorded_by_id=None,
+            created_at=_utcnow(),
+        ))
+
+    return buy_tx

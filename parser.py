@@ -1602,6 +1602,22 @@ def parse_message(text):
     ] or re.match(r"^(?:show|view|check|see|edit|update)\s+(?:my\s+)?(?:price\s*list|service\s+prices?)$", clean_text):
         return {"type": "PRICE_LIST"}
 
+    # "price rice 3000 4000" / "update price garri 2500 3500" — two-number stock price (cost + sell)
+    _stock_price_2 = re.match(
+        r"^(?:set\s+|update\s+)?price\s+(?P<item>[a-z][a-z\s]+?)\s+(?P<cost>[Nn]?[\d,]+)\s+(?P<sell>[Nn]?[\d,]+)$",
+        clean_text,
+    )
+    if _stock_price_2:
+        _cost_str = _stock_price_2.group("cost").replace(",", "").replace("n", "").replace("N", "")
+        _sell_str = _stock_price_2.group("sell").replace(",", "").replace("n", "").replace("N", "")
+        if _cost_str.isdigit() and _sell_str.isdigit():
+            return {
+                "type": "UPDATE_STOCK_PRICE",
+                "product": _stock_price_2.group("item").strip(),
+                "cost": int(_cost_str),
+                "sell": int(_sell_str),
+            }
+
     # "price shirt 1000" / "set price trouser 800" / "update price curtain 1500"
     _set_svc_price = re.match(
         r"^(?:set\s+|update\s+)?price\s+(?P<item>[a-z][a-z\s]+?)\s+(?P<price>[Nn]?[\d,]+)$",

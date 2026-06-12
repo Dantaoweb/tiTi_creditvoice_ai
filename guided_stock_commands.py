@@ -272,7 +272,7 @@ def handle_guided_stock_pending(db, phone, text, pending, user, business_owner_p
 
     # ── QTY ───────────────────────────────────────────────────────────────────
     if action == ACTION_GUIDED_STOCK_QTY:
-        qty_str = normalized.replace(",", "")
+        qty_str = normalized.replace(",", "").split()[0] if normalized.strip() else ""
         if not qty_str.isdigit():
             send_message(phone, "Please send a number. Example: 50\nSend 0 if you have none right now.")
             return {"status": "guided_stock_qty_invalid"}

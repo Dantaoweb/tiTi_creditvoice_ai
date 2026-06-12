@@ -1,4 +1,4 @@
-﻿from constants import GUIDED_SERVICE_SETUP_ACTIONS, GUIDED_STOCK_ACTIONS
+﻿from constants import GUIDED_SERVICE_SETUP_ACTIONS, GUIDED_STOCK_ACTIONS, STOCK_MENU_ACTIONS
 from database import SessionLocal
 from models import PendingAction, ReminderMemory, User
 from parser import (
@@ -73,7 +73,7 @@ def handle_early_webhook_message(incoming):
                         PendingAction.created_at.desc()
                     ).first()
 
-                    _guided_actions = GUIDED_STOCK_ACTIONS | GUIDED_SERVICE_SETUP_ACTIONS
+                    _guided_actions = GUIDED_STOCK_ACTIONS | GUIDED_SERVICE_SETUP_ACTIONS | STOCK_MENU_ACTIONS
                     if (
                         pending
                         and pending.action not in _guided_actions

@@ -112,7 +112,7 @@ def handle_supplier_command(
             action=ACTION_STOCK_MENU,
             customer_name="",
             last_customer="",
-            payload_json=json.dumps({"item_ids": item_ids, "is_basic": False}),
+            payload_json=json.dumps({"item_ids": item_ids, "is_basic": False, "page": 0, "product": product_filter}),
         ))
         db.commit()
         footer = "\n\n─────────────\nReply a *number* to manage that item.\nReply *ADD* to add a new product."
@@ -192,11 +192,19 @@ def handle_supplier_command(
         )
         db.commit()
         unit_label = f" {item.unit}" if item.unit else ""
+        price_hint = ""
+        if not item.selling_price:
+            price_hint = (
+                f"\n\nNo price set. To add:\n"
+                f"*price {item.name} [cost] [sell]*\n"
+                f"e.g. price {item.name} 3000 4000"
+            )
         send_message(
             phone,
             f"Stock added: {item.name.title()}\n"
             f"Added: {item_data['quantity']:,}{unit_label}\n"
             f"Total now: {item.quantity:,}{unit_label}"
+            f"{price_hint}"
         )
         return {"status": "stock_added"}
 

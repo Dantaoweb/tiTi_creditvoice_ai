@@ -285,10 +285,15 @@ def handle_transaction_setup(
         )
         db.commit()
 
+        price_alert = _price_deviation_alert(
+            db, business_owner_phone,
+            parsed.get("product"), parsed.get("unit_price"),
+        )
         confirm_msg = (
             f"Confirm service/direct income:\n{direct_sale_item_line(parsed)}\n\n"
             "No customer debt will be recorded.\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
+            f"{price_alert}"
         )
         confirm_msg = apply_voice_confirmation_options(confirm_msg, voice_transcript_text)
         send_message(phone, confirm_msg)
@@ -376,20 +381,13 @@ def handle_transaction_setup(
     )
 
     phone_warning = ""
-    if not customer.customer_phone:
+    if not customer.customer_phone and customer_was_created:
         setup_hint = f"{customer.name} phone 08012345678"
-        if customer_was_created:
-            phone_warning = (
-                f"\nNew customer created: {customer.name.title()} with no phone number.\n"
-                "This transaction will still save. For reminders later, send:\n"
-                f"{setup_hint}"
-            )
-        else:
-            phone_warning = (
-                f"\nCustomer phone is not set for {customer.name.title()}.\n"
-                "This transaction will still save. For reminders later, send:\n"
-                f"{setup_hint}"
-            )
+        phone_warning = (
+            f"\nNew customer created: {customer.name.title()} with no phone number.\n"
+            "This transaction will still save. For reminders later, send:\n"
+            f"{setup_hint}"
+        )
 
     no_details_hint = ""
     if not parsed.get("product") and not parsed.get("invoice_items"):

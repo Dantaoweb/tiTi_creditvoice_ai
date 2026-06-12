@@ -295,106 +295,90 @@ def get_supplier_balance(db, supplier_id):
     return total_purchase - paid_on_purchase - payments
 
 
-def build_inventory_list_message(db, owner_phone, product=None, return_ids=False):
+_STOCK_PAGE_SIZE = 20
+
+
+def build_inventory_list_message(db, owner_phone, product=None, return_ids=False, page=0):
     from collections import defaultdict
 
     query = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone)
     if product:
         query = query.filter(func.lower(InventoryItem.name).like(f"%{product.lower()}%"))
-    items = query.order_by(
-        InventoryItem.name.asc(), InventoryItem.unit.asc()
-    ).limit(50).all()
+    items = query.order_by(InventoryItem.name.asc(), InventoryItem.unit.asc()).all()
 
     if not items:
-        return "No stock found yet.\n\nTo add stock:\nadd stock rice cost 3000 sell 4000"
+        empty = "No stock found yet.\n\nTo add stock:\nadd stock rice cost 3000 sell 4000"
+        return (empty, []) if return_ids else empty
 
     # Group variants (same product, different units) together
     grouped = defaultdict(list)
     for item in items:
         grouped[item.name.lower()].append(item)
 
-    title = "Stock" if not product else f"Stock: {product.title()}"
-    msg = f"*{title}*\n\n"
-    current_category = None
-    total_value = 0
-    idx = 0
+    # Build full ordered list before slicing for the page
+    all_ids = []
+    all_entries = []  # (display_name, variant, category, is_multi_variant)
 
     for name_key in sorted(grouped.keys()):
-        variants = grouped[name_key]
-        idx += 1
-
-        # Category header when it changes
-        category = (variants[0].category or "").strip().lower()
-        if category and category != current_category:
-            msg += f"— {category.title()} —\n"
-            current_category = category
-
+        variants = sorted(grouped[name_key], key=lambda x: (x.unit or ""))
         display_name = variants[0].name.title()
+        category = (variants[0].category or "").strip().lower()
+        is_multi = len(variants) > 1
+        for v in variants:
+            all_ids.append(v.id)
+            all_entries.append((display_name, v, category, is_multi))
 
-        if len(variants) == 1:
-            v = variants[0]
-            qty = v.quantity or 0
-            unit_label = f" {v.unit}" if v.unit else ""
-            total_value += qty * (v.cost_price or 0)
+    total = len(all_ids)
+    start = page * _STOCK_PAGE_SIZE
+    if start >= total:
+        start = 0
+    end = min(start + _STOCK_PAGE_SIZE, total)
+    page_entries = all_entries[start:end]
 
-            # Stock status indicator
-            if qty == 0:
-                indicator = "🔴 "
-            elif v.low_stock_alert is not None and qty <= v.low_stock_alert:
-                indicator = "⚠️ "
-            else:
-                indicator = ""
+    # Total value across ALL items (not just this page)
+    total_value = sum((v.quantity or 0) * (v.cost_price or 0) for _, v, _, _ in all_entries)
 
-            line = f"{idx}. {indicator}{display_name}: {qty:,}{unit_label}"
-            prices = []
-            if v.cost_price:
-                prices.append(f"Cost N{v.cost_price:,}")
-            if v.selling_price:
-                prices.append(f"Sell N{v.selling_price:,}")
-            if prices:
-                line += f"\n   {' | '.join(prices)}"
-            if v.reorder_quantity is not None and qty <= v.reorder_quantity:
-                line += f"\n   ↩️ Reorder at {v.reorder_quantity:,}{unit_label}"
-            msg += line + "\n\n"
+    title = "Stock" if not product else f"Stock: {product.title()}"
+    msg = f"*{title}*\n\n"
+    prev_category = None
+
+    for i, (display_name, v, category, is_multi) in enumerate(page_entries):
+        idx = start + i + 1  # 1-based absolute index
+        qty = v.quantity or 0
+        unit_label = f" {v.unit}" if v.unit else ""
+
+        if category and category != prev_category:
+            msg += f"— {category.title()} —\n"
+            prev_category = category
+
+        if qty == 0:
+            indicator = "🔴 "
+        elif v.low_stock_alert is not None and qty <= v.low_stock_alert:
+            indicator = "⚠️ "
         else:
-            # Multi-unit product — show each variant indented
-            msg += f"{idx}. {display_name}\n"
-            for v in variants:
-                qty = v.quantity or 0
-                unit_label = f" {v.unit}" if v.unit else ""
-                total_value += qty * (v.cost_price or 0)
+            indicator = ""
 
-                if qty == 0:
-                    indicator = "🔴 "
-                elif v.low_stock_alert is not None and qty <= v.low_stock_alert:
-                    indicator = "⚠️ "
-                else:
-                    indicator = ""
-
-                line = f"   {indicator}{qty:,}{unit_label}"
-                prices = []
-                if v.cost_price:
-                    prices.append(f"Cost N{v.cost_price:,}")
-                if v.selling_price:
-                    prices.append(f"Sell N{v.selling_price:,}")
-                if prices:
-                    line += f" | {' | '.join(prices)}"
-                msg += line + "\n"
-            msg += "\n"
+        name_display = f"{display_name} ({v.unit})" if (is_multi and v.unit) else display_name
+        line = f"{idx}. {indicator}{name_display}: {qty:,}{unit_label}"
+        prices = []
+        if v.cost_price:
+            prices.append(f"Cost N{v.cost_price:,}")
+        if v.selling_price:
+            prices.append(f"Sell N{v.selling_price:,}")
+        if prices:
+            line += f"\n   {' | '.join(prices)}"
+        if v.reorder_quantity is not None and qty <= v.reorder_quantity:
+            line += f"\n   ↩️ Reorder at {v.reorder_quantity:,}{unit_label}"
+        msg += line + "\n\n"
 
     msg += f"Total stock value: N{total_value:,}"
+
+    if end < total:
+        next_end = min(end + _STOCK_PAGE_SIZE, total)
+        msg += f"\n\n─ Showing {start + 1}–{end} of {total} items ─\nSend *MORE* for items {end + 1}–{next_end}"
+
     if return_ids:
-        # Return IDs in the exact same order as the displayed numbers
-        ordered_ids = []
-        for name_key in sorted(grouped.keys()):
-            variants = grouped[name_key]
-            if len(variants) == 1:
-                ordered_ids.append(variants[0].id)
-            else:
-                # Multi-variant: each variant gets its own selectable slot
-                for v in sorted(variants, key=lambda x: (x.unit or "")):
-                    ordered_ids.append(v.id)
-        return msg.strip(), ordered_ids
+        return msg.strip(), all_ids
     return msg.strip()
 
 

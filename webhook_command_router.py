@@ -418,6 +418,49 @@ def handle_parsed_command(
             send_whatsapp_message(phone, f"Price set: *{item_name.title()}* — N{price:,}\n\nSend *price list* to see all prices.")
         return {"status": "set_service_price_saved"}
 
+    # ── Natural language stock price update: "price garri 2500 3500" ────────────
+    if parsed["type"] == "UPDATE_STOCK_PRICE":
+        if not user:
+            send_whatsapp_message(phone, "Register your business first.")
+            return {"status": "update_stock_price_no_user"}
+        product_query = parsed["product"].strip().lower()
+        cost = parsed["cost"]
+        sell = parsed["sell"]
+        from sqlalchemy import func as _func2
+        from models import InventoryItem as _InvItem2
+        item = db.query(_InvItem2).filter(
+            _InvItem2.owner_phone == business_owner_phone,
+            _func2.lower(_InvItem2.name) == product_query,
+            _InvItem2.quantity != None,
+        ).first()
+        if not item:
+            # fuzzy: product name contained in stored name or vice versa
+            candidates = db.query(_InvItem2).filter(
+                _InvItem2.owner_phone == business_owner_phone,
+                _InvItem2.quantity != None,
+            ).all()
+            for c in candidates:
+                if product_query in c.name.lower() or c.name.lower() in product_query:
+                    item = c
+                    break
+        if item:
+            item.cost_price = cost
+            item.selling_price = sell
+            db.commit()
+            send_whatsapp_message(
+                phone,
+                f"Price updated: *{item.name.title()}*\n"
+                f"Cost: N{cost:,}  |  Sell: N{sell:,}\n\n"
+                "Send *stock* to see your inventory."
+            )
+        else:
+            send_whatsapp_message(
+                phone,
+                f"Stock item '{product_query.title()}' not found.\n"
+                "Send *stock* to see your inventory."
+            )
+        return {"status": "update_stock_price_done"}
+
     # ── Service job (customer brought/dropped items) ─────────────────────────
     if parsed["type"] == "SERVICE_JOB":
         if not user:
