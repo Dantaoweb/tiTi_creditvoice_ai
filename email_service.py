@@ -96,6 +96,45 @@ def send_welcome_email(to: str, name: str) -> bool:
     return send_email(to, subject, html)
 
 
+def send_staff_invite_email(to_email: str, staff_name: str, owner_name: str, business_name: str) -> bool:
+    subject = f"{owner_name} invited you to join their business on CreditVoice"
+    html = f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
+      <div style="background:#1f7a4d;color:#fff;border-radius:8px 8px 0 0;padding:20px 24px">
+        <strong style="font-size:20px">CreditVoice</strong>
+        <p style="margin:4px 0 0;font-size:13px;opacity:.8">Business Desk</p>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:28px 24px">
+        <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 12px">Hi {staff_name.title()},</p>
+        <p style="color:#374151;font-size:14px;margin:0 0 16px">
+          <strong>{owner_name.title()}</strong> has invited you to join
+          <strong>{business_name.title()}</strong> on CreditVoice as a staff member.
+        </p>
+        <p style="color:#374151;font-size:14px;margin:0 0 8px">
+          To accept, go to <strong>CreditVoice Business Desk</strong> and click
+          <em>"Accept staff invitation"</em> on the login page.
+        </p>
+        <p style="color:#374151;font-size:14px;margin:0 0 16px">
+          You will need the <strong>6-digit accept code</strong> from {owner_name.title()} to complete the process.
+        </p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+        <p style="color:#9ca3af;font-size:12px;margin:0">
+          If you were not expecting this invitation, you can ignore this email.
+          The invitation expires in 24 hours.
+        </p>
+      </div>
+    </div>
+    """
+    text = (
+        f"Hi {staff_name.title()},\n\n"
+        f"{owner_name.title()} has invited you to join {business_name.title()} on CreditVoice as staff.\n\n"
+        f"To accept: go to CreditVoice Business Desk and click 'Accept staff invitation' on the login page.\n"
+        f"You will need the 6-digit accept code from {owner_name.title()}.\n\n"
+        "The invitation expires in 24 hours."
+    )
+    return send_email(to_email, subject, html, text)
+
+
 def is_email_configured() -> bool:
     return _CONFIGURED
 

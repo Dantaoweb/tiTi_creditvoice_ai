@@ -5,6 +5,8 @@ from fast_capture_commands import (
     is_fast_mode_active,
     save_fast_entry,
     _ack_message,
+    check_fast_mode_expiry_notice,
+    get_or_create_fast_capture_settings,
 )
 from customer_automation import (
     handle_automation_owner_command,
@@ -306,11 +308,16 @@ def handle_webhook_body(body):
             and not is_command
             and is_fast_mode_active(db, business_owner_phone)
         ):
+            fc_settings = get_or_create_fast_capture_settings(db, business_owner_phone)
             raw_text = voice_transcript_text or text
             entry = save_fast_entry(db, business_owner_phone, user.id, raw_text, parsed)
             db.commit()
-            send_whatsapp_message(phone, _ack_message(entry, parsed))
+            send_whatsapp_message(phone, _ack_message(entry, parsed, fc_settings.market_end_hour))
             return {"status": "fast_capture_saved"}
+
+        # Notify user when fast mode has expired since their last message
+        if user and message_type == "text":
+            check_fast_mode_expiry_notice(db, business_owner_phone, phone, send_whatsapp_message)
 
         pending_result = handle_pending_actions(
             db,

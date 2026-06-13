@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, Mic, MicOff } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Mic, MicOff, Zap } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useApp } from "../context/AppContext";
-import { apiPost } from "../lib/api";
+import { apiFetch, apiPost } from "../lib/api";
 import { getBizLabels } from "../lib/bizLabels";
 
 async function blobToBase64(blob) {
@@ -18,11 +18,13 @@ export default function Chat() {
   const L = getBizLabels(user?.menu_group);
   const firstName = user?.name?.split(" ")[0] || "there";
 
-  const [messages, setMessages] = useState([]);
-  const [input, setInput]       = useState("");
-  const [busy, setBusy]         = useState(false);
+  const [messages, setMessages]     = useState([]);
+  const [input, setInput]           = useState("");
+  const [busy, setBusy]             = useState(false);
   const [recording, setRecording]   = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("");
+  const [fastMode, setFastMode]     = useState({ enabled: false });
+  const [fastBusy, setFastBusy]     = useState(false);
 
   const inputRef    = useRef(null);
   const bottomRef   = useRef(null);
@@ -36,6 +38,36 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
+  // Fetch fast mode state on mount
+  useEffect(() => {
+    apiFetch("fast-mode").then(setFastMode).catch(() => {});
+  }, []);
+
+  const toggleFastMode = useCallback(async () => {
+    if (fastBusy) return;
+    const next = !fastMode.enabled;
+    setFastBusy(true);
+    try {
+      const res = await apiPost("fast-mode", {
+        enabled: next,
+        start_hour: fastMode.start_hour,
+        end_hour: fastMode.end_hour,
+      });
+      setFastMode(prev => ({ ...prev, enabled: res.enabled }));
+      pushMsg("titi",
+        res.enabled
+          ? "⚡ Fast mode ON — transactions save instantly without confirmation. Tap ⚡ again to turn off."
+          : "Fast mode OFF — transactions will ask for confirmation again.",
+        true,
+      );
+    } catch {
+      // silent fail
+    } finally {
+      setFastBusy(false);
+      inputRef.current?.focus();
+    }
+  }, [fastMode, fastBusy]);
+
   function pushMsg(from, text, ok) {
     setMessages(prev => [...prev, { from, text, ok }]);
   }
@@ -48,6 +80,8 @@ export default function Chat() {
     pushMsg("you", text);
     try {
       const data = await apiPost("chat/send", { text });
+      // Refresh fast mode state in case user typed "fast mode on/off"
+      apiFetch("fast-mode").then(setFastMode).catch(() => {});
       pushMsg("titi", data.reply || "Done!", data.ok !== false);
     } catch (err) {
       pushMsg("titi", err.message || "Something went wrong.", false);
@@ -168,13 +202,28 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {/* ── Fast mode status bar ── */}
+      {fastMode.enabled && (
+        <div className="chat-fast-bar">
+          <Zap size={13} />
+          <span>Fast mode — transactions save instantly</span>
+          <button
+            className="chat-fast-bar-off"
+            onClick={toggleFastMode}
+            disabled={fastBusy}
+          >
+            Turn off
+          </button>
+        </div>
+      )}
+
       {/* ── Voice status line ── */}
       {voiceStatus && (
         <div className="chat-voice-status">{voiceStatus}</div>
       )}
 
       {/* ── Input bar ── */}
-      <form onSubmit={e => { e.preventDefault(); send(); }} className="chat-input-bar">
+      <form onSubmit={e => { e.preventDefault(); send(); }} className={`chat-input-bar${fastMode.enabled ? " chat-input-fast" : ""}`}>
         <button
           type="button"
           className={`chat-mic-btn${recording ? " chat-mic-active" : ""}`}
@@ -190,10 +239,20 @@ export default function Chat() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={L.examples[0].text}
+          placeholder={fastMode.enabled ? "Type and send — saves instantly" : L.examples[0].text}
           disabled={busy || recording}
           autoComplete="off"
         />
+
+        <button
+          type="button"
+          className={`chat-fast-btn${fastMode.enabled ? " chat-fast-btn-on" : ""}`}
+          onClick={toggleFastMode}
+          disabled={fastBusy || recording}
+          title={fastMode.enabled ? "Fast mode ON — click to turn off" : "Turn on fast mode"}
+        >
+          <Zap size={15} />
+        </button>
 
         <button
           type="submit"

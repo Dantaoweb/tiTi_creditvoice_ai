@@ -39,6 +39,11 @@ export default function Login() {
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
 
+  // Accept invite fields
+  const [invitePhone, setInvitePhone] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [acceptedName, setAcceptedName] = useState("");
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
@@ -133,6 +138,29 @@ export default function Login() {
     finally { setBusy(false); }
   }
 
+  // ── Accept staff invitation ───────────────────────────────────────────
+  async function handleAcceptInvite(e) {
+    e.preventDefault();
+    setErr("");
+    if (!invitePhone.trim()) { setErr("Enter your phone number."); return; }
+    if (!inviteCode.trim())  { setErr("Enter the accept code from your employer."); return; }
+    setBusy(true);
+    try {
+      const data = await apiPost("staff/accept", { phone: invitePhone.trim(), code: inviteCode.trim() });
+      setAcceptedName(data.name || "");
+      if (data.has_pin) {
+        setInfo(`Welcome, ${(data.name || "").split(" ")[0] || "there"}! You can now sign in with your phone and PIN.`);
+        goMode("login");
+        setPhone(invitePhone.trim());
+      } else {
+        setInfo(`Invitation accepted! Hi ${(data.name || "").split(" ")[0] || "there"} — set a PIN to finish signing in.`);
+        setOtpPhone(invitePhone.trim());
+        goMode("request_otp");
+      }
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
   return (
     <div className="login-shell">
       <div className="login-card">
@@ -194,6 +222,10 @@ export default function Login() {
 
             <button type="button" className="btn btn-secondary" style={{ width: "100%", justifyContent: "center" }} onClick={() => goMode("register")}>
               <UserPlus size={15} /> Create an account
+            </button>
+
+            <button type="button" className="login-text-btn" onClick={() => goMode("accept_invite")}>
+              Accept a staff invitation
             </button>
           </form>
         )}
@@ -364,6 +396,50 @@ export default function Login() {
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
               {busy ? <><Spinner /> Saving…</> : "Set PIN & Sign In"}
+            </button>
+          </form>
+        )}
+
+        {/* ── Accept staff invitation ── */}
+        {mode === "accept_invite" && (
+          <form onSubmit={handleAcceptInvite} className="login-form">
+            <button type="button" className="login-back-btn" onClick={() => goMode("login")}>
+              <ArrowLeft size={14} /> Back to sign in
+            </button>
+
+            <div className="login-section-title">Accept Staff Invitation</div>
+            <p className="login-hint-muted">Enter your phone number and the 6-digit code your employer shared with you.</p>
+
+            <div className="form-group">
+              <label className="form-label">Your Phone Number</label>
+              <input
+                type="tel"
+                value={invitePhone}
+                onChange={e => setInvitePhone(e.target.value)}
+                placeholder="e.g. 2348012345678"
+                autoFocus
+                disabled={busy}
+              />
+              <span className="form-hint">Include country code, no +</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Accept Code</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value)}
+                placeholder="6-digit code from your employer"
+                maxLength={8}
+                disabled={busy}
+              />
+            </div>
+
+            {err && <div className="login-error">{err}</div>}
+
+            <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
+              {busy ? <><Spinner /> Checking…</> : "Accept Invitation"}
             </button>
           </form>
         )}

@@ -3,16 +3,16 @@ from typing import Optional
 import base64
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
-from fastapi import Depends, Query
+from fastapi import Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from database import SessionLocal
 from models import (
-    Customer, InventoryItem, InventoryMovement, PendingAction, ReminderQueue,
-    Supplier, SupplierPayment, SupplierPurchase,
+    Customer, FastCaptureSettings, InventoryItem, InventoryMovement, PendingAction,
+    ReminderQueue, Supplier, SupplierPayment, SupplierPurchase,
     Transaction, TransactionItem, User, utcnow,
 )
 from parser import normalize_voice_transcript, parse_message, transcribe_audio_bytes
@@ -77,6 +77,20 @@ class DemoChatRequest(BaseModel):
 
 class ChatSendRequest(BaseModel):
     text: str
+
+class StaffInviteRequest(BaseModel):
+    name: str
+    phone: str
+    email: Optional[str] = None
+
+class StaffAcceptRequest(BaseModel):
+    phone: str
+    code: str
+
+class FastModeToggleRequest(BaseModel):
+    enabled: bool
+    start_hour: Optional[int] = None
+    end_hour: Optional[int] = None
 
 class CapturePreviewRequest(BaseModel):
     phone: str
@@ -444,6 +458,54 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    # ── Fast Mode ────────────────────────────────────────────────────────
+    @app.get("/app/api/fast-mode")
+    def web_fast_mode_get(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.phone == session["phone"]).first()
+            if not user:
+                return {"enabled": False, "start_hour": 8, "end_hour": 18}
+            owner_phone = session["phone"]
+            if user.parent_id:
+                owner = db.query(User).filter(User.id == user.parent_id).first()
+                owner_phone = owner.phone if owner else session["phone"]
+            settings = db.query(FastCaptureSettings).filter(
+                FastCaptureSettings.owner_phone == owner_phone
+            ).first()
+            if not settings:
+                return {"enabled": False, "start_hour": 8, "end_hour": 18}
+            return {
+                "enabled": settings.enabled,
+                "start_hour": settings.market_start_hour,
+                "end_hour": settings.market_end_hour,
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/fast-mode")
+    def web_fast_mode_toggle(payload: FastModeToggleRequest, session: dict = Depends(require_web_auth)):
+        from fast_capture_commands import get_or_create_fast_capture_settings
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.phone == session["phone"]).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found.")
+            owner_phone = session["phone"]
+            if user.parent_id:
+                owner = db.query(User).filter(User.id == user.parent_id).first()
+                owner_phone = owner.phone if owner else session["phone"]
+            settings = get_or_create_fast_capture_settings(db, owner_phone)
+            settings.enabled = payload.enabled
+            if payload.start_hour is not None:
+                settings.market_start_hour = payload.start_hour
+            if payload.end_hour is not None:
+                settings.market_end_hour = payload.end_hour
+            db.commit()
+            return {"ok": True, "enabled": settings.enabled}
+        finally:
+            db.close()
+
     # ── Chat ─────────────────────────────────────────────────────────────
     @app.post("/app/api/chat/demo")
     def web_chat_demo(payload: DemoChatRequest):
@@ -494,6 +556,25 @@ def register_web_routes(app):
             # Home menu (menu / home / help / hello)
             if handle_home_menu_request(db, phone, text, user, subscription, business_name):
                 return {"reply": "\n\n".join(collected) or "Done!", "ok": True}
+
+            # Fast capture — commands always route; transactions bypass confirm when enabled
+            from fast_capture_commands import (
+                handle_fast_capture_command, save_fast_entry,
+                _ack_message as _fc_ack,
+            )
+            if parsed and parsed.get("type") in (
+                "FAST_MODE_ON", "FAST_MODE_OFF", "FAST_CAPTURE_STATUS", "CLOSE_SALES",
+            ):
+                handle_fast_capture_command(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
+                return {"reply": "\n\n".join(collected) or "Done!", "ok": True}
+
+            fc_settings = db.query(FastCaptureSettings).filter(
+                FastCaptureSettings.owner_phone == business_owner_phone
+            ).first()
+            if fc_settings and fc_settings.enabled and parsed and parsed.get("type") == "TRANSACTION" and not is_command:
+                entry = save_fast_entry(db, business_owner_phone, user.id, text, parsed)
+                db.commit()
+                return {"reply": _fc_ack(entry, parsed), "ok": True}
 
             # Pending action lookup (skip WEB_OTP which is for login flow)
             pending = db.query(PendingAction).filter(
@@ -1055,6 +1136,157 @@ def register_web_routes(app):
             period_key = period.upper() if period else None
             staff_data = get_staff_performance(db, owner_phone, period_key)
             return {"staff": staff_data or []}
+        finally:
+            db.close()
+
+    @app.get("/app/api/staff/members")
+    def web_staff_members(session: dict = Depends(require_web_auth)):
+        """Return all staff (active + pending) for the authenticated owner."""
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.role != "user" or owner.parent_id is not None:
+                return {"members": []}
+            members = db.query(User).filter(User.parent_id == owner.id).all()
+            return {
+                "members": [
+                    {
+                        "id": m.id,
+                        "name": m.name,
+                        "phone": m.phone,
+                        "email": m.email,
+                        "role": m.role,
+                        "pending": m.role == "delegate_pending",
+                        "invite_expires_at": m.invite_expires_at.isoformat() if m.invite_expires_at else None,
+                    }
+                    for m in members
+                ]
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/staff/invite")
+    def web_staff_invite(payload: StaffInviteRequest, session: dict = Depends(require_web_auth)):
+        """Owner invites a staff member by phone (and optionally email)."""
+        from email_service import send_staff_invite_email, is_email_configured
+        from staff_commands import _generate_invite_code
+        from subscriptions import check_staff_limit, ensure_feature_allowed
+
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.role != "user" or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can invite staff.")
+
+            subscription = get_business_subscription(db, owner)
+            allowed, upgrade_msg = ensure_feature_allowed(db, owner, "STAFF", "Staff management")
+            if not allowed:
+                raise HTTPException(status_code=403, detail=upgrade_msg)
+
+            staff_allowed, staff_limit_msg = check_staff_limit(db, owner, subscription)
+            if not staff_allowed:
+                raise HTTPException(status_code=403, detail=staff_limit_msg)
+
+            staff_phone = payload.phone.strip()
+            staff_name = payload.name.strip()
+            staff_email = (payload.email or "").strip() or None
+
+            staff_user = db.query(User).filter(User.phone == staff_phone).first()
+            if staff_user:
+                staff_user.role = "delegate_pending"
+                staff_user.parent_id = owner.id
+                staff_user.name = staff_name
+                if staff_email:
+                    staff_user.email = staff_email
+                staff_user.can_view_all_transactions = False
+            else:
+                staff_user = User(
+                    phone=staff_phone,
+                    name=staff_name,
+                    email=staff_email,
+                    role="delegate_pending",
+                    parent_id=owner.id,
+                    can_view_all_transactions=False,
+                )
+                db.add(staff_user)
+
+            invite_code = _generate_invite_code()
+            from datetime import timezone as _tz
+            staff_user.invite_code = invite_code
+            staff_user.invite_code_attempts = 0
+            staff_user.invite_expires_at = datetime.now(_tz.utc).replace(tzinfo=None) + timedelta(hours=24)
+            db.commit()
+
+            emailed = False
+            email_hint = None
+            if staff_email and is_email_configured():
+                business_name = owner.business_type_label or owner.name
+                emailed = send_staff_invite_email(staff_email, staff_name, owner.name, business_name)
+                if emailed:
+                    from email_service import mask_email
+                    email_hint = mask_email(staff_email)
+
+            return {
+                "ok": True,
+                "invite_code": invite_code,
+                "emailed": emailed,
+                "email_hint": email_hint,
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/staff/accept")
+    def web_staff_accept(payload: StaffAcceptRequest):
+        """Staff member accepts an invitation using their phone + the code the owner shared."""
+        from datetime import timezone as _tz
+        MAX_ATTEMPTS = 3
+
+        db = SessionLocal()
+        try:
+            phone = payload.phone.strip()
+            code = payload.code.strip()
+
+            staff_user = db.query(User).filter(User.phone == phone).first()
+            if not staff_user or staff_user.role != "delegate_pending":
+                raise HTTPException(status_code=404, detail="No pending invitation found for this phone number.")
+
+            # Expired
+            if staff_user.invite_expires_at and staff_user.invite_expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+                staff_user.role = "user"
+                staff_user.parent_id = None
+                staff_user.invite_code = None
+                staff_user.invite_code_attempts = 0
+                staff_user.invite_expires_at = None
+                db.commit()
+                raise HTTPException(status_code=410, detail="This invitation has expired. Ask the owner to send a new one.")
+
+            # Too many attempts
+            attempts = staff_user.invite_code_attempts or 0
+            if attempts >= MAX_ATTEMPTS:
+                staff_user.role = "user"
+                staff_user.parent_id = None
+                staff_user.invite_code = None
+                staff_user.invite_code_attempts = 0
+                staff_user.invite_expires_at = None
+                db.commit()
+                raise HTTPException(status_code=429, detail="Too many wrong attempts. Ask the owner to send a new invitation.")
+
+            # Wrong code
+            if not staff_user.invite_code or code != staff_user.invite_code:
+                staff_user.invite_code_attempts = attempts + 1
+                remaining = MAX_ATTEMPTS - staff_user.invite_code_attempts
+                db.commit()
+                raise HTTPException(status_code=400, detail=f"Wrong code. {remaining} attempt(s) remaining.")
+
+            # Accept
+            staff_user.role = "delegate"
+            staff_user.invite_code = None
+            staff_user.invite_code_attempts = 0
+            staff_user.invite_expires_at = None
+            db.commit()
+
+            has_pin = bool(staff_user.recovery_pin_hash)
+            return {"ok": True, "name": staff_user.name, "has_pin": has_pin}
         finally:
             db.close()
 

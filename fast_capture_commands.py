@@ -127,28 +127,80 @@ def save_fast_entry(db, owner_phone, user_id, raw_input, parsed):
     return entry
 
 
-def _ack_message(entry, parsed):
-    """Brief one-line acknowledgement shown in fast mode instead of a confirmation prompt."""
+def _ack_message(entry, parsed, market_end_hour=None):
+    """Brief one-line acknowledgement shown in fast mode instead of a confirmation prompt.
+
+    market_end_hour: if provided, shows ⚡ instead of ✓ and appends a closing-soon
+    notice when within the final hour of the market window.
+    """
     if not parsed:
         return "⚠ Entry saved — unclear, will check at close."
 
     action = parsed.get("action")
     name = (parsed.get("name") or "Cash sale").title()
     amount = parsed.get("buy_amount") or parsed.get("paid_amount") or parsed.get("total") or 0
+    icon = "⚡" if market_end_hour is not None else "✓"
 
     if action == "SALE":
         product = (parsed.get("product") or "").title()
-        return f"✓ {product} — N{amount:,} noted."
-
-    if action == "PAY":
-        return f"✓ {name} paid N{amount:,} noted."
-
-    if action in ("BUY", "COMBINED"):
+        base = f"{icon} {product} — N{amount:,} noted."
+    elif action == "PAY":
+        base = f"{icon} {name} paid N{amount:,} noted."
+    elif action in ("BUY", "COMBINED"):
         product = (parsed.get("product") or "").title()
         product_part = f" — {product}" if product else ""
-        return f"✓ {name}{product_part} N{amount:,} noted."
+        base = f"{icon} {name}{product_part} N{amount:,} noted."
+    else:
+        base = f"{icon} Entry noted."
 
-    return f"✓ Entry noted."
+    if market_end_hour is not None:
+        hour = _wat_now().hour
+        if market_end_hour - 1 <= hour < market_end_hour:
+            base += f"\n· Fast mode closes at {market_end_hour:02d}:00. Send 'close sales' when done."
+
+    return base
+
+
+def check_fast_mode_expiry_notice(db, owner_phone, phone, send_message):
+    """Send a one-time notice when fast mode is enabled but market hours have passed.
+
+    Called from the main webhook flow so the user is notified on their next
+    message after close — not as a background push.
+    """
+    settings = db.query(FastCaptureSettings).filter(
+        FastCaptureSettings.owner_phone == owner_phone
+    ).first()
+    if not settings or not settings.enabled:
+        return
+
+    hour = _wat_now().hour
+    if hour < settings.market_end_hour:
+        return  # still within hours, nothing to do
+
+    today = _today_key()
+    pending_count = db.query(FastCaptureEntry).filter(
+        FastCaptureEntry.owner_phone == owner_phone,
+        FastCaptureEntry.session_date == today,
+        FastCaptureEntry.status == "pending",
+    ).count()
+
+    if pending_count > 0:
+        send_message(
+            phone,
+            f"⚡ Fast mode closed at {settings.market_end_hour:02d}:00.\n\n"
+            f"{pending_count} entr{'y' if pending_count == 1 else 'ies'} from today need your review.\n"
+            "Send 'close sales' to go through them.",
+        )
+    else:
+        send_message(
+            phone,
+            f"⚡ Fast mode closed at {settings.market_end_hour:02d}:00.\n"
+            "Nothing to review — good day!",
+        )
+        # All entries handled — disable until next enable
+        settings.enabled = False
+        settings.updated_at = _utcnow()
+        db.commit()
 
 
 # ── End-of-day review ─────────────────────────────────────────────────────────
