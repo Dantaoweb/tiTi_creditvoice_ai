@@ -15,7 +15,7 @@ function buildNav(L) {
     { to: "/customers",    label: L.navCustomers,     icon: Users           },
     { to: "/reminders",    label: L.reminders,        icon: Bell            },
     { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
-    { disabled: true,      label: "Wallet ✦",         icon: Wallet, badge: "soon" },
+    { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
     { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
@@ -41,6 +41,7 @@ export default function Layout() {
     "/transactions": "Transactions",
     "/suppliers":    "Suppliers",
     "/staff":        "Staff",
+    "/wallet":       "Wallet",
   };
 
   const path = window.location.pathname.replace("/app", "") || "/home";

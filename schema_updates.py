@@ -321,6 +321,87 @@ def ensure_schema_updates(engine):
                 )
             """))
 
+    # ── Wallet tables ───────────────────────────────────────────────────────
+    if "wallets" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE wallets (
+                    id SERIAL PRIMARY KEY,
+                    owner_phone VARCHAR UNIQUE,
+                    balance INTEGER DEFAULT 0,
+                    total_received INTEGER DEFAULT 0,
+                    total_withdrawn INTEGER DEFAULT 0,
+                    virtual_account_number VARCHAR,
+                    virtual_account_bank VARCHAR,
+                    virtual_account_name VARCHAR,
+                    virtual_account_ref VARCHAR,
+                    payment_link_slug VARCHAR UNIQUE,
+                    waitlist BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP
+                )
+            """ if engine.dialect.name == "postgresql" else """
+                CREATE TABLE wallets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_phone VARCHAR UNIQUE,
+                    balance INTEGER DEFAULT 0,
+                    total_received INTEGER DEFAULT 0,
+                    total_withdrawn INTEGER DEFAULT 0,
+                    virtual_account_number VARCHAR,
+                    virtual_account_bank VARCHAR,
+                    virtual_account_name VARCHAR,
+                    virtual_account_ref VARCHAR,
+                    payment_link_slug VARCHAR UNIQUE,
+                    waitlist INTEGER DEFAULT 0,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            """))
+
+    if "wallet_transactions" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE wallet_transactions (
+                    id SERIAL PRIMARY KEY,
+                    owner_phone VARCHAR,
+                    reference VARCHAR UNIQUE,
+                    fintech_ref VARCHAR,
+                    amount INTEGER,
+                    direction VARCHAR,
+                    type VARCHAR,
+                    status VARCHAR DEFAULT 'pending',
+                    sender_name VARCHAR,
+                    sender_account VARCHAR,
+                    sender_bank VARCHAR,
+                    narration TEXT,
+                    matched_customer_id INTEGER REFERENCES customers(id),
+                    matched_at TIMESTAMP,
+                    matched_by VARCHAR,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    settled_at TIMESTAMP
+                )
+            """ if engine.dialect.name == "postgresql" else """
+                CREATE TABLE wallet_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_phone VARCHAR,
+                    reference VARCHAR UNIQUE,
+                    fintech_ref VARCHAR,
+                    amount INTEGER,
+                    direction VARCHAR,
+                    type VARCHAR,
+                    status VARCHAR DEFAULT 'pending',
+                    sender_name VARCHAR,
+                    sender_account VARCHAR,
+                    sender_bank VARCHAR,
+                    narration TEXT,
+                    matched_customer_id INTEGER REFERENCES customers(id),
+                    matched_at TIMESTAMP,
+                    matched_by VARCHAR,
+                    created_at TIMESTAMP,
+                    settled_at TIMESTAMP
+                )
+            """))
+
     # ── Performance indexes for existing databases ───────────────────────────
     # SQLAlchemy index=True only creates indexes on CREATE TABLE.
     # For existing databases we run CREATE INDEX IF NOT EXISTS here.

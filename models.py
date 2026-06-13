@@ -768,3 +768,66 @@ class ReminderSendLog(Base):
     sent_date = Column(String)
 
     created_at = Column(DateTime, default=utcnow)
+
+
+# ── Wallet ─────────────────────────────────────────────────────────────────────
+
+class Wallet(Base):
+    """One wallet per business owner. Financial home when payments go live."""
+
+    __tablename__ = "wallets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, unique=True, index=True)
+
+    # Running totals — updated on every settled transaction
+    balance = Column(Integer, default=0)           # naira, current spendable balance
+    total_received = Column(Integer, default=0)    # all-time inflows
+    total_withdrawn = Column(Integer, default=0)   # all-time outflows
+
+    # Virtual account — provisioned by fintech partner; null until integrated
+    virtual_account_number = Column(String, nullable=True)
+    virtual_account_bank = Column(String, nullable=True)
+    virtual_account_name = Column(String, nullable=True)
+    virtual_account_ref = Column(String, nullable=True)   # partner's internal ref
+
+    # Shareable payment link slug (e.g. "balogunshop")
+    payment_link_slug = Column(String, nullable=True, unique=True)
+
+    # Interest flag — set when owner clicks "Notify me"
+    waitlist = Column(Boolean, default=False)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class WalletTransaction(Base):
+    """Every money movement in or out of a business wallet."""
+
+    __tablename__ = "wallet_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+
+    # References
+    reference = Column(String, unique=True, index=True)  # our internal ref
+    fintech_ref = Column(String, nullable=True)           # partner's reference
+
+    amount = Column(Integer)                # naira
+    direction = Column(String)             # "in" | "out"
+    type = Column(String)                  # "collection" | "payout" | "adjustment"
+    status = Column(String, default="pending")  # "pending" | "settled" | "failed"
+
+    # Sender / recipient details (from bank statement)
+    sender_name = Column(String, nullable=True)
+    sender_account = Column(String, nullable=True)
+    sender_bank = Column(String, nullable=True)
+    narration = Column(String, nullable=True)
+
+    # Customer matching
+    matched_customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
+    matched_at = Column(DateTime, nullable=True)
+    matched_by = Column(String, nullable=True)   # "auto" | "manual"
+
+    created_at = Column(DateTime, default=utcnow)
+    settled_at = Column(DateTime, nullable=True)

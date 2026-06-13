@@ -1290,6 +1290,128 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    # ── Wallet ───────────────────────────────────────────────────────────
+    @app.get("/app/api/wallet")
+    def web_wallet(session: dict = Depends(require_web_auth)):
+        from wallet_service import get_wallet_summary
+        db = SessionLocal()
+        try:
+            user_ctx = load_webhook_user_context(db, session["phone"], "text")
+            owner_phone = user_ctx.business_owner_phone or session["phone"]
+            return get_wallet_summary(db, owner_phone)
+        finally:
+            db.close()
+
+    @app.post("/app/api/wallet/interest")
+    def web_wallet_interest(session: dict = Depends(require_web_auth)):
+        """Register owner as interested — shown on the coming-soon page."""
+        from wallet_service import register_waitlist
+        db = SessionLocal()
+        try:
+            user_ctx = load_webhook_user_context(db, session["phone"], "text")
+            owner_phone = user_ctx.business_owner_phone or session["phone"]
+            register_waitlist(db, owner_phone)
+            return {"ok": True}
+        finally:
+            db.close()
+
+    @app.post("/app/api/wallet/match")
+    def web_wallet_match(
+        payload: dict,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Manually match an unmatched inbound payment to a customer."""
+        from wallet_service import manually_match_payment
+        db = SessionLocal()
+        try:
+            user_ctx = load_webhook_user_context(db, session["phone"], "text")
+            owner_phone = user_ctx.business_owner_phone or session["phone"]
+            tx, err = manually_match_payment(
+                db,
+                payload.get("wallet_tx_id"),
+                payload.get("customer_id"),
+                owner_phone,
+            )
+            if err:
+                raise HTTPException(status_code=400, detail=err)
+            return {"ok": True, "transaction_id": tx.id}
+        finally:
+            db.close()
+
+    # ── Fintech payment webhook (stub — ready for partner integration) ────────
+    @app.post("/webhook/payment-received")
+    async def webhook_payment_received(request):
+        """
+        Called by the fintech partner when a customer pays into a virtual account.
+        FINTECH_INTEGRATION: uncomment HMAC verification when partner is confirmed.
+        """
+        from wallet_service import process_incoming_payment, verify_webhook_signature
+        from whatsapp_client import send_whatsapp_message
+
+        body = await request.body()
+        sig  = request.headers.get("X-Webhook-Signature", "")
+
+        if not verify_webhook_signature(body, sig):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature.")
+
+        import json as _json
+        data = _json.loads(body)
+
+        # Expected payload shape (adapt to actual partner schema):
+        # {
+        #   "event": "payment.received",
+        #   "virtual_account_number": "...",
+        #   "amount": 5000,
+        #   "sender_name": "ADEBAYO JOHN",
+        #   "sender_account": "0123456789",
+        #   "sender_bank": "GTBank",
+        #   "narration": "Transfer",
+        #   "reference": "partner-ref-xyz"
+        # }
+
+        virtual_account_number = data.get("virtual_account_number")
+        amount    = int(data.get("amount", 0))
+        sender    = data.get("sender_name", "")
+        s_acct    = data.get("sender_account", "")
+        s_bank    = data.get("sender_bank", "")
+        narration = data.get("narration", "")
+        ref       = data.get("reference", "")
+
+        if not virtual_account_number or not amount or not ref:
+            raise HTTPException(status_code=400, detail="Missing required fields.")
+
+        db = SessionLocal()
+        try:
+            from models import Wallet
+            wallet = db.query(Wallet).filter(
+                Wallet.virtual_account_number == virtual_account_number
+            ).first()
+            if not wallet:
+                raise HTTPException(status_code=404, detail="Virtual account not found.")
+
+            tx = process_incoming_payment(
+                db, wallet.owner_phone, amount, sender, s_bank, narration, ref, s_acct
+            )
+
+            # Notify the business owner on WhatsApp
+            match_note = ""
+            if tx.matched_customer_id:
+                from models import Customer
+                c = db.query(Customer).filter(Customer.id == tx.matched_customer_id).first()
+                if c:
+                    match_note = f"\nMatched to {c.name.title()} and recorded as payment."
+
+            send_whatsapp_message(
+                wallet.owner_phone,
+                f"💰 Payment received: ₦{amount:,}\n"
+                f"From: {sender or 'Unknown'} ({s_bank or '—'})\n"
+                f"Ref: {ref}{match_note}\n\n"
+                "Open CreditVoice Wallet to review."
+            )
+            return {"ok": True, "reference": tx.reference}
+        finally:
+            db.close()
+
     # ── Reminders ──────────────────────────────────────────────────────────
     @app.get("/app/api/reminders")
     def web_reminders(owner_phone: Optional[str] = Query(default=None)):

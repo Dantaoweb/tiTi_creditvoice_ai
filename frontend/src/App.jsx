@@ -14,6 +14,7 @@ import Staff        from "./pages/Staff";
 import Reminders    from "./pages/Reminders";
 import POS          from "./pages/POS";
 import Receipt      from "./pages/Receipt";
+import Wallet       from "./pages/Wallet";
 
 function RequireAuth({ children }) {
   const { isAuthed } = useAuth();
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="suppliers"    element={<Suppliers />}    />
           <Route path="staff"        element={<Staff />}        />
           <Route path="reminders"    element={<Reminders />}    />
+          <Route path="wallet"       element={<Wallet />}       />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
