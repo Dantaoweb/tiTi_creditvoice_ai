@@ -11,7 +11,12 @@ from business_templates import (
 from plans import PLAN_GO, PLAN_PRO, PLAN_BASIC, normalize_plan, plan_allows_feature
 
 
-def build_plan_message(subscription):
+def build_plan_message(subscription, user=None):
+    from business_templates import template_key_for_user
+    template_key = template_key_for_user(user) if user else None
+    is_thrift = template_key == "thrift_contribution"
+    is_school = template_key == "school"
+
     plan = subscription["plan"]
     status = subscription["status"]
     expires_at = subscription["expires_at"]
@@ -21,24 +26,35 @@ def build_plan_message(subscription):
         "Expires: No expiry set\n"
     )
     limits = subscription["limits"]
-    customer_limit = limits["customers"] if limits["customers"] is not None else "Unlimited"
     transaction_limit = limits["monthly_transactions"] if limits["monthly_transactions"] is not None else "Unlimited"
     staff_limit = limits["staff"] if limits["staff"] is not None else "Unlimited"
-    thrift_participant_limit = limits.get("thrift_participants")
-    thrift_participant_limit = (
-        thrift_participant_limit
-        if thrift_participant_limit is not None else
-        "Unlimited"
-    )
+
+    if is_thrift:
+        participant_limit = limits.get("thrift_participants")
+        participant_limit = participant_limit if participant_limit is not None else "Unlimited"
+        limits_lines = (
+            f"Participants: {participant_limit}\n"
+            f"Monthly transactions: {transaction_limit}\n"
+        )
+    elif is_school:
+        customer_limit = limits["customers"] if limits["customers"] is not None else "Unlimited"
+        limits_lines = (
+            f"Students: {customer_limit}\n"
+            f"Monthly transactions: {transaction_limit}\n"
+        )
+    else:
+        customer_limit = limits["customers"] if limits["customers"] is not None else "Unlimited"
+        limits_lines = (
+            f"Customers: {customer_limit}\n"
+            f"Monthly transactions: {transaction_limit}\n"
+        )
 
     return (
         "Your Subscription\n\n"
         f"Plan: {plan}\n"
         f"Status: {status}\n"
         f"{expiry_line}"
-        f"Customers: {customer_limit}\n"
-        f"Monthly transactions: {transaction_limit}\n"
-        f"Thrift participants: {thrift_participant_limit}\n"
+        f"{limits_lines}"
         f"Staff: {staff_limit}"
     )
 
@@ -69,8 +85,27 @@ def build_industry_value_message(user):
 
 
 def build_upgrade_message(user=None):
+    from business_templates import template_key_for_user
     go_price = int(os.getenv("PLAN_GO_PRICE", "3000"))
     pro_price = int(os.getenv("PLAN_PRO_PRICE", "7000"))
+
+    template_key = template_key_for_user(user) if user else None
+    is_thrift = template_key == "thrift_contribution"
+    is_school = template_key == "school"
+
+    if is_thrift:
+        basic_desc = "10 participants. No reminders or history."
+        go_desc = "Unlimited participants, contribution reminders, history, reports."
+        pro_desc = "GO + collectors or staff can record contributions."
+    elif is_school:
+        basic_desc = "50 students, 100 transactions/month."
+        go_desc = "Unlimited students, fee reminders, payment reports, notes."
+        pro_desc = "GO + bursar or admin staff can record fee payments."
+    else:
+        basic_desc = "50 customers, 100 transactions/month."
+        go_desc = "Unlimited customers, transactions, inventory, suppliers, reminders, reports."
+        pro_desc = "GO + staff management."
+
     industry_value = ""
     if user:
         values = template_plan_value_for_user(user)
@@ -81,13 +116,13 @@ def build_upgrade_message(user=None):
         )
     return (
         "Plans\n\n"
-        "BASIC - Free\n"
-        "50 customers, 100 transactions/month.\n\n"
+        f"BASIC - Free\n"
+        f"{basic_desc}\n\n"
         f"{industry_value}"
         f"1. GO - N{go_price:,}/month\n"
-        "Unlimited customers, transactions, inventory, suppliers, reminders, reports.\n\n"
+        f"{go_desc}\n\n"
         f"2. PRO - N{pro_price:,}/month\n"
-        "GO + staff management.\n\n"
+        f"{pro_desc}\n\n"
         "3. My current plan\n"
         "4. Cancel"
     )
@@ -154,8 +189,15 @@ def build_post_onboarding_menu(business_name, user=None):
         "Ade bought rice 5000",
         "Ade paid 3000",
     ]
-    if user and has_service_price_catalog(user):
-        option4 = "4. Set up your price list ✦"
+    if user:
+        from business_templates import template_key_for_user
+        _tkey = template_key_for_user(user)
+        if _tkey == "thrift_contribution":
+            option4 = "4. View participants & reminders"
+        elif has_service_price_catalog(user):
+            option4 = "4. Set up your price list ✦"
+        else:
+            option4 = "4. Add your products ✦"
     else:
         option4 = "4. Add your products ✦"
     return (
@@ -177,28 +219,87 @@ def build_post_onboarding_menu(business_name, user=None):
 
 
 def build_owner_home_menu(user, subscription):
+    from business_templates import menu_group_for_user
     plan = subscription.get("plan", PLAN_BASIC) if isinstance(subscription, dict) else PLAN_BASIC
     if plan_allows_feature(plan, "VOICE_TEXT"):
         tip_line = "💡 fast mode  |  🎤 voice notes  |  auto reminders"
     else:
         tip_line = "💡 fast mode  |  🎤 voice notes (GO)  |  auto reminders (GO)"
-    return (
-        f"Hi {user.name.title()}.\n\n"
-        "1. Record sale\n"
-        "2. Select product\n"
-        "3. Add stock\n"
-        "4. My customers\n"
-        "5. Reminders\n"
-        "6. Dashboard\n"
-        "7. Wallet ✦\n"
-        "8. Help\n"
-        "9. More →\n\n"
-        f"{tip_line}\n\n"
-        "MENU to return here anytime."
-    )
+    name = user.name.title() if user else "there"
+    group = menu_group_for_user(user) if user else "stock"
+
+    if group == "service":
+        body = (
+            "1. Record sale\n"
+            "2. Service jobs\n"
+            "3. Price list\n"
+            "4. My customers\n"
+            "5. Reminders\n"
+            "6. Dashboard\n"
+            "7. Wallet ✦\n"
+            "8. Help\n"
+            "9. More →"
+        )
+    elif group == "school":
+        body = (
+            "1. Record fee payment\n"
+            "2. My students\n"
+            "3. Fee defaulters\n"
+            "4. Dashboard\n"
+            "5. Reports\n"
+            "6. Help\n"
+            "7. Wallet ✦\n"
+            "8. More →"
+        )
+    elif group == "thrift":
+        body = (
+            "1. Record contribution\n"
+            "2. Participants\n"
+            "3. Reminders\n"
+            "4. Dashboard\n"
+            "5. Reports\n"
+            "6. Help\n"
+            "7. Wallet ✦\n"
+            "8. More →"
+        )
+    elif group == "fee":
+        body = (
+            "1. Record payment\n"
+            "2. My customers\n"
+            "3. Reminders\n"
+            "4. Dashboard\n"
+            "5. Reports\n"
+            "6. Help\n"
+            "7. Wallet ✦\n"
+            "8. More →"
+        )
+    else:  # stock (default)
+        body = (
+            "1. Record sale\n"
+            "2. Select product\n"
+            "3. Stock / inventory\n"
+            "4. My customers\n"
+            "5. Reminders\n"
+            "6. Dashboard\n"
+            "7. Wallet ✦\n"
+            "8. Help\n"
+            "9. More →"
+        )
+
+    return f"Hi {name}.\n\n{body}\n\n{tip_line}\n\nMENU to return here anytime."
 
 
-def build_home_more_menu():
+def build_home_more_menu(user=None):
+    from business_templates import menu_group_for_user
+    group = menu_group_for_user(user) if user else "stock"
+    if group == "school":
+        return (
+            "More options\n\n"
+            "1. Textbooks & stock\n"
+            "2. My plan & upgrade\n"
+            "3. Teachers (PRO)\n"
+            "4. Back"
+        )
     return (
         "More options\n\n"
         "1. Suppliers\n"

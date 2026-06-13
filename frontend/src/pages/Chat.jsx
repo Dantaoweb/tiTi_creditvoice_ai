@@ -1,144 +1,199 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Mic, MicOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useApp } from "../context/AppContext";
 import { apiPost } from "../lib/api";
+import { getBizLabels } from "../lib/bizLabels";
 
-const CHIPS = [
-  { label: "Record a sale",     text: "Sold " },
-  { label: "Customer payment",  text: "Customer paid " },
-  { label: "Restock",           text: "Restocked " },
-];
-
-const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+async function blobToBase64(blob) {
+  const buffer = await blob.arrayBuffer();
+  let binary = "";
+  new Uint8Array(buffer).forEach(b => (binary += String.fromCharCode(b)));
+  return btoa(binary);
+}
 
 export default function Chat() {
   const { user } = useAuth();
-  const [input, setInput]         = useState("");
-  const [reply, setReply]         = useState(null);
-  const [busy, setBusy]           = useState(false);
-  const [ok, setOk]               = useState(null); // true = success, false = error
-  const [listening, setListening] = useState(false);
-  const inputRef  = useRef(null);
-  const replyRef  = useRef(null);
-
+  const { ownerPhone } = useApp();
+  const L = getBizLabels(user?.menu_group);
   const firstName = user?.name?.split(" ")[0] || "there";
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput]       = useState("");
+  const [busy, setBusy]         = useState(false);
+  const [recording, setRecording]   = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("");
+
+  const inputRef    = useRef(null);
+  const bottomRef   = useRef(null);
+  const recorderRef = useRef(null);
+  const chunksRef   = useRef([]);
+  const audioBlobRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    if (reply) replyRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [reply]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, busy]);
 
-  async function handleSend(e) {
-    e?.preventDefault();
-    const text = input.trim();
+  function pushMsg(from, text, ok) {
+    setMessages(prev => [...prev, { from, text, ok }]);
+  }
+
+  async function send(overrideText) {
+    const text = (overrideText ?? input).trim();
     if (!text || busy) return;
+    setInput("");
     setBusy(true);
-    setReply(null);
+    pushMsg("you", text);
     try {
       const data = await apiPost("chat/send", { text });
-      setReply(data.reply || "Done!");
-      setOk(data.ok !== false);
-      setInput("");
+      pushMsg("titi", data.reply || "Done!", data.ok !== false);
     } catch (err) {
-      setReply(err.message || "Something went wrong.");
-      setOk(false);
+      pushMsg("titi", err.message || "Something went wrong.", false);
     } finally {
       setBusy(false);
       inputRef.current?.focus();
     }
   }
 
-  function handleChip(text) {
-    setInput(text);
-    inputRef.current?.focus();
+  function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
-  function handleKey(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  async function startRecording() {
+    if (!navigator.mediaDevices || recording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunksRef.current = [];
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      recorderRef.current = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recorderRef.current.addEventListener("dataavailable", e => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      });
+      recorderRef.current.addEventListener("stop", async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
+        audioBlobRef.current = blob;
+        setRecording(false);
+        setVoiceStatus("Transcribing…");
+        try {
+          const b64 = await blobToBase64(blob);
+          const data = await apiPost("capture/voice", {
+            phone: user?.phone || ownerPhone,
+            audio_base64: b64,
+            mime_type: blob.type || "audio/webm",
+          });
+          if (data.transcript) {
+            setInput(data.transcript);
+            setVoiceStatus("");
+            inputRef.current?.focus();
+          } else {
+            setVoiceStatus("No speech detected. Try again.");
+          }
+        } catch {
+          setVoiceStatus("Transcription failed. Try typing instead.");
+        }
+        audioBlobRef.current = null;
+      });
+      recorderRef.current.start();
+      setRecording(true);
+      setVoiceStatus("Recording… tap mic to stop");
+    } catch {
+      setVoiceStatus("Microphone not available.");
     }
   }
 
-  function startListening() {
-    if (!SpeechRec || listening) return;
-    const rec = new SpeechRec();
-    rec.lang = "en-NG";
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onstart  = () => setListening(true);
-    rec.onend    = () => setListening(false);
-    rec.onerror  = () => setListening(false);
-    rec.onresult = e => {
-      const transcript = e.results[0][0].transcript;
-      setInput(transcript);
-    };
-    rec.start();
+  function stopRecording() {
+    if (recorderRef.current?.state !== "inactive") recorderRef.current.stop();
   }
 
   return (
     <div className="chat-shell">
 
-      {/* ── Greeting ── */}
-      <div className="chat-greeting">
-        <div className="chat-titi-avatar">Ti</div>
-        <div>
-          <div className="chat-greeting-name">Hi {firstName}! 👋</div>
-          <div className="chat-greeting-sub">
-            What can I record for you today? Type a sale, payment, or restock below.
+      {/* ── Scrollable thread ── */}
+      <div className="chat-thread">
+
+        {/* Greeting + chips shown when thread is empty */}
+        {messages.length === 0 && (
+          <>
+            <div className="chat-msg-titi">
+              <div className="chat-titi-avatar chat-titi-avatar-sm">Ti</div>
+              <div className="chat-bubble-titi">
+                Hi {firstName}! Type a transaction or tap an example to start.
+              </div>
+            </div>
+            <div className="chat-chips chat-chips-offset">
+              {L.examples.map(ex => (
+                <button key={ex.label} className="chat-chip" onClick={() => setInput(ex.text)}>
+                  {ex.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Message thread */}
+        {messages.map((msg, i) =>
+          msg.from === "you" ? (
+            <div key={i} className="chat-msg-you">
+              <div className="chat-bubble-you">{msg.text}</div>
+            </div>
+          ) : (
+            <div key={i} className="chat-msg-titi">
+              <div className="chat-titi-avatar chat-titi-avatar-sm">Ti</div>
+              <div className={`chat-bubble-titi${msg.ok === false ? " chat-bubble-err" : ""}`}>
+                {msg.text.split("\n").map((line, j) =>
+                  line ? <p key={j}>{line}</p> : <br key={j} />
+                )}
+              </div>
+            </div>
+          )
+        )}
+
+        {/* Typing indicator */}
+        {busy && (
+          <div className="chat-msg-titi">
+            <div className="chat-titi-avatar chat-titi-avatar-sm">Ti</div>
+            <div className="chat-bubble-titi">
+              <div className="chat-typing-dots">
+                <span className="chat-typing-dot" />
+                <span className="chat-typing-dot" />
+                <span className="chat-typing-dot" />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        <div ref={bottomRef} />
       </div>
 
-      {/* ── Quick chips ── */}
-      {!reply && (
-        <div className="chat-chips">
-          {CHIPS.map(c => (
-            <button key={c.label} className="chat-chip" onClick={() => handleChip(c.text)}>
-              {c.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── tiTi reply ── */}
-      {reply && (
-        <div ref={replyRef} className={`chat-reply ${ok ? "chat-reply-ok" : "chat-reply-err"}`}>
-          <div className="chat-titi-avatar chat-titi-avatar-sm">Ti</div>
-          <div className="chat-reply-bubble">
-            {reply.split("\n").map((line, i) =>
-              line ? <p key={i} style={{ margin: 0 }}>{line}</p> : <br key={i} />
-            )}
-          </div>
-        </div>
+      {/* ── Voice status line ── */}
+      {voiceStatus && (
+        <div className="chat-voice-status">{voiceStatus}</div>
       )}
 
       {/* ── Input bar ── */}
-      <form onSubmit={handleSend} className="chat-input-bar">
+      <form onSubmit={e => { e.preventDefault(); send(); }} className="chat-input-bar">
+        <button
+          type="button"
+          className={`chat-mic-btn${recording ? " chat-mic-active" : ""}`}
+          onClick={recording ? stopRecording : startRecording}
+          disabled={busy}
+          title={recording ? "Stop recording" : "Voice message"}
+        >
+          {recording ? <MicOff size={18} /> : <Mic size={18} />}
+        </button>
+
         <input
           ref={inputRef}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
-          placeholder="Type a transaction…"
-          disabled={busy}
+          placeholder={L.examples[0].text}
+          disabled={busy || recording}
           autoComplete="off"
         />
-
-        {SpeechRec && (
-          <button
-            type="button"
-            className={`chat-mic-btn ${listening ? "chat-mic-active" : ""}`}
-            onClick={startListening}
-            disabled={busy}
-            title="Speak your transaction"
-          >
-            {listening ? <MicOff size={18} /> : <Mic size={18} />}
-          </button>
-        )}
 
         <button
           type="submit"
@@ -148,12 +203,6 @@ export default function Chat() {
           {busy ? "…" : <Send size={15} />}
         </button>
       </form>
-
-      {reply && (
-        <button className="chat-new-btn" onClick={() => { setReply(null); setOk(null); inputRef.current?.focus(); }}>
-          + New transaction
-        </button>
-      )}
 
     </div>
   );

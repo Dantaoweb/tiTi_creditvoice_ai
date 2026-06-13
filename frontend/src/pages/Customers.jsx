@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Plus, Wallet, History, X } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr, dateTimeStr } from "../lib/format";
 import DataTable from "../components/DataTable";
+import { getBizLabels } from "../lib/bizLabels";
 
 // ── Modal wrapper ────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children, wide }) {
@@ -21,14 +23,14 @@ function Modal({ title, onClose, children, wide }) {
 }
 
 // ── Add customer modal ───────────────────────────────────────────────────────
-function AddCustomerModal({ ownerPhone, onClose, onSaved }) {
+function AddCustomerModal({ ownerPhone, onClose, onSaved, L }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
   async function save() {
-    if (!name.trim()) { setErr("Customer name is required."); return; }
+    if (!name.trim()) { setErr(`${L.customerName} is required.`); return; }
     setSaving(true); setErr("");
     try {
       const c = await apiPost("customers", {
@@ -43,11 +45,11 @@ function AddCustomerModal({ ownerPhone, onClose, onSaved }) {
   }
 
   return (
-    <Modal title="Add Customer" onClose={onClose}>
+    <Modal title={L.addCustomer} onClose={onClose}>
       <div className="modal-body">
         <div className="form-group">
-          <label className="form-label">Full name *</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Amaka Obi" autoFocus />
+          <label className="form-label">{L.customerName} *</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder={L.customerPlaceholder} autoFocus />
         </div>
         <div className="form-group">
           <label className="form-label">Phone number</label>
@@ -59,7 +61,7 @@ function AddCustomerModal({ ownerPhone, onClose, onSaved }) {
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Add Customer"}
+          {saving ? "Saving…" : L.addCustomer}
         </button>
       </div>
     </Modal>
@@ -190,6 +192,8 @@ function HistoryModal({ customer, onClose }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function Customers() {
   const { ownerPhone } = useApp();
+  const { user } = useAuth();
+  const L = getBizLabels(user?.menu_group);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -224,7 +228,7 @@ export default function Customers() {
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Customers <span className="text-subtle text-sm">({filtered.length})</span></span>
+          <span className="card-title">{L.customers} <span className="text-subtle text-sm">({filtered.length})</span></span>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
               placeholder="Search name or phone…"
@@ -233,14 +237,14 @@ export default function Customers() {
               style={{ width: 220 }}
             />
             <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
-              <Plus size={14} /> Add Customer
+              <Plus size={14} /> {L.addCustomer}
             </button>
           </div>
         </div>
         <DataTable
           loading={loading}
           rows={filtered}
-          emptyText="No customers yet. Add your first customer."
+          emptyText={L.noCustomers}
           rowClass={r => r.balance > 0 ? "has-balance" : ""}
           columns={[
             {
@@ -287,6 +291,7 @@ export default function Customers() {
           ownerPhone={ownerPhone}
           onClose={() => setShowAdd(false)}
           onSaved={c => setRows(prev => [{ ...c, created_at: new Date().toISOString() }, ...prev])}
+          L={L}
         />
       )}
 

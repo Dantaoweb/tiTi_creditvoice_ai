@@ -6,7 +6,6 @@ import Landing      from "./pages/Landing";
 import Login        from "./pages/Login";
 import Chat         from "./pages/Chat";
 import Dashboard    from "./pages/Dashboard";
-import Capture      from "./pages/Capture";
 import Customers    from "./pages/Customers";
 import Transactions from "./pages/Transactions";
 import Inventory    from "./pages/Inventory";
@@ -39,7 +38,7 @@ export default function App() {
         >
           <Route path="home"         element={<Chat />}         />
           <Route path="dashboard"    element={<Dashboard />}    />
-          <Route path="capture"      element={<Capture />}      />
+          <Route path="capture"      element={<Navigate to="/home" replace />} />
           <Route path="pos"          element={<POS />}          />
           <Route path="pos/receipt/:id" element={<Receipt />}   />
           <Route path="customers"    element={<Customers />}    />

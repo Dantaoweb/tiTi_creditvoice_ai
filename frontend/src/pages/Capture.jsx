@@ -1,16 +1,11 @@
 import { useRef, useState } from "react";
 import { Mic, MicOff, Play, Send, X, CheckCircle } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useAuth } from "../context/AuthContext";
 import { apiPost } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import { useToast } from "../components/Toast";
-
-const EXAMPLES = [
-  { label: "Credit + payment", text: "Amina bought rice 12000 paid 5000 due 20/06/2026" },
-  { label: "Credit only",      text: "Tunde bought cement 15 bags at 800" },
-  { label: "Payment",          text: "Amina paid 5000" },
-  { label: "Direct sale",      text: "I sold phone 45000" },
-];
+import { getBizLabels } from "../lib/bizLabels";
 
 async function blobToBase64(blob) {
   const buffer = await blob.arrayBuffer();
@@ -21,6 +16,8 @@ async function blobToBase64(blob) {
 
 export default function Capture() {
   const { ownerPhone } = useApp();
+  const { user } = useAuth();
+  const L = getBizLabels(user?.menu_group);
   const toast = useToast();
 
   const [phone, setPhone]         = useState(ownerPhone || "");
@@ -134,7 +131,7 @@ export default function Capture() {
 
   const SUMMARY_FIELDS = [
     ["Action",      pending?.action],
-    ["Customer",    pending?.customer_name || "Direct sale"],
+    [L.customer,    pending?.customer_name || L.directSale],
     ["Product",     pending?.product],
     ["Quantity",    pending?.quantity ? `${pending.quantity} ${pending.unit || ""}`.trim() : null],
     ["Sale amount", pending?.buy_amount ? nairaFull(pending.buy_amount) : null],
@@ -183,14 +180,14 @@ export default function Capture() {
             <textarea
               rows={5}
               className="form-full"
-              placeholder="Amina bought rice 12000 paid 5000 due 20/06/2026"
+              placeholder={L.examples[0].text}
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
           </div>
 
           <div className="example-chips">
-            {EXAMPLES.map((ex) => (
+            {L.examples.map((ex) => (
               <button key={ex.label} type="button" className="example-chip"
                 onClick={() => setText(ex.text)}
               >

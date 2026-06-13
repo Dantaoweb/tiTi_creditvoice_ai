@@ -303,6 +303,76 @@ INDUSTRY_EXAMPLES = {
         "I sold 1000 blocks to Bayo at 180 paid 150000",
         "stock",
     ],
+    "clinic": [
+        "Bayo paid consultation fee 5000",
+        "Aisha lab test 8000 paid 5000",
+        "customer summary Aisha",
+    ],
+    "dental_clinic": [
+        "Bayo tooth extraction 8000 paid 5000",
+        "Aisha dental checkup 3000",
+        "customer summary Bayo",
+    ],
+    "eye_clinic": [
+        "Bayo eye test 3000",
+        "Aisha glasses fitting 15000 paid 10000",
+        "customer summary Bayo",
+    ],
+    "laboratory": [
+        "Bayo malaria test 3500",
+        "Aisha blood test 2500",
+        "customer summary Bayo",
+    ],
+    "hotel_guest_house": [
+        "Bola room 2 nights 30000 paid 20000",
+        "Ade room balance 15000 due Friday",
+        "customer summary Bola",
+    ],
+    "beauty_products": [
+        "Blessing bought relaxer 3500",
+        "I sold 2 packs shampoo at 2500",
+        "stock",
+    ],
+    "bookkeeping": [
+        "Bayo paid accounting fee 25000",
+        "Ade audit 50000 paid 30000",
+        "customer summary Bayo",
+    ],
+    "law_chamber": [
+        "Bayo paid legal fee 50000",
+        "Ade case 100000 paid 50000",
+        "customer summary Bayo",
+    ],
+    "consulting": [
+        "Bayo paid consulting fee 80000",
+        "Ade project 150000 paid 50000",
+        "customer summary Bayo",
+    ],
+    "cleaning_service": [
+        "Bayo 5 offices cleaning 20000 paid 15000",
+        "I received 8000 for house cleaning",
+        "customer summary Bayo",
+    ],
+    "electrician": [
+        "Bayo wiring job 15000 paid 10000",
+        "I received 5000 for electrical work",
+        "customer summary Bayo",
+    ],
+    "plumber": [
+        "Bayo plumbing repair 8000 paid 5000",
+        "I received 6000 for pipe fitting",
+        "customer summary Bayo",
+    ],
+    "carpentry_furniture": [
+        "Bayo wardrobe 45000 paid 20000",
+        "I received 8000 for door installation",
+        "customer summary Bayo",
+    ],
+    "phone_repair": [
+        "Bayo phone screen 12000 paid 10000",
+        "I received 5000 for iPhone repair",
+        "customer summary Bayo",
+    ],
 }
 
 HIGH_VALUE_TEMPLATE_KEYS = [
@@ -335,6 +405,10 @@ BUSINESS_TEMPLATE_ALIASES = {
     "household_goods": "household_hardware",
     "pharmacy": "pharmacy",
     "patent_medicine": "pharmacy",
+    "clinic": "clinic",
+    "dental_clinic": "clinic",
+    "eye_clinic": "clinic",
+    "laboratory": "clinic",
     "private_school": "school",
     "lesson_center": "school",
     "creche_daycare": "school",
@@ -599,7 +673,7 @@ INDUSTRY_TEMPLATES = {
     },
     "artisan_services": {
         "label": "Artisan / Services",
-        "fit": "tailors, mechanics, repairers, laundry, carpenters, and service providers",
+        "fit": "electricians, plumbers, carpenters, phone repairers, and other service providers",
         "basic_value": [
             "Record service income",
             "Record customer jobs and part-payments",
@@ -616,14 +690,14 @@ INDUSTRY_TEMPLATES = {
             "Owner view of all jobs and payments",
         ],
         "examples": [
-            "Aisha sewed dress 25000 paid 15000",
-            "I received 1000 for doing chair",
-            "customer summary Aisha",
+            "Bayo job 15000 paid 8000",
+            "I received 5000 for repair work",
+            "customer summary Bayo",
         ],
         "quick_actions": [
-            ("Record job", "Send: Aisha sewed dress 25000 paid 15000"),
-            ("Direct income", "Send: I received 1000 for doing chair"),
-            ("Customer account", "Send: customer summary Aisha"),
+            ("Record job", "Send: Bayo job 15000 paid 8000"),
+            ("Direct income", "Send: I received 5000 for repair work"),
+            ("Customer account", "Send: customer summary Bayo"),
             ("Due balances", "Send: due"),
         ],
         "next_steps": [
@@ -1129,6 +1203,44 @@ INDUSTRY_TEMPLATES = {
         "recommended_go": "GO adds notes for parts, reminders, and better job reports.",
         "recommended_pro": "PRO fits workshops with apprentices recording jobs.",
     },
+    "clinic": {
+        "label": "Clinic / Health Service",
+        "fit": "clinics, dental, eye, laboratories, and other health service businesses collecting consultation and procedure fees",
+        "basic_value": [
+            "Record consultation and procedure fee payments",
+            "Track patient/client balances",
+            "View unpaid fee records",
+        ],
+        "go_value": [
+            "Debt reminders for unpaid medical fees",
+            "Better reports by period",
+            "Notes for patient/case details",
+        ],
+        "pro_value": [
+            "Staff/receptionist recording",
+            "Owner view across staff records",
+            "Permission control for team records",
+        ],
+        "examples": [
+            "Bayo paid consultation fee 5000",
+            "Aisha lab test 8000 paid 5000",
+            "customer summary Aisha",
+        ],
+        "quick_actions": [
+            ("Record payment", "Send: Bayo paid consultation fee 5000"),
+            ("Patient balance", "Send: Aisha lab test 8000 paid 5000"),
+            ("Patient account", "Send: customer summary Aisha"),
+            ("Debtors", "Send: unpaid debtors"),
+        ],
+        "next_steps": [
+            "After recording a fee, confirm with YES or send EDIT.",
+            "Use customer summary to see a patient account history.",
+            "Use due or unpaid debtors to follow unpaid balances.",
+            "Send MENU to see the main menu, or BACK/CANCEL to leave the current flow.",
+        ],
+        "recommended_go": "GO adds reminders for unpaid medical fees and better reports.",
+        "recommended_pro": "PRO fits clinics with receptionists or staff recording payments.",
+    },
 }
 
 
@@ -1144,6 +1256,12 @@ RECEIPT_CONFIG = {
         "customer_label": "Patient",
         "amount_label": "Total",
         "footer": "Keep this receipt for reference.",
+    },
+    "clinic": {
+        "title": "Medical Receipt",
+        "customer_label": "Patient",
+        "amount_label": "Amount",
+        "footer": "Please keep this receipt for your records.",
     },
     "school": {
         "title": "Fee Payment Receipt",
@@ -1366,14 +1484,16 @@ def industry_template_for_user(user):
 
 
 def template_examples_for_user(user):
+    # Type-specific examples take priority over template defaults
+    business_type = getattr(user, "business_type", None)
+    if business_type:
+        examples = INDUSTRY_EXAMPLES.get(business_type)
+        if examples:
+            return examples
+
     template = industry_template_for_user(user)
     if template:
         return template["examples"]
-
-    business_type = getattr(user, "business_type", None)
-    examples = INDUSTRY_EXAMPLES.get(business_type)
-    if examples:
-        return examples
 
     category = getattr(user, "business_category", None)
     if category == "education":
@@ -1778,6 +1898,54 @@ SERVICE_PRICE_CATALOG = {
         ("AC service",         None,           5000),
         ("suspension repair",  None,           5000),
     ],
+    "electrician": [
+        ("fault finding",              None,           2000),
+        ("socket replacement",         None,           1500),
+        ("light fitting installation", None,           1000),
+        ("ceiling fan installation",   None,           3000),
+        ("wiring",                     "per point",    500),
+        ("rewiring",                   "per room",     8000),
+        ("generator connection",       None,           5000),
+        ("stabilizer installation",    None,           3000),
+        ("DSTV installation",          None,           3000),
+        ("general inspection",         None,           2000),
+    ],
+    "plumber": [
+        ("fault finding",              None,           2000),
+        ("pipe fitting",               "per joint",    500),
+        ("tap repair / replacement",   None,           2500),
+        ("toilet repair",              None,           3500),
+        ("wash hand basin install",    None,           5000),
+        ("water tank installation",    None,           8000),
+        ("drain clearing",             None,           4000),
+        ("water pump installation",    None,           6000),
+        ("general plumbing check",     None,           2000),
+    ],
+    "carpentry_furniture": [
+        ("door installation",          None,           15000),
+        ("door frame",                 None,           8000),
+        ("window frame",               None,           10000),
+        ("shelf installation",         None,           6000),
+        ("wardrobe",                   "standard",     50000),
+        ("wardrobe",                   "fitted",       80000),
+        ("bed frame",                  None,           25000),
+        ("ceiling board",              "per sqm",      2500),
+        ("kitchen cabinet",            None,           60000),
+        ("general repair",             None,           5000),
+    ],
+    "phone_repair": [
+        ("screen replacement",         "Android",      8000),
+        ("screen replacement",         "iPhone",       15000),
+        ("battery replacement",        "Android",      5000),
+        ("battery replacement",        "iPhone",       8000),
+        ("charging port repair",       None,           4000),
+        ("software fix / flash",       None,           3000),
+        ("water damage repair",        None,           10000),
+        ("camera repair",              None,           6000),
+        ("speaker repair",             None,           3000),
+        ("button repair",              None,           2000),
+        ("back glass replacement",     None,           5000),
+    ],
 }
 
 # Keys that have a SERVICE_PRICE_CATALOG entry
@@ -1787,12 +1955,50 @@ SERVICE_CATALOG_KEYS = set(SERVICE_PRICE_CATALOG.keys())
 def service_price_catalog_for_user(user):
     """Return list of (name, unit, price) tuples for the user's service type."""
     key = template_key_for_user(user)
-    return SERVICE_PRICE_CATALOG.get(key, [])
+    catalog = SERVICE_PRICE_CATALOG.get(key)
+    if catalog is not None:
+        return catalog
+    btype = getattr(user, "business_type", None)
+    return SERVICE_PRICE_CATALOG.get(btype, [])
 
 
 def has_service_price_catalog(user):
     key = template_key_for_user(user)
-    return key in SERVICE_CATALOG_KEYS
+    if key in SERVICE_CATALOG_KEYS:
+        return True
+    btype = getattr(user, "business_type", None)
+    return btype in SERVICE_CATALOG_KEYS
+
+
+_SERVICE_MENU_TEMPLATE_KEYS = frozenset({
+    "laundry", "car_wash", "barber", "tailor", "mechanic",
+    "artisan_services", "salon_beauty",
+})
+
+_FEE_MENU_TEMPLATE_KEYS = frozenset({
+    "clinic", "transport_logistics",
+    "real_estate_rentals", "professional_services",
+})
+
+
+def menu_group_for_user(user):
+    """Return 'stock', 'service', 'fee', 'school', or 'thrift' for home menu layout."""
+    if not user:
+        return "stock"
+    key = template_key_for_user(user)
+    if key == "thrift_contribution":
+        return "thrift"
+    if key == "school":
+        return "school"
+    if key in _FEE_MENU_TEMPLATE_KEYS:
+        return "fee"
+    if key in _SERVICE_MENU_TEMPLATE_KEYS:
+        return "service"
+    # Artisan types with service catalogs (electrician, plumber, etc.)
+    btype = getattr(user, "business_type", None)
+    if btype in SERVICE_CATALOG_KEYS:
+        return "service"
+    return "stock"
 
 
 def get_product_category_suggestion(template_key, product):

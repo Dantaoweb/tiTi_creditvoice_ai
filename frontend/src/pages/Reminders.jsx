@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext";
+import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../lib/api";
 import { nairaFull, dateStr, dateTimeStr } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { StatusBadge } from "../components/Badge";
+import { getBizLabels } from "../lib/bizLabels";
 
 export default function Reminders() {
   const { ownerPhone } = useApp();
+  const { user } = useAuth();
+  const L = getBizLabels(user?.menu_group);
   const [rows, setRows]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState(null);
@@ -47,7 +51,7 @@ export default function Reminders() {
           rows={rows}
           emptyText="No reminders queued."
           columns={[
-            { key: "customer_name", label: "Customer",  render: (r) => <strong className="td-strong">{(r.customer_name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong> },
+            { key: "customer_name", label: L.customer,  render: (r) => <strong className="td-strong">{(r.customer_name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong> },
             { key: "balance",       label: "Balance",   render: (r) => <span className="text-rose font-bold">{nairaFull(r.balance)}</span>, sortKey: "balance" },
             { key: "due_date",      label: "Due",       render: (r) => <span className={r.due_date && new Date(r.due_date) < new Date() ? "text-rose" : ""}>{dateStr(r.due_date)}</span> },
             { key: "type",          label: "Type",      render: (r) => <span className="td-muted">{r.type || "—"}</span> },

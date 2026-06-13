@@ -131,9 +131,21 @@ def handle_post_onboarding_pending(
         return {"status": "post_onboarding_dashboard"}
 
     if normalized in ["4", "add products", "add your products", "products", "stock", "add stock",
-                       "price list", "set up price list", "services"]:
+                       "price list", "set up price list", "services",
+                       "view participants", "participants", "reminders"]:
         db.delete(pending)
         db.commit()
+        from business_templates import template_key_for_user
+        if user and template_key_for_user(user) == "thrift_contribution":
+            send_message(
+                phone,
+                "To record contributions:\n"
+                "*[name] contributed [amount]*\n\n"
+                "Example: Amina contributed 5000\n\n"
+                "Send *due* to see balances and send reminders.\n"
+                "Send *customers* to see all participants."
+            )
+            return {"status": "post_onboarding_thrift_guide"}
         if has_service_price_catalog(user):
             return start_guided_service_setup(db, phone, user, send_message)
         return start_guided_stock_flow(db, phone, user, send_message)

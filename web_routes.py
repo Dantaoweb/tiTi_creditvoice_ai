@@ -453,46 +453,111 @@ def register_web_routes(app):
 
     @app.post("/app/api/chat/send")
     def web_chat_send(payload: ChatSendRequest, session: dict = Depends(require_web_auth)):
-        """One-shot: parse + auto-confirm in one step for the post-login chat."""
+        """Route a web chat message through the full conversation flow."""
+        from whatsapp_client import send_whatsapp_message, web_collect_start, web_collect_stop
+        from webhook_home_handler import handle_home_menu_request
+        from webhook_pending_router import handle_pending_actions
+        from webhook_fallback_parser import handle_fallback_parse
+        from webhook_command_router import handle_parsed_command
+        from reminder_automation import handle_reminder_automation_command
+        from customer_automation import handle_automation_owner_command
+
+        phone = session["phone"]
+        text = payload.text.strip()
+        if not text:
+            return {"reply": "Please type something.", "ok": False}
+
+        collected = web_collect_start()
         db = SessionLocal()
         try:
-            owner_phone = session["phone"]
-            preview = _preview_capture(db, owner_phone, payload.text.strip())
-            status = preview.get("status", "preview")
+            user_context = load_webhook_user_context(db, phone, "text")
+            user = user_context.user
+            business_owner_phone = user_context.business_owner_phone
+            business_name = user_context.business_name
 
-            if status in ("error", "unsupported", "unregistered"):
-                msgs = preview.get("messages") or []
-                return {
-                    "reply": msgs[0] if msgs else "I didn't quite get that. Try: 'Sold 5 bags of rice to Emeka for ₦4,500'",
-                    "ok": False,
-                }
+            if not user:
+                return {"reply": "Account not found. Please sign out and sign in again.", "ok": False}
 
-            context = load_webhook_user_context(db, owner_phone, "text")
+            subscription = get_business_subscription(db, user)
+            visible_recorded_by_id_val = visibility_recorded_by_id(user)
+            parsed = parse_message(text)
+            is_command = bool(parsed and parsed["type"] != "TRANSACTION")
+
+            # Reminder automation commands
+            if handle_reminder_automation_command(db, phone, text, user, send_whatsapp_message):
+                return {"reply": "\n\n".join(collected) or "Done!", "ok": True}
+
+            # Automation owner commands
+            if handle_automation_owner_command(db, phone, text, user, send_whatsapp_message):
+                return {"reply": "\n\n".join(collected) or "Done!", "ok": True}
+
+            # Home menu (menu / home / help / hello)
+            if handle_home_menu_request(db, phone, text, user, subscription, business_name):
+                return {"reply": "\n\n".join(collected) or "Done!", "ok": True}
+
+            # Pending action lookup (skip WEB_OTP which is for login flow)
             pending = db.query(PendingAction).filter(
-                PendingAction.phone == owner_phone,
+                PendingAction.phone == phone,
                 PendingAction.action != None,
                 PendingAction.action != "WEB_OTP",
             ).order_by(PendingAction.created_at.desc()).first()
 
-            if not pending:
-                msgs = preview.get("messages", [])
-                return {"reply": msgs[0] if msgs else "Done! ✅", "ok": True}
+            # TTL expiry
+            if pending and pending.created_at:
+                _PENDING_TTL = {
+                    "RESIGN_CONFIRM": 1,
+                    "STOCK_ADD_CONFIRM": 4,
+                    "ARTISAN_PAYMENT_CHOICE": 2,
+                    "DASHBOARD_MENU": 1,
+                }
+                _ttl_hours = _PENDING_TTL.get(pending.action, 4)
+                _age_hours = (
+                    datetime.now(timezone.utc).replace(tzinfo=None) - pending.created_at
+                ).total_seconds() / 3600
+                if _age_hours > _ttl_hours:
+                    db.delete(pending)
+                    db.commit()
+                    pending = None
+                    send_whatsapp_message(
+                        phone,
+                        "Your previous session has expired.\n\nSend your message again to continue.",
+                    )
+                    return {"reply": "\n\n".join(collected) or "Session expired.", "ok": False}
 
-            try:
-                pending_items = json.loads(pending.items_json or "[]")
-            except Exception:
-                pending_items = []
-
-            subscription = get_business_subscription(db, context.user)
-            messages, send_message = _capture_messages()
-            result = save_confirmed_pending_transaction(
-                db, owner_phone, pending, context.user, context.business_owner_phone,
-                visibility_recorded_by_id(context.user), f"web-{uuid.uuid4()}",
-                pending_items, subscription, send_message,
+            # Pending actions router (yes/no, onboarding, confirmations, etc.)
+            pending_result = handle_pending_actions(
+                db, phone, text, pending, user, subscription, business_name,
+                business_owner_phone, visible_recorded_by_id_val,
+                f"web-{uuid.uuid4()}", parsed, is_command,
             )
-            reply = messages[0] if messages else "✅ Recorded!"
-            return {"reply": reply, "ok": True}
+            if pending_result.response:
+                return {"reply": "\n\n".join(collected) or "Done!", "ok": True}
+            parsed = pending_result.parsed
+            is_command = pending_result.is_command
+
+            # Fallback parse (AI rephrase for ambiguous text, FAQ, pleasantries)
+            fallback_result = handle_fallback_parse(db, phone, text, parsed, user)
+            if fallback_result.response:
+                return {"reply": "\n\n".join(collected) or "Done!", "ok": bool(collected)}
+            parsed = fallback_result.parsed
+            text = fallback_result.text
+            is_command = fallback_result.is_command
+
+            # Command router (all named commands: customers, reports, stock, etc.)
+            if handle_parsed_command(
+                db, phone, text, parsed, pending, user, subscription,
+                business_name, business_owner_phone, visible_recorded_by_id_val, None,
+            ):
+                return {"reply": "\n\n".join(collected) or "Done!", "ok": True}
+
+            if collected:
+                return {"reply": "\n\n".join(collected), "ok": True}
+            return {
+                "reply": "I didn't quite understand that. Try a transaction like 'Ade paid ₦5,000' or type 'menu' for options.",
+                "ok": False,
+            }
         finally:
+            web_collect_stop()
             db.close()
 
     # ── Capture ──────────────────────────────────────────────────────────

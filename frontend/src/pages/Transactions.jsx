@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext";
+import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../lib/api";
 import { nairaFull, dateTimeStr, qty } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
+import { getBizLabels } from "../lib/bizLabels";
 
 export default function Transactions() {
   const { ownerPhone, period } = useApp();
+  const { user } = useAuth();
+  const L = getBizLabels(user?.menu_group);
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -51,7 +55,7 @@ export default function Transactions() {
           columns={[
             { key: "id",         label: "#",         render: (r) => <span className="td-mono td-muted">#{r.id}</span> },
             { key: "type",       label: "Type",      render: (r) => <TxTypeBadge type={r.type} voided={r.is_voided} /> },
-            { key: "customer",   label: "Customer",  render: (r) => r.customer || <span className="text-subtle">Direct sale</span> },
+            { key: "customer",   label: L.customer,  render: (r) => r.customer || <span className="text-subtle">{L.directSale}</span> },
             { key: "product",    label: "Product",   render: (r) => r.product || "—" },
             { key: "qty",        label: "Qty",       render: (r) => qty(r.quantity, r.unit) },
             { key: "amount",     label: "Amount",    render: (r) => <strong>{nairaFull(r.amount)}</strong>, sortKey: "amount" },

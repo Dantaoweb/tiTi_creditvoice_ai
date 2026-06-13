@@ -231,6 +231,7 @@ def web_register(db: Session, name: str, phone: str, pin: str,
 
 
 def _build_auth_response(user: User) -> dict:
+    from business_templates import menu_group_for_user
     token = create_web_token(user.id, user.phone)
     return {
         "token": token,
@@ -242,6 +243,9 @@ def _build_auth_response(user: User) -> dict:
             "role": user.role,
             "plan": user.subscription_plan,
             "business_category": user.business_category,
+            "business_type": user.business_type,
+            "business_type_label": user.business_type_label,
+            "menu_group": menu_group_for_user(user),
             "whatsapp_linked": bool(user.whatsapp_linked),
             "newsletter_consent": bool(user.newsletter_consent),
         },

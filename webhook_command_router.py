@@ -253,7 +253,7 @@ def handle_parsed_command(
         return {"status": "artisan_payment_choice"}
 
     if parsed["type"] == "MY_PLAN":
-        send_whatsapp_message(phone, build_plan_message(subscription))
+        send_whatsapp_message(phone, build_plan_message(subscription, user))
         return {"status": "my_plan"}
 
     if parsed["type"] == "MY_QUOTA":

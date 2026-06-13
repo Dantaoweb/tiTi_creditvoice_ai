@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, KeyRound, UserPlus } from "lucide-react";
+import { ArrowLeft, KeyRound, UserPlus, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
+
+function Spinner() {
+  return <Loader2 size={15} className="spin" />;
+}
 
 // mode: "login" | "register" | "request_otp" | "set_pin"
 export default function Login() {
@@ -179,7 +183,7 @@ export default function Login() {
               style={{ width: "100%", justifyContent: "center" }}
               disabled={authLoading}
             >
-              {authLoading ? "Signing in…" : "Sign In"}
+              {authLoading ? <><Spinner /> Signing in…</> : "Sign In"}
             </button>
 
             <button type="button" className="login-text-btn" onClick={() => { goMode("request_otp"); setOtpPhone(phone); }}>
@@ -285,7 +289,7 @@ export default function Login() {
             )}
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
-              {busy ? "Creating account…" : "Create Account & Sign In"}
+              {busy ? <><Spinner /> Creating account…</> : "Create Account & Sign In"}
             </button>
 
             {waLink && (
@@ -314,7 +318,7 @@ export default function Login() {
             {err && <div className="login-error">{err}</div>}
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
-              {busy ? "Sending code…" : "Send Code"}
+              {busy ? <><Spinner /> Sending code…</> : "Send Code"}
             </button>
           </form>
         )}
@@ -359,7 +363,7 @@ export default function Login() {
             {err && <div className="login-error">{err}</div>}
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
-              {busy ? "Saving…" : "Set PIN & Sign In"}
+              {busy ? <><Spinner /> Saving…</> : "Set PIN & Sign In"}
             </button>
           </form>
         )}

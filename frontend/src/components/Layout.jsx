@@ -1,43 +1,47 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
-  MessageSquare, LayoutDashboard, Zap, Users, ArrowLeftRight,
+  MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
+import { getBizLabels } from "../lib/bizLabels";
 
-const NAV = [
-  { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare   },
-  { to: "/capture",      label: "Record",           icon: Zap             },
-  { to: "/pos",          label: "Select product",   icon: ShoppingCart    },
-  { to: "/inventory",    label: "Add stock",        icon: Package         },
-  { to: "/customers",    label: "My customers",     icon: Users           },
-  { to: "/reminders",    label: "Reminders",        icon: Bell            },
-  { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
-  { disabled: true,      label: "Wallet ✦",         icon: Wallet, badge: "soon" },
-  { section: "More" },
-  { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
-  { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
-  { to: "/staff",        label: "Staff",            icon: UserCheck       },
-];
-
-const TITLES = {
-  "/home":         "Chat with tiTi",
-  "/capture":      "Record",
-  "/pos":          "Select product",
-  "/inventory":    "Add stock",
-  "/customers":    "My customers",
-  "/reminders":    "Reminders",
-  "/dashboard":    "Dashboard",
-  "/transactions": "Transactions",
-  "/suppliers":    "Suppliers",
-  "/staff":        "Staff",
-};
+function buildNav(L) {
+  return [
+    { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare   },
+    { to: "/pos",          label: "Select product",   icon: ShoppingCart    },
+    { to: "/inventory",    label: L.stock,            icon: Package         },
+    { to: "/customers",    label: L.navCustomers,     icon: Users           },
+    { to: "/reminders",    label: L.reminders,        icon: Bell            },
+    { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
+    { disabled: true,      label: "Wallet ✦",         icon: Wallet, badge: "soon" },
+    { section: "More" },
+    { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
+    { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
+    { to: "/staff",        label: "Staff",            icon: UserCheck       },
+  ];
+}
 
 export default function Layout() {
   const { ownerPhone, setOwnerPhone, period, setPeriod } = useApp();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  const L = getBizLabels(user?.menu_group);
+  const NAV = buildNav(L);
+  const TITLES = {
+    "/home":         "Chat with tiTi",
+    "/capture":      "Record",
+    "/pos":          "Select product",
+    "/inventory":    L.stock,
+    "/customers":    L.navCustomers,
+    "/reminders":    L.reminders,
+    "/dashboard":    "Dashboard",
+    "/transactions": "Transactions",
+    "/suppliers":    "Suppliers",
+    "/staff":        "Staff",
+  };
 
   const path = window.location.pathname.replace("/app", "") || "/home";
   const title = TITLES[path] || "CreditVoice";

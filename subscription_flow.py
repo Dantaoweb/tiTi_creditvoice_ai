@@ -70,7 +70,7 @@ def handle_upgrade_menu_pending(db, phone, text, pending, user, subscription, bu
         return {"status": "upgrade_pro_selected"}
 
     if normalized in ["3", "my plan", "plan"]:
-        send_message(phone, build_plan_message(subscription))
+        send_message(phone, build_plan_message(subscription, user))
         return {"status": "upgrade_my_plan"}
 
     if normalized in ["4", "cancel", "exit", "back"]:

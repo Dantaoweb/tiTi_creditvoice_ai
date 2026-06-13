@@ -8,6 +8,7 @@ import { naira, nairaFull, relativeDate } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
+import { getBizLabels } from "../lib/bizLabels";
 
 const WA_NUDGE_KEY = "cv_wa_nudge_dismissed";
 
@@ -37,6 +38,7 @@ function WhatsAppNudge({ titiNumber }) {
 export default function Dashboard() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
+  const L = getBizLabels(user?.menu_group);
   const [titiNumber, setTitiNumber] = useState("");
 
   useEffect(() => {
@@ -81,13 +83,13 @@ export default function Dashboard() {
         <MetricCard loading={loading} label={`Sales ${periodLabel}`}    value={naira(s.total_sales_amount)} color="green" />
         <MetricCard loading={loading} label="Payments received"         value={naira(s.total_pay_amount)}   color="blue"  />
         <MetricCard loading={loading} label="Outstanding balance"       value={naira(s.total_outstanding)}  color="amber" />
-        <MetricCard loading={loading} label="Total customers"           value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
+        <MetricCard loading={loading} label={L.totalCustomers}          value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 20 }}>
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Top debtors</span>
+            <span className="card-title">{L.topDebtors}</span>
             <Link to="/customers" className="btn btn-ghost btn-sm">View all</Link>
           </div>
           <DataTable
@@ -95,8 +97,8 @@ export default function Dashboard() {
             rows={data?.top_debtors || []}
             emptyText="No outstanding balances."
             columns={[
-              { key: "name",    label: "Customer",       render: (r) => <strong>{r.name}</strong> },
-              { key: "balance", label: "Balance",        render: (r) => <span className="text-rose font-bold">{nairaFull(r.balance)}</span>, sortKey: "balance" },
+              { key: "name",    label: L.customer,  render: (r) => <strong>{r.name}</strong> },
+              { key: "balance", label: "Balance",   render: (r) => <span className="text-rose font-bold">{nairaFull(r.balance)}</span>, sortKey: "balance" },
             ]}
           />
         </div>
@@ -111,10 +113,10 @@ export default function Dashboard() {
             rows={(txData?.transactions || []).slice(0, 8)}
             emptyText="No transactions yet."
             columns={[
-              { key: "type",       label: "Type",     render: (r) => <TxTypeBadge type={r.type} voided={r.is_voided} /> },
-              { key: "customer",   label: "Customer",  render: (r) => r.customer || <span className="text-subtle">Direct</span> },
-              { key: "amount",     label: "Amount",    render: (r) => nairaFull(r.amount) },
-              { key: "created_at", label: "When",      render: (r) => <span className="td-muted">{relativeDate(r.created_at)}</span> },
+              { key: "type",       label: "Type",       render: (r) => <TxTypeBadge type={r.type} voided={r.is_voided} /> },
+              { key: "customer",   label: L.customer,   render: (r) => r.customer || <span className="text-subtle">{L.directSale}</span> },
+              { key: "amount",     label: "Amount",     render: (r) => nairaFull(r.amount) },
+              { key: "created_at", label: "When",       render: (r) => <span className="td-muted">{relativeDate(r.created_at)}</span> },
             ]}
           />
         </div>
