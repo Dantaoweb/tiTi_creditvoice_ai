@@ -140,7 +140,7 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
         item_ids = payload.get("item_ids", [])
         page = payload.get("page", 0)
 
-        if normalized in ["add", "add stock", "new", "new product"]:
+        if normalized in ["add", "add stock", "new", "new product"] or normalized.startswith("add "):
             db.delete(pending)
             db.commit()
             return start_guided_stock_flow(db, phone, user, send_message)
@@ -662,6 +662,23 @@ def handle_pending_actions(
 
     # ── Guided service price list setup ──────────────────────────────────────
     if pending and pending.action in GUIDED_SERVICE_SETUP_ACTIONS and not is_command:
+        # If user sends a service job while price list is open, save items and route to job
+        if pending.action == ACTION_GUIDED_SERVICE_SETUP:
+            from parser import parse_message as _pm
+            _quick_parse = _pm(text)
+            if _quick_parse and _quick_parse.get("type") == "SERVICE_JOB":
+                from guided_service_commands import handle_guided_service_pending as _hgsp, _load as _gsp_load, _save_service_items as _gsp_save
+                _payload = _gsp_load(pending)
+                _items = _payload.get("items", [])
+                if _items:
+                    _gsp_save(db, business_owner_phone, _items)
+                db.delete(pending)
+                db.commit()
+                from service_job_commands import start_service_job_confirm as _sjc
+                result = _sjc(db, phone, business_owner_phone, user, _quick_parse, send_whatsapp_message)
+                if result:
+                    return _wrap(result)
+
         result = handle_guided_service_pending(
             db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
         )

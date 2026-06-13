@@ -205,7 +205,7 @@ def handle_guided_service_pending(db, phone, text, pending, user, owner_phone, s
             send_message(phone, f"*{label}* removed.\n\n" + _build_page_message(items, page))
             return {"status": "guided_service_item_skipped"}
 
-        if normalized in ["back", "cancel"]:
+        if normalized in ["back", "cancel", "done", "finish", "menu", "skip this"]:
             pending.action = ACTION_GUIDED_SERVICE_SETUP
             db.commit()
             send_message(phone, _build_page_message(items, page))
@@ -277,8 +277,11 @@ def handle_guided_service_pending(db, phone, text, pending, user, owner_phone, s
             send_message(phone, _build_page_message(items, payload.get("page", 0)))
             return {"status": "guided_service_add_cancelled"}
 
-        # Try "tier: price" format first
+        # Try "tier: price" or "tier price" format (e.g. "iron only: 500" or "iron only 500")
         tier_price_m = re.match(r"^(.+?):\s*([Nn]?[\d,]+)\s*$", text.strip())
+        if not tier_price_m:
+            # Also accept "words number" without colon — last token is the price
+            tier_price_m = re.match(r"^([a-zA-Z][a-zA-Z\s&]+?)\s+([Nn]?[\d,]+)\s*$", text.strip())
         if tier_price_m:
             tier_label = tier_price_m.group(1).strip().lower()
             price_str = tier_price_m.group(2).replace(",", "").replace("n", "").replace("N", "")

@@ -497,36 +497,122 @@ def _supplier_payment_example(pending, user):
     return f"I paid {supplier_name} 14000 for {product}"
 
 
+def _fmt_amount(val):
+    try:
+        return f"N{int(val):,}" if val else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_understood_summary(pending):
+    """Build a 'What I understood' block from pending fields."""
+    lines = ["What I understood:"]
+    customer = (pending.customer_name or "").strip()
+    if customer:
+        lines.append(f"  Customer: {customer.title()}")
+
+    action = pending.action or ""
+
+    if action == "PAY":
+        amt = _fmt_amount(pending.paid_amount)
+        if amt:
+            lines.append(f"  Payment: {amt}")
+    elif action == "SALE":
+        amt = _fmt_amount(pending.buy_amount)
+        if amt:
+            lines.append(f"  Direct income: {amt}")
+        if pending.product:
+            lines.append(f"  Description: {pending.product.title()}")
+    elif action == "SUPPLIER_PURCHASE":
+        amt = _fmt_amount(pending.buy_amount)
+        if amt:
+            lines.append(f"  Purchase total: {amt}")
+        if pending.product:
+            lines.append(f"  Item: {pending.product.title()}")
+        if pending.quantity:
+            unit_label = f" {pending.unit}" if pending.unit else ""
+            lines.append(f"  Qty: {pending.quantity:,}{unit_label}")
+    elif action == "SUPPLIER_PAYMENT":
+        amt = _fmt_amount(pending.paid_amount)
+        if amt:
+            lines.append(f"  Payment to supplier: {amt}")
+    else:
+        # BUY / COMBINED / fallback
+        buy = _fmt_amount(pending.buy_amount)
+        paid = _fmt_amount(pending.paid_amount) if (pending.paid_amount or 0) > 0 else None
+        if buy:
+            lines.append(f"  Amount owed: {buy}")
+        if paid:
+            lines.append(f"  Paid now: {paid}")
+        if pending.product:
+            lines.append(f"  Item: {pending.product.title()}")
+        if pending.quantity:
+            unit_label = f" {pending.unit}" if pending.unit else ""
+            lines.append(f"  Qty: {pending.quantity:,}{unit_label}")
+        if pending.due_date:
+            lines.append(f"  Due: {pending.due_date.strftime('%d/%m/%Y')}")
+
+        # Invoice items
+        try:
+            import json as _json
+            items = _json.loads(pending.items_json or "[]")
+            if items:
+                lines.append("  Items:")
+                for it in items[:5]:
+                    qty = it.get("quantity", 1)
+                    prod = (it.get("product") or "").title()
+                    total = _fmt_amount(it.get("total"))
+                    label = f"    {qty}× {prod}"
+                    if total:
+                        label += f" — {total}"
+                    lines.append(label)
+                if len(items) > 5:
+                    lines.append(f"    ...and {len(items) - 5} more")
+        except Exception:
+            pass
+
+    return "\n".join(lines)
+
+
 def edit_prompt_for_pending(pending, user=None):
     if pending.source_text:
         return pending.source_text
+
+    summary = _build_understood_summary(pending)
+
     if pending.action == "SUPPLIER_PURCHASE":
         return (
-            "No problem. Send the corrected stock purchase.\n"
+            f"{summary}\n\n"
+            "Retype to correct it:\n"
             f"Example: {_business_example(user, 2, 'Ayo supply me 12kg cocoa at 5000')}"
         )
     if pending.action == "SUPPLIER_PAYMENT":
         return (
-            "No problem. Send the corrected supplier payment.\n"
+            f"{summary}\n\n"
+            "Retype to correct it:\n"
             f"Example: {_supplier_payment_example(pending, user)}"
         )
     if pending.action == "SALE":
         return (
-            "No problem. Send the corrected service income.\n"
+            f"{summary}\n\n"
+            "Retype to correct it:\n"
             f"Example: {_business_example(user, 1, 'I received 1000 for doing chair')}"
         )
     if pending.action == "PAY":
         return (
-            "No problem. Send the corrected payment.\n"
+            f"{summary}\n\n"
+            "Retype to correct it:\n"
             f"Example: {_customer_payment_example(pending, user)}"
         )
     if pending.action == "COMBINED":
         return (
-            "No problem. Send the corrected transaction.\n"
+            f"{summary}\n\n"
+            "Retype to correct it:\n"
             f"Example: {_business_example(user, 0, 'Ade bought rice 5000 paid 2000')}"
         )
     return (
-        "No problem. Send the corrected transaction.\n"
+        f"{summary}\n\n"
+        "Retype to correct it:\n"
         f"Example: {_business_example(user, 0, 'Ade bought rice 5000')}"
     )
 

@@ -141,15 +141,27 @@ def handle_service_job_confirm(db, phone, text, pending, user, owner_phone, send
         )
         return {"status": "service_job_saved"}
 
-    # EDIT — delete and let user retype
+    # EDIT — show what was understood, then let user retype
     if normalized in ["edit", "2", "change", "redo"]:
+        summary_lines = [f"What I understood:\n  Customer: {customer.title()}"]
+        all_items = list(items) + [{"name": m["name"], "qty": m["qty"], "unit": None, "unit_price": 0, "subtotal": 0, "_missing": True} for m in payload.get("missing", [])]
+        if all_items:
+            summary_lines.append("  Items:")
+            for it in all_items:
+                label = f"{it['name']} ({it['unit']})" if it.get("unit") else it["name"]
+                price_note = f" — N{it['unit_price']:,}" if it.get("unit_price") else " (no price set)"
+                summary_lines.append(f"    {it['qty']}× {label.title()}{price_note}")
+        if paid:
+            summary_lines.append(f"  Paid: N{paid:,}")
+
         db.delete(pending)
         db.commit()
         send_message(
             phone,
-            "Ok. Retype the job:\n"
+            "\n".join(summary_lines) + "\n\n"
+            "Retype to correct it:\n"
             "*[name] brought [items]*\n\n"
-            "Example: John brought 10 shirts wash and iron, 5 trousers iron only"
+            "Example: John brought 10 shirts, 5 trousers iron only"
         )
         return {"status": "service_job_edit"}
 

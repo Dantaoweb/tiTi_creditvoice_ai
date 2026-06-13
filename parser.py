@@ -306,13 +306,21 @@ def interpret_text_with_openai_followup(original_message, clarification_question
         "Convert messy wording into one supported command sentence that the local parser can understand. "
         "Supported command styles include: "
         "'Ayo bought rice 5000', 'Ayo paid 3000', 'Amina contributed 5000', "
-        "'Ayo bought rice 4000, beans 3000 paid 2000', "
+        "'Ayo bought 3 shirts at 500, 2 trousers at 1000', "
+        "'Ayo bought rice at 4000, beans at 3000 paid 2000', "
         "'I sold phone 45k', 'I received 1000 for doing chair', "
         "'Ayo supply me 12kg cocoa at 5000', "
         "'I paid Ayo 14000 for egg', "
         "'Ayo paid 6000 for gate and balance is 5600', "
         "'add customer Ayo', 'Ayo phone 08012345678', "
         "'add stock rice cost 3000 sell 4000'. "
+        "CRITICAL PRICING RULE: When a user gives prices in response to 'what are the amounts?', "
+        "those prices are UNIT PRICES (price per single item), NOT totals. "
+        "Always use 'at [price]' format for unit prices (e.g. '3 caps at 300'). "
+        "NEVER use 'for [price]' when the price is per unit — 'for' means the total for that line. "
+        "NUMBERING RULE: If the original message has numbered items like '1. Native 3, 2. Jalab 1', "
+        "the numbers before the dot (1., 2.) are list indices, NOT quantities. "
+        "The quantities are the numbers after the product name (e.g. 'Native 3' means qty=3). "
         "Preserve customer names, products, amounts, paid amounts, balances, units, and due dates. "
         "If still ambiguous after the user's answer, set understood false."
     )
@@ -321,7 +329,9 @@ def interpret_text_with_openai_followup(original_message, clarification_question
         f"Original message: {original_message}\n"
         f"I asked: {clarification_question}\n"
         f"User answered: {user_answer}\n\n"
-        "Using the user's answer, normalize the original message into a tiTi command.\n\n"
+        "Using the user's answer, normalize the original message into a tiTi command.\n"
+        "Remember: prices given by the user are UNIT PRICES — use 'at [price]' not 'for [price]'.\n"
+        "Remember: numbered prefixes like '1.' are list indices, not quantities.\n\n"
         "Return JSON with exactly these keys:\n"
         "{"
         "\"understood\": true|false, "
@@ -1597,9 +1607,10 @@ def parse_message(text):
     # ── Service price list commands ─────────────────────────────────────────
     # "price list" / "my price list" / "service prices" → show/edit price list
     if clean_text in [
-        "price list", "my price list", "pricelist", "service prices",
-        "service price list", "my services", "services", "view prices",
-    ] or re.match(r"^(?:show|view|check|see|edit|update)\s+(?:my\s+)?(?:price\s*list|service\s+prices?)$", clean_text):
+        "price list", "price lists", "my price list", "my price lists",
+        "pricelist", "pricelists", "service prices", "service price list",
+        "my services", "services", "view prices",
+    ] or re.match(r"^(?:show|view|check|see|edit|update)\s+(?:my\s+)?(?:price\s*lists?|service\s+prices?)$", clean_text):
         return {"type": "PRICE_LIST"}
 
     # "price rice 3000 4000" / "update price garri 2500 3500" — two-number stock price (cost + sell)
@@ -2833,8 +2844,11 @@ def parse_message(text):
 
 def _parse_service_items(items_text):
     """
-    Parse a comma-separated item list like:
-      "10 shirts wash and iron, 5 trousers iron only, 3 bed spreads"
+    Parse a comma-separated item list. Supported formats per item:
+      "10 shirts"          — qty first, name second
+      "shirts 10"          — name first, qty last
+      "1. Native 3"        — numbered list prefix (1./2. etc.) then name then qty
+      "shirts"             — name only, defaults to qty=1
     Returns list of {"qty": int, "name": str}.
     """
     parts = re.split(r",\s*|\s+and\s+(?=\d)", items_text.strip())
@@ -2843,14 +2857,38 @@ def _parse_service_items(items_text):
         part = part.strip()
         if not part:
             continue
+
+        # Strip numbered list prefix: "1." / "2)" / "(3)"
+        part = re.sub(r"^\d+[.)]\s*", "", part).strip()
+        if not part:
+            continue
+
+        # Format 1: qty first — "10 shirts"
         m = re.match(r"^(\d+)\s+(.+)$", part)
         if m:
             qty = int(m.group(1))
             name = m.group(2).strip().lower()
-            # Strip trailing "for sewing" / "for washing" etc.
             name = re.sub(r"\s+for\s+\w+(?:\s+\w+)?$", "", name).strip()
             if name:
                 results.append({"qty": qty, "name": name})
+            continue
+
+        # Format 2: name first, qty last — "shirts 10" or "native 3"
+        m2 = re.match(r"^(.+?)\s+(\d+)$", part)
+        if m2:
+            name = m2.group(1).strip().lower()
+            qty = int(m2.group(2))
+            name = re.sub(r"\s+for\s+\w+(?:\s+\w+)?$", "", name).strip()
+            if name:
+                results.append({"qty": qty, "name": name})
+            continue
+
+        # Format 3: name only — "shirts" → qty=1
+        name = part.strip().lower()
+        name = re.sub(r"\s+for\s+\w+(?:\s+\w+)?$", "", name).strip()
+        if name and not name.isdigit():
+            results.append({"qty": 1, "name": name})
+
     return results
 
 
