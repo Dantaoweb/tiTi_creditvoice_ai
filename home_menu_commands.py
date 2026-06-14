@@ -391,7 +391,9 @@ def handle_staff_home_menu(
     if normalized in ["1", "record", "record transaction", "transaction"]:
         db.delete(pending)
         db.commit()
-        send_message(phone, "Record a sale:\nAde bought rice 5000\nAde paid 3000")
+        from biz_language import get_lang
+        _L = get_lang(user)
+        send_message(phone, f"Record a transaction:\n{_L['example_credit']}\n{_L['example_pay']}")
         return {"status": "staff_home_record_help"}
 
     if normalized in ["2", "select product", "sell", "product", "products"]:

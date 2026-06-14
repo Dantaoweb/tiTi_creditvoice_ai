@@ -1,5 +1,6 @@
 import json
 
+from constants import ACTION_AWAITING_STOCK_PRICE
 from messages import apply_voice_confirmation_options
 from models import Customer, CustomerMemory, InventoryItem, ParseLog, PendingAction, Transaction
 from parser import format_invoice_items
@@ -40,6 +41,37 @@ def update_parse_log_outcome(db, phone, was_confirmed, correction_input=None):
             db.flush()
     except Exception:
         pass
+
+
+def _resolve_stock_price(db, owner_phone, product, unit, quantity):
+    """
+    Look up the selling price of a product from inventory.
+    Returns (sell_price_total, sell_price_per_unit, item_name) or (None, None, None).
+    Used when the parser flags `stock_price_needed` — single payment amount with
+    no explicit purchase price, e.g. "Bayowa buy 1 basket mango and paid 60000".
+    """
+    if not product:
+        return None, None, None
+    try:
+        from sqlalchemy import func
+        q = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            func.lower(InventoryItem.name) == product.lower().strip(),
+        )
+        if unit:
+            item = q.filter(func.lower(InventoryItem.unit) == unit.lower().strip()).first()
+            if not item:
+                item = q.first()
+        else:
+            item = q.first()
+
+        if not item or not item.selling_price:
+            return None, None, None
+
+        qty = quantity or 1
+        return item.selling_price * qty, item.selling_price, item.name
+    except Exception:
+        return None, None, None
 
 
 def _price_deviation_alert(db, owner_phone, product, unit_price):
@@ -152,7 +184,11 @@ def direct_sale_item_line(parsed):
     return f"{parsed['product']} - N{total:,}"
 
 
-def build_customer_confirm_message(customer, parsed):
+def build_customer_confirm_message(customer, parsed, user=None):
+    from biz_language import get_lang, confirm_prefix
+    cfg   = get_lang(user)
+    style = cfg["confirm_style"]   # "verb" or "label"
+
     action = parsed["action"]
     if action == "BUY":
         _amount = parsed.get("total") or parsed.get("buy_amount") or 0
@@ -175,25 +211,27 @@ def build_customer_confirm_message(customer, parsed):
             qty = parsed["quantity"]
             item_line = _calc_line(qty, parsed["unit"], parsed["product"], parsed["unit_price"], parsed["total"])
             hint = _at_hint(qty, parsed["unit_price"])
+            pfx = confirm_prefix(customer.name, user)
             if parsed["due_date"]:
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 return (
-                    f"Confirm:\n{customer.name} bought {item_line}\n"
+                    f"{pfx} {item_line}\n"
                     f"Due: {due_date_text}{hint}{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             return (
-                f"Confirm:\n{customer.name} bought {item_line}{hint}"
+                f"{pfx} {item_line}{hint}"
                 f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
 
+        pfx = confirm_prefix(customer.name, user)
         if parsed["due_date"]:
             due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
             return (
-                f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}\n"
+                f"{pfx} N{parsed['buy_amount']:,}\n"
                 f"Due: {due_date_text}{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
         return (
-            f"Confirm:\n{customer.name} bought N{parsed['buy_amount']:,}"
+            f"{pfx} N{parsed['buy_amount']:,}"
             f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
         )
 
@@ -205,10 +243,11 @@ def build_customer_confirm_message(customer, parsed):
 
     if action == "COMBINED":
         hint = ""
+        total_label = cfg["total_label"]
         if parsed.get("invoice_items"):
             item_line = (
                 f"\n{format_invoice_items(parsed['invoice_items'])}\n\n"
-                f"Total bought: N{parsed['buy_amount']:,}"
+                f"{total_label}: N{parsed['buy_amount']:,}"
             )
         elif parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
             qty = parsed["quantity"]
@@ -217,16 +256,18 @@ def build_customer_confirm_message(customer, parsed):
         else:
             item_line = f"N{parsed['buy_amount']:,}"
 
+        pfx = confirm_prefix(customer.name, user)
+        paid_line = "Paid" if style == "label" else "and paid"
         if parsed["due_date"]:
             due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
             return (
-                f"Confirm:\n{customer.name} bought {item_line}\n"
-                f"and paid N{parsed['paid_amount']:,}\n"
+                f"{pfx} {item_line}\n"
+                f"{paid_line}: N{parsed['paid_amount']:,}\n"
                 f"Balance due on: {due_date_text}{hint}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
         return (
-            f"Confirm:\n{customer.name} bought {item_line}\n"
-            f"and paid N{parsed['paid_amount']:,}?{hint}\n\n"
+            f"{pfx} {item_line}\n"
+            f"{paid_line}: N{parsed['paid_amount']:,}?{hint}\n\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
 
@@ -250,6 +291,45 @@ def handle_transaction_setup(
     # Log every parsed transaction for tiTi training
     source = "voice" if voice_transcript_text else "text"
     log_parse(db, phone, business_owner_phone, voice_transcript_text or parsed.get("raw_text", ""), parsed, source, user)
+
+    # Single-amount buy+paid: resolve buy price from stock, or ask for clarification
+    if parsed.get("stock_price_needed") and parsed.get("action") == "COMBINED":
+        paid = parsed.get("paid_amount") or 0
+        stock_total, stock_unit_price, _ = _resolve_stock_price(
+            db, business_owner_phone,
+            parsed.get("product"), parsed.get("unit"), parsed.get("quantity"),
+        )
+        if stock_total is not None:
+            parsed = {**parsed, "buy_amount": stock_total, "unit_price": stock_unit_price, "total": stock_total}
+        else:
+            # Price not in stock — save partial pending and ask for the total price only
+            prod_label = (parsed.get("product") or "the item").title()
+            qty = parsed.get("quantity") or 1
+            unit_str = parsed.get("unit") or ""
+            qty_label = f"{qty} {unit_str}".strip() if unit_str else str(qty)
+            cname = (parsed.get("name") or "customer").lower()
+            db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+            db.add(PendingAction(
+                phone=phone,
+                customer_name=cname,
+                last_customer=cname,
+                action=ACTION_AWAITING_STOCK_PRICE,
+                paid_amount=paid,
+                product=parsed.get("product"),
+                quantity=parsed.get("quantity"),
+                unit=unit_str or None,
+                due_date=parsed.get("due_date"),
+                source_text=voice_transcript_text,
+            ))
+            db.commit()
+            send_message(
+                phone,
+                f"Got it — Bayowa paid N{paid:,} for {qty_label} {prod_label}.\n\n"
+                f"What is the total price for {qty_label} {prod_label}?\n\n"
+                f"Reply with the amount. E.g. *160000*\n"
+                f"Or reply *FULL* if N{paid:,} is the full price (no balance)."
+            )
+            return {"status": "awaiting_stock_price"}
 
     if parsed["action"] == "SALE":
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "DIRECT_SALE", "Direct sales")
@@ -372,7 +452,7 @@ def handle_transaction_setup(
         parsed,
         visible_recorded_by_id,
     )
-    confirm_msg = build_customer_confirm_message(customer, parsed)
+    confirm_msg = build_customer_confirm_message(customer, parsed, user)
 
     # Note any deviation from the standard selling price (internal only)
     below_cost = _price_deviation_alert(
@@ -390,12 +470,13 @@ def handle_transaction_setup(
         )
 
     no_details_hint = ""
-    if not parsed.get("product") and not parsed.get("invoice_items"):
+    from biz_language import get_lang
+    if get_lang(user)["show_product_tip"] and not parsed.get("product") and not parsed.get("invoice_items"):
         cname = customer.name.title()
         no_details_hint = (
             "\n\n⚠️ No product details captured.\n"
             "To include item + quantity, resend as:\n"
-            f"{cname} bought 10 dozen paper bags for 65000"
+            f"{cname} bought 10 bags rice for 5000"
         )
 
     confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}{no_details_hint}"

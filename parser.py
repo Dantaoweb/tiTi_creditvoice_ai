@@ -238,6 +238,10 @@ def interpret_text_with_openai(text_value):
         "'I paid Ayo 14000 for egg', "
         "'Ayo paid 6000 for gate and balance is 5600', "
         "'add customer Ayo', 'Ayo phone 08012345678'. "
+        "IMPORTANT: When a message says '[name] buy/bought [item] and paid [amount]' with only ONE number, "
+        "it means the person bought the item AND fully paid for it. "
+        "Normalize as '[name] bought [item] [amount] paid [amount]' — same amount twice, balance is zero. "
+        "Example: 'Bayowa buy one basket of mangoes and paid 60000' → 'Bayowa bought 1 basket mango 60000 paid 60000'. "
         "Preserve customer names, products, amounts, paid amounts, balances, units, and due dates. "
         "If the message is not a business transaction/customer setup/reminder command, set understood false. "
         "If important money details are missing or ambiguous, set understood false and provide a short clarification_question."
@@ -321,6 +325,8 @@ def interpret_text_with_openai_followup(original_message, clarification_question
         "NUMBERING RULE: If the original message has numbered items like '1. Native 3, 2. Jalab 1', "
         "the numbers before the dot (1., 2.) are list indices, NOT quantities. "
         "The quantities are the numbers after the product name (e.g. 'Native 3' means qty=3). "
+        "FULL-PAYMENT RULE: '[name] buy/bought [item] and paid [amount]' with ONE number means "
+        "fully paid — normalize as '[name] bought [item] [amount] paid [amount]' (same amount twice). "
         "Preserve customer names, products, amounts, paid amounts, balances, units, and due dates. "
         "If still ambiguous after the user's answer, set understood false."
     )
@@ -949,6 +955,17 @@ def extract_amounts(text):
 def parse_stock_item_body(body):
     clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", body.lower()).strip()
     clean = re.sub(r"\s+", " ", clean)
+
+    # Strip dangling "cost N" / "sell N" / "selling price N" that got bundled with the product name
+    # e.g. "fish cost 120000" → "fish", "garri cost 500 sell 700" → "garri" (handled upstream, but guard here)
+    _amount_tok = r"\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?"
+    clean = re.sub(
+        rf"\s+(?:cost|selling\s+price|sell(?:ing)?)\s+(?:at\s+)?{_amount_tok}(?:\s+(?:each|per\s+unit))?",
+        "",
+        clean,
+        flags=re.I,
+    ).strip()
+
     quantity_match = re.match(
         rf"(?P<quantity>\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?)\s*(?P<unit>{UNIT_PATTERN})?\s*(?:of\s+)?(?P<product>.*)$",
         clean
@@ -2196,12 +2213,12 @@ def parse_message(text):
         }
 
     if clean_text.startswith("add staff"):
-        # Matches "add staff 080... Name" (allows spaces in phone)
-        match = re.search(r"add staff (\+?[\d ]{7,15}) (.+)", clean_text)
+        # Matches with or without brackets: "add staff [080...] [Name]" or "add staff 080... Name"
+        match = re.search(r"add staff \[?(\+?[\d ]{7,15})\]?\s*\[?([^\]]+)\]?", clean_text)
         if match:
             return {
                 "type": "ADD_STAFF",
-                "phone": normalize_phone(match.group(1)),
+                "phone": normalize_phone(match.group(1).strip()),
                 "name": match.group(2).strip()
             }
 
@@ -2751,7 +2768,19 @@ def parse_message(text):
             unit_price = item_details["unit_price"]
             total = item_details["total"]
             paid_amount = amounts[-1]
-        elif len(amounts) < 2:
+        elif len(amounts) == 1:
+            # "Bayowa buy one basket of mangoes and paid 60000"
+            # Single amount with buy+paid: ambiguous — could be full price (fully paid) OR a part payment.
+            # Flag for the handler to resolve via stock lookup. If not in stock, ask for clarification.
+            buy_amount = None   # unknown until stock lookup
+            paid_amount = amounts[0]
+            total = None
+            if item_details:
+                quantity = item_details.get("quantity")
+                unit = item_details.get("unit")
+                product = item_details.get("product")
+                unit_price = item_details.get("unit_price")
+        elif not amounts:
             return None
         else:
             buy_amount = amounts[0]
@@ -2822,6 +2851,12 @@ def parse_message(text):
     if name.strip() == "":
         return None
 
+    stock_price_needed = (
+        action == "COMBINED"
+        and buy_amount is None
+        and product is not None
+    )
+
     return {
         "type": "TRANSACTION",
         "name": name,
@@ -2834,7 +2869,8 @@ def parse_message(text):
         "unit_price": unit_price,
         "invoice_items": None,
         "total": total if total is not None else buy_amount,
-        "due_date": due_date
+        "due_date": due_date,
+        "stock_price_needed": stock_price_needed,
     }
 
 

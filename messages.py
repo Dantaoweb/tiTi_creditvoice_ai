@@ -705,16 +705,18 @@ def edit_prompt_for_pending(pending, user=None):
             "Retype to correct it:\n"
             f"Example: {_customer_payment_example(pending, user)}"
         )
+    from biz_language import get_lang
+    _L = get_lang(user)
     if pending.action == "COMBINED":
         return (
             f"{summary}\n\n"
             "Retype to correct it:\n"
-            f"Example: {_business_example(user, 0, 'Ade bought rice 5000 paid 2000')}"
+            f"Example: {_business_example(user, 0, _L['example_credit'])}"
         )
     return (
         f"{summary}\n\n"
         "Retype to correct it:\n"
-        f"Example: {_business_example(user, 0, 'Ade bought rice 5000')}"
+        f"Example: {_business_example(user, 0, _L['example_credit'])}"
     )
 
 

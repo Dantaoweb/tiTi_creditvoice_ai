@@ -187,6 +187,44 @@ BUSINESS_CATEGORIES = [
     },
 ]
 
+PARTIAL_SUPPORT_TYPES = {
+    "hotel_guest_house": {
+        "label": "Hotel / Guest House",
+        "works": "Track guest bills, payments, and outstanding balances",
+        "missing": "Room booking, availability management, and check-in/check-out",
+    },
+    "property_manager": {
+        "label": "Property Manager",
+        "works": "Track rent payments and outstanding balances per tenant",
+        "missing": "Property listings, lease contracts, and unit management",
+    },
+    "estate_agent": {
+        "label": "Estate Agent",
+        "works": "Track client payments and outstanding balances",
+        "missing": "Property listings, commissions workflow, and deal tracking",
+    },
+    "clinic": {
+        "label": "Clinic",
+        "works": "Track patient bills, consultation fees, and outstanding balances",
+        "missing": "Patient records, prescriptions, and clinical management",
+    },
+    "dental_clinic": {
+        "label": "Dental Clinic",
+        "works": "Track patient bills and outstanding fee balances",
+        "missing": "Patient records, treatment history, and clinical notes",
+    },
+    "eye_clinic": {
+        "label": "Eye Clinic",
+        "works": "Track patient bills and outstanding fee balances",
+        "missing": "Patient records, prescription notes, and frame/lens stock by patient",
+    },
+    "laboratory": {
+        "label": "Laboratory / Test Center",
+        "works": "Track patient bills and outstanding balances",
+        "missing": "Test result records, sample tracking, and patient referrals",
+    },
+}
+
 INDUSTRY_EXAMPLES = {
     "pharmacy": [
         "Mary bought paracetamol 1500",

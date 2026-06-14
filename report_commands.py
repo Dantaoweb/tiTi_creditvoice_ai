@@ -238,7 +238,7 @@ def handle_report_command(
             return {"status": "dashboard_menu"}
 
         summary = get_dashboard_summary(db, business_owner_phone, period, visible_recorded_by_id)
-        send_message(phone, build_dashboard_summary_message(summary, period))
+        send_message(phone, build_dashboard_summary_message(summary, period, user))
         return {"status": "dashboard_summary"}
 
     if command_type == "BIGGEST_DEBTOR":

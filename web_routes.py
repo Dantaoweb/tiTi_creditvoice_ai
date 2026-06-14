@@ -1338,77 +1338,126 @@ def register_web_routes(app):
         finally:
             db.close()
 
-    # ── Fintech payment webhook (stub — ready for partner integration) ────────
+    # ── Monnify payment webhook ───────────────────────────────────────────────
     @app.post("/webhook/payment-received")
     async def webhook_payment_received(request):
         """
-        Called by the fintech partner when a customer pays into a virtual account.
-        FINTECH_INTEGRATION: uncomment HMAC verification when partner is confirmed.
+        Monnify calls this on every SUCCESSFUL_TRANSACTION for a reserved account.
+        Header: monnify-signature — HMAC-SHA512 of raw body using your Secret Key.
         """
-        from wallet_service import process_incoming_payment, verify_webhook_signature
+        from wallet_service import process_incoming_payment, resolve_bank_name, verify_webhook_signature
         from whatsapp_client import send_whatsapp_message
 
         body = await request.body()
-        sig  = request.headers.get("X-Webhook-Signature", "")
+        sig  = request.headers.get("monnify-signature", "")
 
         if not verify_webhook_signature(body, sig):
             raise HTTPException(status_code=401, detail="Invalid webhook signature.")
 
         import json as _json
-        data = _json.loads(body)
+        data      = _json.loads(body)
+        event     = data.get("eventType", "")
+        event_data = data.get("eventData", {})
 
-        # Expected payload shape (adapt to actual partner schema):
-        # {
-        #   "event": "payment.received",
-        #   "virtual_account_number": "...",
-        #   "amount": 5000,
-        #   "sender_name": "ADEBAYO JOHN",
-        #   "sender_account": "0123456789",
-        #   "sender_bank": "GTBank",
-        #   "narration": "Transfer",
-        #   "reference": "partner-ref-xyz"
-        # }
+        # ── Settlement confirmation (Layer 3) ────────────────────────────────
+        if event == "SETTLEMENT_COMPLETED":
+            # Monnify fields: reservedAccountReference = owner_phone we set
+            owner_phone = (
+                event_data.get("reservedAccountReference")
+                or event_data.get("accountReference")
+                or ""
+            )
+            settled    = int(float(event_data.get("totalAmount") or event_data.get("settledAmount") or 0))
+            dest_bank  = resolve_bank_name(event_data.get("destinationBankCode", "")) \
+                         or event_data.get("destinationBankName", "your bank")
+            dest_name  = event_data.get("destinationAccountName", "")
 
-        virtual_account_number = data.get("virtual_account_number")
-        amount    = int(data.get("amount", 0))
-        sender    = data.get("sender_name", "")
-        s_acct    = data.get("sender_account", "")
-        s_bank    = data.get("sender_bank", "")
-        narration = data.get("narration", "")
-        ref       = data.get("reference", "")
+            if owner_phone and settled:
+                send_whatsapp_message(
+                    owner_phone,
+                    f"✅ ₦{settled:,} has been sent to your {dest_bank} account"
+                    + (f" ({dest_name})" if dest_name else "") + ".\n"
+                    "This covers payments collected up to yesterday.\n"
+                    "Check your bank for the credit alert."
+                )
+            return {"ok": True, "event": event}
 
-        if not virtual_account_number or not amount or not ref:
+        # ── Inbound payment (Layer 1) ─────────────────────────────────────────
+        if event != "SUCCESSFUL_TRANSACTION":
+            return {"ok": True, "skipped": event}
+        if event_data.get("paymentStatus") != "PAID":
+            return {"ok": True, "skipped": "not paid"}
+
+        # Parse Monnify payload
+        ref       = event_data.get("transactionReference", "")
+        narration = event_data.get("paymentDescription", "")
+        amount    = int(float(event_data.get("amountPaid", 0)))
+
+        # Owner identified from the accountReference we set during provisioning
+        owner_phone = event_data.get("product", {}).get("reference", "")
+
+        # Sender details come from paymentSourceInformation array
+        src       = (event_data.get("paymentSourceInformation") or [{}])[0]
+        sender    = src.get("accountName", "")
+        s_acct    = src.get("accountNumber", "")
+        s_bank    = resolve_bank_name(src.get("bankCode", ""))
+
+        # Destination account number (the business's reserved account)
+        dest_info = event_data.get("destinationAccountInformation", {})
+        va_number = dest_info.get("accountNumber", "")
+
+        if not owner_phone or not amount or not ref:
             raise HTTPException(status_code=400, detail="Missing required fields.")
 
         db = SessionLocal()
         try:
             from models import Wallet
-            wallet = db.query(Wallet).filter(
-                Wallet.virtual_account_number == virtual_account_number
-            ).first()
+            # Prefer lookup by owner_phone (set as accountReference); fall back to VA number
+            wallet = db.query(Wallet).filter(Wallet.owner_phone == owner_phone).first()
+            if not wallet and va_number:
+                wallet = db.query(Wallet).filter(Wallet.virtual_account_number == va_number).first()
             if not wallet:
-                raise HTTPException(status_code=404, detail="Virtual account not found.")
+                raise HTTPException(status_code=404, detail="Wallet not found.")
 
             tx = process_incoming_payment(
                 db, wallet.owner_phone, amount, sender, s_bank, narration, ref, s_acct
             )
 
-            # Notify the business owner on WhatsApp
             match_note = ""
             if tx.matched_customer_id:
-                from models import Customer
-                c = db.query(Customer).filter(Customer.id == tx.matched_customer_id).first()
+                from models import Customer as _Customer
+                c = db.query(_Customer).filter(_Customer.id == tx.matched_customer_id).first()
                 if c:
                     match_note = f"\nMatched to {c.name.title()} and recorded as payment."
 
             send_whatsapp_message(
                 wallet.owner_phone,
                 f"💰 Payment received: ₦{amount:,}\n"
-                f"From: {sender or 'Unknown'} ({s_bank or '—'})\n"
+                f"From: {sender or 'Unknown'} ({s_bank})\n"
                 f"Ref: {ref}{match_note}\n\n"
                 "Open CreditVoice Wallet to review."
             )
             return {"ok": True, "reference": tx.reference}
+        finally:
+            db.close()
+
+    # ── Admin: provision a Monnify reserved account for an owner ─────────────
+    @app.post("/app/api/wallet/provision")
+    def web_wallet_provision(session: dict = Depends(require_web_auth)):
+        """
+        Owner calls this once to create their reserved account on Monnify.
+        Safe to call again — returns existing details if already provisioned.
+        """
+        from wallet_service import provision_virtual_account
+        db = SessionLocal()
+        try:
+            user_ctx = load_webhook_user_context(db, session["phone"], "text")
+            owner_phone = user_ctx.business_owner_phone or session["phone"]
+            owner = db.query(User).filter(User.phone == owner_phone).first()
+            if not owner:
+                raise HTTPException(status_code=404, detail="Owner not found.")
+            result = provision_virtual_account(db, owner_phone, owner.name or owner_phone)
+            return {"ok": True, **result}
         finally:
             db.close()
 

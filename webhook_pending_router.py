@@ -10,6 +10,7 @@ from artisan_commands import handle_artisan_payment_pending
 from constants import (
     ACTION_ARTISAN_PAYMENT_CHOICE,
     ACTION_AWAITING_CLARIFICATION,
+    ACTION_AWAITING_STOCK_PRICE,
     ACTION_DASHBOARD_MENU,
     ACTION_ONBOARD_CUSTOMER,
     ACTION_RESIGN_CONFIRM,
@@ -91,7 +92,7 @@ def build_add_stock_help_message():
 
 
 def _handle_dashboard_menu(
-    db, phone, text, pending, business_owner_phone, visible_recorded_by_id
+    db, phone, text, pending, business_owner_phone, visible_recorded_by_id, user=None
 ):
     normalized = text.strip().lower()
 
@@ -112,7 +113,7 @@ def _handle_dashboard_menu(
     }
     selection = dashboard_aliases.get(normalized, normalized)
     status, msg = build_dashboard_selection_message(
-        db, business_owner_phone, selection, visible_recorded_by_id
+        db, business_owner_phone, selection, visible_recorded_by_id, user
     )
 
     if not msg:
@@ -519,6 +520,68 @@ def handle_pending_actions(
     parsed,
     is_command,
 ):
+    # ── Awaiting stock price (buy+paid with unknown total) ──────────────────
+    if pending and pending.action == ACTION_AWAITING_STOCK_PRICE and not is_command:
+        from parser import extract_amounts
+        normalized = text.lower().strip()
+        cname = (pending.customer_name or "customer").title()
+        paid = pending.paid_amount or 0
+        prod = (pending.product or "item").title()
+        qty = pending.quantity or 1
+        unit_str = pending.unit or ""
+        qty_label = f"{qty} {unit_str}".strip() if unit_str else str(qty)
+
+        if normalized in ["full", "all paid", "paid all", "complete", "full payment"]:
+            buy_amount = paid
+        else:
+            amounts = extract_amounts(normalized)
+            if not amounts:
+                send_message(
+                    phone,
+                    f"Reply with the total price for {qty_label} {prod}.\n"
+                    f"Or reply *FULL* if N{paid:,} is the full price."
+                )
+                return PendingRouteResult(response={"status": "awaiting_stock_price_retry"})
+            buy_amount = amounts[0]
+
+        unit_price = round(buy_amount / qty) if qty > 1 else buy_amount
+        pending.action = "COMBINED"
+        pending.buy_amount = buy_amount
+        pending.unit_price = unit_price
+        db.commit()
+
+        from transaction_setup import build_projected_balance_line
+        customer = db.query(Customer).filter(
+            Customer.name == pending.customer_name,
+            Customer.owner_phone == business_owner_phone,
+        ).first()
+        if not customer:
+            customer = Customer(name=pending.customer_name, owner_phone=business_owner_phone)
+            db.add(customer)
+            db.commit()
+            pending.last_customer = customer.name
+            db.commit()
+
+        balance_line = build_projected_balance_line(
+            db, customer.id, {"buy_amount": buy_amount, "paid_amount": paid}, visible_recorded_by_id,
+        )
+        balance = buy_amount - paid
+        if balance <= 0:
+            balance_text = "Fully paid, no balance."
+        else:
+            balance_text = f"Balance: N{balance:,}"
+
+        send_message(
+            phone,
+            f"Confirm:\n{cname} bought {qty_label} {prod}\n"
+            f"Total: N{buy_amount:,}\n"
+            f"Paid:  N{paid:,}\n"
+            f"{balance_text}"
+            f"{balance_line}\n\n"
+            "Reply YES or 1 to save, EDIT or 2 to change."
+        )
+        return PendingRouteResult(response={"status": "stock_price_resolved_confirm"})
+
     # ── Awaiting clarification follow-up ────────────────────────────────────
     if pending and pending.action == ACTION_AWAITING_CLARIFICATION and not is_command:
         original_text = pending.source_text or ""
@@ -728,7 +791,7 @@ def handle_pending_actions(
             db.commit()
         else:
             return _handle_dashboard_menu(
-                db, phone, text, pending, business_owner_phone, visible_recorded_by_id,
+                db, phone, text, pending, business_owner_phone, visible_recorded_by_id, user,
             )
 
     # ── Reminder flows ───────────────────────────────────────────────────────

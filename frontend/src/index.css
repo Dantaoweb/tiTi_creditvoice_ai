@@ -571,6 +571,22 @@ tr.low-stock td { background: #fffbeb; }
   font-weight: 500;
 }
 
+.partial-support-note {
+  display: flex;
+  gap: 8px;
+  background: #fefce8;
+  border: 1px solid #fde047;
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  margin-top: 6px;
+  color: #713f12;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.partial-support-note strong { display: block; font-weight: 700; margin-bottom: 3px; }
+.partial-support-works  { display: block; }
+.partial-support-missing { display: block; color: #9a3412; margin-top: 2px; }
+
 .login-divider {
   display: flex;
   align-items: center;

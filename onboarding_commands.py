@@ -5,6 +5,7 @@ from business_templates import (
     make_custom_business_key,
     selected_business_category,
     selected_business_type,
+    PARTIAL_SUPPORT_TYPES,
 )
 from business_templates import has_service_price_catalog
 from guided_service_commands import start_guided_service_setup
@@ -24,6 +25,7 @@ ONBOARDING_ACTIONS = [
     "ONBOARD_USER_CONFIRM",
     "ONBOARD_USER_CATEGORY",
     "ONBOARD_USER_BUSINESS_TYPE",
+    "ONBOARD_USER_PARTIAL_CONFIRM",
     "ONBOARD_USER_CUSTOM_TYPE",
 ]
 
@@ -261,6 +263,22 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
             send_message(phone, "Please type your business type.\nExample: Event Decoration")
             return {"status": "onboarding_custom_type_prompt"}
 
+        if business_type_key in PARTIAL_SUPPORT_TYPES:
+            info = PARTIAL_SUPPORT_TYPES[business_type_key]
+            pending.action = "ONBOARD_USER_PARTIAL_CONFIRM"
+            pending.product = business_type_key
+            pending.customer_phone = business_type_label
+            db.commit()
+            send_message(
+                phone,
+                f"⚠️ Limited fit: {info['label']}\n\n"
+                f"CreditVoice will help you:\n✅ {info['works']}\n\n"
+                f"What's missing today:\n❌ {info['missing']}\n\n"
+                "You can still use CreditVoice to manage who owes you and track payments.\n\n"
+                "Reply *YES* to continue or *BACK* to pick a different type."
+            )
+            return {"status": "onboarding_partial_warning_sent"}
+
         new_user, msg = complete_user_onboarding(
             db,
             user,
@@ -272,6 +290,30 @@ def handle_onboarding_pending(db, phone, text, pending, user, send_message):
         )
         send_message(phone, msg)
         return {"status": "onboarding_complete"}
+
+    if pending.action == "ONBOARD_USER_PARTIAL_CONFIRM":
+        normalized = text.lower().strip()
+        if normalized in ["back", "menu", "cancel", "no"]:
+            pending.action = "ONBOARD_USER_BUSINESS_TYPE"
+            pending.product = None
+            pending.customer_phone = None
+            db.commit()
+            category = business_category_by_key(pending.last_customer)
+            send_message(phone, build_business_type_menu(category))
+            return {"status": "onboarding_partial_back"}
+
+        if normalized in ["yes", "1", "continue", "ok"]:
+            btype_key = pending.product or ""
+            btype_label = pending.customer_phone or ""
+            cat_key = pending.last_customer or ""
+            new_user, msg = complete_user_onboarding(
+                db, user, phone, pending, cat_key, btype_key, btype_label,
+            )
+            send_message(phone, msg)
+            return {"status": "onboarding_complete"}
+
+        send_message(phone, "Reply *YES* to continue or *BACK* to pick a different type.")
+        return {"status": "onboarding_partial_waiting"}
 
     if pending.action == "ONBOARD_USER_CUSTOM_TYPE":
         if text.lower().strip() in ["back", "menu", "cancel"]:

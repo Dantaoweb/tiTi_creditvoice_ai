@@ -1,26 +1,45 @@
 """
-Wallet service — business logic layer for CreditVoice Wallet.
+Wallet service — Monnify Reserved Account integration.
 
-Current state: FOUNDATION ONLY.
-All functions are wired and tested; fintech integration points are clearly
-marked with # FINTECH_INTEGRATION comments so the partner hook-up is a
-drop-in, not a rewrite.
-
-Integration checklist (when license + partner is ready):
-  1. Replace virtual account provisioning stub with partner API call
-  2. Wire POST /webhook/payment-received to your partner's IP whitelist + HMAC
-  3. Set WALLET_WEBHOOK_SECRET env var for HMAC verification
-  4. Set PAYMENT_LINK_BASE_URL env var for shareable links
+Env vars required for live operation:
+  MONNIFY_API_KEY        — from Monnify dashboard
+  MONNIFY_SECRET_KEY     — from Monnify dashboard (also used for webhook HMAC)
+  MONNIFY_CONTRACT_CODE  — from Monnify dashboard
+  MONNIFY_BASE_URL       — https://sandbox.monnify.com (test) or https://api.monnify.com (live)
+  PAYMENT_LINK_BASE_URL  — base URL for shareable payment links (optional)
 """
 
+import base64
+import hashlib
+import hmac
 import os
 import uuid
 from datetime import datetime, timezone
 
+import requests
+
 from models import Customer, Transaction, Wallet, WalletTransaction
 
 PAYMENT_LINK_BASE_URL = os.getenv("PAYMENT_LINK_BASE_URL", "https://pay.creditvoice.app")
-WALLET_WEBHOOK_SECRET = os.getenv("WALLET_WEBHOOK_SECRET", "")
+MONNIFY_API_KEY       = os.getenv("MONNIFY_API_KEY", "")
+MONNIFY_SECRET_KEY    = os.getenv("MONNIFY_SECRET_KEY", "")
+MONNIFY_CONTRACT_CODE = os.getenv("MONNIFY_CONTRACT_CODE", "")
+MONNIFY_BASE_URL      = os.getenv("MONNIFY_BASE_URL", "https://sandbox.monnify.com")
+
+# Common Nigerian bank codes → names (for readable webhook display)
+_BANK_NAMES = {
+    "011": "First Bank", "014": "MainStreet Bank", "023": "CitiBank",
+    "032": "Union Bank",  "033": "UBA",             "035": "Wema Bank",
+    "037": "Jaiz Bank",   "040": "Ecobank",         "044": "Access Bank",
+    "050": "Ecobank",     "057": "Zenith Bank",     "058": "GTBank",
+    "068": "Standard Chartered", "070": "Fidelity Bank", "076": "Polaris Bank",
+    "082": "Keystone Bank",      "090": "Sterling Bank",  "214": "FCMB",
+    "215": "Unity Bank",  "221": "Stanbic IBTC",    "232": "Sterling Bank",
+    "301": "Jaiz Bank",   "305": "Ekondo MFB",      "309": "Ecobank",
+    "315": "GTBank",      "327": "Paga",             "401": "ASO Savings",
+    "50211": "Kuda",      "50515": "Moniepoint",     "100004": "Opay",
+    "100033": "PalmPay",
+}
 
 
 def _utcnow():
@@ -232,46 +251,94 @@ def manually_match_payment(db, wallet_tx_id: int, customer_id: int, owner_phone:
     return tx, None
 
 
-# ── Virtual account provisioning stub ─────────────────────────────────────────
-# FINTECH_INTEGRATION: replace this stub with a real API call to your partner
-# (Providus, Wema ALAT, Stitch, etc.) to create a dedicated virtual account.
+# ── Monnify token ─────────────────────────────────────────────────────────────
+
+def _get_monnify_token() -> str:
+    """Exchange API key + secret for a short-lived Bearer token."""
+    credentials = base64.b64encode(
+        f"{MONNIFY_API_KEY}:{MONNIFY_SECRET_KEY}".encode()
+    ).decode()
+    resp = requests.post(
+        f"{MONNIFY_BASE_URL}/api/v1/auth/login",
+        headers={"Authorization": f"Basic {credentials}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()["responseBody"]["accessToken"]
+
+
+# ── Virtual account provisioning ───────────────────────────────────────────────
 
 def provision_virtual_account(db, owner_phone: str, business_name: str) -> dict:
     """
-    Stub — returns a placeholder. Replace with partner API call.
-
-    Partner call should return:
-        account_number, bank_name, account_name, partner_ref
+    Create a Monnify Reserved Account for a CreditVoice business.
+    Each business gets a permanent NUBAN (Wema Bank / Sterling Bank).
+    Idempotent — safe to call again if the wallet already has an account.
     """
-    # TODO: call fintech partner API here
-    # Example (Providus):
-    #   response = requests.post(
-    #       "https://api.providus.ng/PiPCreateReservedAccountNumber",
-    #       json={"merchant_ref": owner_phone, "name": business_name},
-    #       headers={"Authorization": f"Bearer {PARTNER_TOKEN}"},
-    #   )
-    #   data = response.json()
-    #   return {
-    #       "account_number": data["account_number"],
-    #       "bank": "Providus Bank",
-    #       "account_name": data["account_name"],
-    #       "ref": data["merchant_ref"],
-    #   }
-    raise NotImplementedError("Virtual account provisioning requires fintech partner integration.")
+    wallet = get_or_create_wallet(db, owner_phone)
+    if wallet.virtual_account_number:
+        return {
+            "account_number": wallet.virtual_account_number,
+            "bank": wallet.virtual_account_bank,
+            "account_name": wallet.virtual_account_name,
+        }
+
+    token = _get_monnify_token()
+    account_name = f"CV {business_name}"[:50]
+
+    resp = requests.post(
+        f"{MONNIFY_BASE_URL}/api/v2/bank-transfer/reserved-accounts",
+        json={
+            "accountReference":  owner_phone,
+            "accountName":       account_name,
+            "currencyCode":      "NGN",
+            "contractCode":      MONNIFY_CONTRACT_CODE,
+            "customerName":      business_name,
+            "customerEmail":     f"{owner_phone}@creditvoice.app",
+            "getAllAvailableBanks": False,
+        },
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    body = resp.json()["responseBody"]
+
+    # Monnify returns a list under "accounts" when getAllAvailableBanks=True,
+    # or a single object otherwise — normalise to grab the first/only entry.
+    accounts = body.get("accounts") or []
+    primary  = accounts[0] if accounts else body
+
+    wallet.virtual_account_number = primary.get("accountNumber") or body.get("accountNumber")
+    wallet.virtual_account_bank   = primary.get("bankName") or body.get("bankName")
+    wallet.virtual_account_name   = body.get("accountName", account_name)
+    wallet.virtual_account_ref    = body.get("accountReference", owner_phone)
+    wallet.updated_at             = _utcnow()
+    db.commit()
+
+    return {
+        "account_number": wallet.virtual_account_number,
+        "bank":           wallet.virtual_account_bank,
+        "account_name":   wallet.virtual_account_name,
+    }
 
 
 # ── Webhook signature verification ────────────────────────────────────────────
-# FINTECH_INTEGRATION: uncomment and adapt to your partner's HMAC scheme.
 
 def verify_webhook_signature(payload_bytes: bytes, signature_header: str) -> bool:
-    """Verify that the webhook came from our fintech partner, not an attacker."""
-    if not WALLET_WEBHOOK_SECRET:
-        return True  # dev mode — skip verification
-    import hmac
-    import hashlib
+    """Verify that the webhook came from Monnify (HMAC-SHA512 of raw body)."""
+    if not MONNIFY_SECRET_KEY:
+        return True  # dev mode — no key configured, skip
     expected = hmac.new(
-        WALLET_WEBHOOK_SECRET.encode(),
+        MONNIFY_SECRET_KEY.encode(),
         payload_bytes,
-        hashlib.sha256,
+        hashlib.sha512,
     ).hexdigest()
     return hmac.compare_digest(expected, signature_header or "")
+
+
+def resolve_bank_name(code: str) -> str:
+    """Map a Monnify bank code to a human-readable name."""
+    return _BANK_NAMES.get(str(code), code or "Unknown bank")

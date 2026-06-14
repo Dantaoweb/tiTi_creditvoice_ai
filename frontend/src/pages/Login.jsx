@@ -1,8 +1,18 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, KeyRound, UserPlus, Loader2 } from "lucide-react";
+import { ArrowLeft, KeyRound, UserPlus, Loader2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
+
+const PARTIAL_SUPPORT = {
+  hotel_guest_house: { works: "Track guest bills, payments, and outstanding balances", missing: "Room booking, availability management, and check-in/check-out" },
+  property_manager:  { works: "Track rent payments and outstanding balances per tenant", missing: "Property listings, lease contracts, and unit management" },
+  estate_agent:      { works: "Track client payments and outstanding balances", missing: "Property listings, commissions workflow, and deal tracking" },
+  clinic:            { works: "Track patient bills, consultation fees, and outstanding balances", missing: "Patient records, prescriptions, and clinical management" },
+  dental_clinic:     { works: "Track patient bills and outstanding fee balances", missing: "Patient records, treatment history, and clinical notes" },
+  eye_clinic:        { works: "Track patient bills and outstanding fee balances", missing: "Patient records, prescription notes, and frame/lens stock by patient" },
+  laboratory:        { works: "Track patient bills and outstanding balances", missing: "Test result records, sample tracking, and patient referrals" },
+};
 
 function Spinner() {
   return <Loader2 size={15} className="spin" />;
@@ -278,6 +288,16 @@ export default function Login() {
                   <option value="">Select business…</option>
                   {businesses.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
                 </select>
+                {regType && PARTIAL_SUPPORT[regType] && (
+                  <div className="partial-support-note">
+                    <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <strong>Limited fit</strong>
+                      <span className="partial-support-works">✅ {PARTIAL_SUPPORT[regType].works}</span>
+                      <span className="partial-support-missing">Not yet: {PARTIAL_SUPPORT[regType].missing}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

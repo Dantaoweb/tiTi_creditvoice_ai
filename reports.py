@@ -217,19 +217,21 @@ def dashboard_period_label(period):
     return labels.get(period, "all time")
 
 
-def build_dashboard_summary_message(summary, period=None):
+def build_dashboard_summary_message(summary, period=None, user=None):
+    from biz_language import get_lang
+    L = get_lang(user)
     period_label = dashboard_period_label(period)
     return (
         f"Dashboard {period_label}:\n"
-        f"Total customers: {summary['total_customers']:,}\n"
-        f"New customers: {summary['new_customers']:,}\n"
-        f"Paid customers: {summary['paid_customers']:,}\n"
+        f"{L['total_customers']}: {summary['total_customers']:,}\n"
+        f"{L['new_customers']}: {summary['new_customers']:,}\n"
+        f"{L['paid_customers']}: {summary['paid_customers']:,}\n"
         f"Transactions: {summary['total_transactions']:,}\n"
-        f"Credit sales: N{summary['credit_sales_amount']:,}\n"
-        f"Direct sales: N{summary['direct_sales_amount']:,}\n"
-        f"Total sales: N{summary['total_sales_amount']:,}\n"
-        f"Payments received: N{summary['total_pay_amount']:,}\n"
-        f"Outstanding balance: N{summary['total_outstanding']:,}"
+        f"{L['credit_sales']}: N{summary['credit_sales_amount']:,}\n"
+        f"{L['direct_sales']}: N{summary['direct_sales_amount']:,}\n"
+        f"{L['total_sales']}: N{summary['total_sales_amount']:,}\n"
+        f"{L['payments']}: N{summary['total_pay_amount']:,}\n"
+        f"{L['outstanding']}: N{summary['total_outstanding']:,}"
     )
 
 
@@ -319,7 +321,7 @@ def build_dashboard_menu_message():
     )
 
 
-def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id=None):
+def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id=None, user=None):
     period_options = {
         "1": "TODAY",
         "2": "WEEK",
@@ -331,7 +333,7 @@ def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id
     if selection in period_options:
         period = period_options[selection]
         summary = get_dashboard_summary(db, owner_phone, period, recorded_by_id)
-        return "dashboard_summary", build_dashboard_summary_message(summary, period)
+        return "dashboard_summary", build_dashboard_summary_message(summary, period, user)
 
     if selection == "6":
         count = get_customer_count(db, owner_phone, None, recorded_by_id)

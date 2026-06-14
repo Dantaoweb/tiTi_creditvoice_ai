@@ -50,7 +50,7 @@ def handle_staff_command(db, phone, parsed, user, subscription, business_name, s
             send_message(
                 phone,
                 "You have no staff members registered yet.\n\n"
-                "To add staff, send:\n*ADD STAFF [phone] [name]*"
+                "To add staff, send:\n*ADD STAFF 08012345678 Name*"
             )
             return {"status": "staff_menu_empty"}
 

@@ -80,10 +80,10 @@ export default function Dashboard() {
       )}
 
       <div className="metrics-grid">
-        <MetricCard loading={loading} label={`Sales ${periodLabel}`}    value={naira(s.total_sales_amount)} color="green" />
-        <MetricCard loading={loading} label="Payments received"         value={naira(s.total_pay_amount)}   color="blue"  />
-        <MetricCard loading={loading} label="Outstanding balance"       value={naira(s.total_outstanding)}  color="amber" />
-        <MetricCard loading={loading} label={L.totalCustomers}          value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
+        <MetricCard loading={loading} label={`${L.totalSales || "Sales"} ${periodLabel}`} value={naira(s.total_sales_amount)} color="green" />
+        <MetricCard loading={loading} label={L.payments    || "Payments received"}       value={naira(s.total_pay_amount)}   color="blue"  />
+        <MetricCard loading={loading} label={L.outstanding || "Outstanding balance"}     value={naira(s.total_outstanding)}  color="amber" />
+        <MetricCard loading={loading} label={L.totalCustomers}                           value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 20 }}>
