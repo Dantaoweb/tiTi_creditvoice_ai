@@ -26,6 +26,7 @@ from constants import (
     ACTION_STOCK_ITEM_DELETE_CONFIRM,
     ACTION_STOCK_ITEM_MENU,
     ACTION_STOCK_ITEM_RENAME,
+    ACTION_STOCK_ITEM_SET_CATEGORY,
     ACTION_STOCK_ITEM_UPDATE_PRICE,
     ACTION_STOCK_MENU,
     ACTION_UNPAID_DEBTORS_MENU,
@@ -192,19 +193,24 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             payload["selected_id"] = item.id
             payload["selected_name"] = item.name
             payload["selected_unit"] = item.unit
+            payload["selected_category"] = item.category or ""
             pending.payload_json = json.dumps(payload)
             db.commit()
 
+            cat_line = f"Category: {item.category.title()}\n" if item.category else ""
             send_message(
                 phone,
                 f"*{item.name.title()}{unit_label}*\n"
                 f"Qty: {qty:,}{unit_label}\n"
-                f"{cost_line}  |  {sell_line}\n\n"
+                f"{cost_line}  |  {sell_line}\n"
+                f"{cat_line}\n"
                 "1. Add more stock\n"
                 "2. Update price\n"
                 "3. Delete item\n"
                 "4. Rename item\n"
-                "5. Change unit\n\n"
+                "5. Change unit\n"
+                "6. Buyers & restock\n"
+                "7. Set category\n\n"
                 "Reply *BACK* to return to stock list."
             )
             return {"status": "stock_item_menu_shown"}
@@ -287,10 +293,36 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             )
             return {"status": "stock_item_change_unit_prompt"}
 
+        if normalized in ["6", "buyers", "restock", "buyers & restock", "buyers and restock"]:
+            if not user:
+                send_message(phone, "Register first to use this feature.")
+                return {"status": "restock_no_user"}
+            db.delete(pending)
+            db.commit()
+            from restock_commands import handle_restock_command
+            return handle_restock_command(
+                db, phone, item_name, user, business_owner_phone, visible_recorded_by_id, send_message,
+            )
+
+        if normalized in ["7", "category", "set category", "set cat"]:
+            pending.action = ACTION_STOCK_ITEM_SET_CATEGORY
+            db.commit()
+            _cat_now = payload.get("selected_category", "") or ""
+            cat_hint = f"\nCurrent: {_cat_now.title()}" if _cat_now else ""
+            send_message(
+                phone,
+                f"Category for *{item_name.title()}*?{cat_hint}\n\n"
+                "Examples: grains, drinks, toiletries, electronics\n"
+                "Or send *REMOVE* to clear the category."
+            )
+            return {"status": "stock_item_set_category_prompt"}
+
         send_message(
             phone,
             f"*{item_name.title()}*\n\n"
-            "1. Add more stock\n2. Update price\n3. Delete item\n4. Rename item\n5. Change unit\n\nReply BACK to return."
+            "1. Add more stock\n2. Update price\n3. Delete item\n"
+            "4. Rename item\n5. Change unit\n6. Buyers & restock\n7. Set category\n\n"
+            "Reply BACK to return."
         )
         return {"status": "stock_item_menu_reprompt"}
 
@@ -444,16 +476,20 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
                 unit_label = f" {_item_back.unit}" if _item_back.unit else ""
                 cost_line = f"Cost: N{_item_back.cost_price:,}" if _item_back.cost_price else "Cost: not set"
                 sell_line = f"Sell: N{_item_back.selling_price:,}" if _item_back.selling_price else "Sell: not set"
+                _cat_line = f"Category: {_item_back.category.title()}\n" if _item_back.category else ""
                 send_message(
                     phone,
                     f"*{item_name.title()}{unit_label}*\n"
                     f"Qty: {qty:,}{unit_label}\n"
-                    f"{cost_line}  |  {sell_line}\n\n"
+                    f"{cost_line}  |  {sell_line}\n"
+                    f"{_cat_line}\n"
                     "1. Add more stock\n"
                     "2. Update price\n"
                     "3. Delete item\n"
                     "4. Rename item\n"
-                    "5. Change unit\n\n"
+                    "5. Change unit\n"
+                    "6. Buyers & restock\n"
+                    "7. Set category\n\n"
                     "Reply *BACK* to return to stock list."
                 )
             else:
@@ -474,6 +510,42 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             f"Reply *YES* to confirm deleting *{item_name.title()}*\nor *NO* to cancel."
         )
         return {"status": "stock_item_delete_confirm_reprompt"}
+
+    # ── Set category ─────────────────────────────────────────────────────────
+    if action == ACTION_STOCK_ITEM_SET_CATEGORY:
+        item_id = payload.get("selected_id")
+        item_name = payload.get("selected_name", "")
+
+        if normalized in ["back", "cancel", "skip"]:
+            db.delete(pending)
+            db.commit()
+            return None
+
+        from models import InventoryItem as _InvCat
+        _inv_cat = db.query(_InvCat).filter(_InvCat.id == item_id).first()
+        if not _inv_cat:
+            send_message(phone, "Item not found. Send *stock* to refresh.")
+            db.delete(pending)
+            db.commit()
+            return {"status": "stock_item_set_category_not_found"}
+
+        if normalized in ["remove", "clear", "none", "delete"]:
+            _inv_cat.category = None
+        else:
+            _inv_cat.category = text.strip().lower()
+
+        db.commit()
+        db.delete(pending)
+        db.commit()
+        if _inv_cat.category:
+            send_message(
+                phone,
+                f"Category set to *{_inv_cat.category.title()}* for *{item_name.title()}*.\n\n"
+                "Items with the same category are grouped together in your stock list."
+            )
+        else:
+            send_message(phone, f"Category cleared for *{item_name.title()}*.")
+        return {"status": "stock_item_category_saved"}
 
     return None
 

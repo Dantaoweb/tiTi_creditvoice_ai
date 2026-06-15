@@ -55,8 +55,9 @@ def build_product_list_message(items):
     return msg.strip()
 
 
-def build_cart_message(cart):
-    total = _cart_total(cart)
+def build_cart_message(cart, overall_discount=0, sale_note=""):
+    raw_total = _cart_total(cart)
+    net_total = raw_total - overall_discount
     msg = "Cart:\n\n"
     for i, item in enumerate(cart, start=1):
         deviation = item.get("deviation", 0)
@@ -77,30 +78,41 @@ def build_cart_message(cart):
             f"{i}. {item['product'].title()} x {item['quantity']} "
             f"@ N{item['unit_price']:,} = N{item['total']:,}{note_str}\n"
         )
-    msg += f"\nTotal: N{total:,}\n\n"
-    msg += "1. Add another product\n2. Checkout\n3. Cancel"
+    msg += f"\nSubtotal: N{raw_total:,}\n" if overall_discount else f"\nTotal: N{raw_total:,}\n"
+    if overall_discount:
+        msg += f"Discount: -N{overall_discount:,}\n"
+        msg += f"Total:    N{net_total:,}\n"
+    if sale_note:
+        msg += f"Note: {sale_note}\n"
+    msg += "\n1. Add another product\n2. Checkout\n3. Cancel\n4. Discount / Note"
     return msg
 
 
-def build_confirm_message(cart, customer_name, paid, total, due_date_str=None):
+def build_confirm_message(cart, customer_name, paid, total, due_date_str=None, overall_discount=0, sale_note=""):
     balance = total - paid
-    total_discount = sum(
+    item_discount = sum(
         abs(item.get("deviation", 0)) * item.get("quantity", 1)
         for item in cart
         if item.get("deviation", 0) < 0
     )
     has_loss = any(item.get("below_cost") for item in cart)
+    raw_items_total = sum(item["total"] for item in cart)
 
     msg = "Confirm sale:\n\n"
     msg += f"Customer: {customer_name.title()}\n"
     for item in cart:
         msg += f"{item['product'].title()} x {item['quantity']} = N{item['total']:,}\n"
-    msg += f"\nTotal:   N{total:,}\n"
 
-    if total_discount > 0:
-        standard_total = total + total_discount
-        msg += f"Standard: N{standard_total:,}\n"
-        msg += f"Discount: N{total_discount:,}\n"
+    if overall_discount:
+        msg += f"\nSubtotal: N{raw_items_total:,}\n"
+        msg += f"Discount: -N{overall_discount:,}\n"
+        msg += f"Total:    N{total:,}\n"
+    else:
+        msg += f"\nTotal:   N{total:,}\n"
+
+    if item_discount > 0:
+        standard_total = raw_items_total + item_discount
+        msg += f"Standard: N{standard_total:,}  (item discounts: N{item_discount:,})\n"
     if has_loss:
         msg += "⚠ One or more items sold below cost price.\n"
 
@@ -110,8 +122,11 @@ def build_confirm_message(cart, customer_name, paid, total, due_date_str=None):
         if due_date_str:
             msg += f"Due:     {due_date_str}\n"
 
+    if sale_note:
+        msg += f"Note:    {sale_note}\n"
+
     msg += "\n\nYES to save."
-    if total_discount > 0:
+    if item_discount > 0:
         msg += "\nYES RECEIPT to save and show discount on customer receipt."
     return msg
 
@@ -365,12 +380,53 @@ def _handle_qty_input(db, phone, text, pending, business_owner_phone, send_messa
     return {"status": "select_product_cart_shown"}
 
 
-def _handle_cart_choice(db, phone, normalized, pending, business_owner_phone, send_message):
+def _handle_cart_choice(db, phone, normalized, pending, business_owner_phone, send_message, original_text=""):
     cart = _load_cart(pending)
     payload = _load_payload(pending)
+    overall_discount = payload.get("overall_discount", 0)
+    sale_note = payload.get("sale_note", "")
+
+    # ── Inline discount: "discount 500" or "discount 10%" ────────────────────
+    _disc_m = re.match(r"^discount\s+n?(\d[\d,]*)\s*(?:naira|off)?$", normalized)
+    if not _disc_m:
+        # percentage e.g. "discount 10%"
+        _disc_pct = re.match(r"^discount\s+(\d+)%$", normalized)
+        if _disc_pct:
+            raw_total = _cart_total(cart)
+            pct = int(_disc_pct.group(1))
+            if 0 < pct <= 100:
+                overall_discount = int(raw_total * pct / 100)
+                _disc_m = True  # trigger save branch below
+    if _disc_m and _disc_m is not True:
+        overall_discount = int(_disc_m.group(1).replace(",", ""))
+
+    if _disc_m:
+        raw_total = _cart_total(cart)
+        if overall_discount > raw_total:
+            send_message(phone, f"Discount N{overall_discount:,} exceeds cart total N{raw_total:,}. Send a smaller amount.")
+            return {"status": "select_product_discount_too_large"}
+        payload["overall_discount"] = overall_discount
+        pending.buy_amount = raw_total - overall_discount
+        _save_payload(pending, payload)
+        db.commit()
+        send_message(phone, build_cart_message(cart, overall_discount, sale_note))
+        return {"status": "select_product_discount_set"}
+
+    # ── Inline note: "note urgent delivery" ──────────────────────────────────
+    _note_m = re.match(r"^note[:\s]+(.+)$", normalized)
+    if _note_m:
+        sale_note = original_text.strip()[len(_note_m.group(0)) - len(_note_m.group(1)):].strip()
+        # Keep original casing by stripping "note" prefix from original text
+        _orig_stripped = original_text.strip()
+        _pfx = re.match(r"^note[:\s]+", _orig_stripped, re.I)
+        sale_note = _orig_stripped[_pfx.end():] if _pfx else _note_m.group(1)
+        payload["sale_note"] = sale_note
+        _save_payload(pending, payload)
+        db.commit()
+        send_message(phone, build_cart_message(cart, overall_discount, sale_note))
+        return {"status": "select_product_note_set"}
 
     if normalized in ["1", "add", "add another", "add another product", "more"]:
-        # Re-show product list
         item_ids = payload.get("item_ids", [])
         items = db.query(InventoryItem).filter(
             InventoryItem.id.in_(item_ids)
@@ -382,7 +438,7 @@ def _handle_cart_choice(db, phone, normalized, pending, business_owner_phone, se
         return {"status": "select_product_add_another"}
 
     if normalized in ["2", "checkout", "check out", "done"]:
-        total = _cart_total(cart)
+        total = pending.buy_amount
         pending.action = ACTION_SELECT_PRODUCT_CUSTOMER
         db.commit()
         send_message(
@@ -397,7 +453,15 @@ def _handle_cart_choice(db, phone, normalized, pending, business_owner_phone, se
         send_message(phone, "Cancelled. Send 'select product' to start again.")
         return {"status": "select_product_cancelled"}
 
-    send_message(phone, build_cart_message(cart))
+    if normalized in ["4", "discount", "note", "discount/note", "discount note"]:
+        send_message(
+            phone,
+            "To add a discount, type:\n  discount 500\n  discount 10%\n\n"
+            "To add a note, type:\n  note express delivery\n  note collect by Saturday"
+        )
+        return {"status": "select_product_discount_note_hint"}
+
+    send_message(phone, build_cart_message(cart, overall_discount, sale_note))
     return {"status": "select_product_cart_reprompt"}
 
 
@@ -506,7 +570,10 @@ def _handle_due_date(db, phone, text, pending, send_message):
     pending.action = ACTION_SELECT_PRODUCT_CONFIRM
     db.commit()
 
-    send_message(phone, build_confirm_message(cart, pending.customer_name, paid, total, due_date_str))
+    payload_for_due = _load_payload(pending)
+    overall_discount = payload_for_due.get("overall_discount", 0)
+    sale_note = payload_for_due.get("sale_note", "")
+    send_message(phone, build_confirm_message(cart, pending.customer_name, paid, total, due_date_str, overall_discount, sale_note))
     return {"status": "select_product_confirm_shown"}
 
 
@@ -525,7 +592,8 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             phone,
             build_confirm_message(
                 cart, pending.customer_name, pending.paid_amount,
-                pending.buy_amount, payload.get("due_date_str")
+                pending.buy_amount, payload.get("due_date_str"),
+                payload.get("overall_discount", 0), payload.get("sale_note", ""),
             )
         )
         return {"status": "select_product_confirm_reprompt"}
@@ -540,6 +608,8 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     due_date_str = payload.get("due_date_str")
     customer_name = pending.customer_name
     customer_phone = pending.customer_phone
+    overall_discount = payload.get("overall_discount", 0)
+    sale_note = payload.get("sale_note", "")
 
     # Customer lookup — pure read, outside try
     customer = db.query(Customer).filter(
@@ -591,6 +661,20 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
                         f"Recorded by {user.name.title()}."
                     ),
                 ))
+
+        if overall_discount:
+            raw_items = sum(i["total"] for i in cart)
+            db.add(TransactionNote(
+                transaction_id=buy_tx.id,
+                note=f"Overall discount: N{overall_discount:,} off subtotal N{raw_items:,}. Recorded by {user.name.title()}.",
+            ))
+
+        if sale_note:
+            db.add(TransactionNote(
+                transaction_id=buy_tx.id,
+                author_user_id=user.id,
+                note=sale_note,
+            ))
 
         # Record individual items
         add_transaction_items(db, buy_tx.id, [
@@ -646,6 +730,10 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     owner_receipt = build_owner_receipt(
         business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id, receipt_cfg
     )
+    if overall_discount:
+        owner_receipt += f"\nDiscount: -N{overall_discount:,}"
+    if sale_note:
+        owner_receipt += f"\nNote: {sale_note}"
     if stock_lines:
         owner_receipt += "\n\nStock updated:\n" + "\n".join(stock_lines)
     owner_receipt += f"\n\nReprint: reply *receipt {customer_name}*"
@@ -685,7 +773,7 @@ def handle_select_product_pending(
         return _handle_qty_input(db, phone, text, pending, business_owner_phone, send_message)
 
     if action == ACTION_SELECT_PRODUCT_CART:
-        return _handle_cart_choice(db, phone, text.strip().lower(), pending, business_owner_phone, send_message)
+        return _handle_cart_choice(db, phone, text.strip().lower(), pending, business_owner_phone, send_message, original_text=text)
 
     if action == ACTION_SELECT_PRODUCT_CUSTOMER:
         return _handle_customer_name(db, phone, text, pending, business_owner_phone, send_message)

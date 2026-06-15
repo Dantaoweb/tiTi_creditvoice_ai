@@ -89,6 +89,23 @@ def build_stock_save_message(stock_updates, stock_missing):
     return stock_msg
 
 
+def _notify_customer_receipt(db, customer, tx, balance, user, business_owner_phone, send_message):
+    """Send a simple receipt to the customer's WhatsApp after a BUY transaction."""
+    if not customer or not customer.customer_phone:
+        return
+    try:
+        from business_templates import receipt_config_for_user
+        from customer_commands import _build_reprint_receipt
+        from models import User as _U
+        owner = db.query(_U).filter(_U.phone == business_owner_phone).first()
+        cfg = receipt_config_for_user(owner) if owner else None
+        business_name = (owner.name if owner else user.name) or ""
+        receipt = _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx, balance, cfg)
+        send_message(customer.customer_phone, receipt)
+    except Exception:
+        pass
+
+
 def send_low_stock_alerts(send_message, owner_phone, low_stock_alerts):
     if not low_stock_alerts:
         return
@@ -268,6 +285,7 @@ def save_customer_pending(
         db.commit()
         return {"status": "customer_not_found"}
 
+    _pending_action = pending.action
     check_amount = pending.buy_amount if pending.action in ["BUY", "COMBINED"] else pending.paid_amount
     check_type = "BUY" if pending.action == "COMBINED" else pending.action
     recent_tx = db.query(Transaction).filter(
@@ -293,6 +311,7 @@ def save_customer_pending(
     stock_updates = []
     stock_missing = []
     low_stock_alerts = []
+    _buy_tx_for_receipt = None
 
     try:
         if pending.action == "BUY":
@@ -311,6 +330,7 @@ def save_customer_pending(
             )
             db.add(tx)
             db.flush()
+            _buy_tx_for_receipt = tx
             _add_price_deviation_note(
                 db, business_owner_phone, tx.id,
                 pending.product, pending.unit_price, user.name,
@@ -356,6 +376,7 @@ def save_customer_pending(
             )
             db.add(buy_tx)
             db.flush()
+            _buy_tx_for_receipt = buy_tx
             _add_price_deviation_note(
                 db, business_owner_phone, buy_tx.id,
                 pending.product, pending.unit_price, user.name,
@@ -393,8 +414,12 @@ def save_customer_pending(
     balance = get_balance(db, customer.id, visible_recorded_by_id)
     msg = f"{saved_summary}\n{balance_status_line(balance)}"
     msg += build_stock_save_message(stock_updates, stock_missing)
+    if customer.customer_phone and _buy_tx_for_receipt and _pending_action in ("BUY", "COMBINED"):
+        msg += f"\n\nReceipt sent to {customer.name.title()}."
     send_message(phone, msg)
     send_low_stock_alerts(send_message, business_owner_phone, low_stock_alerts)
+    if customer.customer_phone and _buy_tx_for_receipt and _pending_action in ("BUY", "COMBINED"):
+        _notify_customer_receipt(db, customer, _buy_tx_for_receipt, balance, user, business_owner_phone, send_message)
     return {"status": "saved"}
 
 

@@ -277,18 +277,39 @@ def handle_report_command(
             send_message(phone, "Customer not found.")
             return {"status": "customer_summary_not_found"}
         balance_text = (
-            f"credit: N{abs(summary['balance']):,}"
+            f"Credit: N{abs(summary['balance']):,}"
             if summary["balance"] < 0
-            else f"balance: N{summary['balance']:,}"
+            else f"Balance: N{summary['balance']:,}"
         )
-        send_message(
-            phone,
-            f"{summary['name'].title()} summary\n"
+        msg = (
+            f"{summary['name'].title()} — Account Summary\n\n"
             f"{balance_text}\n"
-            f"Bought: N{summary['total_buy']:,}\n"
-            f"Paid: N{summary['total_pay']:,}\n"
+            f"Total bought: N{summary['total_buy']:,}\n"
+            f"Total paid:   N{summary['total_pay']:,}\n"
             f"Transactions: {summary['transaction_count']:,}"
         )
+        if summary["balance"] > 0:
+            from models import Customer as _Cust, Transaction as _Tx
+            _c = db.query(_Cust).filter(
+                _Cust.owner_phone == business_owner_phone,
+                _Cust.name == summary["name"],
+            ).first()
+            if _c:
+                _q = db.query(_Tx).filter(
+                    _Tx.customer_id == _c.id,
+                    _Tx.type == "BUY",
+                    _Tx.is_voided.isnot(True),
+                )
+                if visible_recorded_by_id:
+                    _q = _q.filter(_Tx.recorded_by_id == visible_recorded_by_id)
+                _recent_buys = _q.order_by(_Tx.created_at.desc()).limit(5).all()
+                if _recent_buys:
+                    msg += "\n\nRecent credit items:\n"
+                    for _b in _recent_buys:
+                        _prod = _b.product or "—"
+                        _date = _b.created_at.strftime("%d/%m") if _b.created_at else ""
+                        msg += f"• {_prod.title()}  N{_b.amount:,}  {_date}\n"
+        send_message(phone, msg)
         return {"status": "customer_summary"}
 
     if command_type == "OVERDUE_DEBTORS":
