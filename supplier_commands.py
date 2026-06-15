@@ -5,6 +5,9 @@ from inventory_suppliers import (
     build_inventory_list_message,
     build_supplier_due_message,
     build_supplier_list_message,
+    get_product_suppliers,
+    get_supplier_balance,
+    get_supplier_products,
     manual_stock_add,
     manual_stock_remove,
     manual_stock_set,
@@ -429,5 +432,63 @@ def handle_supplier_command(
         confirm_msg = apply_voice_confirmation_options(confirm_msg, voice_transcript_text)
         send_message(phone, confirm_msg)
         return {"status": "confirm_supplier_transaction"}
+
+    if command_type == "SUPPLIER_HISTORY":
+        sup_name = parsed.get("supplier", "")
+        if not sup_name:
+            send_message(phone, "Which supplier? E.g. ayo supply history")
+            return {"status": "supplier_history_no_name"}
+        supplier, products = get_supplier_products(db, business_owner_phone, sup_name)
+        if not supplier:
+            send_message(phone, f"No supplier found matching '{sup_name}'.")
+            return {"status": "supplier_history_not_found"}
+        if not products:
+            send_message(phone, f"No supply records found for {supplier.name.title()} yet.")
+            return {"status": "supplier_history_empty"}
+        balance = get_supplier_balance(db, supplier.id)
+        msg = f"{supplier.name.title()} — Supply History\n\n"
+        for p in products:
+            times = "time" if p["count"] == 1 else "times"
+            price_part = ""
+            if p["last_unit_price"]:
+                unit_label = f"/{p['last_unit']}" if p["last_unit"] else ""
+                price_part = f", N{p['last_unit_price']:,}{unit_label}"
+            date_part = ""
+            if p["last_date"]:
+                date_part = f" — last {p['last_date'].strftime('%d/%m/%Y')}"
+            msg += f"• {p['product'].title()} ({p['count']} {times}{price_part}){date_part}\n"
+        if balance > 0:
+            msg += f"\nDebt owed to {supplier.name.title()}: N{balance:,}"
+        elif balance < 0:
+            msg += f"\nCredit with {supplier.name.title()}: N{abs(balance):,}"
+        send_message(phone, msg)
+        return {"status": "supplier_history"}
+
+    if command_type == "PRODUCT_SUPPLIERS":
+        prod_name = parsed.get("product", "")
+        if not prod_name:
+            send_message(phone, "Which product? E.g. who supplies rice")
+            return {"status": "product_suppliers_no_name"}
+        suppliers = get_product_suppliers(db, business_owner_phone, prod_name)
+        if not suppliers:
+            send_message(
+                phone,
+                f"No supplier records found for {prod_name.title()}.\n\n"
+                "Supplier purchases are recorded when you type:\n"
+                "Ayo supply me 10 bags rice at 45000"
+            )
+            return {"status": "product_suppliers_empty"}
+        msg = f"{prod_name.title()} — Suppliers\n\n"
+        for i, s in enumerate(suppliers, start=1):
+            times = "time" if s["count"] == 1 else "times"
+            price_part = ""
+            if s["last_unit_price"]:
+                unit_label = f"/{s['last_unit']}" if s["last_unit"] else ""
+                price_part = f" at N{s['last_unit_price']:,}{unit_label}"
+            date_part = f" ({s['last_date'].strftime('%d/%m')})" if s["last_date"] else ""
+            msg += f"{i}. {s['name'].title()} — {s['count']} {times}{price_part}{date_part}\n"
+        msg += f"\nType *restock {prod_name}* to notify your buyers."
+        send_message(phone, msg)
+        return {"status": "product_suppliers"}
 
     return None

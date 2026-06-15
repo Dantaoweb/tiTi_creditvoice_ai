@@ -1738,6 +1738,38 @@ def parse_message(text):
     ]:
         return {"type": "DUE_MENU"}
 
+    _restock_m = re.match(
+        r"^(?:restock|notify\s+buyers?(?:\s+of)?|alert\s+buyers?(?:\s+of)?|buyers?\s+notify)\s+(.+)$",
+        clean_text,
+    )
+    if _restock_m:
+        return {"type": "RESTOCK_NOTIFY", "product": _restock_m.group(1).strip()}
+
+    _buyers_m = re.match(
+        r"^(?:buyers?\s+(?:of\s+)?|who\s+bought\s+|who\s+buy\s+|who\s+buys?\s+|show\s+buyers?\s+(?:of\s+)?)(.+)$",
+        clean_text,
+    )
+    if _buyers_m:
+        return {"type": "PRODUCT_BUYERS", "product": _buyers_m.group(1).strip()}
+
+    # Supplier product history: "what did ayo supply" / "ayo supply history" / "ayo supplies"
+    _sup_hist_m = re.match(
+        r"^(?:what\s+did\s+(.+?)\s+supply|(.+?)\s+supply\s+(?:history|list)|(.+?)\s+supplies$|show\s+(.+?)\s+supply(?:\s+history)?)$",
+        clean_text,
+    )
+    if _sup_hist_m:
+        sup_name = next(g for g in _sup_hist_m.groups() if g)
+        return {"type": "SUPPLIER_HISTORY", "supplier": sup_name.strip()}
+
+    # Product supplier lookup: "who supplies rice" / "rice supplier" / "supplier for rice"
+    _prod_sup_m = re.match(
+        r"^(?:who\s+suppl(?:y|ies)\s+(.+)|(.+?)\s+supplier(?:s)?$|supplier(?:s)?\s+(?:for|of)\s+(.+))$",
+        clean_text,
+    )
+    if _prod_sup_m:
+        prod_name = next(g for g in _prod_sup_m.groups() if g)
+        return {"type": "PRODUCT_SUPPLIERS", "product": prod_name.strip()}
+
     if clean_text in [
         "daily transactions",
         "today transactions",

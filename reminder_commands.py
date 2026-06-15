@@ -1,6 +1,6 @@
 from models import PendingAction, ReminderMemory
 from parser import build_reminder_text
-from reports import get_due_in_2_days, get_due_today, get_overdue_debtors
+from reports import get_due_in_2_days, get_due_this_week, get_due_today, get_overdue_debtors
 from subscriptions import ensure_feature_allowed
 
 
@@ -9,7 +9,8 @@ def build_due_menu_message():
         "Reminders\n\n"
         "1. Due in 2 days\n"
         "2. Due today\n"
-        "3. Overdue"
+        "3. Overdue\n"
+        "4. Due this week"
     )
 
 
@@ -41,6 +42,10 @@ def format_due_selection(selection, due_list):
         title = "Due Today"
         empty_msg = "No debts due today."
         reminder_type = "DUE_TODAY"
+    elif selection == "4":
+        title = "Due This Week"
+        empty_msg = "No debts due this week."
+        reminder_type = "DUE_WEEK"
     else:
         title = "Overdue Debtors"
         empty_msg = "No overdue debtors."
@@ -81,24 +86,26 @@ def handle_due_menu_selection(
         due_list = get_due_today(db, business_owner_phone, visible_recorded_by_id)
     elif selection == "3":
         due_list = get_overdue_debtors(db, business_owner_phone, visible_recorded_by_id)
+    elif selection == "4":
+        due_list = get_due_this_week(db, business_owner_phone, visible_recorded_by_id)
     else:
         return None
 
     reminder_type, msg, empty_msg = format_due_selection(selection, due_list)
     save_due_reminders(db, phone, due_list, reminder_type)
 
+    status_map = {"1": "due_2_days", "2": "due_today", "3": "overdue_menu", "4": "due_this_week"}
+
     if not due_list:
         db.delete(pending)
         db.commit()
         send_message(phone, empty_msg)
-        status_map = {"1": "due_2_days", "2": "due_today", "3": "overdue_menu"}
         return {"status": status_map[selection]}
 
     db.add(PendingAction(phone=phone, action="REMINDER_SELECTION"))
     db.delete(pending)
     db.commit()
     send_message(phone, msg)
-    status_map = {"1": "due_2_days", "2": "due_today", "3": "overdue_menu"}
     return {"status": status_map[selection]}
 
 

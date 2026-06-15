@@ -590,6 +590,12 @@ def register_web_routes(app):
                     "STOCK_ADD_CONFIRM": 4,
                     "ARTISAN_PAYMENT_CHOICE": 2,
                     "DASHBOARD_MENU": 1,
+                    "UNPAID_DEBTORS_MENU": 1,
+                    "DEBTOR_MANAGE_MENU": 1,
+                    "CHANGE_DUE_DATE": 4,
+                    "PRODUCT_BUYERS_MENU": 1,
+                    "RESTOCK_ALERT_SELECT": 1,
+                    "RESTOCK_ALERT_CONFIRM": 4,
                 }
                 _ttl_hours = _PENDING_TTL.get(pending.action, 4)
                 _age_hours = (

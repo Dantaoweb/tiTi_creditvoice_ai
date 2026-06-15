@@ -11,9 +11,14 @@ from constants import (
     ACTION_ARTISAN_PAYMENT_CHOICE,
     ACTION_AWAITING_CLARIFICATION,
     ACTION_AWAITING_STOCK_PRICE,
+    ACTION_CHANGE_DUE_DATE,
     ACTION_DASHBOARD_MENU,
+    ACTION_DEBTOR_MANAGE_MENU,
     ACTION_ONBOARD_CUSTOMER,
+    ACTION_PRODUCT_BUYERS_MENU,
     ACTION_RESIGN_CONFIRM,
+    ACTION_RESTOCK_ALERT_CONFIRM,
+    ACTION_RESTOCK_ALERT_SELECT,
     ACTION_SERVICE_JOB_CONFIRM,
     ACTION_STOCK_ADD_CONFIRM,
     ACTION_STOCK_ITEM_ADD_QTY,
@@ -23,6 +28,7 @@ from constants import (
     ACTION_STOCK_ITEM_RENAME,
     ACTION_STOCK_ITEM_UPDATE_PRICE,
     ACTION_STOCK_MENU,
+    ACTION_UNPAID_DEBTORS_MENU,
     FAST_CAPTURE_REVIEW_ACTIONS,
     GUIDED_SERVICE_SETUP_ACTIONS,
     GUIDED_STOCK_ACTIONS,
@@ -47,7 +53,7 @@ from onboarding_commands import (
     start_onboarding,
 )
 from reminder_commands import handle_reminder_pending
-from reports import build_dashboard_menu_message, build_dashboard_selection_message
+from reports import build_dashboard_menu_message, build_dashboard_selection_message, get_balance, get_unpaid_debtors
 from staff_commands import handle_resign_pending
 from subscription_flow import handle_subscription_pending_flow
 from transaction_save import save_confirmed_pending_transaction
@@ -120,6 +126,9 @@ def _handle_dashboard_menu(
         send_whatsapp_message(phone, add_stock_option_to_menu(build_dashboard_menu_message()))
         return PendingRouteResult(response={"status": "invalid_dashboard_menu_option"})
 
+    # Unpaid debtors list is interactive — switch to dedicated menu pending
+    if status == "dashboard_unpaid_debtors":
+        pending.action = ACTION_UNPAID_DEBTORS_MENU
     # Keep pending as DASHBOARD_MENU so the user can send another number
     # without being dropped back to the home menu.
     db.commit()
@@ -784,6 +793,55 @@ def handle_pending_actions(
         if result and result.response:
             return result
 
+    # ── Unpaid debtors — pick debtor to manage ──────────────────────────────
+    if pending and pending.action == ACTION_UNPAID_DEBTORS_MENU and not is_command:
+        result = _wrap(_handle_unpaid_debtors_menu(
+            db, phone, text, pending, business_owner_phone, visible_recorded_by_id,
+        ))
+        if result and result.response:
+            return result
+
+    # ── Debtor sub-menu (send reminder / change due date / view account) ────
+    if pending and pending.action == ACTION_DEBTOR_MANAGE_MENU and not is_command:
+        result = _wrap(_handle_debtor_manage_menu(
+            db, phone, text, pending, business_owner_phone, visible_recorded_by_id, user,
+        ))
+        if result and result.response:
+            return result
+
+    # ── Change due date — accept new date from user ───────────────────────
+    if pending and pending.action == ACTION_CHANGE_DUE_DATE and not is_command:
+        result = _wrap(_handle_change_due_date(
+            db, phone, text, pending, business_owner_phone,
+        ))
+        if result and result.response:
+            return result
+
+    # ── Restock alert flows ──────────────────────────────────────────────────
+    if pending and pending.action == ACTION_PRODUCT_BUYERS_MENU and not is_command:
+        from restock_commands import handle_product_buyers_menu
+        result = _wrap(handle_product_buyers_menu(
+            db, phone, text, pending, business_owner_phone, visible_recorded_by_id, send_whatsapp_message,
+        ))
+        if result and result.response:
+            return result
+
+    if pending and pending.action == ACTION_RESTOCK_ALERT_SELECT and not is_command:
+        from restock_commands import handle_restock_alert_select
+        result = _wrap(handle_restock_alert_select(
+            db, phone, text, pending, send_whatsapp_message,
+        ))
+        if result and result.response:
+            return result
+
+    if pending and pending.action == ACTION_RESTOCK_ALERT_CONFIRM and not is_command:
+        from restock_commands import handle_restock_alert_confirm
+        result = _wrap(handle_restock_alert_confirm(
+            db, phone, text, pending, user, send_whatsapp_message,
+        ))
+        if result and result.response:
+            return result
+
     # ── Dashboard menu selection ─────────────────────────────────────────────
     if pending and pending.action == ACTION_DASHBOARD_MENU and not is_command:
         if parsed and parsed.get("type") == "TRANSACTION":
@@ -864,6 +922,251 @@ def _handle_stock_add_confirm(db, phone, text, pending, user, business_owner_pho
         "Stock saved:\n" + "\n".join(saved) + "\n\nSend 'select product' to start selling."
     )
     return {"status": "stock_add_confirm_saved"}
+
+
+# ── Unpaid debtors management ────────────────────────────────────────────────
+
+def _handle_unpaid_debtors_menu(db, phone, text, pending, business_owner_phone, visible_recorded_by_id):
+    normalized = text.strip()
+    if not normalized.isdigit():
+        send_whatsapp_message(phone, "Reply with a number to manage a debtor.")
+        return {"status": "unpaid_menu_invalid"}
+
+    index = int(normalized)
+    debtors, _ = get_unpaid_debtors(db, business_owner_phone, visible_recorded_by_id)
+
+    if index < 1 or index > len(debtors):
+        tip = f"Reply 1–{len(debtors)}." if debtors else "No unpaid debtors found."
+        send_whatsapp_message(phone, tip)
+        return {"status": "unpaid_menu_out_of_range"}
+
+    debtor = debtors[index - 1]
+    cname = debtor["name"]
+    balance = debtor["balance"]
+    due_date = debtor.get("due_date")
+
+    if debtor.get("overdue"):
+        due_line = f"Due: {due_date.strftime('%d/%m/%Y')} (OVERDUE {debtor['overdue_days']}d)"
+    elif due_date:
+        due_line = f"Due: {due_date.strftime('%d/%m/%Y')}"
+    else:
+        due_line = "No due date set"
+
+    sub_msg = (
+        f"{cname.title()} - N{balance:,}\n"
+        f"{due_line}\n\n"
+        "1. Send reminder\n"
+        "2. Change due date\n"
+        "3. View account"
+    )
+
+    pending.action = ACTION_DEBTOR_MANAGE_MENU
+    pending.customer_name = cname
+    pending.last_customer = cname
+    db.commit()
+
+    send_whatsapp_message(phone, sub_msg)
+    return {"status": "debtor_manage_menu"}
+
+
+def _handle_debtor_manage_menu(db, phone, text, pending, business_owner_phone, visible_recorded_by_id, user):
+    normalized = text.strip()
+    cname = pending.customer_name or ""
+
+    if normalized == "1":
+        from models import ReminderMemory
+        from parser import build_reminder_text
+
+        customer = db.query(Customer).filter(
+            Customer.name == cname,
+            Customer.owner_phone == business_owner_phone,
+        ).first()
+        if not customer:
+            send_whatsapp_message(phone, "Customer not found.")
+            db.delete(pending)
+            db.commit()
+            return {"status": "debtor_manage_not_found"}
+
+        balance = get_balance(db, customer.id, visible_recorded_by_id)
+
+        latest_tx = db.query(Transaction).filter(
+            Transaction.customer_id == customer.id,
+            Transaction.type == "BUY",
+            Transaction.due_date.isnot(None),
+        ).order_by(Transaction.due_date.desc()).first()
+
+        if not latest_tx:
+            send_whatsapp_message(
+                phone,
+                f"{cname.title()} has no due date set.\n\nReply 2 to set one first."
+            )
+            return {"status": "debtor_no_due_for_reminder"}
+
+        db.query(ReminderMemory).filter(ReminderMemory.phone == phone).delete()
+        from datetime import datetime
+        today = datetime.now().date()
+        reminder_type = "OVERDUE" if latest_tx.due_date.date() < today else "DUE_TODAY"
+        reminder = ReminderMemory(
+            phone=phone,
+            customer_id=customer.id,
+            customer_name=cname,
+            customer_phone=customer.customer_phone,
+            balance=balance,
+            due_date=latest_tx.due_date,
+            reminder_type=reminder_type,
+        )
+        db.add(reminder)
+        db.flush()
+
+        preview = build_reminder_text(reminder)
+
+        if customer.customer_phone:
+            confirm_msg = (
+                f"Preview for {cname.title()}:\n\n"
+                f"{preview}\n\n"
+                f"YES to send to {customer.customer_phone}. EDIT to cancel."
+            )
+        else:
+            confirm_msg = (
+                f"Preview for {cname.title()}:\n\n"
+                f"{preview}\n\n"
+                f"No phone set. Send:\n{cname} phone 08012345678\n"
+                "Then reply YES."
+            )
+
+        pending.action = "REMINDER_CONFIRM"
+        pending.reminder_id = reminder.id
+        db.commit()
+
+        send_whatsapp_message(phone, confirm_msg)
+        return {"status": "reminder_preview"}
+
+    if normalized == "2":
+        pending.action = ACTION_CHANGE_DUE_DATE
+        db.commit()
+        send_whatsapp_message(
+            phone,
+            f"Set new due date for {cname.title()}.\n\n"
+            "Reply with the date.\n"
+            "Examples: 25/06/2026  •  25 June  •  tomorrow"
+        )
+        return {"status": "change_due_date_prompt"}
+
+    if normalized == "3":
+        from parser import build_customer_account_summary
+        summary = build_customer_account_summary(
+            db, business_owner_phone, cname,
+            recorded_by_id=visible_recorded_by_id,
+        )
+        pending.action = ACTION_DASHBOARD_MENU
+        db.commit()
+        send_whatsapp_message(phone, summary)
+        return {"status": "debtor_account_view"}
+
+    send_whatsapp_message(phone, "Reply 1, 2, or 3.")
+    return {"status": "debtor_manage_invalid"}
+
+
+def _parse_new_due_date(text):
+    """Parse user-supplied date text for the change-due-date flow."""
+    from datetime import datetime, timedelta
+    t = text.strip().lower()
+
+    if t in ("tomorrow", "tmr", "tmrw"):
+        return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    if t in ("next week",):
+        return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=7)
+
+    # DD/MM/YYYY or DD/MM/YY
+    slash = re.search(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", t)
+    if slash:
+        day, month, year = int(slash.group(1)), int(slash.group(2)), int(slash.group(3))
+        if year < 100:
+            year += 2000
+        try:
+            return datetime(year, month, day)
+        except ValueError:
+            pass
+
+    months = {
+        "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+        "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6,
+        "jul": 7, "july": 7, "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+        "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+    }
+
+    # "20 June [2026]"
+    dm = re.search(r"(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?", t)
+    if dm:
+        mon = months.get(dm.group(2))
+        if mon:
+            year = int(dm.group(3)) if dm.group(3) else datetime.now().year
+            try:
+                d = datetime(year, mon, int(dm.group(1)))
+                if d.date() < datetime.now().date():
+                    d = d.replace(year=d.year + 1)
+                return d
+            except ValueError:
+                pass
+
+    # "June 20 [2026]"
+    md = re.search(r"([a-z]+)\s+(\d{1,2})(?:\s+(\d{4}))?", t)
+    if md:
+        mon = months.get(md.group(1))
+        if mon:
+            year = int(md.group(3)) if md.group(3) else datetime.now().year
+            try:
+                d = datetime(year, mon, int(md.group(2)))
+                if d.date() < datetime.now().date():
+                    d = d.replace(year=d.year + 1)
+                return d
+            except ValueError:
+                pass
+
+    return None
+
+
+def _handle_change_due_date(db, phone, text, pending, business_owner_phone):
+    cname = pending.customer_name or ""
+
+    new_date = _parse_new_due_date(text)
+    if not new_date:
+        send_whatsapp_message(
+            phone,
+            "Date not recognised.\n\n"
+            "Try: 25/06/2026  •  25 June  •  tomorrow"
+        )
+        return {"status": "change_due_date_invalid"}
+
+    customer = db.query(Customer).filter(
+        Customer.name == cname,
+        Customer.owner_phone == business_owner_phone,
+    ).first()
+    if not customer:
+        send_whatsapp_message(phone, "Customer not found.")
+        db.delete(pending)
+        db.commit()
+        return {"status": "change_due_date_no_customer"}
+
+    latest_tx = db.query(Transaction).filter(
+        Transaction.customer_id == customer.id,
+        Transaction.type == "BUY",
+    ).order_by(Transaction.created_at.desc()).first()
+
+    if not latest_tx:
+        send_whatsapp_message(phone, f"No buy transaction found for {cname.title()}.")
+        db.delete(pending)
+        db.commit()
+        return {"status": "change_due_date_no_tx"}
+
+    latest_tx.due_date = new_date
+    db.delete(pending)
+    db.commit()
+
+    date_str = new_date.strftime("%d/%m/%Y")
+    send_whatsapp_message(phone, f"Due date for {cname.title()} updated to {date_str}.")
+    return {"status": "due_date_changed"}
 
 
 def _handle_onboard_customer(

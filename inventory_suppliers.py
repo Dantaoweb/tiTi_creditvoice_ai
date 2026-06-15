@@ -295,6 +295,83 @@ def get_supplier_balance(db, supplier_id):
     return total_purchase - paid_on_purchase - payments
 
 
+def get_supplier_products(db, owner_phone, supplier_name):
+    """
+    All products a supplier has ever supplied.
+    Returns (supplier_obj, list of product dicts) or (None, []) if not found.
+    Each dict: {product, count, last_date, last_unit_price, last_unit}
+    """
+    from collections import defaultdict
+
+    supplier = db.query(Supplier).filter(
+        Supplier.owner_phone == owner_phone,
+        func.lower(Supplier.name) == supplier_name.lower().strip(),
+    ).first()
+    if not supplier:
+        supplier = db.query(Supplier).filter(
+            Supplier.owner_phone == owner_phone,
+            func.lower(Supplier.name).contains(supplier_name.lower().strip()),
+        ).first()
+    if not supplier:
+        return None, []
+
+    purchases = db.query(SupplierPurchase).filter(
+        SupplierPurchase.supplier_id == supplier.id,
+    ).order_by(SupplierPurchase.created_at.desc()).all()
+
+    seen = defaultdict(lambda: {"count": 0, "last_date": None, "last_unit_price": None, "last_unit": None, "display": None})
+    for p in purchases:
+        if not p.product:
+            continue
+        key = p.product.lower()
+        entry = seen[key]
+        entry["count"] += 1
+        if entry["last_date"] is None:
+            entry["last_date"] = p.created_at
+            entry["last_unit_price"] = p.unit_price
+            entry["last_unit"] = p.unit
+            entry["display"] = p.product
+
+    result = sorted(
+        [{"product": v["display"] or k, **{x: v[x] for x in ("count", "last_date", "last_unit_price", "last_unit")}}
+         for k, v in seen.items()],
+        key=lambda x: -x["count"],
+    )
+    return supplier, result
+
+
+def get_product_suppliers(db, owner_phone, product_name):
+    """
+    All suppliers who have supplied a given product.
+    Each dict: {supplier_id, name, count, last_date, last_unit_price, last_unit}
+    Sorted by supply count descending.
+    """
+    from collections import defaultdict
+
+    purchases = db.query(SupplierPurchase).filter(
+        SupplierPurchase.owner_phone == owner_phone,
+        func.lower(SupplierPurchase.product) == product_name.lower().strip(),
+    ).order_by(SupplierPurchase.created_at.desc()).all()
+
+    seen = defaultdict(lambda: {"count": 0, "last_date": None, "last_unit_price": None, "last_unit": None, "name": None})
+    for p in purchases:
+        entry = seen[p.supplier_id]
+        entry["count"] += 1
+        if entry["last_date"] is None:
+            entry["last_date"] = p.created_at
+            entry["last_unit_price"] = p.unit_price
+            entry["last_unit"] = p.unit
+        if not entry["name"]:
+            sup = db.query(Supplier).filter(Supplier.id == p.supplier_id).first()
+            entry["name"] = sup.name if sup else "unknown"
+
+    return sorted(
+        [{"supplier_id": sid, **{k: v[k] for k in ("name", "count", "last_date", "last_unit_price", "last_unit")}}
+         for sid, v in seen.items()],
+        key=lambda x: (-x["count"], x["name"] or ""),
+    )
+
+
 _STOCK_PAGE_SIZE = 20
 
 

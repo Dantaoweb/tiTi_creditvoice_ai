@@ -361,4 +361,17 @@ def handle_report_command(
         send_message(phone, "\n".join(lines))
         return {"status": "below_cost_products"}
 
+    if command_type in ("RESTOCK_NOTIFY", "PRODUCT_BUYERS"):
+        if not user:
+            send_message(phone, "Register first to use this feature.")
+            return {"status": "restock_no_user"}
+        from restock_commands import handle_restock_command
+        product = parsed.get("product", "")
+        if not product:
+            send_message(phone, "Which product? E.g. restock rice")
+            return {"status": "restock_no_product"}
+        return handle_restock_command(
+            db, phone, product, user, business_owner_phone, visible_recorded_by_id, send_message
+        )
+
     return None

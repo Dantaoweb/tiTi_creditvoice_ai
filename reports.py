@@ -359,7 +359,14 @@ def build_dashboard_selection_message(db, owner_phone, selection, recorded_by_id
 
         msg = f"Unpaid Debtors\nTotal outstanding: N{total_outstanding:,}\n\n"
         for i, debtor in enumerate(debtors, start=1):
-            msg += f"{i}. {debtor['name'].title()}: N{debtor['balance']:,}\n"
+            if debtor.get("overdue"):
+                due_label = f" - OVERDUE {debtor['overdue_days']}d"
+            elif debtor.get("due_date"):
+                due_label = f" - Due: {debtor['due_date'].strftime('%d/%m/%Y')}"
+            else:
+                due_label = " - No due date"
+            msg += f"{i}. {debtor['name'].title()}: N{debtor['balance']:,}{due_label}\n"
+        msg += "\nReply a number to manage."
         return "dashboard_unpaid_debtors", msg
 
     if selection == "9":
@@ -751,22 +758,87 @@ def get_unpaid_debtors(db, owner_phone=None, recorded_by_id=None):
     customers = customers.all()
 
     debtors = []
-
     total_outstanding = 0
+    today = _utcnow().date()
 
     for customer in customers:
-
         balance = get_balance(db, customer.id, recorded_by_id)
 
         if balance > 0:
+            latest_tx = db.query(Transaction).filter(
+                Transaction.customer_id == customer.id,
+                Transaction.type == "BUY",
+                Transaction.due_date.isnot(None),
+            )
+            if recorded_by_id:
+                latest_tx = latest_tx.filter(Transaction.recorded_by_id == recorded_by_id)
+            latest_tx = latest_tx.order_by(Transaction.due_date.desc()).first()
+
+            due_date = latest_tx.due_date if latest_tx else None
+            overdue = bool(due_date and due_date.date() < today)
+            overdue_days = (today - due_date.date()).days if overdue else 0
+
             debtors.append({
                 "name": customer.name,
-                "balance": balance
+                "balance": balance,
+                "customer_id": customer.id,
+                "customer_phone": customer.customer_phone,
+                "due_date": due_date,
+                "overdue": overdue,
+                "overdue_days": overdue_days,
             })
 
             total_outstanding += balance
 
     return debtors, total_outstanding
+
+# =========================
+# 🛒 PRODUCT BUYERS
+# =========================
+
+def get_product_buyers(db, owner_phone, product_name, recorded_by_id=None):
+    """
+    All customers who have at least one BUY transaction for a given product.
+    Sorted: customers with phone numbers first, then alphabetically.
+    """
+    from collections import defaultdict
+
+    q = db.query(Transaction).join(
+        Customer, Customer.id == Transaction.customer_id
+    ).filter(
+        Customer.owner_phone == owner_phone,
+        Transaction.type == "BUY",
+        Transaction.is_voided.isnot(True),
+        func.lower(Transaction.product) == product_name.lower().strip(),
+    )
+    if recorded_by_id:
+        q = q.filter(Transaction.recorded_by_id == recorded_by_id)
+    txs = q.order_by(Transaction.created_at.desc()).all()
+
+    customer_data = defaultdict(lambda: {"count": 0, "last": None, "obj": None})
+    for tx in txs:
+        entry = customer_data[tx.customer_id]
+        entry["count"] += 1
+        if entry["last"] is None:
+            entry["last"] = tx.created_at
+        if entry["obj"] is None:
+            entry["obj"] = db.query(Customer).filter(Customer.id == tx.customer_id).first()
+
+    result = []
+    for customer_id, data in customer_data.items():
+        c = data["obj"]
+        if not c:
+            continue
+        result.append({
+            "customer_id": customer_id,
+            "name": c.name,
+            "customer_phone": c.customer_phone,
+            "buy_count": data["count"],
+            "last_bought": data["last"],
+        })
+
+    result.sort(key=lambda x: (x["customer_phone"] is None, x["name"]))
+    return result
 
 # =========================
 # ⚠️ OVERDUE DEBTORS
@@ -933,6 +1005,56 @@ def get_due_in_2_days(db, owner_phone=None, recorded_by_id=None):
                 "name": customer.name,
                 "balance": balance,
                 "due_date": latest_tx.due_date
+            })
+
+    return due_list
+
+
+# =========================
+# 📅 DUE THIS WEEK
+# =========================
+
+def get_due_this_week(db, owner_phone=None, recorded_by_id=None):
+
+    due_list = []
+
+    customers = db.query(Customer)
+    if recorded_by_id:
+        customers = customers.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        ).distinct(Customer.id)
+    if owner_phone:
+        customers = customers.filter(Customer.owner_phone == owner_phone)
+    customers = customers.all()
+
+    today = _utcnow().date()
+    week_end = today + timedelta(days=7)
+
+    for customer in customers:
+        balance = get_balance(db, customer.id, recorded_by_id)
+        if balance <= 0:
+            continue
+
+        latest_tx = db.query(Transaction).filter(
+            Transaction.customer_id == customer.id,
+            Transaction.type == "BUY",
+            Transaction.due_date.isnot(None),
+        )
+        if recorded_by_id:
+            latest_tx = latest_tx.filter(Transaction.recorded_by_id == recorded_by_id)
+        latest_tx = latest_tx.order_by(Transaction.due_date.desc()).first()
+
+        if not latest_tx:
+            continue
+
+        due_date = latest_tx.due_date.date()
+        if today <= due_date <= week_end:
+            due_list.append({
+                "customer_id": customer.id,
+                "customer_phone": customer.customer_phone,
+                "name": customer.name,
+                "balance": balance,
+                "due_date": latest_tx.due_date,
             })
 
     return due_list
