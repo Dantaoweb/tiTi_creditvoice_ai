@@ -271,9 +271,13 @@ class InventoryItem(Base):
 
     low_stock_alert = Column(Integer, nullable=True)
 
-    category = Column(String, nullable=True)       # e.g. "grains", "dairy", "pharmacy"
+    category = Column(String, nullable=True)
 
-    reorder_quantity = Column(Integer, nullable=True)  # trigger a reorder reminder below this level
+    reorder_quantity = Column(Integer, nullable=True)
+
+    expiry_date = Column(DateTime, nullable=True)   # medicine / perishable expiry date
+
+    batch_no = Column(String, nullable=True)        # batch / NAFDAC / lot number
 
     created_at = Column(DateTime, default=utcnow)
 

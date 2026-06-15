@@ -271,6 +271,50 @@ def handle_report_command(
         send_message(phone, msg)
         return {"status": "search_customer"}
 
+    if command_type == "RENAME_PRODUCT":
+        from models import InventoryItem as _RenInv
+        _old_name = parsed.get("old_name", "").strip()
+        _new_name = parsed.get("new_name", "").strip()
+        _item = (
+            db.query(_RenInv)
+            .filter(
+                _RenInv.owner_phone == business_owner_phone,
+                _RenInv.name.ilike(f"%{_old_name}%"),
+            )
+            .first()
+        )
+        if not _item:
+            send_message(phone, f"Product '{_old_name}' not found in your stock.\n\nSend *stock* to see your list.")
+            return {"status": "rename_product_not_found"}
+        _prev = _item.name
+        _item.name = _new_name
+        db.commit()
+        send_message(phone, f"Done. *{_prev.title()}* renamed to *{_new_name.title()}*.")
+        return {"status": "rename_product_ok"}
+
+    if command_type == "SET_STUDENT_CLASS":
+        from models import Customer as _SetCust
+        _s_name = parsed.get("name", "").strip()
+        _s_class = parsed.get("class_name", "").strip()
+        if not _s_name or not _s_class:
+            send_message(phone, "Usage: class [student name] [class]\nExample: class Tunde JSS2")
+            return {"status": "set_class_bad_args"}
+        _match = (
+            db.query(_SetCust)
+            .filter(
+                _SetCust.owner_phone == business_owner_phone,
+                _SetCust.name.ilike(f"%{_s_name}%"),
+            )
+            .first()
+        )
+        if not _match:
+            send_message(phone, f"Student '{_s_name}' not found.")
+            return {"status": "set_class_not_found"}
+        _match.category = _s_class.upper()
+        db.commit()
+        send_message(phone, f"{_match.name.title()} — class set to *{_s_class.upper()}*.")
+        return {"status": "set_class_ok"}
+
     if command_type == "CUSTOMER_SUMMARY":
         summary = get_customer_summary(db, business_owner_phone, parsed.get("name", ""), visible_recorded_by_id)
         if not summary:
@@ -281,19 +325,21 @@ def handle_report_command(
             if summary["balance"] < 0
             else f"Balance: N{summary['balance']:,}"
         )
+        from models import Customer as _Cust, Transaction as _Tx
+        _c = db.query(_Cust).filter(
+            _Cust.owner_phone == business_owner_phone,
+            _Cust.name == summary["name"],
+        ).first()
+        _class_line = f"Class: {_c.category}\n" if (_c and _c.category) else ""
         msg = (
             f"{summary['name'].title()} — Account Summary\n\n"
+            f"{_class_line}"
             f"{balance_text}\n"
             f"Total bought: N{summary['total_buy']:,}\n"
             f"Total paid:   N{summary['total_pay']:,}\n"
             f"Transactions: {summary['transaction_count']:,}"
         )
         if summary["balance"] > 0:
-            from models import Customer as _Cust, Transaction as _Tx
-            _c = db.query(_Cust).filter(
-                _Cust.owner_phone == business_owner_phone,
-                _Cust.name == summary["name"],
-            ).first()
             if _c:
                 _q = db.query(_Tx).filter(
                     _Tx.customer_id == _c.id,

@@ -1640,6 +1640,25 @@ def industry_plan_matrix():
 # ─────────────────────────────────────────────────────────────────────────────
 
 INDUSTRY_PRODUCT_CATALOG = {
+    "clinic": [
+        ("glove", "consumable"),
+        ("syringe", "consumable"),
+        ("needle", "consumable"),
+        ("cotton wool", "consumable"),
+        ("bandage", "consumable"),
+        ("plaster", "consumable"),
+        ("iv set", "consumable"),
+        ("cannula", "consumable"),
+        ("gauze", "consumable"),
+        ("surgical spirit", "consumable"),
+        ("paracetamol", "analgesic"),
+        ("ibuprofen", "analgesic"),
+        ("amoxicillin", "antibiotic"),
+        ("metronidazole", "antibiotic"),
+        ("coartem", "antimalarial"),
+        ("ors", "rehydration"),
+        ("gloves", "consumable"),
+    ],
     "pharmacy": [
         ("paracetamol", "analgesic"),
         ("ibuprofen", "analgesic"),
@@ -1833,6 +1852,7 @@ INDUSTRY_PRODUCT_CATALOG = {
 # Preferred units per industry — shown in stock-add guides and as hints
 INDUSTRY_DEFAULT_UNITS = {
     "pharmacy": ["pack", "strip", "tablet", "sachet", "bottle", "vial"],
+    "clinic":   ["piece", "pack", "vial", "bottle", "sachet", "roll"],
     "agriculture": ["bag", "mudu", "congo", "crate", "tray", "kg"],
     "retail_trading": ["carton", "bag", "pack", "piece", "dozen"],
     "household_hardware": ["piece", "set", "dozen", "carton", "pack"],
@@ -1984,6 +2004,50 @@ SERVICE_PRICE_CATALOG = {
         ("button repair",              None,           2000),
         ("back glass replacement",     None,           5000),
     ],
+    "clinic": [
+        ("consultation",              None,           3000),
+        ("malaria test (RDT)",        None,           2000),
+        ("blood count (FBC)",         None,           4000),
+        ("urinalysis",                None,           2000),
+        ("pregnancy test",            None,           1500),
+        ("blood pressure check",      None,           1000),
+        ("blood glucose test",        None,           1500),
+        ("typhoid test (Widal)",      None,           2500),
+        ("hepatitis B test",          None,           2500),
+        ("HIV test",                  None,           2000),
+        ("injection",                 None,           2000),
+        ("IV drip",                   None,           5000),
+        ("wound dressing",            None,           2500),
+        ("circumcision",              None,           15000),
+        ("X-ray",                     None,           8000),
+        ("ECG",                       None,           5000),
+        ("ultrasound scan",           None,           8000),
+        ("antenatal visit",           None,           3000),
+        ("immunization",              None,           2000),
+        ("admission (per day)",       None,           10000),
+        ("tooth extraction",          None,           5000),
+        ("tooth filling",             None,           10000),
+        ("scaling and polishing",     None,           10000),
+        ("eye test",                  None,           3000),
+        ("glasses prescription",      None,           2000),
+    ],
+    "school": [
+        ("tuition",              "nursery/creche",   25000),
+        ("tuition",              "primary (1-3)",    30000),
+        ("tuition",              "primary (4-6)",    35000),
+        ("tuition",              "JSS",              45000),
+        ("tuition",              "SSS",              55000),
+        ("development levy",     None,                5000),
+        ("PTA levy",             None,                3000),
+        ("exam fee",             None,                5000),
+        ("books / supplies",     None,               10000),
+        ("uniform",              None,                8000),
+        ("feeding",              "monthly",          20000),
+        ("school bus",           "per term",         15000),
+        ("after-school care",    None,                5000),
+        ("registration fee",     None,               10000),
+        ("lesson / extra class", None,                3000),
+    ],
 }
 
 # Keys that have a SERVICE_PRICE_CATALOG entry
@@ -2014,13 +2078,15 @@ _SERVICE_MENU_TEMPLATE_KEYS = frozenset({
 })
 
 _FEE_MENU_TEMPLATE_KEYS = frozenset({
-    "clinic", "transport_logistics",
+    "transport_logistics",
     "real_estate_rentals", "professional_services",
 })
 
+_CLINIC_TEMPLATE_KEYS = frozenset({"clinic"})
+
 
 def menu_group_for_user(user):
-    """Return 'stock', 'service', 'fee', 'school', or 'thrift' for home menu layout."""
+    """Return 'stock', 'service', 'fee', 'clinic', 'school', or 'thrift' for home menu layout."""
     if not user:
         return "stock"
     key = template_key_for_user(user)
@@ -2028,6 +2094,8 @@ def menu_group_for_user(user):
         return "thrift"
     if key == "school":
         return "school"
+    if key in _CLINIC_TEMPLATE_KEYS:
+        return "clinic"
     if key in _FEE_MENU_TEMPLATE_KEYS:
         return "fee"
     if key in _SERVICE_MENU_TEMPLATE_KEYS:

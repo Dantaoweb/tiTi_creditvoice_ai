@@ -245,11 +245,12 @@ def build_owner_home_menu(user, subscription):
             "1. Record fee payment\n"
             "2. My students\n"
             "3. Fee defaulters\n"
-            "4. Dashboard\n"
-            "5. Reports\n"
-            "6. Help\n"
+            "4. Fee schedule\n"
+            "5. Dashboard\n"
+            "6. Textbooks / stock\n"
             "7. Wallet ✦\n"
-            "8. More →"
+            "8. Help\n"
+            "9. More →"
         )
     elif group == "thrift":
         body = (
@@ -261,6 +262,18 @@ def build_owner_home_menu(user, subscription):
             "6. Help\n"
             "7. Wallet ✦\n"
             "8. More →"
+        )
+    elif group == "clinic":
+        body = (
+            "1. Record payment\n"
+            "2. Select service\n"
+            "3. Price list\n"
+            "4. My patients\n"
+            "5. Reminders\n"
+            "6. Dashboard\n"
+            "7. Stock / consumables\n"
+            "8. Wallet ✦\n"
+            "9. More →"
         )
     elif group == "fee":
         body = (

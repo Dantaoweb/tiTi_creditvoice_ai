@@ -58,9 +58,18 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
         db.commit()
         return {"parsed": {"type": "SELECT_PRODUCT"}}
 
-    if normalized in ["stock", "inventory", "add stock", "textbooks", "textbook"]:
+    if normalized in ["select service", "services"] and group == "clinic":
+        from guided_service_commands import start_guided_service_setup
+        return start_guided_service_setup(db, phone, user, send_message)
+
+    if normalized in ["fee schedule", "fee list", "fees", "price list", "fee prices"] and group == "school":
+        from guided_service_commands import start_guided_service_setup
+        return start_guided_service_setup(db, phone, user, send_message)
+
+    if normalized in ["stock", "inventory", "add stock", "textbooks", "textbook",
+                       "consumables", "supplies"]:
         from business_templates import has_service_price_catalog
-        if has_service_price_catalog(user):
+        if group not in ("clinic", "school") and has_service_price_catalog(user):
             from guided_service_commands import start_guided_service_setup
             return start_guided_service_setup(db, phone, user, send_message)
         from guided_stock_commands import start_guided_stock_flow
@@ -87,7 +96,8 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
 
     if normalized in ["customers", "my customers", "customer list",
                        "students", "my students", "student list",
-                       "participants", "my participants"]:
+                       "participants", "my participants",
+                       "patients", "my patients", "patient list"]:
         db.delete(pending)
         db.commit()
         save_context(db, phone, last_topic="customers")
@@ -171,7 +181,7 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
             if opt == 9:
                 return _go_more(db, phone, user, pending, send_message)
 
-        # ── School group (8-option menu) ───────────────────────────────────────
+        # ── School group (9-option menu) ───────────────────────────────────────
         elif group == "school":
             if opt == 1:
                 _record_help(db, phone, user, pending, send_message)
@@ -186,17 +196,21 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
                 db.commit()
                 save_context(db, phone, last_menu="DUE_MENU", last_topic="due")
                 return {"parsed": {"type": "DUE_MENU"}}
-            if opt == 4:
+            if opt == 4:  # Fee schedule
+                from guided_service_commands import start_guided_service_setup
+                return start_guided_service_setup(db, phone, user, send_message)
+            if opt == 5:  # Dashboard
                 return _go_dashboard(db, phone, pending, send_message)
-            if opt == 5:
-                return _go_dashboard(db, phone, pending, send_message)
-            if opt == 6:
-                db.delete(pending)
-                db.commit()
-                return {"parsed": {"type": "FORMATS"}}
+            if opt == 6:  # Textbooks / stock
+                from guided_stock_commands import start_guided_stock_flow
+                return start_guided_stock_flow(db, phone, user, send_message)
             if opt == 7:
                 return _wallet_msg(db, phone, pending, send_message)
             if opt == 8:
+                db.delete(pending)
+                db.commit()
+                return {"parsed": {"type": "FORMATS"}}
+            if opt == 9:
                 return _go_more(db, phone, user, pending, send_message)
 
         # ── Thrift group (8-option menu) ───────────────────────────────────────
@@ -225,6 +239,37 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
             if opt == 7:
                 return _wallet_msg(db, phone, pending, send_message)
             if opt == 8:
+                return _go_more(db, phone, user, pending, send_message)
+
+        # ── Clinic group (9-option menu) ──────────────────────────────────────
+        elif group == "clinic":
+            if opt == 1:
+                _record_help(db, phone, user, pending, send_message)
+                return {"status": "owner_home_record_help"}
+            if opt == 2:  # Select service
+                from guided_service_commands import start_guided_service_setup
+                return start_guided_service_setup(db, phone, user, send_message)
+            if opt == 3:  # Price list
+                from guided_service_commands import start_guided_service_setup
+                return start_guided_service_setup(db, phone, user, send_message)
+            if opt == 4:  # My patients
+                db.delete(pending)
+                db.commit()
+                save_context(db, phone, last_topic="customers")
+                return {"parsed": {"type": "CUSTOMER_LIST", "period": None}}
+            if opt == 5:  # Reminders
+                db.delete(pending)
+                db.commit()
+                save_context(db, phone, last_menu="DUE_MENU", last_topic="due")
+                return {"parsed": {"type": "DUE_MENU"}}
+            if opt == 6:  # Dashboard
+                return _go_dashboard(db, phone, pending, send_message)
+            if opt == 7:  # Stock / consumables
+                from guided_stock_commands import start_guided_stock_flow
+                return start_guided_stock_flow(db, phone, user, send_message)
+            if opt == 8:  # Wallet
+                return _wallet_msg(db, phone, pending, send_message)
+            if opt == 9:  # More
                 return _go_more(db, phone, user, pending, send_message)
 
         # ── Fee group (8-option menu) ──────────────────────────────────────────

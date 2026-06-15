@@ -759,6 +759,33 @@ def extract_artisan_transaction(text):
             "artisan_note": "Service income, no customer debt"
         }
 
+    walk_in_match = re.search(
+        r"^(?:walk[\-\s]in|cash\s+patient)\s+"
+        r"(?:(?P<description>[a-zA-Z][a-zA-Z\s/\-]+?)\s+)?"
+        r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)(?:\s+naira)?$",
+        clean
+    )
+    if walk_in_match:
+        amount = parse_amount_token(walk_in_match.group("amount"))
+        if amount is not None:
+            description = (walk_in_match.group("description") or "").strip()
+            product = description if description else "walk-in patient"
+            return {
+                "type": "TRANSACTION",
+                "name": "",
+                "action": "SALE",
+                "buy_amount": amount,
+                "paid_amount": 0,
+                "quantity": 1,
+                "unit": None,
+                "product": product,
+                "unit_price": amount,
+                "invoice_items": None,
+                "total": amount,
+                "due_date": None,
+                "artisan_note": "Walk-in / cash patient, no customer debt"
+            }
+
     ambiguous_match = re.search(
         r"^(?P<name>[a-zA-Z'â€™\- ]+?)\s+(?:pay|paid|pays)\s+me\s+"
         r"(?P<amount>\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?)$",
@@ -2190,6 +2217,23 @@ def parse_message(text):
                 "name": name
             }
 
+    _class_m = re.search(
+        r"^(?:set\s+)?(?:class|grade)\s+(?P<name>[a-zA-Z][a-zA-Z\s']{1,30}?)\s+(?P<class_name>[a-zA-Z0-9][a-zA-Z0-9\s/\-]{0,30})$",
+        clean_text
+    ) or re.search(
+        r"^(?P<name>[a-zA-Z][a-zA-Z\s']{1,30}?)\s+(?:class|grade)\s+(?P<class_name>[a-zA-Z0-9][a-zA-Z0-9\s/\-]{0,30})$",
+        clean_text
+    )
+    if _class_m:
+        _student = _class_m.group("name").strip()
+        _cls = _class_m.group("class_name").strip()
+        if _student and _cls and len(_student) >= 2:
+            return {
+                "type": "SET_STUDENT_CLASS",
+                "name": _student,
+                "class_name": _cls,
+            }
+
     permission_match = re.search(
         r"^(grant|allow|give)\s+staff\s+(\+?[\d ]{7,15})\s+(?:view\s+all|view\s+all\s+transactions|all\s+transactions)$",
         clean_text
@@ -2293,6 +2337,22 @@ def parse_message(text):
         "update business name"
     ]:
         return {"type": "REONBOARD"}
+
+    # ── Product rename shortcut ──────────────────────────────────────────────
+    # "rename rice to brown rice"  |  "correct paracetamol to paracetamol 500mg"
+    _rename_prod_m = re.match(
+        r"^(?:rename|correct|fix|edit)\s+(?P<old_name>.+?)\s+to\s+(?P<new_name>.+)$",
+        clean_text,
+    )
+    if _rename_prod_m:
+        _old = _rename_prod_m.group("old_name").strip()
+        _new = _rename_prod_m.group("new_name").strip()
+        if _old and _new and len(_new) >= 2:
+            return {
+                "type": "RENAME_PRODUCT",
+                "old_name": _old,
+                "new_name": _new,
+            }
 
     # ── Transaction void / correction ────────────────────────────────────────
     # "void 42 wrong customer"  |  "void last wrong product"

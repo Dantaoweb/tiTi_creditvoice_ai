@@ -236,6 +236,7 @@ def handle_webhook_body(body):
                 "RESTOCK_ALERT_SELECT": 1,
                 "RESTOCK_ALERT_CONFIRM": 4,
                 "STOCK_ITEM_SET_CATEGORY": 4,
+                "STOCK_ITEM_SET_EXPIRY": 4,
             }
             _ttl_hours = _PENDING_TTL.get(pending.action, 4)
             _age_hours = (

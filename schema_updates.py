@@ -125,6 +125,8 @@ def ensure_schema_updates(engine):
         "is_available": f"BOOLEAN DEFAULT {boolean_true}",
         "category": "VARCHAR",
         "reorder_quantity": "INTEGER",
+        "expiry_date": "TIMESTAMP",
+        "batch_no": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in inventory_updates.items():

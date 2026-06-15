@@ -428,6 +428,9 @@ def build_inventory_list_message(db, owner_phone, product=None, return_ids=False
             msg += f"— {category.title()} —\n"
             prev_category = category
 
+        from datetime import datetime as _dtl
+        _now_dt = _dtl.utcnow()
+
         if qty == 0:
             indicator = "🔴 "
         elif v.low_stock_alert is not None and qty <= v.low_stock_alert:
@@ -435,8 +438,19 @@ def build_inventory_list_message(db, owner_phone, product=None, return_ids=False
         else:
             indicator = ""
 
+        # Expiry warning overrides other indicators when expired/near
+        _exp_suffix = ""
+        if v.expiry_date:
+            _days_left = (v.expiry_date - _now_dt).days
+            if _days_left < 0:
+                indicator = "☠ "
+                _exp_suffix = f" [EXPIRED {v.expiry_date.strftime('%m/%Y')}]"
+            elif _days_left <= 30:
+                indicator = "⚠️ "
+                _exp_suffix = f" [Exp {v.expiry_date.strftime('%m/%Y')} — {_days_left}d]"
+
         name_display = f"{display_name} ({v.unit})" if (is_multi and v.unit) else display_name
-        line = f"{idx}. {indicator}{name_display}: {qty:,}{unit_label}"
+        line = f"{idx}. {indicator}{name_display}: {qty:,}{unit_label}{_exp_suffix}"
         prices = []
         if v.cost_price:
             prices.append(f"Cost N{v.cost_price:,}")

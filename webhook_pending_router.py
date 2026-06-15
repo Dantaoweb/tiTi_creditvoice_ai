@@ -27,6 +27,7 @@ from constants import (
     ACTION_STOCK_ITEM_MENU,
     ACTION_STOCK_ITEM_RENAME,
     ACTION_STOCK_ITEM_SET_CATEGORY,
+    ACTION_STOCK_ITEM_SET_EXPIRY,
     ACTION_STOCK_ITEM_UPDATE_PRICE,
     ACTION_STOCK_MENU,
     ACTION_UNPAID_DEBTORS_MENU,
@@ -194,26 +195,72 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             payload["selected_name"] = item.name
             payload["selected_unit"] = item.unit
             payload["selected_category"] = item.category or ""
+            payload["selected_expiry"] = item.expiry_date.strftime("%m/%Y") if item.expiry_date else ""
+            payload["selected_batch"] = item.batch_no or ""
             pending.payload_json = json.dumps(payload)
             db.commit()
 
             cat_line = f"Category: {item.category.title()}\n" if item.category else ""
+            _exp_line = ""
+            if item.expiry_date:
+                from datetime import datetime as _dt
+                _now = _dt.utcnow()
+                _days = (item.expiry_date - _now).days
+                _exp_str = item.expiry_date.strftime("%m/%Y")
+                _exp_line = (
+                    f"⚠ Expires: {_exp_str} (EXPIRED)\n" if _days < 0
+                    else f"⚠ Expires: {_exp_str} ({_days}d)\n" if _days <= 30
+                    else f"Expires: {_exp_str}\n"
+                )
+            _batch_line = f"Batch: {item.batch_no}\n" if item.batch_no else ""
             send_message(
                 phone,
                 f"*{item.name.title()}{unit_label}*\n"
                 f"Qty: {qty:,}{unit_label}\n"
                 f"{cost_line}  |  {sell_line}\n"
-                f"{cat_line}\n"
+                f"{cat_line}{_exp_line}{_batch_line}\n"
                 "1. Add more stock\n"
                 "2. Update price\n"
                 "3. Delete item\n"
                 "4. Rename item\n"
                 "5. Change unit\n"
                 "6. Buyers & restock\n"
-                "7. Set category\n\n"
+                "7. Set category\n"
+                "8. Expiry / Batch no.\n\n"
                 "Reply *BACK* to return to stock list."
             )
             return {"status": "stock_item_menu_shown"}
+
+        # "rename [item]" or "edit [item]" from the stock list — go straight to rename
+        import re as _re
+        _rename_list_m = _re.match(
+            r"^(?:rename|edit|correct|fix)\s+(.+)$", normalized
+        )
+        if _rename_list_m:
+            _target = _rename_list_m.group(1).strip()
+            from models import InventoryItem as _InvR
+            _match_item = (
+                db.query(_InvR)
+                .filter(
+                    _InvR.owner_phone == business_owner_phone,
+                    _InvR.name.ilike(f"%{_target}%"),
+                )
+                .first()
+            )
+            if _match_item:
+                pending.action = ACTION_STOCK_ITEM_RENAME
+                pending.payload_json = json.dumps({
+                    "selected_id": _match_item.id,
+                    "selected_name": _match_item.name,
+                    "selected_unit": _match_item.unit or "",
+                })
+                db.commit()
+                send_message(phone, f"New name for *{_match_item.name.title()}*?\n\nSend the corrected product name.")
+                return {"status": "stock_rename_from_list"}
+            send_message(phone, f"Product '{_target}' not found. Send *stock* to see your list.")
+            db.delete(pending)
+            db.commit()
+            return {"status": "stock_rename_not_found"}
 
         # Anything else — exit the stock menu and process normally
         db.delete(pending)
@@ -275,7 +322,9 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             )
             return {"status": "stock_item_delete_confirm_prompt"}
 
-        if normalized in ["4", "rename", "rename item", "edit name"]:
+        if normalized in ["4", "rename", "rename item", "edit", "edit name",
+                          "correct", "correct name", "fix", "fix name",
+                          "change name", "update name"]:
             pending.action = ACTION_STOCK_ITEM_RENAME
             db.commit()
             send_message(phone, f"New name for *{item_name.title()}*?\n\nSend the corrected product name.")
@@ -317,11 +366,34 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             )
             return {"status": "stock_item_set_category_prompt"}
 
+        if normalized in ["8", "expiry", "batch", "expiry batch", "batch no", "expiry / batch no.", "set expiry"]:
+            pending.action = ACTION_STOCK_ITEM_SET_EXPIRY
+            db.commit()
+            _exp_now = payload.get("selected_expiry", "") or ""
+            _bat_now = payload.get("selected_batch", "") or ""
+            cur = ""
+            if _exp_now:
+                cur += f"\nCurrent expiry: {_exp_now}"
+            if _bat_now:
+                cur += f"\nCurrent batch: {_bat_now}"
+            send_message(
+                phone,
+                f"Expiry / Batch for *{item_name.title()}*?{cur}\n\n"
+                "Send expiry date (MM/YYYY) and optionally batch/NAFDAC number.\n"
+                "Examples:\n"
+                "  06/2026\n"
+                "  06/2026 BN-1234\n"
+                "  06/2026 NAFDAC A4-1234\n\n"
+                "Send *REMOVE* to clear both. Send *SKIP* to cancel."
+            )
+            return {"status": "stock_item_set_expiry_prompt"}
+
         send_message(
             phone,
             f"*{item_name.title()}*\n\n"
             "1. Add more stock\n2. Update price\n3. Delete item\n"
-            "4. Rename item\n5. Change unit\n6. Buyers & restock\n7. Set category\n\n"
+            "4. Rename item\n5. Change unit\n6. Buyers & restock\n"
+            "7. Set category\n8. Expiry / Batch no.\n\n"
             "Reply BACK to return."
         )
         return {"status": "stock_item_menu_reprompt"}
@@ -489,7 +561,8 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
                     "4. Rename item\n"
                     "5. Change unit\n"
                     "6. Buyers & restock\n"
-                    "7. Set category\n\n"
+                    "7. Set category\n"
+                    "8. Expiry / Batch no.\n\n"
                     "Reply *BACK* to return to stock list."
                 )
             else:
@@ -510,6 +583,75 @@ def _handle_stock_menu(db, phone, text, pending, user, business_owner_phone, sen
             f"Reply *YES* to confirm deleting *{item_name.title()}*\nor *NO* to cancel."
         )
         return {"status": "stock_item_delete_confirm_reprompt"}
+
+    # ── Set expiry date / batch number ───────────────────────────────────────
+    if action == ACTION_STOCK_ITEM_SET_EXPIRY:
+        import re as _re
+        from datetime import datetime as _dtp
+        item_id = payload.get("selected_id")
+        item_name = payload.get("selected_name", "")
+
+        if normalized in ["skip", "cancel", "back"]:
+            db.delete(pending)
+            db.commit()
+            return None
+
+        from models import InventoryItem as _InvEx
+        _inv_ex = db.query(_InvEx).filter(_InvEx.id == item_id).first()
+        if not _inv_ex:
+            send_message(phone, "Item not found. Send *stock* to refresh.")
+            db.delete(pending)
+            db.commit()
+            return {"status": "stock_item_expiry_not_found"}
+
+        if normalized in ["remove", "clear", "none", "delete"]:
+            _inv_ex.expiry_date = None
+            _inv_ex.batch_no = None
+            db.commit()
+            db.delete(pending)
+            db.commit()
+            send_message(phone, f"Expiry and batch cleared for *{item_name.title()}*.")
+            return {"status": "stock_item_expiry_cleared"}
+
+        # Parse "MM/YYYY [optional batch text]"
+        _exp_m = _re.match(r"^(\d{1,2})[/\-](\d{4})\s*(.*)?$", text.strip())
+        if not _exp_m:
+            send_message(
+                phone,
+                "Send expiry as MM/YYYY, e.g.:\n  06/2026\n  06/2026 BN-1234\n\nOr REMOVE to clear."
+            )
+            return {"status": "stock_item_expiry_invalid"}
+
+        month, year = int(_exp_m.group(1)), int(_exp_m.group(2))
+        if not (1 <= month <= 12):
+            send_message(phone, "Invalid month. Use MM/YYYY, e.g. 06/2026")
+            return {"status": "stock_item_expiry_bad_month"}
+
+        try:
+            _exp_date = _dtp(year, month, 1)
+        except ValueError:
+            send_message(phone, "Invalid date. Use MM/YYYY, e.g. 06/2026")
+            return {"status": "stock_item_expiry_bad_date"}
+
+        _batch_text = _exp_m.group(3).strip() if _exp_m.group(3) else None
+        _inv_ex.expiry_date = _exp_date
+        if _batch_text:
+            _inv_ex.batch_no = _batch_text
+
+        from datetime import datetime as _dtx
+        _days = (_exp_date - _dtx.utcnow()).days
+        db.commit()
+        db.delete(pending)
+        db.commit()
+
+        _exp_str = _exp_date.strftime("%m/%Y")
+        _warn = " ⚠ This batch is expired!" if _days < 0 else (f" ⚠ Expires in {_days} days." if _days <= 30 else "")
+        _batch_confirm = f"\nBatch: {_batch_text}" if _batch_text else ""
+        send_message(
+            phone,
+            f"Updated *{item_name.title()}*:\nExpiry: {_exp_str}{_warn}{_batch_confirm}"
+        )
+        return {"status": "stock_item_expiry_saved"}
 
     # ── Set category ─────────────────────────────────────────────────────────
     if action == ACTION_STOCK_ITEM_SET_CATEGORY:
