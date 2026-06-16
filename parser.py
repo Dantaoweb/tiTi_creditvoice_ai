@@ -2372,6 +2372,44 @@ def parse_message(text):
     if clean_text in ["add truck", "register truck", "new truck"]:
         return {"type": "ADD_TRUCK_WIZARD"}
 
+    # ── Data export ───────────────────────────────────────────────────────────
+    _export_m = re.match(
+        r"^export"
+        r"(?:\s+(?P<what>transactions?|debtors?|debt|customers?|clients?|stock|inventory))?"
+        r"(?:\s+(?P<period>today|this week|this month|this year"
+        r"|january|february|march|april|may|june"
+        r"|july|august|september|october|november|december"
+        r"|week|month|year))?$",
+        clean_text,
+    )
+    if _export_m:
+        what = (_export_m.group("what") or "").strip()
+        period_raw = (_export_m.group("period") or "").strip()
+        _period_map = {
+            "today": "TODAY", "this week": "WEEK", "week": "WEEK",
+            "this month": "MONTH", "month": "MONTH",
+            "this year": "YEAR", "year": "YEAR",
+            "january": "JANUARY", "february": "FEBRUARY", "march": "MARCH",
+            "april": "APRIL", "may": "MAY", "june": "JUNE",
+            "july": "JULY", "august": "AUGUST", "september": "SEPTEMBER",
+            "october": "OCTOBER", "november": "NOVEMBER", "december": "DECEMBER",
+        }
+        period_key = _period_map.get(period_raw) if period_raw else None
+        if what in ("debtors", "debtor", "debt"):
+            return {"type": "EXPORT_DEBTORS", "period": period_key}
+        if what in ("stock", "inventory"):
+            return {"type": "EXPORT_STOCK", "period": period_key}
+        if what in ("customers", "customer", "clients", "client"):
+            return {"type": "EXPORT_CUSTOMERS", "period": period_key}
+        return {"type": "EXPORT_TRANSACTIONS", "period": period_key}
+
+    # ── Loan statement ───────────────────────────────────────────────────────
+    if re.match(
+        r"^(loan\s+)?statement|business\s+statement|my\s+statement|financial\s+statement$",
+        clean_text,
+    ):
+        return {"type": "LOAN_STATEMENT"}
+
     # ── Product rename shortcut ──────────────────────────────────────────────
     # "rename rice to brown rice"  |  "correct paracetamol to paracetamol 500mg"
     _rename_prod_m = re.match(

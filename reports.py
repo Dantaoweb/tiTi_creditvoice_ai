@@ -317,7 +317,9 @@ def build_dashboard_menu_message():
         "6. Customer count\n"
         "7. Customer list\n"
         "8. Unpaid debtors\n"
-        "9. Product leaderboard"
+        "9. Product leaderboard\n"
+        "10. Export data (CSV)\n"
+        "11. Business statement (PDF)"
     )
 
 

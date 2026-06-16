@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
-import { Mic, MicOff, Play, Send, X, CheckCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Mic, MicOff, Play, Send, X, CheckCircle, ShoppingCart, CreditCard, Package } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiPost } from "../lib/api";
+import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
@@ -14,16 +14,353 @@ async function blobToBase64(blob) {
   return btoa(binary);
 }
 
-export default function Capture() {
-  const { ownerPhone } = useApp();
-  const { user } = useAuth();
-  const L = getBizLabels(user?.menu_group);
-  const toast = useToast();
+// ── Shared search inputs ─────────────────────────────────────────────────────
+
+function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, onSelect, value }) {
+  const [customers, setCustomers] = useState([]);
+  const [search, setSearch]       = useState("");
+  const [open, setOpen]           = useState(false);
+
+  useEffect(() => {
+    if (!ownerPhone) return;
+    apiFetch("customers", { owner_phone: ownerPhone })
+      .then(d => {
+        let list = d.customers || [];
+        if (filterDebtors) list = list.filter(c => c.balance > 0);
+        setCustomers(list);
+      })
+      .catch(() => {});
+  }, [ownerPhone, filterDebtors]);
+
+  const filtered = search.trim()
+    ? customers.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
+    : filterDebtors ? customers.slice(0, 8) : [];
+
+  if (value) {
+    return (
+      <div className="qf-pill">
+        <span>
+          {value.name}
+          {value.balance > 0 && <span className="text-rose"> — owes {nairaFull(value.balance)}</span>}
+        </span>
+        <button type="button" onClick={() => onSelect(null)}>×</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="qf-search-wrap">
+      <input
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+      />
+      {open && filtered.length > 0 && (
+        <div className="qf-dropdown">
+          {filtered.map(c => (
+            <button key={c.id} type="button" onMouseDown={() => { onSelect(c); setSearch(""); setOpen(false); }}>
+              <span>{c.name}</span>
+              {c.balance > 0 && <span className="text-rose text-sm">{nairaFull(c.balance)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && filterDebtors && customers.length === 0 && (
+        <div className="qf-dropdown">
+          <div style={{ padding: "10px 14px", color: "var(--muted)", fontSize: 13 }}>No debtors found.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InventorySearch({ ownerPhone, onSelect, value }) {
+  const [items, setItems]   = useState([]);
+  const [search, setSearch] = useState("");
+  const [open, setOpen]     = useState(false);
+
+  useEffect(() => {
+    if (!ownerPhone) return;
+    apiFetch("inventory", { owner_phone: ownerPhone })
+      .then(d => setItems(d.items || []))
+      .catch(() => {});
+  }, [ownerPhone]);
+
+  const filtered = search.trim()
+    ? items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
+  if (value) {
+    return (
+      <div className="qf-pill">
+        <span>{value.name} <span className="text-subtle">— {value.quantity} {value.unit || "units"} in stock</span></span>
+        <button type="button" onClick={() => onSelect(null)}>×</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="qf-search-wrap">
+      <input
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search product name…"
+      />
+      {open && filtered.length > 0 && (
+        <div className="qf-dropdown">
+          {filtered.map(i => (
+            <button key={i.id} type="button" onMouseDown={() => { onSelect(i); setSearch(""); setOpen(false); }}>
+              <span>{i.name}</span>
+              <span className="text-subtle text-sm">{i.quantity} {i.unit || "units"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Form panels ──────────────────────────────────────────────────────────────
+
+function SaleForm({ ownerPhone, onSuccess }) {
+  const [product, setProduct]   = useState("");
+  const [qty, setQty]           = useState("1");
+  const [unit, setUnit]         = useState("");
+  const [amount, setAmount]     = useState("");
+  const [customer, setCustomer] = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!product.trim() || !amount) return;
+    setLoading(true); setError(null);
+    try {
+      const qtyNum = Math.max(1, Number(qty) || 1);
+      const total  = Number(amount);
+      await apiPost("pos/save", {
+        owner_phone:    ownerPhone,
+        customer_id:    customer?.id || null,
+        items:          [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
+        payment_amount: customer ? 0 : total,
+      });
+      onSuccess(`Sale of ${nairaFull(total)} recorded${customer ? ` — credit to ${customer.name}` : " (cash)"}.`);
+      setProduct(""); setQty("1"); setUnit(""); setAmount(""); setCustomer(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="qf-form">
+      <div className="form-group">
+        <label className="form-label">Product / Service *</label>
+        <input value={product} onChange={e => setProduct(e.target.value)} placeholder="e.g. Rice, Cement, Haircut" required />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="form-group">
+          <label className="form-label">Quantity</label>
+          <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Unit <span className="text-subtle">(optional)</span></label>
+          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="bags, litres, pcs…" />
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Total amount (₦) *</label>
+        <input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 5000" required />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Customer <span className="text-subtle">— leave blank for cash sale</span></label>
+        <CustomerSearch ownerPhone={ownerPhone} placeholder="Search customer name…" onSelect={setCustomer} value={customer} />
+      </div>
+      <div className="qf-type-hint">
+        {customer
+          ? `Credit sale → will increase ${customer.name}'s balance`
+          : "Cash sale → no customer debt"}
+      </div>
+      {error && <div className="modal-error">{error}</div>}
+      <button type="submit" className="btn btn-primary" disabled={loading}>
+        {loading ? "Saving…" : "Record Sale"}
+      </button>
+    </form>
+  );
+}
+
+function PaymentForm({ ownerPhone, onSuccess }) {
+  const [customer, setCustomer] = useState(null);
+  const [amount, setAmount]     = useState("");
+  const [note, setNote]         = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!customer || !amount) return;
+    setLoading(true); setError(null);
+    try {
+      await apiPost(`customers/${customer.id}/pay`, { amount: Number(amount), note: note || null });
+      onSuccess(`Payment of ${nairaFull(Number(amount))} from ${customer.name} recorded.`);
+      setCustomer(null); setAmount(""); setNote("");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="qf-form">
+      <div className="form-group">
+        <label className="form-label">Customer who paid *</label>
+        <CustomerSearch ownerPhone={ownerPhone} placeholder="Search by name…" filterDebtors onSelect={setCustomer} value={customer} />
+        <div className="form-hint">Shows customers with outstanding balance.</div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Amount paid (₦) *</label>
+        <input
+          type="number" min="1"
+          value={amount}
+          onChange={e => setAmount(e.target.value)}
+          placeholder={customer?.balance > 0 ? String(customer.balance) : "e.g. 2000"}
+          required
+        />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Bank transfer, Part payment" />
+      </div>
+      {error && <div className="modal-error">{error}</div>}
+      <button type="submit" className="btn btn-primary" disabled={loading || !customer}>
+        {loading ? "Saving…" : "Record Payment"}
+      </button>
+    </form>
+  );
+}
+
+function StockForm({ ownerPhone, onSuccess }) {
+  const [item, setItem]       = useState(null);
+  const [qty, setQty]         = useState("");
+  const [cost, setCost]       = useState("");
+  const [note, setNote]       = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!item || !qty) return;
+    setLoading(true); setError(null);
+    try {
+      await apiPost(`inventory/${item.id}/adjust`, {
+        qty_delta: Number(qty),
+        note:      note || (cost ? `Received @ ₦${cost}/unit` : "Stock received"),
+      });
+      onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock.`);
+      setItem(null); setQty(""); setCost(""); setNote("");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="qf-form">
+      <div className="form-group">
+        <label className="form-label">Product *</label>
+        <InventorySearch ownerPhone={ownerPhone} onSelect={setItem} value={item} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="form-group">
+          <label className="form-label">Qty received *</label>
+          <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} placeholder="10" required />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Cost/unit (₦) <span className="text-subtle">optional</span></label>
+          <input type="number" min="0" value={cost} onChange={e => setCost(e.target.value)} placeholder="for your records" />
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Supplier name, delivery ref…" />
+      </div>
+      {error && <div className="modal-error">{error}</div>}
+      <button type="submit" className="btn btn-primary" disabled={loading || !item}>
+        {loading ? "Saving…" : "Add to Stock"}
+      </button>
+    </form>
+  );
+}
+
+// ── Quick Form panel ──────────────────────────────────────────────────────────
+
+const FORM_TABS = [
+  { key: "sale",    label: "Record Sale",    icon: ShoppingCart },
+  { key: "payment", label: "Record Payment", icon: CreditCard   },
+  { key: "stock",   label: "Stock Received", icon: Package      },
+];
+
+function QuickFormPanel({ ownerPhone }) {
+  const [formTab, setFormTab] = useState("sale");
+  const [success, setSuccess] = useState(null);
+
+  function handleSuccess(msg) {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(null), 5000);
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 560 }}>
+      <div className="card-header" style={{ borderBottom: "none", paddingBottom: 0 }}>
+        <span className="card-title">Quick Record</span>
+        <span className="card-subtitle">Fill in the fields — no command syntax needed</span>
+      </div>
+      <div className="qf-sub-tabs">
+        {FORM_TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            className={`qf-sub-tab${formTab === key ? " active" : ""}`}
+            onClick={() => { setFormTab(key); setSuccess(null); }}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+      {success && (
+        <div className="qf-success">
+          <CheckCircle size={15} />
+          {success}
+        </div>
+      )}
+      <div style={{ padding: "4px 20px 20px" }}>
+        {formTab === "sale"    && <SaleForm    ownerPhone={ownerPhone} onSuccess={handleSuccess} />}
+        {formTab === "payment" && <PaymentForm ownerPhone={ownerPhone} onSuccess={handleSuccess} />}
+        {formTab === "stock"   && <StockForm   ownerPhone={ownerPhone} onSuccess={handleSuccess} />}
+      </div>
+    </div>
+  );
+}
+
+// ── Text / Voice panel (original Capture logic) ───────────────────────────────
+
+function TextVoicePanel({ ownerPhone }) {
+  const { user }  = useAuth();
+  const L         = getBizLabels(user?.menu_group);
+  const toast     = useToast();
 
   const [phone, setPhone]         = useState(ownerPhone || "");
   const [text, setText]           = useState("");
   const [preview, setPreview]     = useState(null);
-  const [previewState, setPS]     = useState("empty"); // empty | loading | ready | error
+  const [previewState, setPS]     = useState("empty");
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
 
@@ -35,19 +372,17 @@ export default function Capture() {
   const audioBlobRef              = useRef(null);
   const audioRef                  = useRef(null);
 
+  useEffect(() => { if (ownerPhone) setPhone(ownerPhone); }, [ownerPhone]);
+
   async function handlePreview(e) {
     e.preventDefault();
     if (!phone || !text.trim()) return;
-    setPS("loading");
-    setSaved(false);
-    setPreview(null);
+    setPS("loading"); setSaved(false); setPreview(null);
     try {
       const data = await apiPost("capture/preview", { phone, text: text.trim() });
-      setPreview(data);
-      setPS("ready");
+      setPreview(data); setPS("ready");
     } catch (err) {
-      setPS("error");
-      setPreview({ message: err.message });
+      setPS("error"); setPreview({ message: err.message });
     }
   }
 
@@ -56,8 +391,7 @@ export default function Capture() {
     setSaving(true);
     try {
       const data = await apiPost("capture/confirm", { phone });
-      setSaved(true);
-      setPreview(data);
+      setSaved(true); setPreview(data);
       toast(data.messages?.[0] || "Transaction saved.", "success");
     } catch (err) {
       toast(err.message, "error");
@@ -91,16 +425,11 @@ export default function Capture() {
           audioRef.current.src = URL.createObjectURL(blob);
           audioRef.current.hidden = false;
         }
-        setHasAudio(true);
-        setVS("Recording ready — transcribe to fill text");
-        setRecording(false);
+        setHasAudio(true); setVS("Recording ready — transcribe to fill text"); setRecording(false);
       });
       recorderRef.current.start();
-      setRecording(true);
-      setVS("Recording…");
-    } catch {
-      toast("Microphone permission denied", "error");
-    }
+      setRecording(true); setVS("Recording…");
+    } catch { toast("Microphone permission denied", "error"); }
   }
 
   function stopRecording() {
@@ -111,19 +440,14 @@ export default function Capture() {
     if (!audioBlobRef.current) return;
     setVS("Transcribing…");
     try {
-      const b64 = await blobToBase64(audioBlobRef.current);
+      const b64  = await blobToBase64(audioBlobRef.current);
       const data = await apiPost("capture/voice", {
-        phone,
-        audio_base64: b64,
-        mime_type: audioBlobRef.current.type || "audio/webm",
+        phone, audio_base64: b64, mime_type: audioBlobRef.current.type || "audio/webm",
       });
       if (data.transcript) setText(data.transcript);
-      setPreview(data);
-      setPS("ready");
-      setVS("Transcription done");
+      setPreview(data); setPS("ready"); setVS("Transcription done");
     } catch (err) {
-      toast(err.message, "error");
-      setVS("Transcription failed");
+      toast(err.message, "error"); setVS("Transcription failed");
     }
   }
 
@@ -134,14 +458,13 @@ export default function Capture() {
     [L.customer,    pending?.customer_name || L.directSale],
     ["Product",     pending?.product],
     ["Quantity",    pending?.quantity ? `${pending.quantity} ${pending.unit || ""}`.trim() : null],
-    ["Sale amount", pending?.buy_amount ? nairaFull(pending.buy_amount) : null],
+    ["Sale amount", pending?.buy_amount  ? nairaFull(pending.buy_amount)  : null],
     ["Payment",     pending?.paid_amount ? nairaFull(pending.paid_amount) : null],
-    ["Due date",    pending?.due_date ? new Date(pending.due_date).toLocaleDateString("en-NG") : null],
+    ["Due date",    pending?.due_date    ? new Date(pending.due_date).toLocaleDateString("en-NG") : null],
   ].filter(([, v]) => v);
 
   return (
     <div className="capture-grid">
-      {/* ── Left: input form ── */}
       <div className="card">
         <div className="card-header">
           <span className="card-title">Record transaction</span>
@@ -152,8 +475,6 @@ export default function Capture() {
             <label className="form-label">Registered phone</label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="234..." className="form-full" />
           </div>
-
-          {/* Voice box */}
           <div className="voice-box">
             <div>
               <div className="voice-label">Voice capture</div>
@@ -174,28 +495,18 @@ export default function Capture() {
               </button>
             </div>
           </div>
-
           <div className="form-group">
             <label className="form-label">Transaction text</label>
-            <textarea
-              rows={5}
-              className="form-full"
-              placeholder={L.examples[0].text}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
+            <textarea rows={5} className="form-full" placeholder={L.examples[0].text}
+              value={text} onChange={(e) => setText(e.target.value)} />
           </div>
-
           <div className="example-chips">
             {L.examples.map((ex) => (
-              <button key={ex.label} type="button" className="example-chip"
-                onClick={() => setText(ex.text)}
-              >
+              <button key={ex.label} type="button" className="example-chip" onClick={() => setText(ex.text)}>
                 {ex.label}
               </button>
             ))}
           </div>
-
           <div className="gap-2">
             <button type="submit" className="btn btn-primary" disabled={previewState === "loading"}>
               <Send size={14} />
@@ -207,8 +518,6 @@ export default function Capture() {
           </div>
         </form>
       </div>
-
-      {/* ── Right: preview result ── */}
       <div className="card">
         <div className="card-header">
           <span className="card-title">Preview</span>
@@ -218,17 +527,14 @@ export default function Capture() {
           {previewState === "empty" && (
             <div className="capture-result empty">Enter a transaction and click Preview.</div>
           )}
-
           {previewState === "loading" && (
             <div className="capture-result empty">Reading transaction…</div>
           )}
-
           {previewState === "error" && (
             <div className="capture-result">
               <div style={{ color: "var(--rose)", fontSize: 13.5 }}>{preview?.message}</div>
             </div>
           )}
-
           {previewState === "ready" && preview && (
             <div className="capture-result">
               {preview.transcript && (
@@ -237,11 +543,9 @@ export default function Capture() {
                   <div style={{ fontSize: 13.5 }}>{preview.transcript}</div>
                 </div>
               )}
-
               {preview.messages?.map((m, i) => (
                 <div key={i} className="message-bubble">{m}</div>
               ))}
-
               {pending && !saved && (
                 <>
                   <div className="form-label">Parsed details</div>
@@ -253,23 +557,17 @@ export default function Capture() {
                       </div>
                     ))}
                   </div>
-                  <button
-                    className="btn btn-primary"
-                    disabled={saving}
-                    onClick={handleConfirm}
-                  >
+                  <button className="btn btn-primary" disabled={saving} onClick={handleConfirm}>
                     <CheckCircle size={15} />
                     {saving ? "Saving…" : "Confirm & save"}
                   </button>
                 </>
               )}
-
               {saved && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--brand)", fontWeight: 600 }}>
                   <CheckCircle size={18} /> Transaction saved. Check Dashboard for updated totals.
                 </div>
               )}
-
               {preview.message && !pending && (
                 <div style={{ color: "var(--muted)", fontSize: 13.5 }}>{preview.message}</div>
               )}
@@ -278,5 +576,34 @@ export default function Capture() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Root Capture page ─────────────────────────────────────────────────────────
+
+export default function Capture() {
+  const { ownerPhone } = useApp();
+  const [mode, setMode] = useState("form");
+
+  return (
+    <>
+      <div className="capture-mode-bar">
+        <button
+          className={`capture-mode-btn${mode === "form" ? " active" : ""}`}
+          onClick={() => setMode("form")}
+        >
+          Quick Form
+        </button>
+        <button
+          className={`capture-mode-btn${mode === "text" ? " active" : ""}`}
+          onClick={() => setMode("text")}
+        >
+          Text / Voice
+        </button>
+      </div>
+
+      {mode === "form" && <QuickFormPanel ownerPhone={ownerPhone} />}
+      {mode === "text" && <TextVoicePanel ownerPhone={ownerPhone} />}
+    </>
   );
 }

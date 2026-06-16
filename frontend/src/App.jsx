@@ -1,6 +1,7 @@
 import { Navigate, Routes, Route } from "react-router-dom";
 import { ToastProvider } from "./components/Toast";
 import { useAuth } from "./context/AuthContext";
+import InstallPrompt from "./components/InstallPrompt";
 import Layout       from "./components/Layout";
 import Landing      from "./pages/Landing";
 import Login        from "./pages/Login";
@@ -12,6 +13,7 @@ import Inventory    from "./pages/Inventory";
 import Suppliers    from "./pages/Suppliers";
 import Staff        from "./pages/Staff";
 import Reminders    from "./pages/Reminders";
+import Capture      from "./pages/Capture";
 import POS          from "./pages/POS";
 import Receipt      from "./pages/Receipt";
 import Wallet       from "./pages/Wallet";
@@ -24,6 +26,7 @@ function RequireAuth({ children }) {
 export default function App() {
   return (
     <ToastProvider>
+      <InstallPrompt />
       <Routes>
         {/* Public */}
         <Route index element={<Landing />} />
@@ -39,7 +42,7 @@ export default function App() {
         >
           <Route path="home"         element={<Chat />}         />
           <Route path="dashboard"    element={<Dashboard />}    />
-          <Route path="capture"      element={<Navigate to="/home" replace />} />
+          <Route path="capture"      element={<Capture />}      />
           <Route path="pos"          element={<POS />}          />
           <Route path="pos/receipt/:id" element={<Receipt />}   />
           <Route path="customers"    element={<Customers />}    />

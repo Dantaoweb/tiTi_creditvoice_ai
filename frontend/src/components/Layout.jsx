@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
-  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet,
+  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -10,6 +10,7 @@ import { getBizLabels } from "../lib/bizLabels";
 function buildNav(L) {
   return [
     { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare   },
+    { to: "/capture",      label: "Quick Record",     icon: PlusCircle      },
     { to: "/pos",          label: "Select product",   icon: ShoppingCart    },
     { to: "/inventory",    label: L.stock,            icon: Package         },
     { to: "/customers",    label: L.navCustomers,     icon: Users           },
@@ -32,7 +33,7 @@ export default function Layout() {
   const NAV = buildNav(L);
   const TITLES = {
     "/home":         "Chat with tiTi",
-    "/capture":      "Record",
+    "/capture":      "Quick Record",
     "/pos":          "Select product",
     "/inventory":    L.stock,
     "/customers":    L.navCustomers,

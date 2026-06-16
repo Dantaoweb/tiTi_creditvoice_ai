@@ -300,6 +300,65 @@ def handle_report_command(
         send_message(phone, f"Done. *{_prev.title()}* renamed to *{_new_name.title()}*.")
         return {"status": "rename_product_ok"}
 
+    if command_type in ("EXPORT_TRANSACTIONS", "EXPORT_DEBTORS", "EXPORT_STOCK", "EXPORT_CUSTOMERS"):
+        import os as _os_export
+        from export_utils import make_export_token
+
+        _type_key = {
+            "EXPORT_TRANSACTIONS": "transactions",
+            "EXPORT_DEBTORS": "debtors",
+            "EXPORT_STOCK": "stock",
+            "EXPORT_CUSTOMERS": "customers",
+        }[command_type]
+        _period = parsed.get("period") or None
+        _base_url = _os_export.getenv("APP_BASE_URL", "").rstrip("/")
+
+        if not _base_url:
+            send_message(
+                phone,
+                "Export is available on your web dashboard.\n\n"
+                "Open CreditVoice in your browser → Transactions → Export CSV.",
+            )
+            return {"status": "export_no_base_url"}
+
+        _token = make_export_token(business_owner_phone, _period, _type_key)
+        _url = f"{_base_url}/app/api/export/dl/{_token}"
+        _labels = {
+            "transactions": "Transactions", "debtors": "Unpaid Debtors",
+            "stock": "Stock Inventory", "customers": "Customer List",
+        }
+        _period_label = _period.lower() if _period else "all time"
+        send_message(
+            phone,
+            f"Your {_labels[_type_key]} export ({_period_label}) is ready.\n\n"
+            f"Download: {_url}\n\n"
+            "Link expires in 24 hours.",
+        )
+        return {"status": f"export_{_type_key}"}
+
+    if command_type == "LOAN_STATEMENT":
+        import os as _os_stmt
+        from export_utils import make_export_token
+        _base_url = _os_stmt.getenv("APP_BASE_URL", "").rstrip("/")
+        if not _base_url:
+            send_message(
+                phone,
+                "Your business statement is available on the web dashboard.\n\n"
+                "Open CreditVoice in your browser -> Dashboard -> Download Statement PDF.",
+            )
+            return {"status": "statement_no_base_url"}
+        _token = make_export_token(business_owner_phone, None, "loan_statement")
+        _url   = f"{_base_url}/app/api/loan-statement/dl/{_token}"
+        send_message(
+            phone,
+            "Your business statement is ready.\n\n"
+            f"Download PDF: {_url}\n\n"
+            "The statement includes your revenue, outstanding receivables, stock value, "
+            "and transaction history. Useful for bank or microfinance applications.\n\n"
+            "Link expires in 24 hours.",
+        )
+        return {"status": "loan_statement_sent"}
+
     if command_type == "SET_STUDENT_CLASS":
         from models import Customer as _SetCust
         _s_name = parsed.get("name", "").strip()

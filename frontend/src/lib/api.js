@@ -50,3 +50,33 @@ export async function apiPut(path, body) {
     body: JSON.stringify(body),
   });
 }
+
+export async function apiDownload(path, params = {}) {
+  const url = new URL(`/app/api/${path}`, window.location.origin);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== null && v !== undefined && v !== "") url.searchParams.set(k, v);
+  });
+  const tok = _getToken();
+  const res = await fetch(url.toString(), {
+    headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+  });
+  if (res.status === 401) {
+    localStorage.removeItem("cv_token");
+    localStorage.removeItem("cv_user");
+    window.location.href = "/app/login";
+    throw new Error("Session expired.");
+  }
+  if (!res.ok) {
+    throw new Error(`Export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || "export.csv";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiDownload } from "../lib/api";
 import { nairaFull, dateTimeStr, qty } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
@@ -15,6 +16,18 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [filter, setFilter]   = useState("all");
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport(exportType) {
+    setExporting(true);
+    try {
+      await apiDownload("export", { export_type: exportType, owner_phone: ownerPhone, period });
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -35,7 +48,7 @@ export default function Transactions() {
       <div className="card">
         <div className="card-header">
           <span className="card-title">Transactions <span className="text-subtle text-sm">({filtered.length})</span></span>
-          <div className="gap-2">
+          <div className="gap-2" style={{ flexWrap: "wrap" }}>
             {types.map((t) => (
               <button
                 key={t}
@@ -45,6 +58,18 @@ export default function Transactions() {
                 {t === "all" ? "All" : t}
               </button>
             ))}
+            <div className="export-dropdown">
+              <button className="btn btn-sm btn-ghost export-dropdown-trigger" disabled={exporting}>
+                <Download size={13} />
+                {exporting ? "Exporting…" : "Export"}
+              </button>
+              <div className="export-dropdown-menu">
+                <button onClick={() => handleExport("transactions")}>Transactions CSV</button>
+                <button onClick={() => handleExport("debtors")}>Unpaid Debtors CSV</button>
+                <button onClick={() => handleExport("customers")}>Customer List CSV</button>
+                <button onClick={() => handleExport("stock")}>Stock Inventory CSV</button>
+              </div>
+            </div>
           </div>
         </div>
         <DataTable

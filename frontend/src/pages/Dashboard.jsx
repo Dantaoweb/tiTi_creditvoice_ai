@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, AlertCircle, MessageCircle, X } from "lucide-react";
+import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiDownload } from "../lib/api";
 import { naira, nairaFull, relativeDate } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 import DataTable from "../components/DataTable";
@@ -48,6 +48,30 @@ export default function Dashboard() {
   const [txData, setTxData]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [exportingType, setExportingType]   = useState(null);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
+
+  async function handleExport(exportType) {
+    setExportingType(exportType);
+    try {
+      await apiDownload("export", { export_type: exportType, owner_phone: ownerPhone, period });
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setExportingType(null);
+    }
+  }
+
+  async function handleLoanStatement() {
+    setDownloadingPDF(true);
+    try {
+      await apiDownload("loan-statement", { owner_phone: ownerPhone, period });
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setDownloadingPDF(false);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -129,6 +153,46 @@ export default function Dashboard() {
           <Link to="/inventory" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }}>View inventory</Link>
         </div>
       )}
+
+      <div className="stmt-banner">
+        <div className="stmt-banner-left">
+          <FileText size={18} className="stmt-banner-icon" />
+          <div>
+            <div className="stmt-banner-title">Loan-Ready Statement</div>
+            <div className="stmt-banner-sub">A professional PDF showing your revenue, receivables, and stock — ready to share with a bank or microfinance institution.</div>
+          </div>
+        </div>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={handleLoanStatement}
+          disabled={downloadingPDF}
+        >
+          <Download size={14} />
+          {downloadingPDF ? "Generating PDF…" : "Download Statement PDF"}
+        </button>
+      </div>
+
+      <div className="export-strip">
+        <div className="export-strip-label">
+          <Download size={13} />
+          Export data
+        </div>
+        {[
+          { key: "transactions", label: "Transactions" },
+          { key: "debtors",      label: "Unpaid Debtors" },
+          { key: "customers",    label: "Customers" },
+          { key: "stock",        label: "Stock Inventory" },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            className="btn btn-ghost btn-sm"
+            onClick={() => handleExport(key)}
+            disabled={exportingType === key}
+          >
+            {exportingType === key ? "Downloading…" : `${label} CSV`}
+          </button>
+        ))}
+      </div>
     </>
   );
 }

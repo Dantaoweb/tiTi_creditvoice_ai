@@ -106,11 +106,60 @@ def _handle_dashboard_menu(
 ):
     normalized = text.strip().lower()
 
-    if normalized in ["10", "add stock", "stock", "inventory"]:
+    if normalized in ["add stock", "stock", "inventory"]:
         db.delete(pending)
         db.commit()
         send_whatsapp_message(phone, build_add_stock_help_message())
         return PendingRouteResult(response={"status": "dashboard_add_stock"})
+
+    if normalized in ["10", "export", "export data", "export my data", "download"]:
+        import os as _os_exp
+        from export_utils import make_export_token
+        _base_url = _os_exp.getenv("APP_BASE_URL", "").rstrip("/")
+        if not _base_url:
+            send_whatsapp_message(
+                phone,
+                "Export is available on your web dashboard.\n\n"
+                "Open CreditVoice in your browser → Transactions → Export CSV.",
+            )
+        else:
+            _token = make_export_token(business_owner_phone, None, "transactions")
+            _url = f"{_base_url}/app/api/export/dl/{_token}"
+            send_whatsapp_message(
+                phone,
+                "Your transactions export (all time) is ready.\n\n"
+                f"Download: {_url}\n\n"
+                "Link expires in 24 hours.\n\n"
+                "You can also type:\n"
+                "• export debtors\n"
+                "• export stock\n"
+                "• export customers\n"
+                "• export this month",
+            )
+        return PendingRouteResult(response={"status": "dashboard_export"})
+
+    if normalized in ["11", "statement", "loan statement", "business statement", "my statement", "pdf"]:
+        import os as _os_stmt
+        from export_utils import make_export_token
+        _base_url = _os_stmt.getenv("APP_BASE_URL", "").rstrip("/")
+        if not _base_url:
+            send_whatsapp_message(
+                phone,
+                "Your business statement is available on the web dashboard.\n\n"
+                "Open CreditVoice in your browser -> Dashboard -> Download Statement PDF.",
+            )
+        else:
+            _token = make_export_token(business_owner_phone, None, "loan_statement")
+            _url   = f"{_base_url}/app/api/loan-statement/dl/{_token}"
+            send_whatsapp_message(
+                phone,
+                "Your business statement is ready.\n\n"
+                f"Download PDF: {_url}\n\n"
+                "Includes revenue, outstanding receivables, stock value, and transaction history. "
+                "Useful for bank or microfinance applications.\n\n"
+                "Link expires in 24 hours.",
+            )
+        return PendingRouteResult(response={"status": "dashboard_statement"})
 
     dashboard_aliases = {
         "today": "1", "this week": "2", "week": "2",
