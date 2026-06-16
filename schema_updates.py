@@ -89,6 +89,25 @@ def ensure_schema_updates(engine):
                     )
                 )
 
+    customer_columns = {
+        column["name"]
+        for column in inspector.get_columns("customers")
+    }
+    boolean_false_c = "FALSE" if engine.dialect.name == "postgresql" else "0"
+    customer_updates = {
+        "category": "VARCHAR",
+        "secondary_phone": "VARCHAR",
+        "is_truck": f"BOOLEAN DEFAULT {boolean_false_c}",
+    }
+    with engine.begin() as connection:
+        for column_name, column_type in customer_updates.items():
+            if column_name not in customer_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE customers ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
     pending_columns = {
         column["name"]
         for column in inspector.get_columns("pending_actions")

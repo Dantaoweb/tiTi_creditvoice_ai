@@ -52,8 +52,11 @@ def _save(pending, data):
 def _get_catalog(user):
     """Return a list of product name strings for the user's industry (up to _CATALOG_PAGE)."""
     key = template_key_for_user(user) if user else None
-    entries = INDUSTRY_PRODUCT_CATALOG.get(key, []) if key else []
-    # Fall back to retail if no match
+    btype = getattr(user, "business_type", None) if user else None
+    entries = (
+        INDUSTRY_PRODUCT_CATALOG.get(btype)
+        or (INDUSTRY_PRODUCT_CATALOG.get(key, []) if key else [])
+    )
     if not entries:
         entries = INDUSTRY_PRODUCT_CATALOG.get("retail_trading", [])
     return [name for name, _cat in entries[:_CATALOG_PAGE]]

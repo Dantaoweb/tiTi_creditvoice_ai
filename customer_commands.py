@@ -25,9 +25,18 @@ def _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx
         business_name.upper(),
         date_str,
         "--------------------",
-        f"{cfg['customer_label']}: {customer.name.title()}",
-        "--------------------",
     ]
+
+    if getattr(customer, "is_truck", False):
+        lines.append(f"Truck No:  {customer.name.upper()}")
+        if customer.category:
+            lines.append(f"Driver:    {customer.category.title()}")
+        if customer.secondary_phone:
+            lines.append(f"Driver Ph: {customer.secondary_phone}")
+    else:
+        lines.append(f"{cfg['customer_label']}: {customer.name.title()}")
+
+    lines.append("--------------------")
 
     # Use TransactionItems if they exist, otherwise use the transaction's own fields
     items = db.query(TransactionItem).filter(TransactionItem.transaction_id == tx.id).all()

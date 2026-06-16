@@ -23,6 +23,15 @@ class Customer(Base):
 
     customer_phone = Column(String, nullable=True)
 
+    # General-purpose tag: student class/grade, driver name, or other category
+    category = Column(String, nullable=True)
+
+    # Secondary contact: driver phone for truck customers, alternate contact otherwise
+    secondary_phone = Column(String, nullable=True)
+
+    # True when this customer record represents a registered truck/vehicle
+    is_truck = Column(Boolean, nullable=True, default=False)
+
     created_at = Column(
         DateTime,
         default=utcnow

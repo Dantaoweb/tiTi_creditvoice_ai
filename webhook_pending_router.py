@@ -36,6 +36,8 @@ from constants import (
     GUIDED_STOCK_ACTIONS,
     SELECT_PRODUCT_ACTIONS,
     STOCK_MENU_ACTIONS,
+    TRUCK_WIZARD_ACTIONS,
+    TRIP_WIZARD_ACTIONS,
 )
 from context_memory import get_active_menu
 from fast_capture_commands import handle_fast_capture_review_pending
@@ -967,6 +969,22 @@ def handle_pending_actions(
 
         result = handle_guided_service_pending(
             db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,
+        )
+        if result:
+            return _wrap(result)
+
+    # ── Truck add wizard ─────────────────────────────────────────────────────
+    if pending and pending.action in TRUCK_WIZARD_ACTIONS and not is_command:
+        from truck_commands import handle_add_truck_pending
+        result = handle_add_truck_pending(db, phone, text, pending, send_whatsapp_message)
+        if result:
+            return _wrap(result)
+
+    # ── Record trip wizard ───────────────────────────────────────────────────
+    if pending and pending.action in TRIP_WIZARD_ACTIONS and not is_command:
+        from truck_commands import handle_record_trip_pending
+        result = handle_record_trip_pending(
+            db, phone, text, pending, user, business_owner_phone, send_whatsapp_message
         )
         if result:
             return _wrap(result)

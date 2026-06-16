@@ -2338,6 +2338,40 @@ def parse_message(text):
     ]:
         return {"type": "REONBOARD"}
 
+    # ── Truck registration ───────────────────────────────────────────────────
+    # "add truck KJA234AB driver Emeka 08012345678"
+    # "register truck KJA 234 AB driver Bayo 0801..."
+    _truck_m = re.match(
+        r"^(?:add|register)\s+truck\s+"
+        r"(?P<plate>[A-Za-z0-9][A-Za-z0-9\s\-]{1,15}?)"
+        r"(?:\s+driver\s+(?P<driver>[A-Za-z][A-Za-z\s]{1,30}?))??"
+        r"(?:\s+(?P<driver_phone>0\d{10}|\+234\d{10}))?$",
+        clean_text,
+    )
+    if _truck_m:
+        plate = _truck_m.group("plate").strip().upper()
+        driver = (_truck_m.group("driver") or "").strip().title()
+        driver_phone = (_truck_m.group("driver_phone") or "").strip()
+        if plate:
+            return {
+                "type": "ADD_TRUCK",
+                "plate": plate,
+                "driver": driver,
+                "driver_phone": driver_phone,
+            }
+
+    # ── Truck list ──────────────────────────────────────────────────────────
+    if clean_text in ["my trucks", "trucks", "truck list", "all trucks", "registered trucks"]:
+        return {"type": "MY_TRUCKS"}
+
+    # ── Record trip (wizard entry) ───────────────────────────────────────────
+    if clean_text in ["record trip", "trip", "new trip", "add trip"]:
+        return {"type": "RECORD_TRIP_WIZARD"}
+
+    # ── Add truck (wizard entry — bare command, no plate) ────────────────────
+    if clean_text in ["add truck", "register truck", "new truck"]:
+        return {"type": "ADD_TRUCK_WIZARD"}
+
     # ── Product rename shortcut ──────────────────────────────────────────────
     # "rename rice to brown rice"  |  "correct paracetamol to paracetamol 500mg"
     _rename_prod_m = re.match(

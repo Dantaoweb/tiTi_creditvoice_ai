@@ -202,7 +202,9 @@ def _auto_category(db, owner_phone, product):
     owner = db.query(User).filter(User.phone == owner_phone).first()
     if not owner:
         return None
-    return get_product_category_suggestion(template_key_for_user(owner), product)
+    return get_product_category_suggestion(
+        template_key_for_user(owner), product, getattr(owner, "business_type", None)
+    )
 
 
 def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None):

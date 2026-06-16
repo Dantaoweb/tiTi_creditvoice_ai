@@ -271,6 +271,14 @@ def handle_report_command(
         send_message(phone, msg)
         return {"status": "search_customer"}
 
+    if command_type == "ADD_TRUCK_WIZARD":
+        from truck_commands import start_add_truck_wizard
+        return start_add_truck_wizard(db, phone, send_message)
+
+    if command_type == "RECORD_TRIP_WIZARD":
+        from truck_commands import start_record_trip_wizard
+        return start_record_trip_wizard(db, phone, user, send_message)
+
     if command_type == "RENAME_PRODUCT":
         from models import InventoryItem as _RenInv
         _old_name = parsed.get("old_name", "").strip()
@@ -314,6 +322,69 @@ def handle_report_command(
         db.commit()
         send_message(phone, f"{_match.name.title()} — class set to *{_s_class.upper()}*.")
         return {"status": "set_class_ok"}
+
+    if command_type == "ADD_TRUCK":
+        from models import Customer as _TruckCust
+        _plate = parsed.get("plate", "").strip().upper()
+        _driver = parsed.get("driver", "").strip()
+        _driver_ph = parsed.get("driver_phone", "").strip()
+        if not _plate:
+            send_message(phone, "Please include the truck plate number.\nExample: add truck KJA234AB driver Emeka 08012345678")
+            return {"status": "add_truck_no_plate"}
+        _existing = (
+            db.query(_TruckCust)
+            .filter(
+                _TruckCust.owner_phone == business_owner_phone,
+                _TruckCust.name.ilike(_plate),
+                _TruckCust.is_truck.is_(True),
+            )
+            .first()
+        )
+        if _existing:
+            if _driver:
+                _existing.category = _driver
+            if _driver_ph:
+                _existing.secondary_phone = _driver_ph
+            db.commit()
+            _drv_line = f"\nDriver: {_existing.category}" if _existing.category else ""
+            _ph_line = f"\nDriver Ph: {_existing.secondary_phone}" if _existing.secondary_phone else ""
+            send_message(phone, f"Truck updated.\nPlate: {_plate}{_drv_line}{_ph_line}")
+            return {"status": "truck_updated"}
+        _truck = _TruckCust(
+            owner_phone=business_owner_phone,
+            name=_plate,
+            category=_driver or None,
+            secondary_phone=_driver_ph or None,
+            is_truck=True,
+        )
+        db.add(_truck)
+        db.commit()
+        _drv_line = f"\nDriver: {_driver}" if _driver else ""
+        _ph_line = f"\nDriver Ph: {_driver_ph}" if _driver_ph else ""
+        send_message(phone, f"Truck registered.\nPlate: {_plate}{_drv_line}{_ph_line}\n\nTo record a trip: {_plate} diesel 5000 litres 1200")
+        return {"status": "truck_registered"}
+
+    if command_type == "MY_TRUCKS":
+        from models import Customer as _ListTruck
+        _trucks = (
+            db.query(_ListTruck)
+            .filter(
+                _ListTruck.owner_phone == business_owner_phone,
+                _ListTruck.is_truck.is_(True),
+            )
+            .order_by(_ListTruck.name)
+            .all()
+        )
+        if not _trucks:
+            send_message(phone, "No trucks registered yet.\n\nTo add one:\nadd truck KJA234AB driver Emeka 08012345678")
+            return {"status": "no_trucks"}
+        lines = [f"Registered Trucks ({len(_trucks)})\n"]
+        for i, t in enumerate(_trucks, 1):
+            drv = t.category or "—"
+            ph = t.secondary_phone or "—"
+            lines.append(f"{i}. *{t.name}*\n   Driver: {drv}\n   Phone: {ph}")
+        send_message(phone, "\n".join(lines))
+        return {"status": "truck_list"}
 
     if command_type == "CUSTOMER_SUMMARY":
         summary = get_customer_summary(db, business_owner_phone, parsed.get("name", ""), visible_recorded_by_id)

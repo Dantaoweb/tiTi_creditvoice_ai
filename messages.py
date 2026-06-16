@@ -255,13 +255,26 @@ def build_owner_home_menu(user, subscription):
     elif group == "thrift":
         body = (
             "1. Record contribution\n"
-            "2. Participants\n"
-            "3. Reminders\n"
-            "4. Dashboard\n"
+            "2. Select group / rate\n"
+            "3. Participants\n"
+            "4. Reminders\n"
             "5. Reports\n"
-            "6. Help\n"
-            "7. Wallet ✦\n"
-            "8. More →"
+            "6. Dashboard\n"
+            "7. Help\n"
+            "8. Wallet ✦\n"
+            "9. More →"
+        )
+    elif group == "food":
+        body = (
+            "1. Record sale\n"
+            "2. Select product\n"
+            "3. Menu / price list\n"
+            "4. My customers\n"
+            "5. Reminders\n"
+            "6. Stock / inventory\n"
+            "7. Dashboard\n"
+            "8. Wallet ✦\n"
+            "9. More →"
         )
     elif group == "clinic":
         body = (
@@ -303,7 +316,7 @@ def build_owner_home_menu(user, subscription):
 
 
 def build_home_more_menu(user=None):
-    from business_templates import menu_group_for_user
+    from business_templates import menu_group_for_user, template_key_for_user
     group = menu_group_for_user(user) if user else "stock"
     if group == "school":
         return (
@@ -311,6 +324,17 @@ def build_home_more_menu(user=None):
             "1. Textbooks & stock\n"
             "2. My plan & upgrade\n"
             "3. Teachers (PRO)\n"
+            "4. Back"
+        )
+    if group == "service":
+        key = template_key_for_user(user) if user else None
+        _is_salon = key == "salon_beauty"
+        stock_line = "1. Products / stock\n" if _is_salon else "1. Suppliers\n"
+        return (
+            f"More options\n\n"
+            f"{stock_line}"
+            "2. My plan & upgrade\n"
+            "3. Staff (PRO)\n"
             "4. Back"
         )
     return (

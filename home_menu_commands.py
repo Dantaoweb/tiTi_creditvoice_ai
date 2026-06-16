@@ -53,6 +53,21 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
         _record_help(db, phone, user, pending, send_message)
         return {"status": "owner_home_record_help"}
 
+    if normalized in ["my trucks", "trucks", "truck list", "all trucks", "registered trucks"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "MY_TRUCKS"}}
+
+    if normalized in ["record trip", "trip", "new trip", "add trip"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "RECORD_TRIP_WIZARD"}}
+
+    if normalized in ["add truck", "register truck", "new truck"]:
+        db.delete(pending)
+        db.commit()
+        return {"parsed": {"type": "ADD_TRUCK_WIZARD"}}
+
     if normalized in ["select product", "sell"]:
         db.delete(pending)
         db.commit()
@@ -62,14 +77,23 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
         from guided_service_commands import start_guided_service_setup
         return start_guided_service_setup(db, phone, user, send_message)
 
+    if normalized in ["select group", "rates", "contribution rates", "groups",
+                      "rate", "group rates", "price list"] and group == "thrift":
+        from guided_service_commands import start_guided_service_setup
+        return start_guided_service_setup(db, phone, user, send_message)
+
     if normalized in ["fee schedule", "fee list", "fees", "price list", "fee prices"] and group == "school":
+        from guided_service_commands import start_guided_service_setup
+        return start_guided_service_setup(db, phone, user, send_message)
+
+    if normalized in ["menu", "price list", "food menu", "menu prices"] and group == "food":
         from guided_service_commands import start_guided_service_setup
         return start_guided_service_setup(db, phone, user, send_message)
 
     if normalized in ["stock", "inventory", "add stock", "textbooks", "textbook",
                        "consumables", "supplies"]:
         from business_templates import has_service_price_catalog
-        if group not in ("clinic", "school") and has_service_price_catalog(user):
+        if group not in ("clinic", "school", "food") and has_service_price_catalog(user):
             from guided_service_commands import start_guided_service_setup
             return start_guided_service_setup(db, phone, user, send_message)
         from guided_stock_commands import start_guided_stock_flow
@@ -138,8 +162,40 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
     if normalized.isdigit():
         opt = int(normalized)
 
+        # ── Food group (9-option menu) ─────────────────────────────────────────
+        if group == "food":
+            if opt == 1:
+                _record_help(db, phone, user, pending, send_message)
+                return {"status": "owner_home_record_help"}
+            if opt == 2:  # Select product
+                db.delete(pending)
+                db.commit()
+                return {"parsed": {"type": "SELECT_PRODUCT"}}
+            if opt == 3:  # Menu / price list
+                from guided_service_commands import start_guided_service_setup
+                return start_guided_service_setup(db, phone, user, send_message)
+            if opt == 4:  # My customers
+                db.delete(pending)
+                db.commit()
+                save_context(db, phone, last_topic="customers")
+                return {"parsed": {"type": "CUSTOMER_LIST", "period": None}}
+            if opt == 5:  # Reminders
+                db.delete(pending)
+                db.commit()
+                save_context(db, phone, last_menu="DUE_MENU", last_topic="due")
+                return {"parsed": {"type": "DUE_MENU"}}
+            if opt == 6:  # Stock / inventory
+                from guided_stock_commands import start_guided_stock_flow
+                return start_guided_stock_flow(db, phone, user, send_message)
+            if opt == 7:  # Dashboard
+                return _go_dashboard(db, phone, pending, send_message)
+            if opt == 8:
+                return _wallet_msg(db, phone, pending, send_message)
+            if opt == 9:
+                return _go_more(db, phone, user, pending, send_message)
+
         # ── Service group (9-option menu) ──────────────────────────────────────
-        if group == "service":
+        elif group == "service":
             if opt == 1:
                 _record_help(db, phone, user, pending, send_message)
                 return {"status": "owner_home_record_help"}
@@ -218,27 +274,32 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
             if opt == 1:
                 _record_help(db, phone, user, pending, send_message)
                 return {"status": "owner_home_record_help"}
-            if opt == 2:
+            if opt == 2:  # Select group / rate
+                from guided_service_commands import start_guided_service_setup
+                return start_guided_service_setup(db, phone, user, send_message)
+            if opt == 3:  # Participants
                 db.delete(pending)
                 db.commit()
                 save_context(db, phone, last_topic="customers")
                 return {"parsed": {"type": "CUSTOMER_LIST", "period": None}}
-            if opt == 3:
+            if opt == 4:  # Reminders
                 db.delete(pending)
                 db.commit()
                 save_context(db, phone, last_menu="DUE_MENU", last_topic="due")
                 return {"parsed": {"type": "DUE_MENU"}}
-            if opt == 4:
+            if opt == 5:  # Reports
+                db.delete(pending)
+                db.commit()
+                return {"parsed": {"type": "REPORT_MENU"}}
+            if opt == 6:  # Dashboard
                 return _go_dashboard(db, phone, pending, send_message)
-            if opt == 5:
-                return _go_dashboard(db, phone, pending, send_message)
-            if opt == 6:
+            if opt == 7:  # Help
                 db.delete(pending)
                 db.commit()
                 return {"parsed": {"type": "FORMATS"}}
-            if opt == 7:
-                return _wallet_msg(db, phone, pending, send_message)
             if opt == 8:
+                return _wallet_msg(db, phone, pending, send_message)
+            if opt == 9:
                 return _go_more(db, phone, user, pending, send_message)
 
         # ── Clinic group (9-option menu) ──────────────────────────────────────
@@ -375,6 +436,38 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             send_message(phone, "Adding teachers requires PRO plan.\n\nSend UPGRADE to see plans.")
             return {"status": "more_teachers_no_plan"}
 
+        if normalized in ["4", "back", "main menu", "home", "menu"]:
+            pending.action = "OWNER_HOME_MENU"
+            db.commit()
+            send_message(phone, build_owner_home_menu(user, subscription))
+            return {"status": "more_back"}
+
+    elif group == "service":
+        from business_templates import template_key_for_user as _tku
+        _is_salon = _tku(user) == "salon_beauty" if user else False
+        if normalized in ["1", "products", "stock", "inventory", "products / stock"] and _is_salon:
+            db.delete(pending)
+            db.commit()
+            from guided_stock_commands import start_guided_stock_flow
+            return start_guided_stock_flow(db, phone, user, send_message)
+        if normalized in ["1", "suppliers", "supplier"] and not _is_salon:
+            db.delete(pending)
+            db.commit()
+            save_context(db, phone, last_topic="suppliers")
+            return {"parsed": {"type": "SUPPLIER_LIST"}}
+        if normalized in ["2", "my plan", "plan", "upgrade"]:
+            pending.action = "UPGRADE_MENU"
+            db.commit()
+            save_context(db, phone, last_topic="upgrade")
+            send_message(phone, build_upgrade_message(user))
+            return {"status": "more_upgrade"}
+        if normalized in ["3", "staff"]:
+            if subscription.get("plan") == PLAN_PRO:
+                db.delete(pending)
+                db.commit()
+                return {"parsed": {"type": "STAFF_MENU"}}
+            send_message(phone, "Staff management requires PRO plan.\n\nSend UPGRADE to see plans.")
+            return {"status": "more_staff_no_plan"}
         if normalized in ["4", "back", "main menu", "home", "menu"]:
             pending.action = "OWNER_HOME_MENU"
             db.commit()
