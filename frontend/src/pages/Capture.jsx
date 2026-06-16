@@ -3,6 +3,7 @@ import { Mic, MicOff, Play, Send, X, CheckCircle, ShoppingCart, CreditCard, Pack
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { nairaFull } from "../lib/format";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
@@ -142,16 +143,29 @@ function SaleForm({ ownerPhone, onSuccess }) {
     try {
       const qtyNum = Math.max(1, Number(qty) || 1);
       const total  = Number(amount);
-      await apiPost("pos/save", {
+      const body   = {
         owner_phone:    ownerPhone,
         customer_id:    customer?.id || null,
         items:          [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
         payment_amount: customer ? 0 : total,
-      });
+      };
+      await apiPost("pos/save", body);
       onSuccess(`Sale of ${nairaFull(total)} recorded${customer ? ` — credit to ${customer.name}` : " (cash)"}.`);
       setProduct(""); setQty("1"); setUnit(""); setAmount(""); setCustomer(null);
     } catch (e) {
-      setError(e.message);
+      if (isNetworkError(e)) {
+        const qtyNum = Math.max(1, Number(qty) || 1);
+        const total  = Number(amount);
+        enqueue("pos/save", {
+          owner_phone: ownerPhone, customer_id: customer?.id || null,
+          items: [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
+          payment_amount: customer ? 0 : total,
+        }, `Sale ${nairaFull(total)}${customer ? ` — ${customer.name}` : " (cash)"}`);
+        onSuccess(`No internet — sale saved offline. Will sync automatically when you reconnect.`);
+        setProduct(""); setQty("1"); setUnit(""); setAmount(""); setCustomer(null);
+      } else {
+        setError(e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -210,7 +224,17 @@ function PaymentForm({ ownerPhone, onSuccess }) {
       onSuccess(`Payment of ${nairaFull(Number(amount))} from ${customer.name} recorded.`);
       setCustomer(null); setAmount(""); setNote("");
     } catch (e) {
-      setError(e.message);
+      if (isNetworkError(e)) {
+        enqueue(
+          `customers/${customer.id}/pay`,
+          { amount: Number(amount), note: note || null },
+          `Payment ${nairaFull(Number(amount))} from ${customer.name}`,
+        );
+        onSuccess(`No internet — payment saved offline. Will sync automatically when you reconnect.`);
+        setCustomer(null); setAmount(""); setNote("");
+      } else {
+        setError(e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -258,14 +282,25 @@ function StockForm({ ownerPhone, onSuccess }) {
     if (!item || !qty) return;
     setLoading(true); setError(null);
     try {
-      await apiPost(`inventory/${item.id}/adjust`, {
+      const body = {
         qty_delta: Number(qty),
-        note:      note || (cost ? `Received @ ₦${cost}/unit` : "Stock received"),
-      });
+        note:      note || (cost ? `Received @ N${cost}/unit` : "Stock received"),
+      };
+      await apiPost(`inventory/${item.id}/adjust`, body);
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock.`);
       setItem(null); setQty(""); setCost(""); setNote("");
     } catch (e) {
-      setError(e.message);
+      if (isNetworkError(e)) {
+        enqueue(
+          `inventory/${item.id}/adjust`,
+          { qty_delta: Number(qty), note: note || (cost ? `Received @ N${cost}/unit` : "Stock received") },
+          `Stock +${qty} ${item.unit || "units"} of ${item.name}`,
+        );
+        onSuccess(`No internet — stock entry saved offline. Will sync automatically when you reconnect.`);
+        setItem(null); setQty(""); setCost(""); setNote("");
+      } else {
+        setError(e.message);
+      }
     } finally {
       setLoading(false);
     }

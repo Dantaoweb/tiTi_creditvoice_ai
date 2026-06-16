@@ -1795,6 +1795,36 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   flex-shrink: 0;
 }
 
+/* ── Offline / sync indicator ────────────────────────────────────────── */
+.topbar-sync { display: flex; align-items: center; }
+
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.sync-chip--offline {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.sync-chip--syncing {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+  animation: pulse-chip 1.4s ease-in-out infinite;
+}
+@keyframes pulse-chip {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
 /* ── Loan statement banner ───────────────────────────────────────────── */
 .stmt-banner {
   display: flex;

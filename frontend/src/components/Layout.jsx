@@ -6,6 +6,7 @@ import {
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
+import { useOfflineSync } from "../lib/useOfflineSync";
 
 function buildNav(L) {
   return [
@@ -31,6 +32,7 @@ export default function Layout() {
 
   const L = getBizLabels(user?.menu_group);
   const NAV = buildNav(L);
+  const { isOnline, pending, syncing } = useOfflineSync();
   const TITLES = {
     "/home":         "Chat with tiTi",
     "/capture":      "Quick Record",
@@ -109,6 +111,17 @@ export default function Layout() {
           <div className="topbar-left">
             <div className="topbar-eyebrow">CreditVoice</div>
             <h1>{title}</h1>
+          </div>
+
+          <div className="topbar-sync">
+            {!isOnline && (
+              <span className="sync-chip sync-chip--offline">Offline</span>
+            )}
+            {isOnline && pending > 0 && (
+              <span className="sync-chip sync-chip--syncing">
+                {syncing ? `Syncing ${pending}…` : `${pending} pending`}
+              </span>
+            )}
           </div>
 
           <div className="topbar-controls">
