@@ -986,7 +986,7 @@ def handle_pending_actions(
             return _wrap(result)
 
     # ── Guided stock add (catalog Q&A) ───────────────────────────────────────
-    if pending and pending.action in GUIDED_STOCK_ACTIONS and not is_command:
+    if pending and pending.action in GUIDED_STOCK_ACTIONS:
         if parsed and parsed.get("type") == "TRANSACTION":
             db.delete(pending)
             db.commit()
@@ -998,7 +998,7 @@ def handle_pending_actions(
                 return _wrap(result)
 
     # ── Guided service price list setup ──────────────────────────────────────
-    if pending and pending.action in GUIDED_SERVICE_SETUP_ACTIONS and not is_command:
+    if pending and pending.action in GUIDED_SERVICE_SETUP_ACTIONS:
         # If user sends a service job while price list is open, save items and route to job
         if pending.action == ACTION_GUIDED_SERVICE_SETUP:
             from parser import parse_message as _pm

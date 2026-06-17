@@ -386,6 +386,40 @@ def handle_parsed_command(
             return {"status": "price_list_no_user"}
         return start_guided_service_setup(db, phone, user, send_whatsapp_message)
 
+    if parsed["type"] == "SET_RETAIL_BREAKDOWN":
+        if not user:
+            send_whatsapp_message(phone, "Register your business first.")
+            return {"status": "breakdown_no_user"}
+        from inventory_suppliers import set_retail_breakdown
+        product = parsed["product"]
+        ret_unit = parsed["retail_unit"]
+        ret_per = parsed["retail_per_base"]
+        ret_price = parsed.get("retail_price")
+        item, err = set_retail_breakdown(
+            db, business_owner_phone, product, None, ret_unit, ret_per, ret_price,
+        )
+        db.commit()
+        if err or not item:
+            send_whatsapp_message(
+                phone,
+                f"Could not find *{product.title()}* in your stock.\n"
+                "Add it to stock first, then set the breakdown.\n\n"
+                f"Example: *breakdown eggs: egg 30 70*\n(30 eggs per crate, ₦70 each)"
+            )
+            return {"status": "breakdown_not_found"}
+        base = item.unit or "unit"
+        price_note = f" at ₦{ret_price:,} each" if ret_price else ""
+        send_whatsapp_message(
+            phone,
+            f"Retail breakdown set ✓\n\n"
+            f"*{item.name.title()}* ({base})\n"
+            f"→ {ret_per} {ret_unit}s per {base}{price_note}\n\n"
+            f"Now when you sell, you can say:\n"
+            f"*Emeka bought 3 {ret_unit} {product}*\n"
+            f"and stock will be deducted correctly."
+        )
+        return {"status": "breakdown_saved"}
+
     if parsed["type"] == "SET_SERVICE_PRICE":
         if not user:
             send_whatsapp_message(phone, "Register your business first.")

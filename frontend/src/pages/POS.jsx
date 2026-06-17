@@ -32,6 +32,12 @@ function ProductSearch({ ownerPhone, onAdd }) {
       unit_price: p.selling_price,
       qty: 1,
       stock: p.quantity,
+      is_service: p.is_service,
+      retail_unit: p.retail_unit || null,
+      retail_per_base: p.retail_per_base || null,
+      retail_price: p.retail_price || null,
+      sold_unit: null,    // null means base unit
+      fraction: 1.0,
     });
     setQ("");
     setResults([]);
@@ -55,7 +61,10 @@ function ProductSearch({ ownerPhone, onAdd }) {
               <span className="pos-product-name">{p.name}{p.unit ? ` (${p.unit})` : ""}</span>
               <span className="pos-product-meta">
                 {naira(p.selling_price)}
-                <span className="pos-stock">{p.quantity} in stock</span>
+                {p.is_service
+                  ? <span className="pos-stock pos-stock--service">Available</span>
+                  : <span className="pos-stock">{p.quantity} in stock</span>
+                }
               </span>
             </button>
           ))}
@@ -195,6 +204,8 @@ export default function POS() {
           qty: it.qty,
           unit: it.unit || null,
           unit_price: it.unit_price,
+          sold_unit: it.sold_unit || null,
+          fraction: it.fraction || 1.0,
         })),
         payment_amount: paid,
       });
@@ -237,6 +248,33 @@ export default function POS() {
                     <Trash2 size={13} />
                   </button>
                 </div>
+                {/* Retail unit toggle — shown only when product has breakdown config */}
+                {it.retail_unit && (
+                  <div className="pos-unit-toggle">
+                    <button
+                      className={`pos-unit-btn${!it.sold_unit ? " pos-unit-btn--active" : ""}`}
+                      onClick={() => {
+                        updateItem(idx, "sold_unit", null);
+                        updateItem(idx, "fraction", 1.0);
+                        updateItem(idx, "unit_price", it._base_price || it.unit_price);
+                      }}
+                    >
+                      Per {it.unit || "unit"}
+                    </button>
+                    <button
+                      className={`pos-unit-btn${it.sold_unit === it.retail_unit ? " pos-unit-btn--active" : ""}`}
+                      onClick={() => {
+                        updateItem(idx, "_base_price", it.unit_price);
+                        updateItem(idx, "sold_unit", it.retail_unit);
+                        updateItem(idx, "fraction", 1.0);
+                        if (it.retail_price) updateItem(idx, "unit_price", it.retail_price);
+                      }}
+                    >
+                      Per {it.retail_unit}
+                      {it.retail_price ? ` (₦${it.retail_price.toLocaleString()})` : ""}
+                    </button>
+                  </div>
+                )}
                 <div className="pos-item-controls">
                   <div className="pos-qty">
                     <button onClick={() => updateItem(idx, "qty", Math.max(1, it.qty - 1))}>

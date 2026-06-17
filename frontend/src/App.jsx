@@ -13,6 +13,7 @@ import Inventory    from "./pages/Inventory";
 import Suppliers    from "./pages/Suppliers";
 import Staff        from "./pages/Staff";
 import Reminders    from "./pages/Reminders";
+import Automation   from "./pages/Automation"
 import Branches     from "./pages/Branches";
 import Capture      from "./pages/Capture";
 import POS          from "./pages/POS";
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="reminders"    element={<Reminders />}    />
           <Route path="wallet"       element={<Wallet />}       />
           <Route path="branches"     element={<Branches />}     />
+          <Route path="automation"   element={<Automation />}   />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

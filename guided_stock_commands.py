@@ -19,6 +19,7 @@ import json
 from business_templates import INDUSTRY_PRODUCT_CATALOG, template_key_for_user
 from constants import (
     ACTION_GUIDED_STOCK_ANOTHER,
+    ACTION_GUIDED_STOCK_BREAKDOWN,
     ACTION_GUIDED_STOCK_CATALOG,
     ACTION_GUIDED_STOCK_CONFIRM,
     ACTION_GUIDED_STOCK_COST,
@@ -27,7 +28,7 @@ from constants import (
     ACTION_GUIDED_STOCK_SUPPLIER,
     ACTION_GUIDED_STOCK_VARIANT,
 )
-from inventory_suppliers import find_inventory_item, find_or_create_supplier, manual_stock_add, upsert_stock_with_prices
+from inventory_suppliers import find_inventory_item, find_or_create_supplier, manual_stock_add, set_retail_breakdown, upsert_stock_with_prices
 from models import PendingAction, SupplierPurchase
 
 # Maximum products shown per catalog page
@@ -275,6 +276,14 @@ def handle_guided_stock_pending(db, phone, text, pending, user, business_owner_p
 
     # ── QTY ───────────────────────────────────────────────────────────────────
     if action == ACTION_GUIDED_STOCK_QTY:
+        if normalized in ("cancel", "back", "exit", "stop", "skip"):
+            payload["current_product"] = None
+            _save(pending, payload)
+            pending.action = ACTION_GUIDED_STOCK_CATALOG
+            db.commit()
+            added = payload.get("added", [])
+            send_message(phone, build_catalog_message(catalog, added))
+            return {"status": "guided_stock_skip_back"}
         qty_str = normalized.replace(",", "").split()[0] if normalized.strip() else ""
         if not qty_str.isdigit():
             send_message(phone, "Please send a number. Example: 50\nSend 0 if you have none right now.")
@@ -332,10 +341,54 @@ def handle_guided_stock_pending(db, phone, text, pending, user, business_owner_p
         payload["sell"] = sell
         payload["warn_margin"] = sell < payload.get("cost", 0) and payload.get("cost", 0) > 0
         _save(pending, payload)
-        pending.action = ACTION_GUIDED_STOCK_SUPPLIER
+        pending.action = ACTION_GUIDED_STOCK_BREAKDOWN
         db.commit()
 
         product = payload.get("current_product", "")
+        unit = payload.get("current_unit") or "unit"
+        send_message(
+            phone,
+            f"Does *{product.title()}* also sell in smaller pieces?\n\n"
+            f"*Examples:*\n"
+            f"• 30 eggs in a crate at N70 each → *egg 30 70*\n"
+            f"• 32 congos in a bag at N1400 each → *congo 32 1400*\n"
+            f"• 9 cups in a congo at N160 each → *cup 9 160*\n\n"
+            f"Reply with: *unit  how-many  price*\n"
+            f"Or send *SKIP* if you only sell by the whole {unit or 'unit'}."
+        )
+        return {"status": "guided_stock_breakdown_prompt"}
+
+    # ── BREAKDOWN ─────────────────────────────────────────────────────────────
+    if action == ACTION_GUIDED_STOCK_BREAKDOWN:
+        product = payload.get("current_product", "")
+        unit = payload.get("current_unit")
+
+        if normalized in ["skip", "no", "none", "0", "-", "n"]:
+            payload["retail_unit"] = None
+            payload["retail_per_base"] = None
+            payload["retail_price"] = None
+        else:
+            # Parse "egg 30 70" or "congo 32" (price optional)
+            parts = normalized.replace(",", "").split()
+            if len(parts) < 2 or not parts[1].isdigit():
+                send_message(
+                    phone,
+                    "Please reply with: *unit  how-many  price*\n"
+                    "Example: *egg 30 70* (30 eggs per unit at ₦70 each)\n"
+                    "Or send *SKIP*."
+                )
+                return {"status": "guided_stock_breakdown_invalid"}
+            ret_unit = parts[0].strip()
+            ret_per = int(parts[1])
+            ret_price = int(parts[2].replace("n", "").strip()) if len(parts) >= 3 and parts[2].replace("n", "").strip().isdigit() else None
+            payload["retail_unit"] = ret_unit
+            payload["retail_per_base"] = ret_per
+            payload["retail_price"] = ret_price
+
+        _save(pending, payload)
+        pending.action = ACTION_GUIDED_STOCK_SUPPLIER
+        db.commit()
+
         send_message(
             phone,
             f"Who supplied *{product.title()}*?\n\n"
@@ -493,6 +546,18 @@ def _do_save(db, owner_phone, payload):
     item = upsert_stock_with_prices(db, owner_phone, product, unit, cost, sell)
     db.flush()
 
+    # Save retail breakdown config if provided
+    ret_unit = payload.get("retail_unit")
+    ret_per = payload.get("retail_per_base")
+    ret_price = payload.get("retail_price")
+    if ret_unit and ret_per:
+        item.retail_unit = ret_unit
+        item.retail_per_base = int(ret_per)
+        if ret_price is not None:
+            item.retail_price = int(ret_price)
+            if not item.selling_price:
+                item.selling_price = int(ret_price)
+
     if qty > 0:
         if supplier_name:
             # Link to supplier — record as a supplier purchase
@@ -507,7 +572,7 @@ def _do_save(db, owner_phone, payload):
                 unit=unit,
                 unit_price=cost if cost else None,
                 total=total,
-                paid_amount=0,
+                paid_amount=total,  # opening stock is already owned — no debt owed
             )
             db.add(purchase)
             db.flush()

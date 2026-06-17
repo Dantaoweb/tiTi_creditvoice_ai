@@ -146,6 +146,9 @@ def ensure_schema_updates(engine):
         "reorder_quantity": "INTEGER",
         "expiry_date": "TIMESTAMP",
         "batch_no": "VARCHAR",
+        "retail_unit": "VARCHAR",
+        "retail_per_base": "INTEGER",
+        "retail_price": "INTEGER",
     }
     with engine.begin() as connection:
         for column_name, column_type in inventory_updates.items():
@@ -154,6 +157,29 @@ def ensure_schema_updates(engine):
                     text(
                         f"ALTER TABLE inventory_items ADD COLUMN {column_name} {column_type}"
                     )
+                )
+
+    # ── Upgrade quantity columns from INTEGER → REAL for fractional stock ───────
+    # SQLite uses dynamic typing so floats store correctly without ALTER.
+    # PostgreSQL requires an explicit type change.
+    if engine.dialect.name == "postgresql":
+        _inv_col_types = {
+            col["name"]: str(col["type"]).upper()
+            for col in inspector.get_columns("inventory_items")
+        }
+        if _inv_col_types.get("quantity", "").startswith("INT"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE inventory_items ALTER COLUMN quantity TYPE REAL")
+                )
+        _mov_col_types = {
+            col["name"]: str(col["type"]).upper()
+            for col in inspector.get_columns("inventory_movements")
+        }
+        if _mov_col_types.get("quantity", "").startswith("INT"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE inventory_movements ALTER COLUMN quantity TYPE REAL")
                 )
 
     if engine.dialect.name == "postgresql":

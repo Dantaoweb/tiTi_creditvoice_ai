@@ -6,6 +6,101 @@ from sqlalchemy import func
 
 from item_normalizer import normalize_item
 
+# ── Retail breakdown helpers ───────────────────────────────────────────────────
+
+# Maps fraction prefix words → decimal multiplier.
+# "half bag" → 0.5 of one bag; "1/8 bag" → 0.125 of one bag.
+_FRACTION_MULTIPLIERS = {
+    "half": 0.5,
+    "quarter": 0.25,
+    "three quarter": 0.75,
+    "three quarters": 0.75,
+    "3/4": 0.75,
+    "eighth": 0.125,
+    "one eighth": 0.125,
+    "1/8": 0.125,
+    "one quarter": 0.25,
+    "one half": 0.5,
+}
+
+
+def _parse_fraction_unit(unit_str):
+    """Split "half bag" → (0.5, "bag"). Returns (1.0, original) if no prefix."""
+    if not unit_str:
+        return 1.0, unit_str
+    s = unit_str.lower().strip()
+    for prefix, mult in sorted(_FRACTION_MULTIPLIERS.items(), key=lambda x: -len(x[0])):
+        if s == prefix or s.startswith(prefix + " "):
+            base = s[len(prefix):].strip()
+            return mult, base or unit_str
+    return 1.0, unit_str
+
+
+def _find_by_retail_unit(db, owner_phone, product, sale_unit):
+    """Find an InventoryItem whose retail_unit matches sale_unit and whose name matches product."""
+    from models import InventoryItem
+    candidates = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.retail_unit.isnot(None),
+        func.lower(InventoryItem.retail_unit) == sale_unit.lower(),
+    ).all()
+    if not candidates:
+        return None
+    pl = product.lower()
+    exact = [c for c in candidates if c.name.lower() == pl]
+    if exact:
+        return exact[0]
+    fuzzy = [c for c in candidates if pl in c.name.lower() or c.name.lower() in pl]
+    return fuzzy[0] if len(fuzzy) == 1 else None
+
+
+def _format_stock_remaining(qty, base_unit, retail_unit=None, retail_per_base=None):
+    """Format a float quantity into a human-readable string.
+    9.90625 bags (retail_unit=congo, per_base=32) → '9 bags 29 congos'
+    4.833 crates (retail_unit=egg, per_base=30) → '4 crates 25 eggs'
+    """
+    if qty is None:
+        return "0"
+    qty = float(qty)
+    if retail_unit and retail_per_base and retail_per_base > 0:
+        whole = int(qty)
+        remainder = round((qty - whole) * retail_per_base)
+        parts = []
+        if whole > 0:
+            parts.append(f"{whole:,} {base_unit or ''}".strip())
+        if remainder > 0:
+            parts.append(f"{remainder} {retail_unit}")
+        return " ".join(parts) if parts else f"0 {base_unit or ''}".strip()
+    if qty == int(qty):
+        label = f" {base_unit}" if base_unit else ""
+        return f"{int(qty):,}{label}"
+    label = f" {base_unit}" if base_unit else ""
+    return f"{qty:.3g}{label}"
+
+
+def _resolve_deduction(db, owner_phone, product, quantity, unit):
+    """Return (item, deduct_amount) where deduct_amount is in the item's base unit (float).
+    Returns (None, None) if no matching inventory item found.
+    """
+    # 1. Fraction prefix check: "half bag" → 0.5 × (match on "bag")
+    fraction, base_unit = _parse_fraction_unit(unit or "")
+    item = find_matching_inventory_item(db, owner_phone, product, base_unit or unit)
+    if item:
+        return item, quantity * fraction
+
+    # 2. Retail sub-unit: "3 congo" → match rice whose retail_unit="congo"
+    if unit:
+        item = _find_by_retail_unit(db, owner_phone, product, unit)
+        if item and item.retail_per_base:
+            return item, quantity / item.retail_per_base
+
+    # 3. Legacy purchase-history conversion (existing behaviour)
+    item, converted = find_converted_inventory_for_sale(db, owner_phone, product, unit, quantity)
+    if item:
+        return item, float(converted)
+
+    return None, None
+
 
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -127,6 +222,23 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
     #    exactly one item matches to avoid false positives.
     #    e.g. "basket of mangoes" → ["basket","mangoes"] matches "Baskets Mangoes"
     #    Unit is respected: "vitamin c sachet" won't match "vitamin c carton".
+    def _deplural(w):
+        if len(w) > 4 and w.endswith("ies"):
+            return w[:-3] + "y"
+        if len(w) > 3 and w.endswith("es"):
+            return w[:-2]
+        if len(w) > 2 and w.endswith("s"):
+            return w[:-1]
+        return w
+
+    def _word_matches(qw, iwords):
+        dq = _deplural(qw)
+        return any(
+            qw in iw or iw.startswith(qw) or qw.startswith(iw)
+            or dq == iw or iw == _deplural(iw) and qw == _deplural(iw)
+            for iw in iwords
+        )
+
     _stop = {"of", "the", "and", "in", "a", "an"}
     _qwords = [w for w in re.split(r"\W+", product.lower()) if w and w not in _stop]
     if len(_qwords) >= 2:
@@ -138,10 +250,7 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
             if unit and _inv.unit and _inv.unit.lower() != unit.lower():
                 continue
             _iwords = set(re.split(r"\W+", _inv.name.lower()))
-            if all(
-                any(qw in iw or iw.startswith(qw) or qw.startswith(iw) for iw in _iwords)
-                for qw in _qwords
-            ):
+            if all(_word_matches(qw, _iwords) for qw in _qwords):
                 _candidates.append(_inv)
         if len(_candidates) == 1:
             return _candidates[0]
@@ -260,27 +369,21 @@ def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, r
         product, unit = normalize_item(product, unit)
         if not product:
             continue
-        item = find_matching_inventory_item(db, owner_phone, product, unit)
-        deduct_quantity = quantity
+        item, deduct_qty = _resolve_deduction(db, owner_phone, product, quantity, unit)
         if not item:
-            item, converted_quantity = find_converted_inventory_for_sale(
-                db, owner_phone, product, unit, quantity,
-            )
-            if not item:
-                missing.append(product.title())
-                continue
-            deduct_quantity = converted_quantity
+            missing.append(product.title())
+            continue
         add_inventory_movement(
-            db, owner_phone, item.name, deduct_quantity, item.unit,
+            db, owner_phone, item.name, deduct_qty, item.unit,
             item_data.get("unit_price"), "OUT", source_type, source_id,
             recorded_by_id, "Sold",
         )
-        unit_label = f" {item.unit}" if item.unit else ""
-        updates.append(f"{product.title()}: {item.quantity:,}{unit_label} left")
+        remaining_label = _format_stock_remaining(
+            item.quantity, item.unit, item.retail_unit, item.retail_per_base
+        )
+        updates.append(f"{product.title()}: {remaining_label} left")
         if item.low_stock_alert is not None and item.quantity <= item.low_stock_alert:
-            low_stock_alerts.append(
-                f"{item.name.title()}: only {item.quantity:,}{unit_label} left"
-            )
+            low_stock_alerts.append(f"{item.name.title()}: only {remaining_label} left")
     return updates, missing, low_stock_alerts
 
 
@@ -645,6 +748,24 @@ def manual_stock_set(db, owner_phone, product, quantity, unit, user_id):
     item.quantity = quantity
     item.updated_at = _utcnow()
     return item
+
+
+def set_retail_breakdown(db, owner_phone, product, unit, retail_unit, retail_per_base, retail_price=None):
+    """Configure how a product breaks down into smaller retail pieces.
+
+    Example: set_retail_breakdown(db, phone, "egg", "crate", "egg", 30, 70)
+    means 1 crate = 30 individual eggs sold at ₦70 each.
+    """
+    product, unit = normalize_item(product, unit)
+    item = find_matching_inventory_item(db, owner_phone, product, unit)
+    if not item:
+        return None, "Product not found in stock. Add it to stock first."
+    item.retail_unit = retail_unit.lower().strip() if retail_unit else None
+    item.retail_per_base = int(retail_per_base) if retail_per_base else None
+    if retail_price is not None:
+        item.retail_price = int(retail_price)
+    item.updated_at = _utcnow()
+    return item, None
 
 
 def set_low_stock_alert(db, owner_phone, product, unit, threshold):

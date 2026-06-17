@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Plus, Pencil, PlusCircle, MinusCircle } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useAuth } from "../context/AuthContext";
+import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, dateStr } from "../lib/format";
 import DataTable from "../components/DataTable";
@@ -22,7 +24,8 @@ function Modal({ title, onClose, children }) {
 }
 
 // ── Add item modal ───────────────────────────────────────────────────────────
-function AddItemModal({ ownerPhone, onClose, onSaved }) {
+function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
+  const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
   const [form, setForm] = useState({
     name: "", unit: "", quantity: 0,
     cost_price: "", selling_price: "", low_stock_alert: "",
@@ -32,18 +35,22 @@ function AddItemModal({ ownerPhone, onClose, onSaved }) {
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
 
+  const isService = itemType === "service";
+
   async function save() {
-    if (!form.name.trim()) { setErr("Product name is required."); return; }
+    if (!form.name.trim()) { setErr("Name is required."); return; }
+    if (!form.selling_price) { setErr("Price is required."); return; }
     setSaving(true); setErr("");
     try {
       const item = await apiPost("inventory", {
         owner_phone: ownerPhone,
         name: form.name.trim(),
         unit: form.unit.trim() || null,
-        quantity: parseInt(form.quantity) || 0,
-        cost_price: form.cost_price ? parseInt(form.cost_price) : null,
+        quantity: isService ? null : (parseInt(form.quantity) || 0),
+        cost_price: isService ? null : (form.cost_price ? parseInt(form.cost_price) : null),
         selling_price: form.selling_price ? parseInt(form.selling_price) : null,
-        low_stock_alert: form.low_stock_alert ? parseInt(form.low_stock_alert) : null,
+        low_stock_alert: isService ? null : (form.low_stock_alert ? parseInt(form.low_stock_alert) : null),
+        is_service: isService,
       });
       onSaved(item);
       onClose();
@@ -52,44 +59,79 @@ function AddItemModal({ ownerPhone, onClose, onSaved }) {
   }
 
   return (
-    <Modal title="Add Product" onClose={onClose}>
+    <Modal title={isService ? "Add Service / Price" : "Add Product"} onClose={onClose}>
       <div className="modal-body">
+        <div className="item-type-toggle">
+          <button
+            className={`btn btn-sm ${itemType === "service" ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setItemType("service")}
+          >
+            Service / Price
+          </button>
+          <button
+            className={`btn btn-sm ${itemType === "stock" ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setItemType("stock")}
+          >
+            Physical Stock
+          </button>
+        </div>
+
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Product name *</label>
-            <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Indomie Noodles" />
+            <label className="form-label">{isService ? "Service name *" : "Product name *"}</label>
+            <input
+              value={form.name}
+              onChange={e => set("name", e.target.value)}
+              placeholder={isService ? "e.g. Haircut, Full wash, Repair" : "e.g. Indomie Noodles"}
+            />
           </div>
           <div className="form-group" style={{ width: 120 }}>
-            <label className="form-label">Unit</label>
-            <input value={form.unit} onChange={e => set("unit", e.target.value)} placeholder="e.g. carton" />
+            <label className="form-label">{isService ? "Tier / Size" : "Unit"}</label>
+            <input
+              value={form.unit}
+              onChange={e => set("unit", e.target.value)}
+              placeholder={isService ? "e.g. kids, adult" : "e.g. carton"}
+            />
           </div>
         </div>
+
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Opening stock</label>
-            <input type="number" min={0} value={form.quantity} onChange={e => set("quantity", e.target.value)} />
+            <label className="form-label">{isService ? "Price (₦) *" : "Selling price (₦) *"}</label>
+            <input
+              type="number" min={0}
+              value={form.selling_price}
+              onChange={e => set("selling_price", e.target.value)}
+              placeholder="0"
+            />
           </div>
-          <div className="form-group">
-            <label className="form-label">Low-stock alert</label>
-            <input type="number" min={0} value={form.low_stock_alert} onChange={e => set("low_stock_alert", e.target.value)} placeholder="optional" />
-          </div>
+          {!isService && (
+            <div className="form-group">
+              <label className="form-label">Cost price (₦)</label>
+              <input type="number" min={0} value={form.cost_price} onChange={e => set("cost_price", e.target.value)} placeholder="0" />
+            </div>
+          )}
         </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Cost price (₦)</label>
-            <input type="number" min={0} value={form.cost_price} onChange={e => set("cost_price", e.target.value)} placeholder="0" />
+
+        {!isService && (
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Opening stock</label>
+              <input type="number" min={0} value={form.quantity} onChange={e => set("quantity", e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Low-stock alert</label>
+              <input type="number" min={0} value={form.low_stock_alert} onChange={e => set("low_stock_alert", e.target.value)} placeholder="optional" />
+            </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">Selling price (₦)</label>
-            <input type="number" min={0} value={form.selling_price} onChange={e => set("selling_price", e.target.value)} placeholder="0" />
-          </div>
-        </div>
+        )}
+
         {err && <div className="modal-error">{err}</div>}
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Add Product"}
+          {saving ? "Saving…" : isService ? "Add Service" : "Add Product"}
         </button>
       </div>
     </Modal>
@@ -98,6 +140,7 @@ function AddItemModal({ ownerPhone, onClose, onSaved }) {
 
 // ── Edit item modal ──────────────────────────────────────────────────────────
 function EditItemModal({ item, onClose, onSaved }) {
+  const isService = item.is_service;
   const [form, setForm] = useState({
     name: item.name,
     unit: item.unit || "",
@@ -117,9 +160,9 @@ function EditItemModal({ item, onClose, onSaved }) {
       await apiPut(`inventory/${item.id}`, {
         name: form.name.trim() || null,
         unit: form.unit.trim() || null,
-        cost_price: form.cost_price !== "" ? parseInt(form.cost_price) : null,
+        cost_price: (!isService && form.cost_price !== "") ? parseInt(form.cost_price) : null,
         selling_price: form.selling_price !== "" ? parseInt(form.selling_price) : null,
-        low_stock_alert: form.low_stock_alert !== "" ? parseInt(form.low_stock_alert) : null,
+        low_stock_alert: (!isService && form.low_stock_alert !== "") ? parseInt(form.low_stock_alert) : null,
         is_available: form.is_available,
       });
       onSaved();
@@ -133,34 +176,44 @@ function EditItemModal({ item, onClose, onSaved }) {
       <div className="modal-body">
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Product name</label>
+            <label className="form-label">{isService ? "Service name" : "Product name"}</label>
             <input value={form.name} onChange={e => set("name", e.target.value)} />
           </div>
           <div className="form-group" style={{ width: 120 }}>
-            <label className="form-label">Unit</label>
+            <label className="form-label">{isService ? "Tier / Size" : "Unit"}</label>
             <input value={form.unit} onChange={e => set("unit", e.target.value)} />
           </div>
         </div>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Cost price (₦)</label>
-            <input type="number" min={0} value={form.cost_price} onChange={e => set("cost_price", e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Selling price (₦)</label>
+            <label className="form-label">{isService ? "Price (₦)" : "Selling price (₦)"}</label>
             <input type="number" min={0} value={form.selling_price} onChange={e => set("selling_price", e.target.value)} />
           </div>
+          {!isService && (
+            <div className="form-group">
+              <label className="form-label">Cost price (₦)</label>
+              <input type="number" min={0} value={form.cost_price} onChange={e => set("cost_price", e.target.value)} />
+            </div>
+          )}
         </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Low-stock alert</label>
-            <input type="number" min={0} value={form.low_stock_alert} onChange={e => set("low_stock_alert", e.target.value)} />
+        {!isService && (
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Low-stock alert</label>
+              <input type="number" min={0} value={form.low_stock_alert} onChange={e => set("low_stock_alert", e.target.value)} />
+            </div>
+            <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 20 }}>
+              <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
+              <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Available for sale</label>
+            </div>
           </div>
-          <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 20 }}>
+        )}
+        {isService && (
+          <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
-            <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Available for sale</label>
+            <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Active / Available</label>
           </div>
-        </div>
+        )}
         {err && <div className="modal-error">{err}</div>}
       </div>
       <div className="modal-footer">
@@ -173,7 +226,7 @@ function EditItemModal({ item, onClose, onSaved }) {
   );
 }
 
-// ── Adjust stock modal ───────────────────────────────────────────────────────
+// ── Adjust stock modal (only for physical stock items) ───────────────────────
 function AdjustModal({ item, onClose, onSaved }) {
   const [delta, setDelta] = useState("");
   const [note, setNote] = useState("");
@@ -199,7 +252,7 @@ function AdjustModal({ item, onClose, onSaved }) {
     <Modal title={`Adjust Stock: ${item.name}`} onClose={onClose}>
       <div className="modal-body">
         <div className="adjust-current">
-          Current stock: <strong>{item.quantity}{item.unit ? ` ${item.unit}` : ""}</strong>
+          Current stock: <strong>{item.quantity ?? 0}{item.unit ? ` ${item.unit}` : ""}</strong>
         </div>
         <div className="form-group">
           <label className="form-label">Quantity</label>
@@ -232,6 +285,10 @@ function AdjustModal({ item, onClose, onSaved }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function Inventory() {
   const { ownerPhone } = useApp();
+  const { user } = useAuth();
+  const L = getBizLabels(user?.menu_group);
+  const isServiceBiz = user?.menu_group === "service";
+
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -255,8 +312,11 @@ export default function Inventory() {
     : rows;
 
   const lowCount = rows.filter(
-    r => r.is_available && r.low_stock_alert !== null && r.quantity <= r.low_stock_alert
+    r => !r.is_service && r.is_available && r.low_stock_alert !== null && (r.quantity ?? 0) <= r.low_stock_alert
   ).length;
+
+  const pageTitle = isServiceBiz ? L.stock : "Inventory";
+  const addLabel = isServiceBiz ? "Add Service / Product" : "Add Product";
 
   return (
     <>
@@ -270,49 +330,74 @@ export default function Inventory() {
 
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Inventory <span className="text-subtle text-sm">({filtered.length})</span></span>
+          <span className="card-title">{pageTitle} <span className="text-subtle text-sm">({filtered.length})</span></span>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
-              placeholder="Search product…"
+              placeholder="Search…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{ width: 200 }}
             />
             <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
-              <Plus size={14} /> Add Product
+              <Plus size={14} /> {addLabel}
             </button>
           </div>
         </div>
         <DataTable
           loading={loading}
           rows={filtered}
-          emptyText="No inventory items yet. Click Add Product to get started."
+          emptyText={isServiceBiz
+            ? "No services yet. Click 'Add Service / Product' to build your price list."
+            : "No inventory items yet. Click Add Product to get started."
+          }
           rowClass={r =>
-            r.is_available && r.low_stock_alert !== null && r.quantity <= r.low_stock_alert
+            !r.is_service && r.is_available && r.low_stock_alert !== null && (r.quantity ?? 0) <= r.low_stock_alert
               ? "low-stock"
               : ""
           }
           columns={[
             {
-              key: "name", label: "Product", sortKey: "name",
-              render: r => <strong className="td-strong">{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>,
+              key: "name", label: "Name", sortKey: "name",
+              render: r => (
+                <span>
+                  <strong className="td-strong">{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>
+                  {r.is_service && <span className="svc-chip">service</span>}
+                </span>
+              ),
             },
             {
-              key: "quantity", label: "Qty in stock", sortKey: "quantity",
-              render: r => <span>{Number(r.quantity).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</span>,
+              key: "qty_or_avail", label: "Stock / Status",
+              render: r => r.is_service
+                ? <span className="text-subtle">—</span>
+                : <span>{(r.quantity ?? 0).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</span>,
             },
-            { key: "selling_price", label: "Selling price", sortKey: "selling_price", render: r => nairaFull(r.selling_price) },
-            { key: "cost_price",    label: "Cost price",    render: r => r.cost_price ? nairaFull(r.cost_price) : <span className="text-subtle">—</span> },
-            { key: "alert",         label: "Alert at",      render: r => r.low_stock_alert !== null ? r.low_stock_alert : <span className="text-subtle">—</span> },
-            { key: "status",        label: "Status",        render: r => <StockBadge available={r.is_available} quantity={r.quantity} alert={r.low_stock_alert} /> },
-            { key: "updated_at",    label: "Updated",       render: r => <span className="td-muted">{dateStr(r.updated_at)}</span> },
+            { key: "selling_price", label: "Price", sortKey: "selling_price", render: r => nairaFull(r.selling_price) },
+            {
+              key: "cost_price", label: "Cost price",
+              render: r => r.is_service
+                ? <span className="text-subtle">—</span>
+                : (r.cost_price ? nairaFull(r.cost_price) : <span className="text-subtle">—</span>),
+            },
+            {
+              key: "alert", label: "Alert at",
+              render: r => r.is_service
+                ? <span className="text-subtle">—</span>
+                : (r.low_stock_alert !== null ? r.low_stock_alert : <span className="text-subtle">—</span>),
+            },
+            {
+              key: "status", label: "Status",
+              render: r => r.is_service
+                ? <span className={`badge ${r.is_available ? "badge-green" : "badge-gray"}`}>{r.is_available ? "Active" : "Inactive"}</span>
+                : <StockBadge available={r.is_available} quantity={r.quantity ?? 0} alert={r.low_stock_alert} />,
+            },
+            { key: "updated_at", label: "Updated", render: r => <span className="td-muted">{dateStr(r.updated_at)}</span> },
             {
               key: "actions", label: "",
               render: r => (
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button className="btn btn-ghost btn-xs" onClick={() => setAdjustItem(r)} title="Adjust stock">
-                    ±
-                  </button>
+                  {!r.is_service && (
+                    <button className="btn btn-ghost btn-xs" onClick={() => setAdjustItem(r)} title="Adjust stock">±</button>
+                  )}
                   <button className="btn btn-ghost btn-xs" onClick={() => setEditItem(r)} title="Edit">
                     <Pencil size={12} />
                   </button>
@@ -326,8 +411,11 @@ export default function Inventory() {
       {showAdd && (
         <AddItemModal
           ownerPhone={ownerPhone}
+          isServiceBiz={isServiceBiz}
           onClose={() => setShowAdd(false)}
-          onSaved={item => { setRows(prev => [{ ...item, is_available: true }, ...prev]); }}
+          onSaved={item => {
+            setRows(prev => [{ ...item, is_available: true, is_service: item.is_service ?? false }, ...prev]);
+          }}
         />
       )}
 

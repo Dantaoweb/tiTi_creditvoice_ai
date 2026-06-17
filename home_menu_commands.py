@@ -41,6 +41,49 @@ def _wallet_msg(db, phone, pending, send_message):
     return {"status": "owner_home_wallet"}
 
 
+def _send_automation_info(db, phone, user, pending, send_message):
+    from models import AutomationSettings, ReminderAutomationSettings
+    from business_templates import template_key_for_user
+    BOT_KEYS = {"retail_trading", "pharmacy", "salon_beauty", "food_hospitality"}
+
+    rem = db.query(ReminderAutomationSettings).filter(
+        ReminderAutomationSettings.owner_phone == phone
+    ).first()
+    auto_send = bool(rem and rem.auto_send_enabled)
+    preview = bool(not rem or rem.preview_enabled)
+    rem_time = (rem.reminder_time or "08:00") if rem else "08:00"
+
+    has_bot = template_key_for_user(user) in BOT_KEYS if user else False
+
+    lines = ["*Automation & Reminders*\n"]
+    lines.append("\U0001f4ec *Payment Reminders*")
+    if auto_send:
+        lines.append(f"  Status: Auto-send ON (runs daily at {rem_time})")
+    elif preview:
+        lines.append("  Status: Preview mode — you approve before sending")
+    else:
+        lines.append("  Status: Off")
+    lines.append("  • *run reminder automation* — generate today's reminders")
+    lines.append("  • *reminder queue* — see pending reminders")
+
+    if has_bot:
+        bot = db.query(AutomationSettings).filter(
+            AutomationSettings.owner_phone == phone
+        ).first()
+        bot_on = bool(bot and bot.bot_enabled)
+        lines.append("\n\U0001f916 *Customer Bot*")
+        lines.append(f"  Status: {'ON ✓' if bot_on else 'Off'}")
+        lines.append("  • *bot on* / *bot off* — toggle the customer bot")
+        lines.append("  • *auto reply on* / *auto reply off* — auto-answer price questions")
+
+    lines.append("\nTip: Visit the web app → Automation to manage all settings.")
+
+    db.delete(pending)
+    db.commit()
+    send_message(phone, "\n".join(lines))
+    return {"status": "owner_automation_info"}
+
+
 def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_message):
     normalized = text.lower().strip()
     group = _group(user)
@@ -144,6 +187,10 @@ def handle_owner_home_menu(db, phone, text, pending, user, subscription, send_me
         db.delete(pending)
         db.commit()
         return {"parsed": {"type": "FORMATS"}}
+
+    if normalized in ["automation", "auto reminders", "reminder automation",
+                       "reminders automation", "bot settings", "bot status"]:
+        return _send_automation_info(db, phone, user, pending, send_message)
 
     if normalized in ["more", "more options"]:
         return _go_more(db, phone, user, pending, send_message)
@@ -414,7 +461,7 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
     group = _group(user)
 
     if group == "school":
-        # School more menu: 1=Textbooks, 2=plan, 3=Teachers, 4=back
+        # School more menu: 1=Textbooks, 2=plan, 3=Teachers, 4=Automation, 5=back
         if normalized in ["1", "textbooks", "textbook", "textbook stock", "stock", "inventory"]:
             db.delete(pending)
             db.commit()
@@ -436,7 +483,10 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             send_message(phone, "Adding teachers requires PRO plan.\n\nSend UPGRADE to see plans.")
             return {"status": "more_teachers_no_plan"}
 
-        if normalized in ["4", "back", "main menu", "home", "menu"]:
+        if normalized in ["4", "automation", "auto reminders", "reminder automation", "bot settings"]:
+            return _send_automation_info(db, phone, user, pending, send_message)
+
+        if normalized in ["5", "back", "main menu", "home", "menu"]:
             pending.action = "OWNER_HOME_MENU"
             db.commit()
             send_message(phone, build_owner_home_menu(user, subscription))
@@ -468,14 +518,16 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
                 return {"parsed": {"type": "STAFF_MENU"}}
             send_message(phone, "Staff management requires PRO plan.\n\nSend UPGRADE to see plans.")
             return {"status": "more_staff_no_plan"}
-        if normalized in ["4", "back", "main menu", "home", "menu"]:
+        if normalized in ["4", "automation", "auto reminders", "reminder automation", "bot settings"]:
+            return _send_automation_info(db, phone, user, pending, send_message)
+        if normalized in ["5", "back", "main menu", "home", "menu"]:
             pending.action = "OWNER_HOME_MENU"
             db.commit()
             send_message(phone, build_owner_home_menu(user, subscription))
             return {"status": "more_back"}
 
     else:
-        # Standard more menu: 1=Suppliers, 2=plan, 3=Staff, 4=back
+        # Standard more menu: 1=Suppliers, 2=plan, 3=Staff, 4=Automation, 5=back
         if normalized in ["1", "suppliers", "supplier"]:
             db.delete(pending)
             db.commit()
@@ -497,7 +549,10 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             send_message(phone, "Staff management requires PRO plan.\n\nSend UPGRADE to see plans.")
             return {"status": "more_staff_no_plan"}
 
-        if normalized in ["4", "back", "main menu", "home", "menu"]:
+        if normalized in ["4", "automation", "auto reminders", "reminder automation", "bot settings"]:
+            return _send_automation_info(db, phone, user, pending, send_message)
+
+        if normalized in ["5", "back", "main menu", "home", "menu"]:
             pending.action = "OWNER_HOME_MENU"
             db.commit()
             send_message(phone, build_owner_home_menu(user, subscription))

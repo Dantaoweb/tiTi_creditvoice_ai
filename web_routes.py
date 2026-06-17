@@ -11,9 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from database import SessionLocal
 from models import (
-    Branch, Customer, FastCaptureSettings, InventoryItem, InventoryMovement, PendingAction,
-    ReminderQueue, Supplier, SupplierPayment, SupplierPurchase,
-    Transaction, TransactionItem, User, utcnow,
+    AutomationSettings, Branch, Customer, FastCaptureSettings, InventoryItem, InventoryMovement,
+    PendingAction, ReminderAutomationSettings, ReminderQueue, Supplier, SupplierPayment,
+    SupplierPurchase, Transaction, TransactionItem, User, utcnow,
 )
 from parser import normalize_voice_transcript, parse_message, transcribe_audio_bytes
 from reports import (
@@ -110,9 +110,11 @@ class CaptureVoiceRequest(BaseModel):
 class PosCartItem(BaseModel):
     inventory_item_id: Optional[int] = None
     name: str
-    qty: int = 1
+    qty: float = 1.0
     unit: Optional[str] = None
     unit_price: int = 0
+    sold_unit: Optional[str] = None   # retail sub-unit name when selling pieces
+    fraction: Optional[float] = 1.0  # multiplier for fractional base-unit sales
 
 
 class PosSaveRequest(BaseModel):
@@ -127,10 +129,14 @@ class AddInventoryRequest(BaseModel):
     owner_phone: str
     name: str
     unit: Optional[str] = None
-    quantity: int = 0
+    quantity: Optional[float] = 0.0
     cost_price: Optional[int] = None
     selling_price: Optional[int] = None
     low_stock_alert: Optional[int] = None
+    is_service: bool = False
+    retail_unit: Optional[str] = None
+    retail_per_base: Optional[int] = None
+    retail_price: Optional[int] = None
 
 
 class EditInventoryRequest(BaseModel):
@@ -740,6 +746,10 @@ def register_web_routes(app):
                         "quantity": item.quantity or 0,
                         "selling_price": _money(item.selling_price),
                         "cost_price": _money(item.cost_price),
+                        "is_service": item.quantity is None or item.category == "service",
+                        "retail_unit": item.retail_unit,
+                        "retail_per_base": item.retail_per_base,
+                        "retail_price": _money(item.retail_price) if item.retail_price else None,
                     }
                     for item in rows
                 ]
@@ -966,11 +976,15 @@ def register_web_routes(app):
                         "id": item.id,
                         "name": item.name,
                         "unit": item.unit,
-                        "quantity": item.quantity or 0,
+                        "quantity": item.quantity,
                         "cost_price": _money(item.cost_price),
                         "selling_price": _money(item.selling_price),
                         "low_stock_alert": item.low_stock_alert,
                         "is_available": bool(item.is_available),
+                        "is_service": item.quantity is None or item.category == "service",
+                        "retail_unit": item.retail_unit,
+                        "retail_per_base": item.retail_per_base,
+                        "retail_price": item.retail_price,
                         "updated_at": _iso(item.updated_at),
                     }
                     for item in rows
@@ -986,24 +1000,29 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            _qty = None if payload.is_service else (payload.quantity or 0.0)
             item = InventoryItem(
                 owner_phone=payload.owner_phone,
                 name=payload.name.strip().lower(),
                 unit=(payload.unit or "").strip() or None,
-                quantity=payload.quantity,
-                cost_price=payload.cost_price,
+                quantity=_qty,
+                cost_price=None if payload.is_service else payload.cost_price,
                 selling_price=payload.selling_price,
-                low_stock_alert=payload.low_stock_alert,
+                low_stock_alert=None if payload.is_service else payload.low_stock_alert,
                 is_available=True,
+                category="service" if payload.is_service else None,
+                retail_unit=payload.retail_unit.strip().lower() if payload.retail_unit else None,
+                retail_per_base=payload.retail_per_base,
+                retail_price=payload.retail_price,
             )
             db.add(item)
-            if payload.quantity:
+            if not payload.is_service and _qty:
                 db.flush()
                 db.add(InventoryMovement(
                     owner_phone=payload.owner_phone,
                     item_id=item.id,
                     movement_type="IN",
-                    quantity=payload.quantity,
+                    quantity=_qty,
                     unit_price=payload.cost_price,
                     source_type="WEB_ADD",
                     source_id=None,
@@ -1598,6 +1617,97 @@ def register_web_routes(app):
                     for r in rows
                 ]
             }
+        finally:
+            db.close()
+
+    # ── Automation settings ───────────────────────────────────────────────────
+    BOT_MENU_GROUPS = {"retail_trading", "pharmacy", "salon_beauty", "food_hospitality"}
+
+    @app.get("/app/api/automation")
+    def web_get_automation(
+        owner_phone: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            from customer_automation import get_or_create_automation_settings
+            from reminder_automation import get_or_create_reminder_settings
+            phone = owner_phone or session.get("phone")
+            user = db.query(User).filter(User.phone == phone).first()
+            bot = get_or_create_automation_settings(db, phone)
+            rem = get_or_create_reminder_settings(db, phone)
+            db.commit()
+            from business_templates import template_key_for_user as _tku
+            has_bot = _tku(user) in BOT_MENU_GROUPS if user else False
+            return {
+                "has_bot": has_bot,
+                "reminder": {
+                    "preview_enabled": bool(rem.preview_enabled),
+                    "auto_send_enabled": bool(rem.auto_send_enabled),
+                    "reminder_time": rem.reminder_time or "08:00",
+                },
+                "bot": {
+                    "bot_enabled": bool(bot.bot_enabled),
+                    "auto_reply_enabled": bool(bot.auto_reply_enabled),
+                    "auto_order_enabled": bool(bot.auto_order_enabled),
+                    "allow_part_payment": bool(bot.allow_part_payment),
+                    "payment_modes": bot.payment_modes or "",
+                    "delivery_note": bot.delivery_note or "",
+                    "pickup_address": bot.pickup_address or "",
+                } if has_bot else None,
+            }
+        finally:
+            db.close()
+
+    class AutomationUpdateRequest(BaseModel):
+        owner_phone: Optional[str] = None
+        # reminder fields
+        reminder_preview_enabled: Optional[bool] = None
+        reminder_auto_send_enabled: Optional[bool] = None
+        reminder_time: Optional[str] = None
+        # bot fields
+        bot_enabled: Optional[bool] = None
+        auto_reply_enabled: Optional[bool] = None
+        auto_order_enabled: Optional[bool] = None
+        allow_part_payment: Optional[bool] = None
+        payment_modes: Optional[str] = None
+        delivery_note: Optional[str] = None
+        pickup_address: Optional[str] = None
+
+    @app.post("/app/api/automation")
+    def web_update_automation(
+        payload: AutomationUpdateRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            from customer_automation import get_or_create_automation_settings
+            from reminder_automation import get_or_create_reminder_settings
+            phone = payload.owner_phone or session.get("phone")
+            rem = get_or_create_reminder_settings(db, phone)
+            if payload.reminder_preview_enabled is not None:
+                rem.preview_enabled = payload.reminder_preview_enabled
+            if payload.reminder_auto_send_enabled is not None:
+                rem.auto_send_enabled = payload.reminder_auto_send_enabled
+            if payload.reminder_time is not None:
+                rem.reminder_time = payload.reminder_time.strip()
+            bot = get_or_create_automation_settings(db, phone)
+            if payload.bot_enabled is not None:
+                bot.bot_enabled = payload.bot_enabled
+            if payload.auto_reply_enabled is not None:
+                bot.auto_reply_enabled = payload.auto_reply_enabled
+            if payload.auto_order_enabled is not None:
+                bot.auto_order_enabled = payload.auto_order_enabled
+            if payload.allow_part_payment is not None:
+                bot.allow_part_payment = payload.allow_part_payment
+            if payload.payment_modes is not None:
+                bot.payment_modes = payload.payment_modes.strip() or None
+            if payload.delivery_note is not None:
+                bot.delivery_note = payload.delivery_note.strip() or None
+            if payload.pickup_address is not None:
+                bot.pickup_address = payload.pickup_address.strip() or None
+            db.commit()
+            return {"status": "ok"}
         finally:
             db.close()
 

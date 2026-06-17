@@ -324,7 +324,8 @@ def build_home_more_menu(user=None):
             "1. Textbooks & stock\n"
             "2. My plan & upgrade\n"
             "3. Teachers (PRO)\n"
-            "4. Back"
+            "4. Automation / reminders\n"
+            "5. Back"
         )
     if group == "service":
         key = template_key_for_user(user) if user else None
@@ -335,17 +336,16 @@ def build_home_more_menu(user=None):
             f"{stock_line}"
             "2. My plan & upgrade\n"
             "3. Staff (PRO)\n"
-            "4. Back"
+            "4. Automation / reminders\n"
+            "5. Back"
         )
     return (
         "More options\n\n"
         "1. Suppliers\n"
         "2. My plan & upgrade\n"
         "3. Staff (PRO)\n"
-        "4. Back\n\n"
-        "Coming soon:\n"
-        "· Service jobs  · Invoices\n"
-        "· Voice reply  · Multi-language"
+        "4. Automation / reminders\n"
+        "5. Back"
     )
 
 

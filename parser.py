@@ -967,8 +967,12 @@ def extract_amounts(text):
     # or immediately followed by other letters that suggest a unit context (like meter).
     unit_pattern = r"kg|g|gram|grams|bag|bags|carton|cartons|unit|units|pcs|piece|pieces|litre|litres|liter|liters|l|ml|ton|tons"
     amount_text = re.sub(rf"\b\d+\s*(?:{unit_pattern})\b", "", text, flags=re.IGNORECASE)
+    # Normalize naira prefix "N500" → "500" so we can use letter-boundary lookbehind safely
+    amount_text = re.sub(r"\b[Nn](\d[\d,]*(?:\s*[kKmM](?![a-zA-Z]))?)\b", r"\1", amount_text)
+    # Strip alphanumeric product codes like "a4", "b2" that are not standalone amounts
+    amount_text = re.sub(r"\b(?![Nn]\d)[A-Za-z]+\d+\b", "", amount_text)
     matches = re.findall(
-        r"(?<![\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![a-zA-Z\d/])",
+        r"(?<![a-zA-Z\d/])\d[\d,\.]*\s*(?:[kK](?![a-zA-Z])|[mM](?![a-zA-Z]))?(?![a-zA-Z\d/])",
         amount_text
     )
     amounts = []
@@ -992,6 +996,25 @@ def parse_stock_item_body(body):
         clean,
         flags=re.I,
     ).strip()
+
+    # ── Fraction prefix: "half bag rice", "quarter crate eggs", "1/8 bag flour" ──
+    _FRAC_PAT = r"(?P<frac>half|quarter|three[\s\-]?quarters?|1/8|3/4|eighth)"
+    _frac_m = re.match(
+        rf"^{_FRAC_PAT}\s+(?P<unit>\w+)\s+(?P<product>.+)$",
+        clean, re.I,
+    )
+    if _frac_m:
+        frac_word = re.sub(r"\s+", " ", _frac_m.group("frac").lower().strip())
+        frac_unit = _frac_m.group("unit").lower()
+        frac_product = _frac_m.group("product").strip()
+        frac_product, frac_unit_n = normalize_item(frac_product, frac_unit)
+        # Store the combined unit so deduction logic can strip the fraction prefix
+        combined_unit = f"{frac_word} {frac_unit_n or frac_unit}"
+        return {
+            "quantity": 1,
+            "unit": combined_unit,
+            "product": frac_product,
+        }
 
     quantity_match = re.match(
         rf"(?P<quantity>\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?)\s*(?P<unit>{UNIT_PATTERN})?\s*(?:of\s+)?(?P<product>.*)$",
@@ -1673,6 +1696,23 @@ def parse_message(text):
                 "sell": int(_sell_str),
             }
 
+    # "set breakdown eggs: 30 per crate" / "breakdown rice 32 congo per bag"
+    # "breakdown egg crate 30 70" (unit, base-unit, per-base, price)
+    _breakdown_m = re.match(
+        r"^(?:set\s+)?breakdown\s+(?P<product>[a-z][a-z\s]+?)\s*:?\s+"
+        r"(?P<ret_unit>[a-z]+)\s+(?P<per>\d+)(?:\s+(?P<price>[Nn]?\d[\d,]*))?$",
+        clean_text,
+    )
+    if _breakdown_m:
+        _bd_price_raw = (_breakdown_m.group("price") or "").replace(",", "").lstrip("Nn")
+        return {
+            "type": "SET_RETAIL_BREAKDOWN",
+            "product": _breakdown_m.group("product").strip(),
+            "retail_unit": _breakdown_m.group("ret_unit").strip(),
+            "retail_per_base": int(_breakdown_m.group("per")),
+            "retail_price": int(_bd_price_raw) if _bd_price_raw.isdigit() else None,
+        }
+
     # "price shirt 1000" / "set price trouser 800" / "update price curtain 1500"
     _set_svc_price = re.match(
         r"^(?:set\s+|update\s+)?price\s+(?P<item>[a-z][a-z\s]+?)\s+(?P<price>[Nn]?[\d,]+)$",
@@ -1685,6 +1725,36 @@ def parse_message(text):
                 "type": "SET_SERVICE_PRICE",
                 "item": _set_svc_price.group("item").strip(),
                 "price": int(_price_str),
+            }
+
+    # ── Service billed: business performed work for customer ─────────────────
+    # "Adeola paint work at isale osun cost 12000 paid 3000"
+    # "John AC repair cost 8000 paid 5000"
+    # Must NOT have a BUY keyword (to avoid false-matching "bought paint cost 500")
+    _svc_cost_m = re.search(
+        r"^(.+?)\s+cost\s+([Nn]?[\d,]+)(?:\s+paid\s+([Nn]?[\d,]+))?\s*$",
+        text.strip(),
+        re.I,
+    )
+    if _svc_cost_m and not re.search(
+        r"\b(" + "|".join(BUY_KEYWORDS) + r")\b", text, re.I
+    ):
+        _prefix = _svc_cost_m.group(1).strip()  # e.g. "Adeola paint work at isale osun"
+        _total_raw = _svc_cost_m.group(2).replace(",", "").lstrip("Nn")
+        _paid_raw = (_svc_cost_m.group(3) or "0").replace(",", "").lstrip("Nn")
+        _total = int(_total_raw) if _total_raw.isdigit() else 0
+        _paid = int(_paid_raw) if _paid_raw.isdigit() else 0
+        if _total > 0 and _prefix:
+            # Customer name: first capitalized word(s) — second word included only if also capitalized
+            _pwords = _prefix.split()
+            _cname_parts = [_pwords[0]]
+            if len(_pwords) > 1 and _pwords[1][:1].isupper():
+                _cname_parts.append(_pwords[1])
+            return {
+                "type": "BUY",
+                "customer": " ".join(_cname_parts),
+                "amount": _total,
+                "paid": _paid,
             }
 
     # ── Service job: customer brought/dropped items ─────────────────────────

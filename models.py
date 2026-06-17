@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 
 from database import Base
 
@@ -275,11 +275,17 @@ class InventoryItem(Base):
 
     unit = Column(String, nullable=True)
 
-    quantity = Column(Integer, default=0)
+    quantity = Column(Float, default=0.0)
 
     cost_price = Column(Integer, nullable=True)
 
     selling_price = Column(Integer, nullable=True)
+
+    retail_unit = Column(String, nullable=True)      # smaller selling unit, e.g. "egg", "congo", "cup"
+
+    retail_per_base = Column(Integer, nullable=True) # how many retail units = 1 base unit (e.g. 30)
+
+    retail_price = Column(Integer, nullable=True)    # selling price per 1 retail unit
 
     size = Column(String, nullable=True)
 
@@ -322,7 +328,7 @@ class InventoryMovement(Base):
 
     movement_type = Column(String)
 
-    quantity = Column(Integer)
+    quantity = Column(Float)
 
     unit_price = Column(Integer, nullable=True)
 

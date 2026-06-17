@@ -63,7 +63,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, 
         db.flush()
         pay_tx_id = pay_tx.id
 
-    # Deduct inventory for items linked to an inventory record
+    # Deduct inventory for items linked to an inventory record (skip service items)
     for it in items:
         item_id = it.get("inventory_item_id")
         if not item_id:
@@ -71,14 +71,26 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, 
         inv = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
         if not inv:
             continue
-        qty = int(it.get("qty", 1))
-        inv.quantity = (inv.quantity or 0) - qty
+        if inv.quantity is None or inv.category == "service":
+            continue  # service items have no stock to deduct
+        qty = float(it.get("qty", 1))
+        sold_unit = (it.get("sold_unit") or "").lower().strip()
+
+        # Retail sub-unit sale: deduct a fraction of one base unit per piece
+        if sold_unit and inv.retail_unit and sold_unit == inv.retail_unit.lower() and inv.retail_per_base:
+            deduct = qty / inv.retail_per_base
+        else:
+            # Fraction prefix sale: "half", "quarter", "1/8" sent from POS as a multiplier
+            fraction = float(it.get("fraction", 1.0) or 1.0)
+            deduct = qty * fraction
+
+        inv.quantity = (inv.quantity or 0) - deduct
         inv.updated_at = utcnow()
         db.add(InventoryMovement(
             owner_phone=owner_phone,
             item_id=inv.id,
             movement_type="OUT",
-            quantity=qty,
+            quantity=deduct,
             unit_price=int(it.get("unit_price", 0)) or None,
             source_type="POS",
             source_id=main_tx.id,
