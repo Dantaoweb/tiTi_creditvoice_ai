@@ -92,6 +92,21 @@ class User(Base):
     )
 
 
+class Branch(Base):
+
+    __tablename__ = "branches"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String, index=True)
+
+    name = Column(String)
+
+    is_default = Column(Boolean, default=False)
+
+    created_at = Column(DateTime, default=utcnow)
+
+
 class Transaction(Base):
 
     __tablename__ = "transactions"
@@ -104,6 +119,8 @@ class Transaction(Base):
         nullable=True,
         index=True,
     )
+
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
 
     type = Column(String)
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText } from "lucide-react";
+import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText, MapPin } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiDownload } from "../lib/api";
@@ -43,6 +43,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
+    apiFetch("branches").then(d => setBranches(d.branches || [])).catch(() => {});
   }, []);
   const [data, setData]       = useState(null);
   const [txData, setTxData]   = useState(null);
@@ -50,6 +51,8 @@ export default function Dashboard() {
   const [error, setError]     = useState(null);
   const [exportingType, setExportingType]   = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const [branches, setBranches]   = useState([]);
+  const [branchId, setBranchId]   = useState("");
 
   async function handleExport(exportType) {
     setExportingType(exportType);
@@ -77,14 +80,16 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     const params = { owner_phone: ownerPhone, period };
+    const txParams = { owner_phone: ownerPhone, period };
+    if (branchId) txParams.branch_id = branchId;
     Promise.all([
       apiFetch("dashboard", params),
-      apiFetch("transactions", { owner_phone: ownerPhone, period }),
+      apiFetch("transactions", txParams),
     ])
       .then(([d, t]) => { setData(d); setTxData(t); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [ownerPhone, period]);
+  }, [ownerPhone, period, branchId]);
 
   const s = data?.summary || {};
 
@@ -100,6 +105,22 @@ export default function Dashboard() {
       {error && (
         <div className="card card-body gap-2" style={{ color: "var(--rose)", display: "flex", gap: 8 }}>
           <AlertCircle size={16} /> {error}
+        </div>
+      )}
+
+      {branches.length > 0 && (
+        <div className="branch-filter-bar">
+          <MapPin size={14} className="branch-filter-icon" />
+          <span className="branch-filter-label">Branch:</span>
+          {[{ id: "", name: "All" }, ...branches].map(b => (
+            <button
+              key={b.id}
+              className={`btn btn-sm btn-pill ${branchId === (b.id ? String(b.id) : "") ? "btn-primary" : "btn-ghost"}`}
+              onClick={() => setBranchId(b.id ? String(b.id) : "")}
+            >
+              {b.name}
+            </button>
+          ))}
         </div>
       )}
 

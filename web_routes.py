@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from database import SessionLocal
 from models import (
-    Customer, FastCaptureSettings, InventoryItem, InventoryMovement, PendingAction,
+    Branch, Customer, FastCaptureSettings, InventoryItem, InventoryMovement, PendingAction,
     ReminderQueue, Supplier, SupplierPayment, SupplierPurchase,
     Transaction, TransactionItem, User, utcnow,
 )
@@ -120,6 +120,7 @@ class PosSaveRequest(BaseModel):
     customer_id: Optional[int] = None
     items: list[PosCartItem]
     payment_amount: int = 0
+    branch_id: Optional[int] = None
 
 
 class AddInventoryRequest(BaseModel):
@@ -155,6 +156,11 @@ class AddCustomerRequest(BaseModel):
 class RecordPaymentRequest(BaseModel):
     amount: int
     note: Optional[str] = None
+    branch_id: Optional[int] = None
+
+
+class CreateBranchRequest(BaseModel):
+    name: str
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -756,6 +762,7 @@ def register_web_routes(app):
                 payload.customer_id,
                 items,
                 payload.payment_amount,
+                branch_id=payload.branch_id,
             )
             return result
         finally:
@@ -884,6 +891,7 @@ def register_web_routes(app):
                 product=payload.note or "Payment",
                 recorded_by_id=session["user_id"],
                 message_id=f"web-pay-{uuid.uuid4()}",
+                branch_id=payload.branch_id,
             )
             db.add(tx)
             db.commit()
@@ -897,11 +905,14 @@ def register_web_routes(app):
     def web_transactions(
         owner_phone: Optional[str] = Query(default=None),
         period: Optional[str] = Query(default=None),
+        branch_id: Optional[int] = Query(default=None),
     ):
         db = SessionLocal()
         try:
             period_key = period.upper() if period else None
             query = get_owner_transaction_query(db, owner_phone, period_key, include_voided=True)
+            if branch_id is not None:
+                query = query.filter(Transaction.branch_id == branch_id)
             rows = query.order_by(Transaction.created_at.desc()).limit(200).all()
             customer_ids = [r.customer_id for r in rows if r.customer_id]
             customers = {}
@@ -911,6 +922,10 @@ def register_web_routes(app):
             users = {}
             if user_ids:
                 users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()}
+            branch_ids = [r.branch_id for r in rows if r.branch_id]
+            branches = {}
+            if branch_ids:
+                branches = {b.id: b for b in db.query(Branch).filter(Branch.id.in_(branch_ids)).all()}
             return {
                 "transactions": [
                     {
@@ -929,6 +944,8 @@ def register_web_routes(app):
                         "void_reason": tx.void_reason,
                         "voided_by": users[tx.voided_by_id].name if tx.voided_by_id and users.get(tx.voided_by_id) else None,
                         "voided_at": _iso(tx.voided_at),
+                        "branch_id": tx.branch_id,
+                        "branch_name": branches[tx.branch_id].name if tx.branch_id and branches.get(tx.branch_id) else None,
                     }
                     for tx in rows
                 ]
@@ -1295,6 +1312,95 @@ def register_web_routes(app):
 
             has_pin = bool(staff_user.recovery_pin_hash)
             return {"ok": True, "name": staff_user.name, "has_pin": has_pin}
+        finally:
+            db.close()
+
+    # ── Branches ─────────────────────────────────────────────────────────
+    @app.get("/app/api/branches")
+    def web_branches(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            owner_phone = session["phone"]
+            if user and user.parent_id:
+                owner = db.query(User).filter(User.id == user.parent_id).first()
+                owner_phone = owner.phone if owner else owner_phone
+            rows = db.query(Branch).filter(Branch.owner_phone == owner_phone).order_by(Branch.created_at).all()
+            return {
+                "branches": [
+                    {"id": b.id, "name": b.name, "is_default": bool(b.is_default), "created_at": _iso(b.created_at)}
+                    for b in rows
+                ]
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/branches")
+    def web_create_branch(payload: CreateBranchRequest, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            owner_phone = session["phone"]
+            if user and user.parent_id:
+                owner = db.query(User).filter(User.id == user.parent_id).first()
+                owner_phone = owner.phone if owner else owner_phone
+            name = payload.name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="Branch name is required.")
+            existing = db.query(Branch).filter(
+                Branch.owner_phone == owner_phone,
+                Branch.name == name,
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="A branch with that name already exists.")
+            is_first = db.query(Branch).filter(Branch.owner_phone == owner_phone).count() == 0
+            branch = Branch(owner_phone=owner_phone, name=name, is_default=is_first)
+            db.add(branch)
+            db.commit()
+            return {"id": branch.id, "name": branch.name, "is_default": bool(branch.is_default)}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/branches/{branch_id}")
+    def web_delete_branch(branch_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            owner_phone = session["phone"]
+            if user and user.parent_id:
+                owner = db.query(User).filter(User.id == user.parent_id).first()
+                owner_phone = owner.phone if owner else owner_phone
+            branch = db.query(Branch).filter(Branch.id == branch_id, Branch.owner_phone == owner_phone).first()
+            if not branch:
+                raise HTTPException(status_code=404, detail="Branch not found.")
+            was_default = branch.is_default
+            db.delete(branch)
+            db.commit()
+            if was_default:
+                first = db.query(Branch).filter(Branch.owner_phone == owner_phone).order_by(Branch.created_at).first()
+                if first:
+                    first.is_default = True
+                    db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    @app.post("/app/api/branches/{branch_id}/default")
+    def web_set_default_branch(branch_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            owner_phone = session["phone"]
+            if user and user.parent_id:
+                owner = db.query(User).filter(User.id == user.parent_id).first()
+                owner_phone = owner.phone if owner else owner_phone
+            db.query(Branch).filter(Branch.owner_phone == owner_phone).update({"is_default": False})
+            branch = db.query(Branch).filter(Branch.id == branch_id, Branch.owner_phone == owner_phone).first()
+            if not branch:
+                raise HTTPException(status_code=404, detail="Branch not found.")
+            branch.is_default = True
+            db.commit()
+            return {"ok": True, "default_branch_id": branch_id}
         finally:
             db.close()
 

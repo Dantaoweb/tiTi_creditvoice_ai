@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, MapPin } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiDownload } from "../lib/api";
@@ -12,10 +12,12 @@ export default function Transactions() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
   const L = getBizLabels(user?.menu_group);
-  const [rows, setRows]       = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
-  const [filter, setFilter]   = useState("all");
+  const [rows, setRows]           = useState([]);
+  const [branches, setBranches]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [filter, setFilter]       = useState("all");
+  const [branchFilter, setBranchFilter] = useState("");
   const [exporting, setExporting] = useState(false);
 
   async function handleExport(exportType) {
@@ -30,17 +32,21 @@ export default function Transactions() {
   }
 
   useEffect(() => {
+    apiFetch("branches").then(d => setBranches(d.branches || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
-    apiFetch("transactions", { owner_phone: ownerPhone, period })
+    const params = { owner_phone: ownerPhone, period };
+    if (branchFilter) params.branch_id = branchFilter;
+    apiFetch("transactions", params)
       .then((d) => setRows(d.transactions))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [ownerPhone, period]);
+  }, [ownerPhone, period, branchFilter]);
 
   const types = ["all", ...Array.from(new Set(rows.map((r) => r.type))).sort()];
-
-  const filtered =
-    filter === "all" ? rows : rows.filter((r) => r.type === filter);
+  const filtered = filter === "all" ? rows : rows.filter((r) => r.type === filter);
 
   return (
     <>
@@ -49,6 +55,18 @@ export default function Transactions() {
         <div className="card-header">
           <span className="card-title">Transactions <span className="text-subtle text-sm">({filtered.length})</span></span>
           <div className="gap-2" style={{ flexWrap: "wrap" }}>
+            {branches.length > 0 && (
+              <select
+                className="branch-filter-select"
+                value={branchFilter}
+                onChange={e => setBranchFilter(e.target.value)}
+              >
+                <option value="">All branches</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
             {types.map((t) => (
               <button
                 key={t}
@@ -84,6 +102,9 @@ export default function Transactions() {
             { key: "product",    label: "Product",   render: (r) => r.product || "—" },
             { key: "qty",        label: "Qty",       render: (r) => qty(r.quantity, r.unit) },
             { key: "amount",     label: "Amount",    render: (r) => <strong>{nairaFull(r.amount)}</strong>, sortKey: "amount" },
+            { key: "branch",     label: "Branch",    render: (r) => r.branch_name
+                ? <span className="branch-chip"><MapPin size={11} />{r.branch_name}</span>
+                : <span className="text-subtle">—</span> },
             { key: "recorded_by",label: "By",        render: (r) => <span className="td-muted">{r.recorded_by || "—"}</span> },
             { key: "void_reason",label: "Void note", render: (r) => r.void_reason
                 ? <span className="text-rose text-sm">{r.void_reason}</span>

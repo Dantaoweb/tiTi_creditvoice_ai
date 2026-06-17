@@ -2000,3 +2000,99 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   padding: 2px 0 4px;
 }
 .install-banner-dismiss:hover { color: #fff; background: rgba(255,255,255,0.15); }
+
+/* ── Branch / Location ───────────────────────────────────────────────── */
+.branch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.branch-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0 4px;
+}
+.branch-filter-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.branch-filter-icon { color: var(--muted); flex-shrink: 0; }
+.branch-filter-select {
+  font-size: 13px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+/* ── Branches page ────────────────────────────────────────────────────── */
+.branches-page { display: flex; flex-direction: column; gap: 20px; }
+.branches-intro {
+  padding: 0 20px 16px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+  border-bottom: 1px solid var(--line);
+}
+.branches-add-row {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.branches-add-input {
+  flex: 1;
+  min-width: 0;
+}
+.branches-empty {
+  padding: 24px 20px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+.branches-list {
+  list-style: none;
+  padding: 8px 0;
+}
+.branch-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--line-2);
+  transition: background 0.12s;
+}
+.branch-item:last-child { border-bottom: none; }
+.branch-item:hover { background: var(--line-2); }
+.branch-item--default { background: #f0f9ff; }
+.branch-item-icon { color: var(--brand); flex-shrink: 0; }
+.branch-item-name { font-weight: 500; flex: 1; }
+.branch-default-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.branch-item-actions { display: flex; gap: 4px; margin-left: auto; }
+.branch-delete-btn { color: var(--rose) !important; }

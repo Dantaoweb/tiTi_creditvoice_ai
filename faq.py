@@ -217,6 +217,80 @@ def detect_faq(text):
     if "fast mode" in q or ("fast" in q and "mode" in q):
         return "fast_mode"
 
+    # ── Loan-ready statement / PDF ────────────────────────────────────────────
+    if any(k in q for k in [
+        "loan statement", "business statement", "financial statement",
+        "pdf statement", "download statement", "get statement",
+        "statement for bank", "statement for loan", "loan ready",
+        "bank statement", "microfinance statement", "loan pdf",
+        "statement pdf", "download pdf", "bank pdf",
+        "proof of income", "show my business", "statement report",
+    ]):
+        return "loan_statement"
+    if "statement" in q and any(k in q for k in ["download", "get", "how", "pdf", "bank", "loan"]):
+        return "loan_statement"
+    if "pdf" in q and any(k in q for k in ["download", "get", "how", "statement", "report"]):
+        return "loan_statement"
+
+    # ── Branch / location tagging ─────────────────────────────────────────────
+    if any(k in q for k in [
+        "branch", "add branch", "create branch", "my branch",
+        "location tag", "tag location", "which branch", "set branch",
+        "branches", "shop location", "tag by location", "branch tag",
+        "track by branch", "branch filter", "branch name",
+    ]):
+        return "branch_location"
+
+    # ── PWA / install / offline ───────────────────────────────────────────────
+    if any(k in q for k in [
+        "install app", "install on phone", "add to home screen",
+        "home screen", "pwa", "progressive web", "app icon",
+        "offline mode", "no internet", "without internet", "work offline",
+        "app offline", "offline queue", "offline sync", "pending sync",
+        "how to install", "install the app", "save to phone",
+        "install creditvoice", "install titi",
+    ]):
+        return "pwa_install"
+    if "offline" in q and any(k in q for k in ["how", "what", "work", "use", "record", "sync"]):
+        return "pwa_install"
+    if "install" in q and any(k in q for k in ["how", "app", "phone", "android", "iphone"]):
+        return "pwa_install"
+
+    # ── Quick Record / web form ───────────────────────────────────────────────
+    if any(k in q for k in [
+        "quick record", "web form", "record from web", "record on web",
+        "web dashboard record", "manual entry", "web app record",
+        "use the website", "use the web", "form to record",
+        "record without whatsapp", "record on computer",
+        "dashboard form", "capture form",
+    ]):
+        return "quick_record"
+    if "web" in q and any(k in q for k in ["record", "sale", "payment", "how", "capture"]):
+        return "quick_record"
+
+    # ── CSV export / download data ────────────────────────────────────────────
+    if any(k in q for k in [
+        "export", "download my data", "export data", "download data",
+        "export transactions", "download transactions",
+        "export to excel", "excel export", "csv", "spreadsheet",
+        "download customers", "export customers", "export debtors",
+        "download debtors", "export stock", "download stock",
+        "backup my data", "get my data",
+    ]):
+        return "export_data"
+
+    # ── Staff accounts ────────────────────────────────────────────────────────
+    if any(k in q for k in [
+        "add staff", "staff account", "staff member", "invite staff",
+        "staff access", "my assistant", "give access", "delegate",
+        "staff invite", "create staff", "new staff", "staff can",
+        "staff permission", "who can record", "second user",
+        "another user", "another person record",
+    ]):
+        return "staff_accounts"
+    if "staff" in q and any(k in q for k in ["how", "add", "invite", "access", "what"]):
+        return "staff_accounts"
+
     # ── Upgrade / plan ────────────────────────────────────────────────────────
     if any(k in q for k in ["upgrade", "go plan", "subscription", "what does go", "go include"]):
         return "upgrade"
@@ -672,6 +746,103 @@ FAQ_ANSWERS = {
     "formats": (
         "Send this to see all examples and commands:\n\n"
         "formats"
+    ),
+    "loan_statement": (
+        "The business statement is a professional PDF showing your revenue, receivables, and stock.\n"
+        "It is ready to share with a bank or microfinance institution when applying for a loan.\n\n"
+        "To download it from the web dashboard:\n"
+        "1. Open your CreditVoice web dashboard\n"
+        "2. Go to Dashboard\n"
+        "3. Click  Download Statement PDF\n\n"
+        "Via WhatsApp:\n"
+        "Send:  dashboard\n"
+        "Then choose option 11 (Business statement PDF)\n"
+        "tiTi will send you a download link that works for 24 hours.\n\n"
+        "The PDF includes:\n"
+        "- Revenue and sales summary\n"
+        "- Outstanding receivables (who owes you)\n"
+        "- Stock assets and value\n"
+        "- Full transaction history"
+    ),
+    "branch_location": (
+        "Branches let you tag each transaction to a location.\n"
+        "Example: Main Shop, Oshodi Branch, Ikeja Store.\n\n"
+        "To set up your branches:\n"
+        "1. Open the web dashboard\n"
+        "2. Go to Branches in the sidebar\n"
+        "3. Click Add Branch and enter the name\n"
+        "4. Star one as the default\n\n"
+        "Once set up:\n"
+        "- Your default branch is attached to every new WhatsApp transaction automatically\n"
+        "- On the Quick Record web form, pick a branch before saving\n"
+        "- Filter the Transactions page by branch\n"
+        "- Filter your Dashboard by branch\n\n"
+        "Useful for business owners running more than one shop location."
+    ),
+    "pwa_install": (
+        "CreditVoice works as an app on your phone without downloading from an app store.\n\n"
+        "To install:\n"
+        "1. Open your web dashboard in Chrome or Safari on your phone\n"
+        "2. Tap the browser menu (three dots or share button)\n"
+        "3. Choose  Add to Home Screen\n"
+        "4. Tap Install or Add\n\n"
+        "The CreditVoice icon will appear on your home screen like any other app.\n\n"
+        "Offline mode:\n"
+        "If you record a sale or payment while offline, tiTi saves it locally and syncs it "
+        "automatically the moment your internet returns.\n\n"
+        "You will see:\n"
+        "- Offline chip in the top bar when there is no connection\n"
+        "- X pending when records are waiting to sync\n"
+        "- Synced message when records upload successfully"
+    ),
+    "quick_record": (
+        "Quick Record is the fast web form for recording sales, payments, and stock changes "
+        "directly from your computer or phone browser.\n\n"
+        "To use it:\n"
+        "1. Open your CreditVoice web dashboard\n"
+        "2. Click  Quick Record  in the sidebar\n"
+        "3. Choose the tab:\n"
+        "   - Sale: enter product, amount, and optional customer for credit sales\n"
+        "   - Payment: search for a debtor and enter what they paid\n"
+        "   - Stock: search a product and add or remove quantity\n"
+        "4. Select a branch if you have locations set up\n"
+        "5. Click the Record button\n\n"
+        "All records sync to the same data as your WhatsApp messages.\n"
+        "Works offline too — records save locally and sync when internet returns."
+    ),
+    "export_data": (
+        "To export your data as a spreadsheet:\n\n"
+        "From the web dashboard:\n"
+        "1. Go to Transactions or Dashboard\n"
+        "2. Click  Export\n"
+        "3. Choose what to download:\n"
+        "   - Transactions CSV\n"
+        "   - Unpaid Debtors CSV\n"
+        "   - Customer List CSV\n"
+        "   - Stock Inventory CSV\n\n"
+        "Files open in Excel, Google Sheets, or any spreadsheet app.\n\n"
+        "Via WhatsApp:\n"
+        "Send:  dashboard\n"
+        "Then choose option 10 (Export data CSV)\n"
+        "tiTi will send you a download link."
+    ),
+    "staff_accounts": (
+        "Staff accounts let your assistant or sales team record transactions on your behalf.\n\n"
+        "To invite a staff member:\n"
+        "1. Open the web dashboard\n"
+        "2. Go to Staff in the sidebar\n"
+        "3. Enter their name and phone number\n"
+        "4. Share the join code with them\n"
+        "5. They accept the invite and set a PIN\n\n"
+        "What staff can do:\n"
+        "- Record sales and payments via WhatsApp or web\n"
+        "- View transactions they personally recorded\n\n"
+        "What staff cannot do:\n"
+        "- See all transactions by default\n"
+        "- Void another person's transactions\n"
+        "- Access sensitive owner reports\n\n"
+        "To give a staff member full view access:\n"
+        "Go to Staff and enable  Can view all transactions."
     ),
 }
 

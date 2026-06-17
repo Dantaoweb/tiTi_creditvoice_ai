@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
-  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle,
+  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -22,6 +22,7 @@ function buildNav(L) {
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
     { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
     { to: "/staff",        label: "Staff",            icon: UserCheck       },
+    { to: "/branches",     label: "Branches",         icon: MapPin          },
   ];
 }
 
@@ -45,6 +46,7 @@ export default function Layout() {
     "/suppliers":    "Suppliers",
     "/staff":        "Staff",
     "/wallet":       "Wallet",
+    "/branches":     "Branches",
   };
 
   const path = window.location.pathname.replace("/app", "") || "/home";

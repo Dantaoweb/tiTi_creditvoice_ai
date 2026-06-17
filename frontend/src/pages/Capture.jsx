@@ -125,6 +125,40 @@ function InventorySearch({ ownerPhone, onSelect, value }) {
   );
 }
 
+// ── Branch selector ───────────────────────────────────────────────────────────
+
+function BranchSelector({ ownerPhone, value, onChange }) {
+  const [branches, setBranches] = useState([]);
+
+  useEffect(() => {
+    if (!ownerPhone) return;
+    apiFetch("branches")
+      .then(d => {
+        const list = d.branches || [];
+        setBranches(list);
+        if (!value && list.length > 0) {
+          const def = list.find(b => b.is_default) || list[0];
+          onChange(def.id);
+        }
+      })
+      .catch(() => {});
+  }, [ownerPhone]);
+
+  if (branches.length === 0) return null;
+
+  return (
+    <div className="form-group">
+      <label className="form-label">Branch / Location</label>
+      <select value={value || ""} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}>
+        <option value="">— No branch tag —</option>
+        {branches.map(b => (
+          <option key={b.id} value={b.id}>{b.name}{b.is_default ? " (default)" : ""}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 // ── Form panels ──────────────────────────────────────────────────────────────
 
 function SaleForm({ ownerPhone, onSuccess }) {
@@ -133,6 +167,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
   const [unit, setUnit]         = useState("");
   const [amount, setAmount]     = useState("");
   const [customer, setCustomer] = useState(null);
+  const [branchId, setBranchId] = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
 
@@ -148,6 +183,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
         customer_id:    customer?.id || null,
         items:          [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
         payment_amount: customer ? 0 : total,
+        branch_id:      branchId || null,
       };
       await apiPost("pos/save", body);
       onSuccess(`Sale of ${nairaFull(total)} recorded${customer ? ` — credit to ${customer.name}` : " (cash)"}.`);
@@ -160,6 +196,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
           items: [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
           payment_amount: customer ? 0 : total,
+          branch_id: branchId || null,
         }, `Sale ${nairaFull(total)}${customer ? ` — ${customer.name}` : " (cash)"}`);
         onSuccess(`No internet — sale saved offline. Will sync automatically when you reconnect.`);
         setProduct(""); setQty("1"); setUnit(""); setAmount(""); setCustomer(null);
@@ -195,6 +232,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
         <label className="form-label">Customer <span className="text-subtle">— leave blank for cash sale</span></label>
         <CustomerSearch ownerPhone={ownerPhone} placeholder="Search customer name…" onSelect={setCustomer} value={customer} />
       </div>
+      <BranchSelector ownerPhone={ownerPhone} value={branchId} onChange={setBranchId} />
       <div className="qf-type-hint">
         {customer
           ? `Credit sale → will increase ${customer.name}'s balance`
@@ -212,6 +250,7 @@ function PaymentForm({ ownerPhone, onSuccess }) {
   const [customer, setCustomer] = useState(null);
   const [amount, setAmount]     = useState("");
   const [note, setNote]         = useState("");
+  const [branchId, setBranchId] = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
 
@@ -220,14 +259,14 @@ function PaymentForm({ ownerPhone, onSuccess }) {
     if (!customer || !amount) return;
     setLoading(true); setError(null);
     try {
-      await apiPost(`customers/${customer.id}/pay`, { amount: Number(amount), note: note || null });
+      await apiPost(`customers/${customer.id}/pay`, { amount: Number(amount), note: note || null, branch_id: branchId || null });
       onSuccess(`Payment of ${nairaFull(Number(amount))} from ${customer.name} recorded.`);
       setCustomer(null); setAmount(""); setNote("");
     } catch (e) {
       if (isNetworkError(e)) {
         enqueue(
           `customers/${customer.id}/pay`,
-          { amount: Number(amount), note: note || null },
+          { amount: Number(amount), note: note || null, branch_id: branchId || null },
           `Payment ${nairaFull(Number(amount))} from ${customer.name}`,
         );
         onSuccess(`No internet — payment saved offline. Will sync automatically when you reconnect.`);
@@ -261,6 +300,7 @@ function PaymentForm({ ownerPhone, onSuccess }) {
         <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
         <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Bank transfer, Part payment" />
       </div>
+      <BranchSelector ownerPhone={ownerPhone} value={branchId} onChange={setBranchId} />
       {error && <div className="modal-error">{error}</div>}
       <button type="submit" className="btn btn-primary" disabled={loading || !customer}>
         {loading ? "Saving…" : "Record Payment"}

@@ -14,13 +14,21 @@ from inventory_suppliers import (
 )
 from messages import balance_status_line, pending_transaction_summary
 from models import (
-    Customer, InventoryItem,
+    Branch, Customer, InventoryItem,
     SupplierPayment, SupplierPurchase, Transaction, TransactionNote,
 )
 from parser import add_transaction_items
 from plans import plan_allows_feature
 from reports import get_balance
 from transaction_setup import update_parse_log_outcome
+
+
+def _get_default_branch_id(db, owner_phone):
+    branch = db.query(Branch).filter(
+        Branch.owner_phone == owner_phone,
+        Branch.is_default == True,
+    ).first()
+    return branch.id if branch else None
 
 
 def _add_price_deviation_note(db, owner_phone, tx_id, product, unit_price, recorder_name):
@@ -159,6 +167,7 @@ def save_direct_sale(
             recorded_by_id=user.id,
             message_id=message_id,
             created_at=_utcnow(),
+            branch_id=_get_default_branch_id(db, business_owner_phone),
         )
         db.add(tx)
         db.flush()
@@ -314,6 +323,8 @@ def save_customer_pending(
     _buy_tx_for_receipt = None
 
     try:
+        _default_branch_id = _get_default_branch_id(db, business_owner_phone)
+
         if pending.action == "BUY":
             tx = Transaction(
                 customer_id=customer.id,
@@ -327,6 +338,7 @@ def save_customer_pending(
                 recorded_by_id=user.id,
                 message_id=message_id,
                 created_at=_utcnow(),
+                branch_id=_default_branch_id,
             )
             db.add(tx)
             db.flush()
@@ -348,6 +360,7 @@ def save_customer_pending(
                 recorded_by_id=user.id,
                 message_id=message_id,
                 created_at=_utcnow(),
+                branch_id=_default_branch_id,
             )
             db.add(tx)
             if pending.due_date:
@@ -373,6 +386,7 @@ def save_customer_pending(
                 recorded_by_id=user.id,
                 message_id=f"{message_id}_buy",
                 created_at=_utcnow(),
+                branch_id=_default_branch_id,
             )
             db.add(buy_tx)
             db.flush()
@@ -392,6 +406,7 @@ def save_customer_pending(
                 recorded_by_id=user.id,
                 message_id=f"{message_id}_pay",
                 created_at=_utcnow(),
+                branch_id=_default_branch_id,
             )
             db.add(pay_tx)
 

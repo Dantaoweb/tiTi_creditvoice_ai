@@ -4,7 +4,7 @@ import uuid
 from models import Customer, InventoryItem, InventoryMovement, Transaction, TransactionItem, User, utcnow
 
 
-def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount):
+def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, branch_id=None):
     """
     Save a POS sale and deduct inventory.
 
@@ -31,6 +31,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount):
         product=f"POS Sale ({len(items)} item{'s' if len(items) != 1 else ''})",
         recorded_by_id=user_id,
         message_id=f"web-pos-{uuid.uuid4()}",
+        branch_id=branch_id,
     )
     db.add(main_tx)
     db.flush()
@@ -56,6 +57,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount):
             product=f"Part payment — POS #{main_tx.id}",
             recorded_by_id=user_id,
             message_id=f"web-pos-pay-{uuid.uuid4()}",
+            branch_id=branch_id,
         )
         db.add(pay_tx)
         db.flush()
