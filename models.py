@@ -86,6 +86,12 @@ class User(Base):
 
     invite_expires_at = Column(DateTime, nullable=True)
 
+    # Staff profile fields
+    staff_position = Column(String, nullable=True)   # e.g. "Cashier", "Sales Rep", "Manager"
+    staff_level = Column(String, nullable=True)      # e.g. "Junior", "Senior", "Supervisor"
+    staff_salary = Column(Integer, nullable=True)    # monthly salary in naira
+    staff_matric = Column(String, nullable=True)     # employee / matric ID
+
     created_at = Column(
         DateTime,
         default=utcnow
@@ -867,3 +873,53 @@ class WalletTransaction(Base):
 
     created_at = Column(DateTime, default=utcnow)
     settled_at = Column(DateTime, nullable=True)
+
+
+class BusinessPartner(Base):
+    """A person who co-owns or has invested in a business on tiTi."""
+
+    __tablename__ = "business_partners"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)        # the business owner
+    partner_phone = Column(String, index=True)      # the partner's tiTi phone
+
+    # role: co_founder | partner | investor | silent
+    role = Column(String, default="partner")
+
+    # access_level mirrors role but can be customised independently:
+    # "full" | "operations" | "financial" | "investment_only"
+    access_level = Column(String, default="operations")
+
+    equity_percent = Column(Float, nullable=True)   # e.g. 25.0 for 25%
+    investment_amount = Column(Integer, nullable=True)  # capital in naira
+
+    status = Column(String, default="pending")      # pending | active | suspended
+
+    invited_at = Column(DateTime, default=utcnow)
+    accepted_at = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)             # internal memo on this partnership
+
+
+class BusinessNote(Base):
+    """Shared memo / expense ledger entry visible to owner, partners, or investors."""
+
+    __tablename__ = "business_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+
+    title = Column(String, nullable=True)
+    body = Column(Text)
+
+    # category: expense | income | memo | agreement
+    category = Column(String, default="memo")
+
+    amount = Column(Integer, nullable=True)         # naira amount if financial
+
+    # visibility: owner_only | partners | investors | all
+    visibility = Column(String, default="owner_only")
+
+    created_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow)

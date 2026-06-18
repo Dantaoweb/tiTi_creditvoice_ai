@@ -12,6 +12,8 @@ import Transactions from "./pages/Transactions";
 import Inventory    from "./pages/Inventory";
 import Suppliers    from "./pages/Suppliers";
 import Staff        from "./pages/Staff";
+import Partners     from "./pages/Partners";
+import Notes        from "./pages/Notes";
 import Reminders    from "./pages/Reminders";
 import Automation   from "./pages/Automation"
 import Branches     from "./pages/Branches";
@@ -52,6 +54,8 @@ export default function App() {
           <Route path="inventory"    element={<Inventory />}    />
           <Route path="suppliers"    element={<Suppliers />}    />
           <Route path="staff"        element={<Staff />}        />
+          <Route path="partners"     element={<Partners />}     />
+          <Route path="notes"        element={<Notes />}        />
           <Route path="reminders"    element={<Reminders />}    />
           <Route path="wallet"       element={<Wallet />}       />
           <Route path="branches"     element={<Branches />}     />

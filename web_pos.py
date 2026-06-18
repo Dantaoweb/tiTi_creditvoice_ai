@@ -84,7 +84,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, 
             fraction = float(it.get("fraction", 1.0) or 1.0)
             deduct = qty * fraction
 
-        inv.quantity = (inv.quantity or 0) - deduct
+        inv.quantity = max(0.0, (inv.quantity or 0.0) - deduct)
         inv.updated_at = utcnow()
         db.add(InventoryMovement(
             owner_phone=owner_phone,

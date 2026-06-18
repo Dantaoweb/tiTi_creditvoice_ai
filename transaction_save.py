@@ -239,12 +239,20 @@ def save_supplier_pending(db, phone, pending, user, business_owner_phone, pendin
             import json as _json
             _payload = _json.loads(pending.payload_json or "{}")
             _selling_price = _payload.get("selling_price")
-            if _selling_price:
-                upsert_stock_with_prices(
+            _retail_unit = _payload.get("retail_unit")
+            _retail_per_base = _payload.get("retail_per_base")
+            _retail_price = _payload.get("retail_price")
+            if _selling_price or (_retail_unit and _retail_per_base):
+                _price_item = upsert_stock_with_prices(
                     db, business_owner_phone,
                     stock_product, stock_unit,
                     stock_unit_price, _selling_price,
                 )
+                if _retail_unit and _retail_per_base and _price_item:
+                    _price_item.retail_unit = _retail_unit
+                    _price_item.retail_per_base = int(_retail_per_base)
+                    if _retail_price:
+                        _price_item.retail_price = int(_retail_price)
         else:
             payment = SupplierPayment(
                 supplier_id=supplier.id,

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Copy, Check, Clock, CheckCircle } from "lucide-react";
+import { UserPlus, Copy, Check, Clock, CheckCircle, Pencil, Save, X } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiPost } from "../lib/api";
+import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 import EmptyState from "../components/EmptyState";
@@ -23,15 +23,96 @@ function CopyButton({ text }) {
   );
 }
 
+function ProfileEditRow({ member, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    staff_position: member.staff_position || "",
+    staff_level: member.staff_level || "",
+    staff_salary: member.staff_salary || "",
+    staff_matric: member.staff_matric || "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function save() {
+    setBusy(true); setErr("");
+    try {
+      await apiPut(`staff/${member.id}/profile`, {
+        staff_position: form.staff_position || null,
+        staff_level: form.staff_level || null,
+        staff_salary: form.staff_salary ? parseInt(form.staff_salary) : null,
+        staff_matric: form.staff_matric || null,
+      });
+      setEditing(false);
+      onSaved();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card" style={{ gap: 0 }}>
+      <div className="card-header">
+        <div>
+          <div className="card-title">{(member.name || "Staff").replace(/\b\w/g, c => c.toUpperCase())}</div>
+          <div className="card-subtitle">{member.phone}</div>
+        </div>
+        {!editing ? (
+          <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setEditing(true)}>
+            <Pencil size={12} /> Edit profile
+          </button>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={save} disabled={busy}>
+              <Save size={12} /> {busy ? "Saving…" : "Save"}
+            </button>
+            <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setEditing(false)} disabled={busy}>
+              <X size={12} />
+            </button>
+          </div>
+        )}
+      </div>
+      {err && <div className="login-error" style={{ margin: "8px 0 0" }}>{err}</div>}
+      {!editing ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+          {[["Position", member.staff_position], ["Level", member.staff_level],
+            ["Salary", member.staff_salary ? nairaFull(member.staff_salary) + "/mo" : null],
+            ["Employee ID", member.staff_matric]].map(([label, val]) => (
+            <div className="parsed-cell" key={label}>
+              <span>{label}</span>
+              <strong style={{ color: val ? undefined : "var(--text-muted)", fontWeight: val ? 600 : 400 }}>
+                {val || "Not set"}
+              </strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+          {[["Position", "staff_position", "e.g. Cashier"], ["Level", "staff_level", "e.g. Senior"],
+            ["Monthly Salary (₦)", "staff_salary", "e.g. 50000"], ["Employee ID", "staff_matric", "e.g. EMP001"]
+          ].map(([label, key, ph]) => (
+            <div className="form-group" key={key}>
+              <label className="form-label">{label}</label>
+              <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                placeholder={ph} disabled={busy} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Staff() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
   const isOwner = user?.role === "user" && !user?.parent_id;
 
+  const [tab, setTab] = useState("performance");
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [members, setMembers] = useState([]);
+  const [profiles, setProfiles] = useState([]);
 
   // Invite form
   const [showInvite, setShowInvite] = useState(false);
@@ -56,6 +137,12 @@ export default function Staff() {
       .then(d => setMembers(d.members || []))
       .catch(() => {});
   }, [isOwner, invResult]);
+
+  function loadProfiles() {
+    if (!isOwner) return;
+    apiFetch("staff/profiles").then(d => setProfiles(d.profiles || [])).catch(() => {});
+  }
+  useEffect(loadProfiles, [isOwner]);
 
   const staff = data?.staff || [];
   const totalSales    = staff.reduce((s, m) => s + m.sales,    0);
@@ -87,6 +174,31 @@ export default function Staff() {
   return (
     <>
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
+
+      {/* Tab switcher */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {["performance", "profiles"].map(t => (
+          <button key={t} className={`btn ${tab === t ? "btn-primary" : "btn-secondary"}`}
+            style={{ fontSize: 13, textTransform: "capitalize" }} onClick={() => setTab(t)}>
+            {t === "performance" ? "Performance" : "HR Profiles"}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Profiles tab ── */}
+      {tab === "profiles" && (
+        <>
+          {profiles.length === 0 ? (
+            <div className="card"><EmptyState text="No active staff profiles yet. Invite staff first, then set their position and salary here." /></div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+              {profiles.map(m => <ProfileEditRow key={m.id} member={m} onSaved={loadProfiles} />)}
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "performance" && <>
 
       <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, minmax(160px, 1fr))" }}>
         <MetricCard loading={loading} label="Total staff sales"    value={nairaFull(totalSales)}    color="green" />
@@ -242,6 +354,8 @@ export default function Staff() {
           ))}
         </div>
       )}
+
+      </>}
     </>
   );
 }

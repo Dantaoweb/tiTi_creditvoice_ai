@@ -79,6 +79,10 @@ def ensure_schema_updates(engine):
         "email": "VARCHAR",
         "newsletter_consent": "BOOLEAN DEFAULT FALSE",
         "whatsapp_linked": "BOOLEAN DEFAULT FALSE",
+        "staff_position": "VARCHAR",
+        "staff_level": "VARCHAR",
+        "staff_salary": "INTEGER",
+        "staff_matric": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
@@ -470,3 +474,72 @@ def ensure_schema_updates(engine):
                         f"ON {table} ({column})"
                     )
                 )
+
+    # ── business_partners table ─────────────────────────────────────────────
+    if "business_partners" not in inspector.get_table_names():
+        _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE business_partners (
+                    id {_pk},
+                    owner_phone VARCHAR,
+                    partner_phone VARCHAR,
+                    role VARCHAR DEFAULT 'partner',
+                    access_level VARCHAR DEFAULT 'operations',
+                    equity_percent REAL,
+                    investment_amount INTEGER,
+                    status VARCHAR DEFAULT 'pending',
+                    invited_at TIMESTAMP,
+                    accepted_at TIMESTAMP,
+                    notes TEXT
+                )
+            """))
+    else:
+        _bp_cols = {c["name"] for c in inspector.get_columns("business_partners")}
+        _bp_updates = {
+            "equity_percent": "REAL",
+            "investment_amount": "INTEGER",
+            "access_level": "VARCHAR DEFAULT 'operations'",
+            "notes": "TEXT",
+        }
+        with engine.begin() as connection:
+            for col, typ in _bp_updates.items():
+                if col not in _bp_cols:
+                    connection.execute(text(
+                        f"ALTER TABLE business_partners ADD COLUMN {col} {typ}"
+                    ))
+
+    # ── business_notes table ────────────────────────────────────────────────
+    if "business_notes" not in inspector.get_table_names():
+        _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE business_notes (
+                    id {_pk},
+                    owner_phone VARCHAR,
+                    title VARCHAR,
+                    body TEXT,
+                    category VARCHAR DEFAULT 'memo',
+                    amount INTEGER,
+                    visibility VARCHAR DEFAULT 'owner_only',
+                    created_by_id VARCHAR,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            """))
+    else:
+        _bn_cols = {c["name"] for c in inspector.get_columns("business_notes")}
+        _bn_updates = {
+            "title": "VARCHAR",
+            "category": "VARCHAR DEFAULT 'memo'",
+            "amount": "INTEGER",
+            "visibility": "VARCHAR DEFAULT 'owner_only'",
+            "created_by_id": "VARCHAR",
+            "updated_at": "TIMESTAMP",
+        }
+        with engine.begin() as connection:
+            for col, typ in _bn_updates.items():
+                if col not in _bn_cols:
+                    connection.execute(text(
+                        f"ALTER TABLE business_notes ADD COLUMN {col} {typ}"
+                    ))

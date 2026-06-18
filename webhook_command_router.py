@@ -1,4 +1,11 @@
 ﻿from admin_commands import handle_admin_subscription_command, notify_subscription_admins
+from partner_commands import (
+    handle_set_staff_profile, handle_view_staff_profile,
+    handle_invite_partner, handle_accept_partner, handle_remove_partner,
+    handle_view_partners, handle_partner_status,
+    handle_partner_business_overview,
+    handle_add_note, handle_view_notes,
+)
 from business_templates import build_business_category_menu
 from analytics_commands import handle_analytics_command
 from void_commands import handle_void_transaction
@@ -188,6 +195,39 @@ def handle_parsed_command(
             db, phone, parsed, user, business_owner_phone,
             visible_recorded_by_id, send_whatsapp_message,
         )
+
+    # ── Staff profile ─────────────────────────────────────────────────────────
+    if parsed["type"] == "SET_STAFF_PROFILE":
+        return handle_set_staff_profile(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
+
+    if parsed["type"] == "VIEW_STAFF_PROFILE":
+        return handle_view_staff_profile(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
+
+    # ── Partner management ────────────────────────────────────────────────────
+    if parsed["type"] == "INVITE_PARTNER":
+        return handle_invite_partner(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
+
+    if parsed["type"] == "ACCEPT_PARTNER":
+        return handle_accept_partner(db, phone, parsed, send_whatsapp_message)
+
+    if parsed["type"] == "REMOVE_PARTNER":
+        return handle_remove_partner(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
+
+    if parsed["type"] == "VIEW_PARTNERS":
+        return handle_view_partners(db, phone, user, business_owner_phone, send_whatsapp_message)
+
+    if parsed["type"] == "PARTNER_STATUS":
+        return handle_partner_status(db, phone, send_whatsapp_message)
+
+    if parsed["type"] == "PARTNER_BUSINESS_OVERVIEW":
+        return handle_partner_business_overview(db, phone, parsed, send_whatsapp_message)
+
+    # ── Shared notes ──────────────────────────────────────────────────────────
+    if parsed["type"] == "ADD_NOTE":
+        return handle_add_note(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
+
+    if parsed["type"] == "VIEW_NOTES":
+        return handle_view_notes(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
 
     if parsed["type"] == "STAFF_REPORT":
         from reports import get_staff_performance

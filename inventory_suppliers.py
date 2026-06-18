@@ -338,7 +338,7 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
         if unit_price:
             item.cost_price = unit_price
     elif movement_type == "OUT":
-        item.quantity = (item.quantity or 0) - quantity
+        item.quantity = max(0.0, (item.quantity or 0.0) - quantity)
     else:
         item.quantity = (item.quantity or 0) + quantity
     item.updated_at = _utcnow()
@@ -373,17 +373,30 @@ def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, r
         if not item:
             missing.append(product.title())
             continue
+        pre_qty = float(item.quantity or 0)
         add_inventory_movement(
             db, owner_phone, item.name, deduct_qty, item.unit,
             item_data.get("unit_price"), "OUT", source_type, source_id,
             recorded_by_id, "Sold",
         )
+        post_qty = float(item.quantity or 0)
         remaining_label = _format_stock_remaining(
-            item.quantity, item.unit, item.retail_unit, item.retail_per_base
+            post_qty, item.unit, item.retail_unit, item.retail_per_base
         )
         updates.append(f"{product.title()}: {remaining_label} left")
-        if item.low_stock_alert is not None and item.quantity <= item.low_stock_alert:
-            low_stock_alerts.append(f"{item.name.title()}: only {remaining_label} left")
+        name = item.name.title()
+        if pre_qty == 0:
+            low_stock_alerts.append(
+                f"⚠️ *{name}* was already OUT OF STOCK when this sale was recorded"
+            )
+        elif post_qty == 0:
+            low_stock_alerts.append(
+                f"⚠️ *{name}* is now OUT OF STOCK — please restock"
+            )
+        elif item.low_stock_alert is not None and post_qty <= item.low_stock_alert:
+            low_stock_alerts.append(
+                f"⚠️ *{name}*: only {remaining_label} left — running low"
+            )
     return updates, missing, low_stock_alerts
 
 

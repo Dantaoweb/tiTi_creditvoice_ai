@@ -515,11 +515,18 @@ def _send_confirm(phone, payload, send_message, warn_margin=False):
     cost = payload.get("cost", 0)
     sell = payload.get("sell", 0)
     supplier = payload.get("supplier")
+    ret_unit = payload.get("retail_unit")
+    ret_per = payload.get("retail_per_base")
+    ret_price = payload.get("retail_price")
 
     unit_label = f" {unit}" if unit else ""
     cost_line = f"Cost: N{cost:,}" if cost else "Cost: not set"
     supplier_line = f"\nSupplier: {supplier.title()}" if supplier else ""
     margin_warn = "\n\n⚠ Selling price is below cost price." if warn_margin else ""
+    breakdown_line = ""
+    if ret_unit and ret_per:
+        bp = f" at N{ret_price:,} each" if ret_price else ""
+        breakdown_line = f"\nRetail: {ret_per} {ret_unit} per {unit or 'unit'}{bp}"
 
     msg = (
         f"Confirm stock item:\n\n"
@@ -527,6 +534,7 @@ def _send_confirm(phone, payload, send_message, warn_margin=False):
         f"Qty: {qty:,}\n"
         f"{cost_line}\n"
         f"Sell: N{sell:,}"
+        f"{breakdown_line}"
         f"{supplier_line}"
         f"{margin_warn}\n\n"
         "Reply *YES* to save or *EDIT* to change."

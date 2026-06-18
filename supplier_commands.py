@@ -377,7 +377,12 @@ def handle_supplier_command(
             items_json=json.dumps([parsed["stock_item"]] if parsed.get("stock_item") else []),
             source_text=voice_transcript_text,
             due_date=parsed.get("due_date"),
-            payload_json=json.dumps({"selling_price": parsed.get("selling_price")}),
+            payload_json=json.dumps({
+                "selling_price": parsed.get("selling_price"),
+                "retail_unit": parsed.get("retail_unit"),
+                "retail_per_base": parsed.get("retail_per_base"),
+                "retail_price": parsed.get("retail_price"),
+            }),
         )
         db.add(pending)
         db.commit()
@@ -390,13 +395,20 @@ def handle_supplier_command(
                 due_line = f"\nDue: {parsed['due_date'].strftime('%d/%m/%Y')}"
             selling_line = ""
             if parsed.get("selling_price"):
-                selling_line = f"\nSelling price: N{parsed['selling_price']:,}"
+                selling_line = f"\nSell price: N{parsed['selling_price']:,}"
+            retail_line = ""
+            if parsed.get("retail_unit") and parsed.get("retail_per_base"):
+                rp = parsed.get("retail_price")
+                base_unit = parsed.get("unit") or "unit"
+                retail_line = f"\nRetail: {parsed['retail_per_base']} {parsed['retail_unit']} per {base_unit}"
+                if rp:
+                    retail_line += f" at N{rp:,} each"
             confirm_msg = (
                 "Confirm stock from supplier:\n"
                 f"Supplier: {parsed['name'].title()}\n"
                 f"Item: {parsed['product'].title()}\n"
                 f"Qty: {parsed['quantity']:,}{unit_label}\n"
-                f"Cost each: N{parsed['unit_price']:,}{selling_line}\n"
+                f"Cost each: N{parsed['unit_price']:,}{selling_line}{retail_line}\n"
                 f"Total: N{parsed['buy_amount']:,}\n"
                 f"Paid: N{parsed['paid_amount']:,}\n"
                 f"You owe: N{balance:,}"

@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
+  Handshake, FileText,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -22,6 +23,8 @@ function buildNav(L) {
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
     { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
     { to: "/staff",        label: "Staff",            icon: UserCheck       },
+    { to: "/partners",     label: "Partners",         icon: Handshake       },
+    { to: "/notes",        label: "Notes",            icon: FileText        },
     { to: "/branches",     label: "Branches",         icon: MapPin          },
     { to: "/automation",   label: "Automation",       icon: Zap             },
   ];
@@ -46,6 +49,8 @@ export default function Layout() {
     "/transactions": "Transactions",
     "/suppliers":    "Suppliers",
     "/staff":        "Staff",
+    "/partners":     "Partners & Investors",
+    "/notes":        "Business Notes",
     "/wallet":       "Wallet",
     "/branches":     "Branches",
     "/automation":   "Automation",

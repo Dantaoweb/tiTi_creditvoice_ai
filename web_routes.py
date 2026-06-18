@@ -146,6 +146,9 @@ class EditInventoryRequest(BaseModel):
     selling_price: Optional[int] = None
     low_stock_alert: Optional[int] = None
     is_available: Optional[bool] = None
+    retail_unit: Optional[str] = None
+    retail_per_base: Optional[int] = None
+    retail_price: Optional[int] = None
 
 
 class AdjustStockRequest(BaseModel):
@@ -1064,6 +1067,12 @@ def register_web_routes(app):
                 item.low_stock_alert = payload.low_stock_alert
             if payload.is_available is not None:
                 item.is_available = payload.is_available
+            if payload.retail_unit is not None:
+                item.retail_unit = payload.retail_unit.strip().lower() or None
+            if payload.retail_per_base is not None:
+                item.retail_per_base = payload.retail_per_base or None
+            if payload.retail_price is not None:
+                item.retail_price = payload.retail_price or None
             item.updated_at = utcnow()
             db.commit()
             return {"id": item.id, "name": item.name, "selling_price": _money(item.selling_price)}
@@ -1468,6 +1477,281 @@ def register_web_routes(app):
             if err:
                 raise HTTPException(status_code=400, detail=err)
             return {"ok": True, "transaction_id": tx.id}
+        finally:
+            db.close()
+
+    # ── Staff profiles ────────────────────────────────────────────────────────
+
+    @app.get("/app/api/staff/profiles")
+    def web_staff_profiles(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.parent_id is not None:
+                return {"profiles": []}
+            members = db.query(User).filter(User.parent_id == owner.id).all()
+            return {
+                "profiles": [
+                    {
+                        "id": m.id,
+                        "name": m.name,
+                        "phone": m.phone,
+                        "role": m.role,
+                        "staff_position": m.staff_position,
+                        "staff_level": m.staff_level,
+                        "staff_salary": m.staff_salary,
+                        "staff_matric": m.staff_matric,
+                    }
+                    for m in members if m.role != "delegate_pending"
+                ]
+            }
+        finally:
+            db.close()
+
+    class StaffProfileUpdateRequest(BaseModel):
+        staff_position: Optional[str] = None
+        staff_level: Optional[str] = None
+        staff_salary: Optional[int] = None
+        staff_matric: Optional[str] = None
+
+    @app.put("/app/api/staff/{user_id}/profile")
+    def web_update_staff_profile(
+        user_id: str,
+        payload: StaffProfileUpdateRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can update staff profiles.")
+            member = db.query(User).filter(User.id == user_id, User.parent_id == owner.id).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            if payload.staff_position is not None:
+                member.staff_position = payload.staff_position.strip() or None
+            if payload.staff_level is not None:
+                member.staff_level = payload.staff_level.strip() or None
+            if payload.staff_salary is not None:
+                member.staff_salary = payload.staff_salary or None
+            if payload.staff_matric is not None:
+                member.staff_matric = payload.staff_matric.strip().upper() or None
+            db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    # ── Partners & Investors ──────────────────────────────────────────────────
+
+    class PartnerInviteRequest(BaseModel):
+        partner_phone: str
+        role: str = "partner"
+        equity_percent: Optional[float] = None
+        investment_amount: Optional[int] = None
+        notes: Optional[str] = None
+
+    @app.get("/app/api/partners")
+    def web_partners(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner:
+                return {"partners": [], "as_partner": []}
+            from models import BusinessPartner
+            # Partners in MY business
+            my_partners = db.query(BusinessPartner).filter(
+                BusinessPartner.owner_phone == owner.phone
+            ).all()
+            # Businesses I am a partner in
+            my_roles = db.query(BusinessPartner).filter(
+                BusinessPartner.partner_phone == owner.phone,
+                BusinessPartner.status == "active",
+            ).all()
+            def _bp(p):
+                pu = db.query(User).filter(User.phone == p.partner_phone).first()
+                return {
+                    "id": p.id,
+                    "partner_phone": p.partner_phone,
+                    "partner_name": pu.name if pu else p.partner_phone,
+                    "role": p.role,
+                    "access_level": p.access_level,
+                    "equity_percent": p.equity_percent,
+                    "investment_amount": p.investment_amount,
+                    "status": p.status,
+                    "invited_at": _iso(p.invited_at),
+                    "accepted_at": _iso(p.accepted_at),
+                    "notes": p.notes,
+                }
+            def _role(p):
+                biz_owner = db.query(User).filter(User.phone == p.owner_phone).first()
+                return {
+                    "id": p.id,
+                    "owner_phone": p.owner_phone,
+                    "business_name": (biz_owner.business_type_label or biz_owner.business_type or biz_owner.name) if biz_owner else p.owner_phone,
+                    "owner_name": biz_owner.name if biz_owner else p.owner_phone,
+                    "role": p.role,
+                    "access_level": p.access_level,
+                    "equity_percent": p.equity_percent,
+                    "investment_amount": p.investment_amount,
+                    "status": p.status,
+                }
+            return {
+                "partners": [_bp(p) for p in my_partners],
+                "as_partner": [_role(p) for p in my_roles],
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/partners/invite")
+    def web_partner_invite(payload: PartnerInviteRequest, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            from partner_commands import ROLE_ACCESS, ROLE_LABELS, ACCESS_LABELS, _utcnow
+            from parser import normalize_phone
+
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can invite partners.")
+
+            partner_phone = normalize_phone(payload.partner_phone)
+            if not partner_phone:
+                raise HTTPException(status_code=400, detail="Invalid phone number.")
+            if partner_phone == owner.phone:
+                raise HTTPException(status_code=400, detail="You cannot invite yourself.")
+
+            role = payload.role if payload.role in ROLE_ACCESS else "partner"
+            existing = db.query(BusinessPartner).filter(
+                BusinessPartner.owner_phone == owner.phone,
+                BusinessPartner.partner_phone == partner_phone,
+            ).first()
+            if existing and existing.status == "active":
+                raise HTTPException(status_code=409, detail="This person is already an active partner.")
+            if existing and existing.status == "pending":
+                raise HTTPException(status_code=409, detail="An invitation is already pending for this person.")
+
+            bp = BusinessPartner(
+                owner_phone=owner.phone,
+                partner_phone=partner_phone,
+                role=role,
+                access_level=ROLE_ACCESS[role],
+                equity_percent=payload.equity_percent,
+                investment_amount=payload.investment_amount,
+                notes=payload.notes,
+                status="pending",
+                invited_at=_utcnow(),
+            )
+            db.add(bp)
+            db.commit()
+            db.refresh(bp)
+            return {"ok": True, "id": bp.id, "status": "pending"}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/partners/{partner_id}")
+    def web_partner_remove(partner_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            bp = db.query(BusinessPartner).filter(
+                BusinessPartner.id == partner_id,
+                BusinessPartner.owner_phone == owner.phone,
+            ).first()
+            if not bp:
+                raise HTTPException(status_code=404, detail="Partner not found.")
+            db.delete(bp)
+            db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    # ── Business notes ────────────────────────────────────────────────────────
+
+    class CreateNoteRequest(BaseModel):
+        body: str
+        category: str = "memo"
+        amount: Optional[int] = None
+        visibility: str = "owner_only"
+        owner_phone: Optional[str] = None
+
+    @app.get("/app/api/notes")
+    def web_notes(
+        category: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            from models import BusinessNote
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner:
+                return {"notes": []}
+            owner_phone = owner.phone if owner.parent_id is None else (
+                db.query(User).filter(User.id == owner.parent_id).first() or owner
+            ).phone
+            query = db.query(BusinessNote).filter(BusinessNote.owner_phone == owner_phone)
+            if category:
+                query = query.filter(BusinessNote.category == category)
+            notes = query.order_by(BusinessNote.created_at.desc()).limit(100).all()
+            return {
+                "notes": [
+                    {
+                        "id": n.id,
+                        "body": n.body,
+                        "category": n.category,
+                        "amount": n.amount,
+                        "visibility": n.visibility,
+                        "created_at": _iso(n.created_at),
+                    }
+                    for n in notes
+                ]
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/notes")
+    def web_create_note(payload: CreateNoteRequest, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            from models import BusinessNote
+            from partner_commands import _utcnow
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner:
+                raise HTTPException(status_code=403, detail="Not authenticated.")
+            owner_phone = payload.owner_phone or owner.phone
+            now = _utcnow()
+            note = BusinessNote(
+                owner_phone=owner_phone,
+                body=payload.body.strip(),
+                category=payload.category,
+                amount=payload.amount,
+                visibility=payload.visibility,
+                created_by_id=owner.id,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(note)
+            db.commit()
+            db.refresh(note)
+            return {"ok": True, "id": note.id}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/notes/{note_id}")
+    def web_delete_note(note_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            from models import BusinessNote
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            note = db.query(BusinessNote).filter(
+                BusinessNote.id == note_id,
+                BusinessNote.owner_phone == owner.phone,
+            ).first()
+            if not note:
+                raise HTTPException(status_code=404, detail="Note not found.")
+            db.delete(note)
+            db.commit()
+            return {"ok": True}
         finally:
             db.close()
 

@@ -148,6 +148,9 @@ function EditItemModal({ item, onClose, onSaved }) {
     selling_price: item.selling_price || "",
     low_stock_alert: item.low_stock_alert ?? "",
     is_available: item.is_available,
+    retail_unit: item.retail_unit || "",
+    retail_per_base: item.retail_per_base || "",
+    retail_price: item.retail_price || "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -164,6 +167,9 @@ function EditItemModal({ item, onClose, onSaved }) {
         selling_price: form.selling_price !== "" ? parseInt(form.selling_price) : null,
         low_stock_alert: (!isService && form.low_stock_alert !== "") ? parseInt(form.low_stock_alert) : null,
         is_available: form.is_available,
+        retail_unit: form.retail_unit.trim() || null,
+        retail_per_base: form.retail_per_base !== "" ? parseInt(form.retail_per_base) : null,
+        retail_price: form.retail_price !== "" ? parseInt(form.retail_price) : null,
       });
       onSaved();
       onClose();
@@ -212,6 +218,30 @@ function EditItemModal({ item, onClose, onSaved }) {
           <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
             <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Active / Available</label>
+          </div>
+        )}
+        {!isService && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 4 }}>
+            <div className="form-label" style={{ marginBottom: 8, color: "var(--text-muted)", fontSize: 12 }}>
+              Retail Breakdown (optional) — e.g. sell sachets from a pack
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Sub-unit name</label>
+                <input value={form.retail_unit} onChange={e => set("retail_unit", e.target.value)}
+                  placeholder="e.g. sachet" />
+              </div>
+              <div className="form-group" style={{ width: 110 }}>
+                <label className="form-label">Per {form.unit || "unit"}</label>
+                <input type="number" min={1} value={form.retail_per_base}
+                  onChange={e => set("retail_per_base", e.target.value)} placeholder="e.g. 15" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Sub-unit price (₦)</label>
+                <input type="number" min={0} value={form.retail_price}
+                  onChange={e => set("retail_price", e.target.value)} placeholder="e.g. 34" />
+              </div>
+            </div>
           </div>
         )}
         {err && <div className="modal-error">{err}</div>}

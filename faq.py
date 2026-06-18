@@ -232,6 +232,37 @@ def detect_faq(text):
     if "pdf" in q and any(k in q for k in ["download", "get", "how", "statement", "report"]):
         return "loan_statement"
 
+    # ── Staff profile ─────────────────────────────────────────────────────────
+    if any(k in q for k in [
+        "staff profile", "staff salary", "staff position", "staff level",
+        "employee profile", "set salary", "matric number", "employee id",
+        "staff id", "staff matric", "set staff", "view staff profile",
+        "staff details", "staff info", "update staff",
+    ]):
+        return "staff_profile"
+
+    # ── Shared notes (check before partners so "note for partner" lands here) ─
+    if any(k in q for k in [
+        "business note", "shared note", "business notes",
+        "add note", "view note", "expense note", "note for partner",
+        "partner note", "investor note", "agreement note",
+        "record expense note", "shared memo", "note visibility",
+        "share a note", "share note",
+    ]):
+        return "business_notes"
+
+    # ── Business partners / investors ─────────────────────────────────────────
+    if any(k in q for k in [
+        "partner", "co-founder", "cofounder", "co founder",
+        "investor", "silent investor", "business partner",
+        "invite partner", "add partner", "add investor",
+        "partner access", "investor access", "equity",
+        "partnership", "join my business",
+        "accept partner", "decline partner", "remove partner",
+        "partner view", "what can partner see", "partner permission",
+    ]):
+        return "business_partners"
+
     # ── Branch / location tagging ─────────────────────────────────────────────
     if any(k in q for k in [
         "branch", "add branch", "create branch", "my branch",
@@ -843,6 +874,62 @@ FAQ_ANSWERS = {
         "- Access sensitive owner reports\n\n"
         "To give a staff member full view access:\n"
         "Go to Staff and enable  Can view all transactions."
+    ),
+    "staff_profile": (
+        "Staff profiles let you keep HR records for each team member — position, level, salary, and employee ID.\n\n"
+        "To set a staff profile send:\n"
+        "  set staff profile [name] position cashier level junior salary 50000 matric EMP001\n\n"
+        "You can update just one field at a time:\n"
+        "  set staff profile Emeka salary 60000\n"
+        "  set staff profile Amaka position senior cashier\n\n"
+        "To view a profile:\n"
+        "  view staff profile Emeka\n\n"
+        "To see all staff profiles:\n"
+        "  view staff profiles\n\n"
+        "Or send *staff profiles* from the main menu, or go to More → Staff."
+    ),
+    "business_partners": (
+        "Business partners let you bring a co-founder, active partner, investor, or silent investor "
+        "into your business with controlled visibility.\n\n"
+        "*Access levels:*\n"
+        "- Co-Founder: Full view — sales, stock, customers, costs\n"
+        "- Partner: Operations — sales, stock, customers\n"
+        "- Investor: Financial summary — P&L and returns\n"
+        "- Silent Investor: Investment status only\n\n"
+        "*To invite a partner:*\n"
+        "  invite partner 08012345678 co_founder 30%\n"
+        "  invite partner 08012345678 investor 500000\n\n"
+        "Your partner will receive a WhatsApp invitation.\n"
+        "They reply:  ACCEPT PARTNER [your phone]\n\n"
+        "*To view your partners:*\n"
+        "  view partners\n\n"
+        "*To remove a partner:*\n"
+        "  remove partner 08012345678\n\n"
+        "*If you are a partner in someone else's business:*\n"
+        "  partner status  — see which businesses you are linked to\n"
+        "  business overview  — see a summary based on your access level\n\n"
+        "Partners can only observe — they cannot record transactions in your business.\n"
+        "They can run their own business separately on tiTi."
+    ),
+    "business_notes": (
+        "Business notes are shared memos, expense records, and agreements that you "
+        "can make visible to your partners or investors.\n\n"
+        "*To add a note:*\n"
+        "  note rent paid 45000               ← visible to you only\n"
+        "  note rent paid 45000 partners       ← visible to partners\n"
+        "  note rent paid 45000 all            ← visible to partners and investors\n"
+        "  note agreement Emeka owns 30% all   ← agreement visible to all\n\n"
+        "*Categories tiTi auto-detects:*\n"
+        "  expense — paid, buy, rent, salary, fuel, electricity\n"
+        "  income  — received, income, revenue, profit\n"
+        "  agreement — agreement, contract, signed, deal\n"
+        "  memo    — everything else\n\n"
+        "*To view notes:*\n"
+        "  view notes\n"
+        "  view notes expenses\n\n"
+        "Partners and investors only see notes you have shared with them.\n"
+        "Owner always sees all notes.\n\n"
+        "You can also access Notes from the main menu → More → Notes."
     ),
 }
 

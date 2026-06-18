@@ -1146,7 +1146,13 @@ def extract_supplier_transaction(text):
             rf"^(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:supply|supplied|deliver|delivered)\s+me\s+"
             rf"(?P<body>.+?)\s+(?P<price_marker>at|for)\s+(?P<price>{amount_pattern})(?:\s+each)?",
             clean
-        )
+        ),
+        # "Emeka supply one pack paracetamol at 500" — no "me" required
+        re.search(
+            rf"^(?P<supplier>[a-zA-Z'Ã¢â‚¬â„¢\- ]+?)\s+(?:supply|supplied|deliver|delivered)\s+"
+            rf"(?P<body>.+?)\s+(?P<price_marker>at|for)\s+(?P<price>{amount_pattern})(?:\s+each)?",
+            clean
+        ),
     ]
     for purchase_match in purchase_patterns:
         if not purchase_match:
@@ -1180,11 +1186,18 @@ def extract_supplier_transaction(text):
             paid_amount = parse_amount_token(paid_match.group("paid")) or 0
         selling_price = None
         sell_match = re.search(
-            rf"\bselling\s+price\s+(?P<sell>{amount_pattern})",
+            rf"\b(?:sell(?:ing)?(?:\s+price)?)\s+(?P<sell>{amount_pattern})",
             clean, re.I
         )
         if sell_match:
             selling_price = parse_amount_token(sell_match.group("sell"))
+        # "with 15 sachets" → retail breakdown hint
+        with_match = re.search(
+            r"\bwith\s+(?P<per>\d+)\s+(?P<ret_unit>[a-z]+)\b",
+            clean, re.I
+        )
+        retail_unit = with_match.group("ret_unit") if with_match else None
+        retail_per_base = int(with_match.group("per")) if with_match else None
         return {
             "type": "SUPPLIER_TRANSACTION",
             "action": "SUPPLIER_PURCHASE",
@@ -1199,6 +1212,9 @@ def extract_supplier_transaction(text):
             "stock_item": stock_item,
             "due_date": due_date,
             "selling_price": selling_price,
+            "retail_unit": retail_unit,
+            "retail_per_base": retail_per_base,
+            "retail_price": None,
         }
 
     # ── Stock purchase with no named supplier ───────────────────────────────
@@ -2404,9 +2420,150 @@ def parse_message(text):
         "reonboard",
         "change name",
         "update name",
-        "update business name"
+        "update business name",
+        "change my business name",
+        "change business name",
+        "change business",
     ]:
         return {"type": "REONBOARD"}
+
+    # ── Staff profile ────────────────────────────────────────────────────────
+    # "set staff profile Emeka position cashier level junior salary 50000 matric EMP001"
+    _staff_set_m = re.match(
+        r"^set\s+staff\s+profile\s+(?P<name>[a-z][a-z ]+?)(?:\s+position\s+(?P<position>[a-z][a-z ]+?))?(?:\s+level\s+(?P<level>[a-z]+))?(?:\s+salary\s+(?P<salary>[\d,]+))?(?:\s+matric\s+(?P<matric>[a-z0-9]+))?$",
+        clean_text,
+    )
+    if _staff_set_m:
+        return {
+            "type": "SET_STAFF_PROFILE",
+            "staff_name": _staff_set_m.group("name").strip(),
+            "position": (_staff_set_m.group("position") or "").strip() or None,
+            "level": (_staff_set_m.group("level") or "").strip() or None,
+            "salary": int(_staff_set_m.group("salary").replace(",", "")) if _staff_set_m.group("salary") else None,
+            "matric": (_staff_set_m.group("matric") or "").strip() or None,
+        }
+
+    # "view staff profile Emeka"  |  "view staff profiles"
+    _staff_view_m = re.match(
+        r"^view\s+staff\s+profiles?(?:\s+(?P<name>[a-z][a-z ]+))?$",
+        clean_text,
+    )
+    if _staff_view_m:
+        return {
+            "type": "VIEW_STAFF_PROFILE",
+            "staff_name": (_staff_view_m.group("name") or "").strip() or None,
+        }
+
+    # ── Partner management ───────────────────────────────────────────────────
+    # "invite partner 08012345678 co_founder 30%"
+    # "invite partner 08012345678 investor 500000"
+    _invite_m = re.match(
+        r"^invite\s+(?:partner|investor|co.?founder)\s+"
+        r"(?P<phone>\+?[\d]{7,15})\s*"
+        r"(?P<role>co.?founder|partner|investor|silent)?\s*"
+        r"(?P<extra>[\d,.]+%?)?$",
+        clean_text,
+    )
+    if _invite_m:
+        extra = (_invite_m.group("extra") or "").replace(",", "").strip()
+        equity = None
+        investment = None
+        if extra.endswith("%"):
+            try:
+                equity = float(extra[:-1])
+            except ValueError:
+                pass
+        elif extra:
+            try:
+                investment = int(float(extra))
+            except ValueError:
+                pass
+        role_raw = (_invite_m.group("role") or "partner").replace("-", "_").replace(" ", "_")
+        role = "co_founder" if "founder" in role_raw else role_raw
+        return {
+            "type": "INVITE_PARTNER",
+            "partner_phone": _invite_m.group("phone"),
+            "role": role,
+            "equity_percent": equity,
+            "investment_amount": investment,
+        }
+
+    # "remove partner 08012345678"
+    _rem_partner_m = re.match(
+        r"^remove\s+(?:partner|investor)\s+(?P<phone>\+?[\d]{7,15})$",
+        clean_text,
+    )
+    if _rem_partner_m:
+        return {"type": "REMOVE_PARTNER", "partner_phone": _rem_partner_m.group("phone")}
+
+    # "view partners"  |  "view investors"
+    if clean_text in ("view partners", "view investors", "my partners", "partners list", "investors list"):
+        return {"type": "VIEW_PARTNERS"}
+
+    # "partner status"
+    if clean_text in ("partner status", "my partnerships", "my investments", "businesses i joined"):
+        return {"type": "PARTNER_STATUS"}
+
+    # "ACCEPT PARTNER 0801..." | "DECLINE PARTNER 0801..."
+    _accept_m = re.match(
+        r"^(?P<action>accept|decline)\s+partner\s+(?P<phone>\+?[\d]{7,15})$",
+        clean_text,
+    )
+    if _accept_m:
+        return {
+            "type": "ACCEPT_PARTNER",
+            "action": _accept_m.group("action"),
+            "owner_phone": _accept_m.group("phone"),
+        }
+
+    # "business overview [phone?]"
+    _biz_overview_m = re.match(
+        r"^business\s+(?:overview|summary|report)(?:\s+(?P<phone>\+?[\d]{7,15}))?$",
+        clean_text,
+    )
+    if _biz_overview_m:
+        return {
+            "type": "PARTNER_BUSINESS_OVERVIEW",
+            "owner_phone": (_biz_overview_m.group("phone") or "").strip() or None,
+        }
+
+    # ── Shared notes ─────────────────────────────────────────────────────────
+    # "note rent paid 45000 partners"
+    # "note agreement Emeka owns 30% signed today all"
+    _note_m = re.match(
+        r"^note\s+(?P<body>.+?)(?:\s+(?P<visibility>owner.only|partners|investors|all))?$",
+        clean_text,
+    )
+    if _note_m:
+        body = _note_m.group("body").strip()
+        visibility = (_note_m.group("visibility") or "owner_only").replace("-", "_").replace(" ", "_")
+        # Try to pull an amount out of the body
+        _amt_m = re.search(r"\b(\d[\d,]*)\b", body)
+        amount = int(_amt_m.group(1).replace(",", "")) if _amt_m else None
+        # Detect category from keywords
+        category = "memo"
+        if any(w in body for w in ("paid", "pay", "expense", "rent", "salary", "fuel", "electricity", "buy", "bought")):
+            category = "expense"
+        elif any(w in body for w in ("received", "income", "revenue", "profit")):
+            category = "income"
+        elif any(w in body for w in ("agreement", "contract", "signed", "terms", "deal")):
+            category = "agreement"
+        return {
+            "type": "ADD_NOTE",
+            "body": body,
+            "category": category,
+            "amount": amount,
+            "visibility": visibility,
+        }
+
+    # "view notes"  |  "view notes expenses"
+    _view_notes_m = re.match(
+        r"^view\s+notes?(?:\s+(?P<category>expenses?|income|memo|agreement))?$",
+        clean_text,
+    )
+    if _view_notes_m:
+        cat = (_view_notes_m.group("category") or "").rstrip("s")
+        return {"type": "VIEW_NOTES", "category": cat or None}
 
     # ── Truck registration ───────────────────────────────────────────────────
     # "add truck KJA234AB driver Emeka 08012345678"
@@ -2498,8 +2655,10 @@ def parse_message(text):
 
     # ── Transaction void / correction ────────────────────────────────────────
     # "void 42 wrong customer"  |  "void last wrong product"
+    # "remove transaction 42"   — "remove" must come before "transaction"
     _void_match = re.match(
-        r"^(?:void|cancel\s+transaction|correct\s+transaction|reverse\s+transaction)\s+"
+        r"^(?:void|cancel\s+transaction|correct\s+transaction|reverse\s+transaction"
+        r"|remove\s+transaction)\s+"
         r"(?P<ref>last|\d+)"
         r"(?:\s+(?P<reason>.+))?$",
         clean_text,
