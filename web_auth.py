@@ -21,6 +21,35 @@ _SECRET = os.getenv("WEB_SECRET_KEY", "cv-web-secret-change-in-production")
 _TTL = 7 * 24 * 3600  # 7 days
 _OTP_ACTION = "WEB_OTP"
 
+if _SECRET == "cv-web-secret-change-in-production":
+    import warnings
+    warnings.warn(
+        "WEB_SECRET_KEY is set to the default placeholder. "
+        "Set a strong random value in your .env before going to production.",
+        stacklevel=1,
+    )
+
+# ── Simple in-memory rate limiter for auth endpoints ─────────────────────────
+import threading
+from collections import defaultdict
+
+_auth_lock = threading.Lock()
+_auth_attempts: dict[str, list[float]] = defaultdict(list)
+_AUTH_LIMIT  = 10   # max attempts
+_AUTH_WINDOW = 900  # per 15 minutes
+
+
+def _auth_rate_check(key: str) -> bool:
+    """Return True if allowed, False if rate-limited. Key = phone or IP."""
+    now = time.time()
+    cutoff = now - _AUTH_WINDOW
+    with _auth_lock:
+        _auth_attempts[key] = [t for t in _auth_attempts[key] if t > cutoff]
+        if len(_auth_attempts[key]) >= _AUTH_LIMIT:
+            return False
+        _auth_attempts[key].append(now)
+        return True
+
 
 def _sign(payload: str) -> str:
     return hmac.new(_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
@@ -57,6 +86,8 @@ def require_web_auth(authorization: str = Header(default="")) -> dict:
 
 
 def web_login(db: Session, phone: str, pin: str) -> dict:
+    if not _auth_rate_check(phone):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please wait 15 minutes.")
     user = db.query(User).filter(User.phone == phone).first()
     if not user:
         raise HTTPException(status_code=401, detail="Phone number not registered. Create an account first.")
@@ -102,6 +133,9 @@ def get_otp_channels(db: Session, phone: str) -> dict:
 
 def request_web_otp(db: Session, phone: str, channel: str = "auto") -> dict:
     """Send a 6-digit OTP via email or WhatsApp depending on channel."""
+    if not _auth_rate_check(f"otp:{phone}"):
+        raise HTTPException(status_code=429, detail="Too many OTP requests. Please wait 15 minutes.")
+
     from email_service import send_otp_email
     from whatsapp_client import send_whatsapp_message
 

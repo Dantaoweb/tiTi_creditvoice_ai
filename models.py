@@ -923,3 +923,42 @@ class BusinessNote(Base):
     created_by_id = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow)
+
+
+class ProactiveLog(Base):
+    """Tracks proactive messages tiTi has sent so we don't spam users."""
+
+    __tablename__ = "proactive_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    event_type = Column(String)   # "low_stock" | "overdue_debt" | "inactivity"
+    sent_at = Column(DateTime, default=utcnow)
+
+
+class AppNotification(Base):
+    """In-app notification shown in the frontend and sent via WhatsApp."""
+
+    __tablename__ = "app_notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    event_type = Column(String)        # "low_stock" | "overdue_debt" | "inactivity"
+    title = Column(String)
+    body = Column(Text)
+    is_read = Column(Integer, default=0)   # 0 = unread, 1 = read
+    created_at = Column(DateTime, default=utcnow)
+
+
+class FailedParse(Base):
+    """Logs messages that tiTi could not understand — used for analytics and improvement."""
+
+    __tablename__ = "failed_parses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    phone = Column(String, index=True)
+    owner_phone = Column(String, nullable=True, index=True)
+    text = Column(Text)                         # original message
+    resolved_by = Column(String, nullable=True)  # "llm", "openai", None
+    llm_reply = Column(Text, nullable=True)      # what tiTi said back
+    created_at = Column(DateTime, default=utcnow)

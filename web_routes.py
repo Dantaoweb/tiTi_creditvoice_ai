@@ -11,9 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from database import SessionLocal
 from models import (
-    AutomationSettings, Branch, Customer, FastCaptureSettings, InventoryItem, InventoryMovement,
-    PendingAction, ReminderAutomationSettings, ReminderQueue, Supplier, SupplierPayment,
-    SupplierPurchase, Transaction, TransactionItem, User, utcnow,
+    AppNotification, AutomationSettings, Branch, Customer, FailedParse, FastCaptureSettings,
+    InventoryItem, InventoryMovement, PendingAction, ReminderAutomationSettings, ReminderQueue,
+    Supplier, SupplierPayment, SupplierPurchase, Transaction, TransactionItem, User, utcnow,
 )
 from parser import normalize_voice_transcript, parse_message, transcribe_audio_bytes
 from reports import (
@@ -156,6 +156,11 @@ class AdjustStockRequest(BaseModel):
     note: Optional[str] = None
 
 
+class BulkAddInventoryRequest(BaseModel):
+    owner_phone: str
+    names: list
+
+
 class AddCustomerRequest(BaseModel):
     owner_phone: str
     name: str
@@ -194,6 +199,21 @@ def _owner_filter(query, model, owner_phone):
     if owner_phone:
         return query.filter(model.owner_phone == owner_phone)
     return query
+
+
+def _session_owner_phone(db, session: dict) -> str:
+    """Resolve the business owner phone from a web session.
+    Staff members' sessions resolve to their owner's phone automatically.
+    Raises 401 if the user is not found.
+    """
+    from fastapi import HTTPException
+    user = db.query(User).filter(User.id == session["user_id"]).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found.")
+    if user.parent_id:
+        owner = db.query(User).filter(User.id == user.parent_id).first()
+        return owner.phone if owner else user.phone
+    return user.phone
 
 
 def _pending_payload(pending):
@@ -442,22 +462,21 @@ def register_web_routes(app):
     # ── Dashboard ────────────────────────────────────────────────────────
     @app.get("/app/api/dashboard")
     def web_dashboard(
-        owner_phone: Optional[str] = Query(default=None),
         period: Optional[str] = Query(default="TODAY"),
+        session: dict = Depends(require_web_auth),
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
             summary = get_dashboard_summary(db, owner_phone, period_key)
             debtors, _ = get_unpaid_debtors(db, owner_phone)
-            low_stock_count = 0
-            if owner_phone:
-                low_stock_count = db.query(InventoryItem).filter(
-                    InventoryItem.owner_phone == owner_phone,
-                    InventoryItem.is_available == True,
-                    InventoryItem.low_stock_alert != None,
-                    InventoryItem.quantity <= InventoryItem.low_stock_alert,
-                ).count()
+            low_stock_count = db.query(InventoryItem).filter(
+                InventoryItem.owner_phone == owner_phone,
+                InventoryItem.is_available == True,
+                InventoryItem.low_stock_alert != None,
+                InventoryItem.quantity <= InventoryItem.low_stock_alert,
+            ).count()
             return {
                 "period": period_key,
                 "period_label": dashboard_period_label(period_key),
@@ -666,19 +685,20 @@ def register_web_routes(app):
 
     # ── Capture ──────────────────────────────────────────────────────────
     @app.post("/app/api/capture/preview")
-    def web_capture_preview(payload: CapturePreviewRequest):
+    def web_capture_preview(payload: CapturePreviewRequest, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            return _preview_capture(db, payload.phone.strip(), payload.text.strip())
+            phone = session["phone"]
+            return _preview_capture(db, phone, payload.text.strip())
         finally:
             db.close()
 
     @app.post("/app/api/capture/voice")
-    def web_capture_voice(payload: CaptureVoiceRequest):
+    def web_capture_voice(payload: CaptureVoiceRequest, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            phone = payload.phone.strip()
-            if not phone or not payload.audio_base64:
+            phone = session["phone"]
+            if not payload.audio_base64:
                 return {"status": "error", "message": "Record voice and enter the registered phone number."}
             try:
                 audio_bytes = base64.b64decode(payload.audio_base64)
@@ -696,10 +716,10 @@ def register_web_routes(app):
             db.close()
 
     @app.post("/app/api/capture/confirm")
-    def web_capture_confirm(payload: CaptureConfirmRequest):
+    def web_capture_confirm(payload: CaptureConfirmRequest, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            phone = payload.phone.strip()
+            phone = session["phone"]
             context = load_webhook_user_context(db, phone, "text")
             if not context.user:
                 return {"status": "unregistered", "message": "This phone is not registered."}
@@ -727,16 +747,18 @@ def register_web_routes(app):
     # ── POS ──────────────────────────────────────────────────────────────
     @app.get("/app/api/pos/products")
     def web_pos_products(
-        owner_phone: Optional[str] = Query(default=None),
         q: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             query = db.query(InventoryItem).filter(
                 InventoryItem.is_available == True,
+                InventoryItem.owner_phone == owner_phone,
             )
-            if owner_phone:
-                query = query.filter(InventoryItem.owner_phone == owner_phone)
+            if q:
+                query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
             if q:
                 query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
             rows = query.order_by(InventoryItem.name).limit(50).all()
@@ -795,9 +817,10 @@ def register_web_routes(app):
 
     # ── Customers ────────────────────────────────────────────────────────
     @app.get("/app/api/customers")
-    def web_customers(owner_phone: Optional[str] = Query(default=None)):
+    def web_customers(session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             query = _owner_filter(db.query(Customer), Customer, owner_phone)
             rows = query.order_by(Customer.created_at.desc()).limit(200).all()
             return {
@@ -843,10 +866,14 @@ def register_web_routes(app):
             db.close()
 
     @app.get("/app/api/customers/{customer_id}/history")
-    def web_customer_history(customer_id: int):
+    def web_customer_history(customer_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            customer = db.query(Customer).filter(Customer.id == customer_id).first()
+            owner_phone = _session_owner_phone(db, session)
+            customer = db.query(Customer).filter(
+                Customer.id == customer_id,
+                Customer.owner_phone == owner_phone,
+            ).first()
             if not customer:
                 from fastapi import HTTPException
                 raise HTTPException(status_code=404, detail="Customer not found.")
@@ -916,12 +943,13 @@ def register_web_routes(app):
     # ── Transactions ──────────────────────────────────────────────────────
     @app.get("/app/api/transactions")
     def web_transactions(
-        owner_phone: Optional[str] = Query(default=None),
         period: Optional[str] = Query(default=None),
         branch_id: Optional[int] = Query(default=None),
+        session: dict = Depends(require_web_auth),
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
             query = get_owner_transaction_query(db, owner_phone, period_key, include_voided=True)
             if branch_id is not None:
@@ -968,9 +996,10 @@ def register_web_routes(app):
 
     # ── Inventory ─────────────────────────────────────────────────────────
     @app.get("/app/api/inventory")
-    def web_inventory(owner_phone: Optional[str] = Query(default=None)):
+    def web_inventory(session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             query = _owner_filter(db.query(InventoryItem), InventoryItem, owner_phone)
             rows = query.order_by(InventoryItem.updated_at.desc()).limit(200).all()
             return {
@@ -1043,6 +1072,58 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/inventory/catalog")
+    def web_inventory_catalog(session: dict = Depends(require_web_auth)):
+        from business_templates import INDUSTRY_PRODUCT_CATALOG, template_key_for_user
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            key = template_key_for_user(user) if user else None
+            btype = getattr(user, "business_type", None) if user else None
+            entries = (
+                INDUSTRY_PRODUCT_CATALOG.get(btype)
+                or (INDUSTRY_PRODUCT_CATALOG.get(key, []) if key else [])
+                or INDUSTRY_PRODUCT_CATALOG.get("retail_trading", [])
+            )
+            categories = {}
+            for name, cat in entries:
+                categories.setdefault(cat, []).append(name)
+            return {"catalog": categories}
+        finally:
+            db.close()
+
+    @app.post("/app/api/inventory/bulk")
+    def web_bulk_add_inventory(
+        payload: BulkAddInventoryRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            saved, skipped = 0, 0
+            for raw in payload.names:
+                name_clean = str(raw).strip().lower()
+                if not name_clean:
+                    continue
+                existing = db.query(InventoryItem).filter(
+                    InventoryItem.owner_phone == payload.owner_phone,
+                    InventoryItem.name == name_clean,
+                ).first()
+                if existing:
+                    skipped += 1
+                else:
+                    db.add(InventoryItem(
+                        owner_phone=payload.owner_phone,
+                        name=name_clean,
+                        is_available=True,
+                        is_service=False,
+                    ))
+                    saved += 1
+            if saved:
+                db.commit()
+            return {"saved": saved, "already_existed": skipped}
+        finally:
+            db.close()
+
     @app.put("/app/api/inventory/{item_id}")
     def web_edit_inventory(
         item_id: int,
@@ -1111,9 +1192,10 @@ def register_web_routes(app):
 
     # ── Suppliers ─────────────────────────────────────────────────────────
     @app.get("/app/api/suppliers")
-    def web_suppliers(owner_phone: Optional[str] = Query(default=None)):
+    def web_suppliers(session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             query = _owner_filter(db.query(Supplier), Supplier, owner_phone)
             suppliers = query.order_by(Supplier.name).all()
 
@@ -1181,11 +1263,12 @@ def register_web_routes(app):
     # ── Staff performance ──────────────────────────────────────────────────
     @app.get("/app/api/staff")
     def web_staff(
-        owner_phone: Optional[str] = Query(default=None),
         period: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
             staff_data = get_staff_performance(db, owner_phone, period_key)
             return {"staff": staff_data or []}
@@ -2201,6 +2284,270 @@ def register_web_routes(app):
                 media_type="application/pdf",
                 headers={"Content-Disposition": f'attachment; filename="{filename}"'},
             )
+        finally:
+            db.close()
+
+    # ── Notifications ─────────────────────────────────────────────────────────
+    @app.get("/app/api/notifications")
+    def web_get_notifications(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401)
+            owner_phone = user.phone if not user.parent_id else user.parent_id
+            rows = (
+                db.query(AppNotification)
+                .filter(AppNotification.owner_phone == owner_phone)
+                .order_by(AppNotification.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            return {"notifications": [
+                {
+                    "id": r.id, "event_type": r.event_type,
+                    "title": r.title, "body": r.body,
+                    "is_read": bool(r.is_read),
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]}
+        finally:
+            db.close()
+
+    @app.post("/app/api/notifications/{notif_id}/read")
+    def web_mark_notification_read(notif_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401)
+            owner_phone = user.phone if not user.parent_id else user.parent_id
+            notif = db.query(AppNotification).filter(
+                AppNotification.id == notif_id,
+                AppNotification.owner_phone == owner_phone,
+            ).first()
+            if notif:
+                notif.is_read = 1
+                db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    @app.post("/app/api/notifications/read-all")
+    def web_mark_all_notifications_read(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401)
+            owner_phone = user.phone if not user.parent_id else user.parent_id
+            db.query(AppNotification).filter(
+                AppNotification.owner_phone == owner_phone,
+                AppNotification.is_read == 0,
+            ).update({"is_read": 1})
+            db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    # ── Admin: failed parse log ───────────────────────────────────────────────
+    @app.get("/app/api/admin/failed-parses")
+    def web_admin_failed_parses(
+        limit: int = Query(default=200, le=1000),
+        session: dict = Depends(require_web_auth),
+    ):
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+            rows = (
+                db.query(FailedParse)
+                .order_by(FailedParse.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return {"rows": [
+                {
+                    "id": r.id,
+                    "phone": r.phone,
+                    "text": r.text,
+                    "resolved_by": r.resolved_by,
+                    "llm_reply": r.llm_reply,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]}
+        finally:
+            db.close()
+
+    @app.get("/app/api/admin/failed-parses/export")
+    def web_admin_failed_parses_export(
+        session: dict = Depends(require_web_auth),
+    ):
+        import csv, io
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+            rows = db.query(FailedParse).order_by(FailedParse.created_at.desc()).limit(5000).all()
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["id", "phone", "text", "resolved_by", "llm_reply", "created_at"])
+            for r in rows:
+                writer.writerow([
+                    r.id, r.phone, r.text, r.resolved_by or "",
+                    r.llm_reply or "",
+                    r.created_at.isoformat() if r.created_at else "",
+                ])
+            output.seek(0)
+            return StreamingResponse(
+                iter([output.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=failed_parses.csv"},
+            )
+        finally:
+            db.close()
+
+    # ── Admin: overview stats ──────────────────────────────────────────────────
+    @app.get("/app/api/admin/stats")
+    def web_admin_stats(session: dict = Depends(require_web_auth)):
+        from admin import is_app_admin
+        from datetime import timedelta
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+
+            now = utcnow()
+            today_start   = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start    = today_start - timedelta(days=7)
+            month_start   = today_start - timedelta(days=30)
+
+            total_users   = db.query(User).filter(User.parent_id == None).count()
+            new_today     = db.query(User).filter(User.parent_id == None, User.created_at >= today_start).count()
+            new_this_week = db.query(User).filter(User.parent_id == None, User.created_at >= week_start).count()
+            new_this_month= db.query(User).filter(User.parent_id == None, User.created_at >= month_start).count()
+
+            total_tx      = db.query(Transaction).count()
+            tx_today      = db.query(Transaction).filter(Transaction.created_at >= today_start).count()
+            tx_this_week  = db.query(Transaction).filter(Transaction.created_at >= week_start).count()
+
+            failed_total  = db.query(FailedParse).count()
+            failed_today  = db.query(FailedParse).filter(FailedParse.created_at >= today_start).count()
+            llm_resolved  = db.query(FailedParse).filter(FailedParse.resolved_by == "llm").count()
+
+            # Signup trend: last 14 days
+            signup_trend = []
+            for i in range(13, -1, -1):
+                day_start = today_start - timedelta(days=i)
+                day_end   = day_start + timedelta(days=1)
+                count = db.query(User).filter(
+                    User.parent_id == None,
+                    User.created_at >= day_start,
+                    User.created_at < day_end,
+                ).count()
+                signup_trend.append({
+                    "date": day_start.strftime("%b %d"),
+                    "signups": count,
+                })
+
+            # Tx trend: last 14 days
+            tx_trend = []
+            for i in range(13, -1, -1):
+                day_start = today_start - timedelta(days=i)
+                day_end   = day_start + timedelta(days=1)
+                count = db.query(Transaction).filter(
+                    Transaction.created_at >= day_start,
+                    Transaction.created_at < day_end,
+                ).count()
+                tx_trend.append({
+                    "date": day_start.strftime("%b %d"),
+                    "transactions": count,
+                })
+
+            # Business type breakdown
+            biz_types = {}
+            for u in db.query(User).filter(User.parent_id == None).all():
+                key = u.business_type_label or u.business_type or "Unknown"
+                biz_types[key] = biz_types.get(key, 0) + 1
+
+            biz_breakdown = sorted(
+                [{"label": k, "count": v} for k, v in biz_types.items()],
+                key=lambda x: -x["count"]
+            )[:10]
+
+            return {
+                "users": {
+                    "total": total_users,
+                    "new_today": new_today,
+                    "new_this_week": new_this_week,
+                    "new_this_month": new_this_month,
+                    "signup_trend": signup_trend,
+                },
+                "transactions": {
+                    "total": total_tx,
+                    "today": tx_today,
+                    "this_week": tx_this_week,
+                    "tx_trend": tx_trend,
+                },
+                "failed_parses": {
+                    "total": failed_total,
+                    "today": failed_today,
+                    "llm_resolved": llm_resolved,
+                },
+                "business_breakdown": biz_breakdown,
+            }
+        finally:
+            db.close()
+
+    @app.get("/app/api/admin/users")
+    def web_admin_users(
+        page: int = Query(default=1, ge=1),
+        per_page: int = Query(default=50, le=200),
+        q: str = Query(default=""),
+        session: dict = Depends(require_web_auth),
+    ):
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+
+            query = db.query(User).filter(User.parent_id == None)
+            if q:
+                like = f"%{q}%"
+                query = query.filter(
+                    User.name.ilike(like) | User.phone.ilike(like) | User.email.ilike(like)
+                )
+
+            total = query.count()
+            rows  = query.order_by(User.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+            return {
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "users": [
+                    {
+                        "id": u.id,
+                        "name": u.name,
+                        "phone": u.phone,
+                        "email": u.email,
+                        "business_type_label": u.business_type_label or u.business_type,
+                        "subscription_plan": u.subscription_plan,
+                        "subscription_status": u.subscription_status,
+                        "created_at": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in rows
+                ],
+            }
         finally:
             db.close()
 

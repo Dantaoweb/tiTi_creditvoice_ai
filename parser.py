@@ -2417,6 +2417,66 @@ def parse_message(text):
         return {"type": "STAFF_REPORT", "period": _period}
 
     if clean_text in [
+        "what can you do", "what can titi do", "titi what can you do",
+        "help", "commands", "command list", "capabilities",
+        "what do you do", "how do you work", "titi help",
+        "show commands", "list commands", "all commands",
+        "how can you help", "how can titi help me",
+        "how to use you", "how will i use you", "how do i use you",
+        "how do i use titi", "how to use titi",
+        "how do you operate", "how does titi work", "how does this work",
+        "how do you help me", "what do you know", "what can i ask you",
+        "what can i do here", "what can i say", "guide me",
+        "titi guide me", "start guide", "how to start",
+    ]:
+        return {"type": "WHAT_CAN_DO"}
+
+    # ── App navigation guide ─────────────────────────────────────────────────
+    # Detects "how do i / where is / how to / show me how + topic" queries
+    # and returns an APP_GUIDE type so the answer is pre-written (no LLM cost).
+    _nav_intent = re.search(
+        r"\b(how (do|can|to|will)|where (is|can|do|are)|show me|help me|i want to|take me to|find|locate|guide me to|download|install|get the)\b",
+        clean_text,
+    )
+    if _nav_intent:
+        _guide_topics = {
+            "pdf":          ["pdf", "receipt", "download receipt", "print receipt", "export receipt", "download invoice"],
+            "record_sale":  ["record a sale", "record sale", "add a sale", "add sale", "how to sell", "how to record", "enter a sale", "input sale"],
+            "inventory":    ["add stock", "add product", "add item", "add goods", "update stock", "add to stock", "add to inventory", "update inventory", "my inventory", "my stock", "inventory", "stock"],
+            "customers":    ["add customer", "new customer", "add client", "register customer", "save customer", "customer", "client"],
+            "summary":      ["summary", "dashboard", "report", "overview", "check profit", "see profit", "today profit", "check today", "see report"],
+            "reminder":     ["reminder", "send reminder", "debt reminder", "remind customer", "follow up", "chase customer"],
+            "supplier":     ["add supplier", "supplier", "buy from supplier", "record purchase", "restock from supplier"],
+            "staff":        ["add staff", "staff", "employee", "worker", "team member", "manage staff"],
+            "partner":      ["partner", "investor", "add partner", "invite partner", "co-founder", "add investor"],
+            "notes":        ["add note", "notes", "note", "memo", "business note", "write note"],
+            "pos":          ["pos", "point of sale", "checkout", "sell in shop", "cashier", "process sale"],
+            "bulk_add":     ["bulk add", "add multiple", "add many products", "add many items", "add products at once"],
+            "branches":     ["branch", "branches", "add branch", "multiple shop", "new location", "shop location"],
+            "automation":   ["automation", "automate", "automatic reminder", "auto send", "automated message"],
+            "download_app": ["download app", "install app", "get the app", "play store", "app store", "mobile app", "download the app", "install the app"],
+            "wallet":       ["wallet", "receive payment", "virtual account", "bank transfer", "pay me", "accept payment"],
+            "transactions": ["transactions", "sales history", "see my sales", "view sales", "sales record", "transaction history"],
+            "debt":         ["debt", "debtors", "who owes", "unpaid", "customer debt", "owe me"],
+        }
+        for _topic, _keywords in _guide_topics.items():
+            if any(_kw in clean_text for _kw in _keywords):
+                return {"type": "APP_GUIDE", "topic": _topic}
+
+    # ── Bulk product name add ────────────────────────────────────────────────
+    # "add paracetamol, sugar, tissue, milo" — comma/semicolon separated list
+    # Must start with "add" and contain at least one separator (≥2 names)
+    _bulk_add_m = re.match(
+        r"^add\s+(?P<names>[a-z][a-z0-9 ,;\n&'\-]{3,})$",
+        clean_text,
+    )
+    if _bulk_add_m:
+        raw = _bulk_add_m.group("names")
+        parts = [p.strip() for p in re.split(r"[,;\n]+", raw) if p.strip()]
+        if len(parts) >= 2:
+            return {"type": "BULK_ADD_PRODUCTS", "names": parts}
+
+    if clean_text in [
         "reonboard",
         "change name",
         "update name",

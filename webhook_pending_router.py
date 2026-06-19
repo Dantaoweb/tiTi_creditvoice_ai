@@ -1151,6 +1151,12 @@ def handle_pending_actions(
         if result:
             return result
 
+    # ── Inactivity check-in reply ────────────────────────────────────────────
+    if pending and pending.action == "INACTIVITY_CHECKIN" and not is_command:
+        _reply = _handle_inactivity_checkin(db, phone, text, pending, user, send_whatsapp_message)
+        if _reply:
+            return PendingRouteResult(parsed=parsed, is_command=is_command, response=True)
+
     return PendingRouteResult(parsed=parsed, is_command=is_command)
 
 
@@ -1495,3 +1501,72 @@ def _handle_onboard_customer(
         "Customer ready to save. Reply YES or 1 to confirm, EDIT or 2 to send again."
     )
     return {"status": "customer_onboarded_confirm"}
+
+
+def _handle_inactivity_checkin(db, phone, text, pending, user, send_message):
+    """Handle the numbered reply to the inactivity check-in question."""
+    from messages import build_app_guide_message
+
+    choice = text.strip().lower().strip(".")
+    first_name = (user.name or "there").split()[0].title() if user else "there"
+
+    db.delete(pending)
+    db.commit()
+
+    if choice in ("1", "busy", "just busy", "i've been busy", "ive been busy"):
+        send_message(
+            phone,
+            f"No stress at all, {first_name}! Life gets busy.\n\n"
+            "You can catch up quickly — just type what happened:\n"
+            "• _Ada bought 3 bags rice 9000_\n"
+            "• _sold 5 shirts cash 7500_\n"
+            "• _Emeka paid 3000_\n\n"
+            "Or send *summary today* to see what's already been recorded."
+        )
+    elif choice in ("2", "confused", "don't know", "not sure", "i don't know how"):
+        send_message(
+            phone,
+            f"No problem, {first_name}! Let me show you how.\n\n"
+            + build_app_guide_message("record_sale")
+        )
+    elif choice in ("3", "slow", "business slow", "no sales", "slow business"):
+        send_message(
+            phone,
+            f"Understood, {first_name} — slow periods happen to every business.\n\n"
+            "Here are a few things that might help:\n\n"
+            "📋 *Check who owes you* — recovering debts can bring in cash fast.\n"
+            "Send: _who owes me_\n\n"
+            "📢 *Follow up with customers* — a reminder can revive old customers.\n"
+            "Send: _remind all debtors_\n\n"
+            "📊 *Review your best sellers* — focus on what moves fastest.\n"
+            "Send: _best selling_\n\n"
+            "You've got this! Send *menu* anytime to explore more options."
+        )
+    elif choice in ("4", "other", "something else"):
+        send_message(
+            phone,
+            f"Got it, {first_name}. Whatever's going on, tiTi is here when you're ready.\n\n"
+            "Just type what you need — a sale, a report, a question — and I'll handle it.\n\n"
+            "Or send *help* to see everything I can do for you."
+        )
+    else:
+        # Unrecognised reply — gently re-prompt
+        send_message(
+            phone,
+            "Please reply with 1, 2, 3, or 4:\n\n"
+            "1️⃣ Just been busy\n"
+            "2️⃣ Not sure how to record\n"
+            "3️⃣ Business has been slow\n"
+            "4️⃣ Something else"
+        )
+        # Re-create the pending action so they can still reply
+        from models import PendingAction
+        from datetime import datetime, timezone
+        db.add(PendingAction(
+            phone=phone,
+            action="INACTIVITY_CHECKIN",
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        ))
+        db.commit()
+
+    return True

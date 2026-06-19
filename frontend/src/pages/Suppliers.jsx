@@ -13,11 +13,11 @@ export default function Suppliers() {
 
   useEffect(() => {
     setLoading(true);
-    apiFetch("suppliers", { owner_phone: ownerPhone })
+    apiFetch("suppliers")
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [ownerPhone]);
+  }, []);
 
   const suppliers = data?.suppliers || [];
   const totalOwed = suppliers.reduce((s, r) => s + r.balance, 0);

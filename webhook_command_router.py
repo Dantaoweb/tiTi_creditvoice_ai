@@ -19,6 +19,9 @@ from messages import (
     build_plan_message,
     build_supported_formats_message,
     build_upgrade_message,
+    build_what_can_do_message,
+    build_bulk_add_result_message,
+    build_app_guide_message,
 )
 from models import InventoryItem, PendingAction, ProductAlias
 from onboarding_commands import handle_profile_command
@@ -543,6 +546,59 @@ def handle_parsed_command(
         return start_service_job_confirm(
             db, phone, business_owner_phone, user, parsed, send_whatsapp_message
         )
+
+    # ── What can you do / help / how to use ─────────────────────────────────
+    if parsed["type"] == "WHAT_CAN_DO":
+        send_whatsapp_message(phone, build_what_can_do_message(user))
+        return {"status": "what_can_do"}
+
+    # ── App navigation guide ─────────────────────────────────────────────────
+    if parsed["type"] == "APP_GUIDE":
+        topic = parsed.get("topic", "")
+        send_whatsapp_message(phone, build_app_guide_message(topic))
+        return {"status": "app_guide"}
+
+    # ── Bulk product name add ────────────────────────────────────────────────
+    if parsed["type"] == "BULK_ADD_PRODUCTS":
+        if not user:
+            send_whatsapp_message(phone, "Register your business first before adding products.")
+            return {"status": "bulk_add_no_user"}
+        names = parsed.get("names", [])
+        saved, already_exist = [], []
+        for raw_name in names:
+            name_clean = raw_name.strip().lower()
+            if not name_clean:
+                continue
+            existing = db.query(InventoryItem).filter(
+                InventoryItem.owner_phone == business_owner_phone,
+                InventoryItem.name == name_clean,
+            ).first()
+            if existing:
+                already_exist.append(name_clean)
+            else:
+                item = InventoryItem(
+                    owner_phone=business_owner_phone,
+                    name=name_clean,
+                    unit=None,
+                    quantity=None,
+                    cost_price=None,
+                    selling_price=None,
+                    is_service=False,
+                    is_available=True,
+                )
+                db.add(item)
+                saved.append(name_clean)
+        if saved:
+            db.commit()
+        if not saved and already_exist:
+            send_whatsapp_message(
+                phone,
+                f"All {len(already_exist)} product(s) already exist in your inventory.\n"
+                "Send *stock* to see your inventory."
+            )
+        else:
+            send_whatsapp_message(phone, build_bulk_add_result_message(saved, already_exist or None))
+        return {"status": "bulk_add_done"}
 
     return None
 

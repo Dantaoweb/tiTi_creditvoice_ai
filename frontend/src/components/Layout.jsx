@@ -1,21 +1,24 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
-  Handshake, FileText,
+  Handshake, FileText, Menu, X, ShieldCheck,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { useOfflineSync } from "../lib/useOfflineSync";
+import TitiPanel from "./TitiPanel";
+import NotificationBell from "./NotificationBell";
 
 function buildNav(L) {
   return [
-    { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare   },
-    { to: "/capture",      label: "Quick Record",     icon: PlusCircle      },
-    { to: "/pos",          label: "Select product",   icon: ShoppingCart    },
-    { to: "/inventory",    label: L.stock,            icon: Package         },
-    { to: "/customers",    label: L.navCustomers,     icon: Users           },
+    { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare,   tab: true  },
+    { to: "/capture",      label: "Quick Record",     icon: PlusCircle,      tab: true  },
+    { to: "/pos",          label: "POS",              icon: ShoppingCart,    tab: true  },
+    { to: "/inventory",    label: L.stock,            icon: Package,         tab: true  },
+    { to: "/customers",    label: L.navCustomers,     icon: Users,           tab: true  },
     { to: "/reminders",    label: L.reminders,        icon: Bell            },
     { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
@@ -27,6 +30,7 @@ function buildNav(L) {
     { to: "/notes",        label: "Notes",            icon: FileText        },
     { to: "/branches",     label: "Branches",         icon: MapPin          },
     { to: "/automation",   label: "Automation",       icon: Zap             },
+    { to: "/admin",        label: "Admin",            icon: ShieldCheck, adminOnly: true },
   ];
 }
 
@@ -34,10 +38,14 @@ export default function Layout() {
   const { ownerPhone, setOwnerPhone, period, setPeriod } = useApp();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const L = getBizLabels(user?.menu_group);
-  const NAV = buildNav(L);
+  const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
+  const NAV = buildNav(L).filter(item => !item.adminOnly || isAdmin);
   const { isOnline, pending, syncing } = useOfflineSync();
+
   const TITLES = {
     "/home":         "Chat with tiTi",
     "/capture":      "Quick Record",
@@ -54,25 +62,47 @@ export default function Layout() {
     "/wallet":       "Wallet",
     "/branches":     "Branches",
     "/automation":   "Automation",
+    "/admin":        "Admin Dashboard",
   };
 
-  const path = window.location.pathname.replace("/app", "") || "/home";
+  const path = location.pathname.replace("/app", "") || "/home";
   const title = TITLES[path] || "CreditVoice";
+
+  const tabItems = NAV.filter(item => item.tab);
 
   function handleLogout() {
     logout();
     navigate("/login", { replace: true });
   }
 
+  function closeDrawer() { setDrawerOpen(false); }
+
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {/* Drawer overlay (mobile) */}
+      <div
+        className={`sidebar-overlay${drawerOpen ? " visible" : ""}`}
+        onClick={closeDrawer}
+      />
+
+      <aside className={`sidebar${drawerOpen ? " sidebar-open" : ""}`}>
         <div className="sidebar-brand">
           <div className="sidebar-mark">CV</div>
           <div>
             <div className="sidebar-name">CreditVoice</div>
             <div className="sidebar-sub">Business Desk</div>
           </div>
+          {/* Close button inside drawer on mobile */}
+          <button
+            onClick={closeDrawer}
+            style={{
+              marginLeft: "auto", background: "none", border: "none",
+              color: "rgba(255,255,255,0.6)", cursor: "pointer", padding: 4,
+            }}
+            className="topbar-menu-btn"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -82,7 +112,7 @@ export default function Layout() {
             ) : item.disabled ? (
               <div key={item.label} className="nav-link nav-link-disabled">
                 <item.icon size={16} />
-                {item.label}
+                <span className="nav-label">{item.label}</span>
                 {item.badge && <span className="nav-badge">{item.badge}</span>}
               </div>
             ) : (
@@ -90,9 +120,10 @@ export default function Layout() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                onClick={closeDrawer}
               >
                 <item.icon size={16} />
-                {item.label}
+                <span className="nav-label">{item.label}</span>
               </NavLink>
             )
           )}
@@ -104,11 +135,7 @@ export default function Layout() {
               <div className="sidebar-user-name">{user.name}</div>
               <div className="sidebar-user-phone">{user.phone}</div>
             </div>
-            <button
-              className="sidebar-logout"
-              onClick={handleLogout}
-              title="Sign out"
-            >
+            <button className="sidebar-logout" onClick={handleLogout} title="Sign out">
               <LogOut size={15} />
             </button>
           </div>
@@ -117,20 +144,29 @@ export default function Layout() {
 
       <div className="workspace">
         <header className="topbar">
-          <div className="topbar-left">
-            <div className="topbar-eyebrow">CreditVoice</div>
-            <h1>{title}</h1>
+          <div className="topbar-left" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Hamburger — visible only on mobile via CSS */}
+            <button
+              className="topbar-menu-btn"
+              onClick={() => setDrawerOpen(true)}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink)", padding: 4 }}
+            >
+              <Menu size={22} />
+            </button>
+            <div>
+              <div className="topbar-eyebrow">CreditVoice</div>
+              <h1>{title}</h1>
+            </div>
           </div>
 
-          <div className="topbar-sync">
-            {!isOnline && (
-              <span className="sync-chip sync-chip--offline">Offline</span>
-            )}
+          <div className="topbar-sync" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!isOnline && <span className="sync-chip sync-chip--offline">Offline</span>}
             {isOnline && pending > 0 && (
               <span className="sync-chip sync-chip--syncing">
                 {syncing ? `Syncing ${pending}…` : `${pending} pending`}
               </span>
             )}
+            <NotificationBell />
           </div>
 
           <div className="topbar-controls">
@@ -160,6 +196,27 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* tiTi floating panel — hidden on /home (Chat page) */}
+      {path !== "/home" && <TitiPanel />}
+
+      {/* Bottom tab bar — mobile only (hidden via CSS on desktop) */}
+      <nav className="bottom-tab-bar">
+        {tabItems.map(item => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) => isActive ? "tab-active" : ""}
+          >
+            <item.icon size={20} />
+            <span>{item.label === "Chat with tiTi" ? "tiTi" : item.label}</span>
+          </NavLink>
+        ))}
+        <button onClick={() => setDrawerOpen(true)}>
+          <Menu size={20} />
+          <span>More</span>
+        </button>
+      </nav>
     </div>
   );
 }

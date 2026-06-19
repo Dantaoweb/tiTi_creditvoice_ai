@@ -14,6 +14,7 @@ import Suppliers    from "./pages/Suppliers";
 import Staff        from "./pages/Staff";
 import Partners     from "./pages/Partners";
 import Notes        from "./pages/Notes";
+import Admin        from "./pages/Admin";
 import Reminders    from "./pages/Reminders";
 import Automation   from "./pages/Automation"
 import Branches     from "./pages/Branches";
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="wallet"       element={<Wallet />}       />
           <Route path="branches"     element={<Branches />}     />
           <Route path="automation"   element={<Automation />}   />
+          <Route path="admin"        element={<Admin />}        />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

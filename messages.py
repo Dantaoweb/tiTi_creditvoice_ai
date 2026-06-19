@@ -773,3 +773,295 @@ def apply_voice_confirmation_options(confirm_msg, source_text=None):
     ).strip()
     confirm_msg = f"{confirm_msg}\n\nReply:\n1. Save\n2. Edit text\n3. Send voice again"
     return f"I heard:\n{source_text}\n\n{confirm_msg}"
+
+
+def build_what_can_do_message(user=None):
+    from business_templates import template_key_for_user
+    tkey = template_key_for_user(user) if user else None
+    is_thrift = tkey == "thrift_contribution"
+    is_school = tkey == "school"
+
+    if is_thrift:
+        sales_line  = "💰 *Contributions* — record member deposits and payments"
+        stock_line  = "📦 *Products/Items* — track contribution items or levies"
+        cust_line   = "👥 *Members* — manage thrift group participants"
+    elif is_school:
+        sales_line  = "💰 *Fees* — record student payments and outstanding balances"
+        stock_line  = "📦 *Items* — track school supplies and materials"
+        cust_line   = "👥 *Students* — manage student records and balances"
+    else:
+        sales_line  = "💰 *Sales & Credit* — record cash sales, credit sales, and payments received"
+        stock_line  = "📦 *Stock/Inventory* — add products, update prices, track quantities"
+        cust_line   = "👥 *Customers* — track who owes you and how much"
+
+    return (
+        "Hello! I'm *tiTi*, your CreditVoice business assistant 🤖\n\n"
+        "Just send me a WhatsApp message in plain English — no special format needed.\n\n"
+        "*Here's what I can do for you:*\n\n"
+        f"{sales_line}\n"
+        f"{stock_line}\n"
+        f"{cust_line}\n"
+        "📊 *Reports* — daily summary, debtor list, best-selling products, staff performance\n"
+        "🧾 *Suppliers* — record what you bought, from who, and at what cost\n"
+        "👷 *Staff* — invite team members, set profiles, view performance\n"
+        "🤝 *Partners & Investors* — add co-founders or investors with different access levels\n"
+        "📝 *Notes* — record expenses, memos, and decisions\n"
+        "⏰ *Reminders* — set payment reminders for customers\n"
+        "📤 *Export* — export your transactions, debtors, or stock to a spreadsheet\n\n"
+        "*How to use me:*\n"
+        "Just type naturally. For example:\n"
+        "• _Ada bought 2 bags rice at 35000_\n"
+        "• _Emeka paid 5000_\n"
+        "• _stock rice 10 bags cost 30000_\n"
+        "• _summary today_\n"
+        "• _who owes me the most_\n\n"
+        "Type *menu* anytime to see the main menu, or ask me anything!"
+    )
+
+
+def build_app_guide_message(topic):
+    """
+    Returns step-by-step navigation instructions for a given app feature.
+    Works on both WhatsApp (plain text) and web app (same text shown in tiTi panel).
+    No LLM call — completely free and instant.
+    """
+    guides = {
+        "pdf": (
+            "🧾 *How to download a PDF receipt*\n\n"
+            "*On the web app:*\n"
+            "1. Click *Transactions* in the sidebar\n"
+            "2. Find and click any sale\n"
+            "3. Tap the *PDF* or *Print* icon at the top of the receipt\n"
+            "4. Your browser will download or open the receipt\n\n"
+            "*On WhatsApp:*\n"
+            "Send: _receipt [customer name]_\n"
+            "Example: _receipt Ada_\n"
+            "tiTi will generate and send the receipt PDF directly."
+        ),
+        "record_sale": (
+            "💰 *How to record a sale*\n\n"
+            "*On WhatsApp* — just type naturally:\n"
+            "• _Ada bought 3 bags of rice for 9000_\n"
+            "• _sold 2 shirts to Emeka 5000 credit_\n"
+            "• _cash sale tissue paper 500_\n\n"
+            "*On the web app:*\n"
+            "1. Click *Quick Record* in the sidebar (or bottom bar on mobile)\n"
+            "2. Type the sale details in the box\n"
+            "3. Tap *Send* — tiTi will process it the same way\n\n"
+            "💡 For shop checkout with receipt, use *POS* instead."
+        ),
+        "inventory": (
+            "📦 *How to add stock / inventory*\n\n"
+            "*On WhatsApp:*\n"
+            "• Single item: _stock rice 20 bags cost 30000 price 2000_\n"
+            "• Multiple at once: _add paracetamol, sugar, tissue, milo_\n\n"
+            "*On the web app:*\n"
+            "1. Click *Inventory* in the sidebar\n"
+            "2. Tap *+ Add Item* to add one product with full details\n"
+            "3. Or tap *Quick Add Names* to paste a list of product names at once\n"
+            "4. Or tap *From Catalog* to pick from your industry's default product list\n\n"
+            "After adding names, you can set prices and quantities by tapping each item."
+        ),
+        "customers": (
+            "👥 *How to add a customer*\n\n"
+            "*On WhatsApp:*\n"
+            "Customers are created automatically when you record a credit sale:\n"
+            "_Ada bought 3 bags rice 9000 credit_\n"
+            "Ada is now saved as a customer with ₦9,000 balance.\n\n"
+            "*On the web app:*\n"
+            "1. Click *Customers* in the sidebar\n"
+            "2. Tap *+ Add Customer*\n"
+            "3. Enter name and phone number\n"
+            "4. Tap *Save*"
+        ),
+        "summary": (
+            "📊 *How to see your summary / reports*\n\n"
+            "*On WhatsApp:*\n"
+            "• _summary today_ — today's sales and profit\n"
+            "• _summary this week_ — weekly overview\n"
+            "• _summary this month_ — monthly report\n"
+            "• _who owes me_ — full debtor list\n"
+            "• _best selling_ — your top products\n\n"
+            "*On the web app:*\n"
+            "1. Click *Dashboard* in the sidebar\n"
+            "2. Use the *Period* dropdown (top right) to switch between Today / Week / Month\n"
+            "3. Scroll down to see charts, debtor summary, and top products"
+        ),
+        "reminder": (
+            "⏰ *How to send a payment reminder*\n\n"
+            "*On WhatsApp:*\n"
+            "• _remind Ada_ — sends Ada a payment reminder now\n"
+            "• _remind all debtors_ — sends everyone with a balance a reminder\n\n"
+            "*On the web app:*\n"
+            "1. Click *Reminders* in the sidebar\n"
+            "2. You can set automatic reminders — choose how many days after a sale\n"
+            "3. Or go to *Customers*, open a customer, and tap *Send Reminder*\n\n"
+            "💡 tiTi also sends low-debt nudges automatically if you've enabled reminders."
+        ),
+        "supplier": (
+            "🚚 *How to record a supplier purchase*\n\n"
+            "*On WhatsApp:*\n"
+            "• _bought 10 bags rice from Alhaji for 150000_\n"
+            "• _purchased tissue 200 packs from ABC Suppliers 45000 credit_\n\n"
+            "*On the web app:*\n"
+            "1. Click *Suppliers* in the sidebar\n"
+            "2. First add your supplier if not already there\n"
+            "3. Then tap *+ Purchase* to record what you bought, quantity, and amount\n"
+            "4. Mark it as paid or credit — tiTi tracks what you owe"
+        ),
+        "staff": (
+            "👷 *How to manage staff*\n\n"
+            "*On WhatsApp:*\n"
+            "• _invite staff_ — start the process to add a team member\n"
+            "• _staff report_ — see staff performance this month\n\n"
+            "*On the web app:*\n"
+            "1. Click *Staff* in the sidebar\n"
+            "2. Tap *+ Invite Staff* — enter their phone number\n"
+            "3. They'll receive a WhatsApp message to join your business\n"
+            "4. You can set their position, level, and salary from their profile\n\n"
+            "Staff can record sales on your behalf from their own WhatsApp."
+        ),
+        "partner": (
+            "🤝 *How to add a partner or investor*\n\n"
+            "*On the web app:*\n"
+            "1. Click *Partners* in the sidebar\n"
+            "2. Tap *+ Invite Partner*\n"
+            "3. Enter their phone number and select their role:\n"
+            "   — Co-founder, Partner, Investor, or Silent\n"
+            "4. Set equity % and investment amount if applicable\n"
+            "5. They'll receive a WhatsApp invitation to join\n\n"
+            "Partners can be given different levels of access to your business data."
+        ),
+        "notes": (
+            "📝 *How to use Business Notes*\n\n"
+            "*On WhatsApp:*\n"
+            "• _note: bought generator for 150000_ — records an expense\n"
+            "• _memo: meet supplier Friday_ — saves a memo\n\n"
+            "*On the web app:*\n"
+            "1. Click *Notes* in the sidebar\n"
+            "2. Tap *+ Add Note*\n"
+            "3. Choose a category: Expense, Income, Decision, Goal, or Memo\n"
+            "4. Set who can see it — just you, partners, or everyone\n\n"
+            "Notes with amounts appear in your expense/income summary."
+        ),
+        "pos": (
+            "🛒 *How to use POS (Point of Sale)*\n\n"
+            "*On the web app:*\n"
+            "1. Click *POS* in the sidebar (or bottom bar on mobile)\n"
+            "2. Search for a product or tap it from the catalog\n"
+            "3. Set quantity — tap *Add to Cart*\n"
+            "4. When done, tap *Checkout*\n"
+            "5. Choose payment type and enter customer name (optional)\n"
+            "6. A receipt is generated — you can print or download as PDF\n\n"
+            "💡 POS works great for shops with a tablet or phone on the counter."
+        ),
+        "bulk_add": (
+            "📦 *How to add many products at once*\n\n"
+            "*On WhatsApp:*\n"
+            "Send: _add paracetamol, sugar, tissue, milo, soap_\n"
+            "tiTi creates all of them as draft items instantly.\n\n"
+            "*On the web app:*\n"
+            "1. Click *Inventory* in the sidebar\n"
+            "2. Tap *Quick Add Names*\n"
+            "3. Paste or type your product names (one per line, or separated by commas)\n"
+            "4. Tap *Add All* — they're all saved as drafts\n"
+            "5. Set prices and quantities later by tapping each item\n\n"
+            "Or tap *From Catalog* to pick from your industry's default product list."
+        ),
+        "branches": (
+            "🏪 *How to manage branches*\n\n"
+            "*On the web app:*\n"
+            "1. Click *Branches* in the sidebar\n"
+            "2. Tap *+ Add Branch* to create a new shop location\n"
+            "3. Each branch can have its own staff members\n"
+            "4. Reports can be filtered by branch\n\n"
+            "Staff assigned to a branch only see their branch's data."
+        ),
+        "automation": (
+            "⚡ *How to set up automations*\n\n"
+            "*On the web app:*\n"
+            "1. Click *Automation* in the sidebar\n"
+            "2. *Payment reminders* — set how many days after a credit sale to remind the customer automatically\n"
+            "3. *Low stock alerts* — tiTi notifies you when any product falls below your set quantity\n"
+            "4. *Inactivity nudge* — tiTi checks in if you haven't recorded anything in a few days\n\n"
+            "All automations send to both WhatsApp and your app notification bell."
+        ),
+        "download_app": (
+            "📱 *How to install CreditVoice on your phone*\n\n"
+            "*Android (recommended):*\n"
+            "1. Open the app in your Chrome browser\n"
+            "2. Tap the *three dots menu* (top right)\n"
+            "3. Tap *Add to Home Screen* or *Install App*\n"
+            "4. It works like a normal app — even offline!\n\n"
+            "*iPhone:*\n"
+            "1. Open the app in Safari\n"
+            "2. Tap the *Share* button (box with arrow)\n"
+            "3. Tap *Add to Home Screen*\n\n"
+            "💡 You can still use tiTi on WhatsApp alongside the app — they sync automatically."
+        ),
+        "wallet": (
+            "💳 *How to use the Wallet / receive payments*\n\n"
+            "The CreditVoice Wallet lets customers pay you directly via bank transfer.\n\n"
+            "*On the web app:*\n"
+            "1. Click *Wallet* in the sidebar\n"
+            "2. Your virtual account number is shown — share it with customers\n"
+            "3. When a customer transfers to your account, tiTi detects it and records it automatically\n\n"
+            "_Note: Wallet is currently in early access. Contact support to activate._"
+        ),
+        "transactions": (
+            "📋 *How to see your transaction history*\n\n"
+            "*On WhatsApp:*\n"
+            "• _transactions today_ — today's sales list\n"
+            "• _transactions this week_ — weekly list\n"
+            "• _export transactions_ — download as spreadsheet\n\n"
+            "*On the web app:*\n"
+            "1. Click *Transactions* in the sidebar\n"
+            "2. Use the *Period* dropdown to filter by date\n"
+            "3. Click any transaction to see full details\n"
+            "4. Tap *Export* to download as a CSV/Excel file\n"
+            "5. Tap the *PDF* icon on any transaction for a printable receipt"
+        ),
+        "debt": (
+            "💰 *How to check who owes you money*\n\n"
+            "*On WhatsApp:*\n"
+            "• _who owes me_ — full debtor list\n"
+            "• _who owes me most_ — sorted by highest balance\n"
+            "• _debtors_ — same thing\n"
+            "• _Ada balance_ — check one specific customer\n\n"
+            "*On the web app:*\n"
+            "1. Click *Customers* in the sidebar\n"
+            "2. Customers with outstanding balances are highlighted\n"
+            "3. Tap any customer to see their full credit history\n"
+            "4. Tap *Send Reminder* to chase a payment\n\n"
+            "tiTi also sends you automatic debt alerts every 3 days for overdue balances."
+        ),
+    }
+
+    text = guides.get(topic)
+    if text:
+        return text
+    return (
+        "I'm not sure which feature you're asking about.\n\n"
+        "Try asking more specifically, like:\n"
+        "• _how do I download my receipt as PDF_\n"
+        "• _how do I add stock_\n"
+        "• _where is my debtor list_\n\n"
+        "Or send *help* to see everything I can do."
+    )
+
+
+def build_bulk_add_result_message(saved_names, already_exist=None):
+    count = len(saved_names)
+    names_list = "\n".join(f"• {n.title()}" for n in saved_names)
+    exist_line = ""
+    if already_exist:
+        exist_line = f"\n\n_{len(already_exist)} already existed: {', '.join(n.title() for n in already_exist)}_"
+    return (
+        f"✅ Added *{count} product{'s' if count != 1 else ''}* to your inventory:\n\n"
+        f"{names_list}"
+        f"{exist_line}\n\n"
+        "These are saved as drafts. To set prices and quantities, just say:\n"
+        "_price <product name> <cost> <selling price>_\n"
+        "Example: _price paracetamol 300 500_\n\n"
+        "Or visit your *Inventory* page on the CreditVoice app to fill in the details."
+    )

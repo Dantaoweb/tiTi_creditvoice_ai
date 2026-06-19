@@ -23,6 +23,186 @@ function Modal({ title, onClose, children }) {
   );
 }
 
+// ── Catalog picker modal ─────────────────────────────────────────────────────
+function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
+  const [catalog, setCatalog] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(new Set());
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    apiFetch("inventory/catalog")
+      .then(d => setCatalog(d.catalog || {}))
+      .catch(() => setErr("Could not load catalog."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function toggle(name) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  }
+
+  function toggleAll(names) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      const allOn = names.every(n => next.has(n));
+      names.forEach(n => allOn ? next.delete(n) : next.add(n));
+      return next;
+    });
+  }
+
+  async function save() {
+    if (selected.size === 0) { setErr("Select at least one product."); return; }
+    setSaving(true); setErr("");
+    try {
+      const res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names: [...selected] });
+      setResult(res);
+      onSaved();
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  }
+
+  const allNames = Object.values(catalog).flat();
+
+  return (
+    <Modal title="Add from Product Catalog" onClose={onClose}>
+      <div className="modal-body" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+        {loading ? (
+          <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>Loading catalog…</div>
+        ) : result ? (
+          <div>
+            <div style={{ color: "var(--brand)", fontWeight: 600, marginBottom: 8 }}>
+              ✓ {result.saved} product{result.saved !== 1 ? "s" : ""} added as drafts
+            </div>
+            {result.already_existed > 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {result.already_existed} already existed and were skipped.
+              </div>
+            )}
+            <p style={{ fontSize: 13, marginTop: 10 }}>Set prices from the inventory table.</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{selected.size} selected</span>
+              <button className="btn btn-ghost" style={{ fontSize: 12 }}
+                onClick={() => setSelected(selected.size === allNames.length ? new Set() : new Set(allNames))}>
+                {selected.size === allNames.length ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+            {Object.entries(catalog).map(([cat, names]) => (
+              <div key={cat} style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: 1 }}>{cat}</span>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 6px" }}
+                    onClick={() => toggleAll(names)}>
+                    {names.every(n => selected.has(n)) ? "Deselect" : "Select all"}
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {names.map(name => (
+                    <button key={name}
+                      className={`btn ${selected.has(name) ? "btn-primary" : "btn-secondary"}`}
+                      style={{ fontSize: 12, padding: "4px 10px" }}
+                      onClick={() => toggle(name)}>
+                      {name.charAt(0).toUpperCase() + name.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {err && <div className="modal-error">{err}</div>}
+          </>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>{result ? "Close" : "Cancel"}</button>
+        {!result && !loading && (
+          <button className="btn btn-primary" onClick={save} disabled={saving || selected.size === 0}>
+            {saving ? "Adding…" : `Add ${selected.size || ""} Selected`}
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Bulk name add modal ──────────────────────────────────────────────────────
+function BulkAddModal({ ownerPhone, onClose, onSaved }) {
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null);
+
+  async function save() {
+    setErr(""); setSaving(true);
+    const names = text
+      .split(/[\n,;]+/)
+      .map(s => s.trim().toLowerCase())
+      .filter(s => s.length > 0);
+    if (names.length === 0) { setErr("Enter at least one product name."); setSaving(false); return; }
+    try {
+      const res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names });
+      setResult(res);
+      onSaved();
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal title="Quick Add Product Names" onClose={onClose}>
+      <div className="modal-body">
+        {result ? (
+          <div>
+            <div style={{ color: "var(--brand)", fontWeight: 600, marginBottom: 8 }}>
+              ✓ {result.saved} product{result.saved !== 1 ? "s" : ""} added as drafts
+            </div>
+            {result.already_existed > 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {result.already_existed} already existed and were skipped.
+              </div>
+            )}
+            <p style={{ fontSize: 13, marginTop: 10 }}>
+              Open each product from the inventory table to set its price and quantity.
+            </p>
+          </div>
+        ) : (
+          <>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
+              Type or paste your product names — one per line, or separated by commas. Prices and quantities can be set later.
+            </p>
+            <div className="form-group">
+              <label className="form-label">Product names</label>
+              <textarea
+                value={text}
+                onChange={e => setText(e.target.value)}
+                placeholder={"Paracetamol\nAmoxicillin\nMalaria drugs\nTissue paper"}
+                rows={8}
+                autoFocus
+                style={{ resize: "vertical", fontFamily: "inherit" }}
+              />
+            </div>
+            {err && <div className="modal-error">{err}</div>}
+          </>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>{result ? "Close" : "Cancel"}</button>
+        {!result && (
+          <button className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? "Adding…" : "Add All"}
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ── Add item modal ───────────────────────────────────────────────────────────
 function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
   const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
@@ -324,6 +504,8 @@ export default function Inventory() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [adjustItem, setAdjustItem] = useState(null);
 
@@ -368,6 +550,12 @@ export default function Inventory() {
               onChange={e => setSearch(e.target.value)}
               style={{ width: 200 }}
             />
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowCatalog(true)} title="Pick from suggested product list">
+              <Plus size={14} /> From Catalog
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)} title="Add many product names at once">
+              <Plus size={14} /> Quick Add Names
+            </button>
             <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
               <Plus size={14} /> {addLabel}
             </button>
@@ -437,6 +625,22 @@ export default function Inventory() {
           ]}
         />
       </div>
+
+      {showCatalog && (
+        <CatalogPickerModal
+          ownerPhone={ownerPhone}
+          onClose={() => setShowCatalog(false)}
+          onSaved={load}
+        />
+      )}
+
+      {showBulk && (
+        <BulkAddModal
+          ownerPhone={ownerPhone}
+          onClose={() => setShowBulk(false)}
+          onSaved={load}
+        />
+      )}
 
       {showAdd && (
         <AddItemModal

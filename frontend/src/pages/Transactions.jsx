@@ -37,7 +37,7 @@ export default function Transactions() {
 
   useEffect(() => {
     setLoading(true);
-    const params = { owner_phone: ownerPhone, period };
+    const params = { period };
     if (branchFilter) params.branch_id = branchFilter;
     apiFetch("transactions", params)
       .then((d) => setRows(d.transactions))

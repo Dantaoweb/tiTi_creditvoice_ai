@@ -79,8 +79,8 @@ export default function Dashboard() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    const params = { owner_phone: ownerPhone, period };
-    const txParams = { owner_phone: ownerPhone, period };
+    const params = { period };
+    const txParams = { period };
     if (branchId) txParams.branch_id = branchId;
     Promise.all([
       apiFetch("dashboard", params),

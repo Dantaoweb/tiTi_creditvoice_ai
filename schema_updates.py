@@ -543,3 +543,48 @@ def ensure_schema_updates(engine):
                     connection.execute(text(
                         f"ALTER TABLE business_notes ADD COLUMN {col} {typ}"
                     ))
+
+    # ── app_notifications table ──────────────────────────────────────────────
+    if "app_notifications" not in inspector.get_table_names():
+        _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE app_notifications (
+                    id {_pk},
+                    owner_phone VARCHAR,
+                    event_type VARCHAR,
+                    title VARCHAR,
+                    body TEXT,
+                    is_read INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    # ── proactive_log table ──────────────────────────────────────────────────
+    if "proactive_log" not in inspector.get_table_names():
+        _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE proactive_log (
+                    id {_pk},
+                    owner_phone VARCHAR,
+                    event_type VARCHAR,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    # ── failed_parses table ──────────────────────────────────────────────────
+    if "failed_parses" not in inspector.get_table_names():
+        _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE failed_parses (
+                    id {_pk},
+                    phone VARCHAR,
+                    owner_phone VARCHAR,
+                    text TEXT,
+                    resolved_by VARCHAR,
+                    llm_reply TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))

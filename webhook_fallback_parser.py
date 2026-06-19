@@ -1,10 +1,12 @@
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from constants import ACTION_AWAITING_CLARIFICATION
 from faq import detect_faq, get_faq_answer
+from llm_fallback import ask_llm_fallback
 from messages import build_invalid_message
-from models import PendingAction
+from models import FailedParse, PendingAction
 from parser import interpret_text_with_openai, parse_message
 from whatsapp_client import send_whatsapp_message
 
@@ -78,6 +80,41 @@ def handle_fallback_parse(db, phone, text, parsed, user):
             _save_clarification_pending(db, phone, text, clarification)
             send_whatsapp_message(phone, clarification)
             return FallbackParseResult(response={"status": "openai_parser_clarification"})
+
+    # ── LLM conversational fallback ──────────────────────────────────────────
+    llm_reply = ask_llm_fallback(text, user=user)
+    if llm_reply:
+        # Log the failed parse with its LLM reply for later analysis
+        try:
+            owner_phone = getattr(user, "phone", None) if user else None
+            db.add(FailedParse(
+                phone=phone,
+                owner_phone=owner_phone,
+                text=text,
+                resolved_by="llm",
+                llm_reply=llm_reply,
+                created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            ))
+            db.commit()
+        except Exception:
+            pass
+        send_whatsapp_message(phone, llm_reply)
+        return FallbackParseResult(response={"status": "llm_fallback"})
+
+    # ── Log unresolved messages for improvement analysis ─────────────────────
+    try:
+        owner_phone = getattr(user, "phone", None) if user else None
+        db.add(FailedParse(
+            phone=phone,
+            owner_phone=owner_phone,
+            text=text,
+            resolved_by=None,
+            llm_reply=None,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        ))
+        db.commit()
+    except Exception:
+        pass
 
     send_whatsapp_message(phone, build_invalid_message(user))
     return FallbackParseResult(response={"status": "invalid"})
