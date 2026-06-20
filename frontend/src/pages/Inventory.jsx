@@ -8,6 +8,8 @@ import { nairaFull, dateStr } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { StockBadge } from "../components/Badge";
 import StaleDataBanner from "../components/StaleDataBanner";
+import { LimitBar } from "../components/UpgradeGate";
+import { usePlan } from "../lib/usePlan";
 
 // ── Modal wrapper ────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
@@ -497,6 +499,7 @@ function AdjustModal({ item, onClose, onSaved }) {
 export default function Inventory() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
+  const { plan, limit: planLimit, withinLimit } = usePlan();
   const L = getBizLabels(user?.menu_group);
   const isServiceBiz = user?.menu_group === "service";
 
@@ -532,6 +535,11 @@ export default function Inventory() {
   const pageTitle = isServiceBiz ? L.stock : "Inventory";
   const addLabel = isServiceBiz ? "Add Service / Product" : "Add Product";
 
+  // Active = items with a selling price set (drafts don't count toward limit)
+  const activeCount  = rows.filter(r => r.selling_price != null).length;
+  const inventoryLim = planLimit("active_inventory_items");
+  const canAddActive = withinLimit("active_inventory_items", activeCount);
+
   return (
     <>
       <StaleDataBanner isStale={isStale} />
@@ -559,11 +567,26 @@ export default function Inventory() {
             <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)} title="Add many product names at once">
               <Plus size={14} /> Quick Add Names
             </button>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => canAddActive ? setShowAdd(true) : null}
+              title={canAddActive ? undefined : `Basic plan: ${inventoryLim} active products. Upgrade to Go for unlimited.`}
+              style={canAddActive ? {} : { opacity: 0.5, cursor: "not-allowed" }}
+            >
               <Plus size={14} /> {addLabel}
             </button>
           </div>
         </div>
+        {inventoryLim !== null && (
+          <div style={{ padding: "8px 16px 0" }}>
+            <LimitBar
+              used={activeCount}
+              limit={inventoryLim}
+              label="active products"
+              upgradePlan="Go"
+            />
+          </div>
+        )}
         <DataTable
           loading={loading}
           rows={filtered}

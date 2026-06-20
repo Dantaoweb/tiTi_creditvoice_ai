@@ -307,7 +307,29 @@ def handle_guided_stock_pending(db, phone, text, pending, user, business_owner_p
 
     # ── COST ──────────────────────────────────────────────────────────────────
     if action == ACTION_GUIDED_STOCK_COST:
-        if normalized in ["skip", "0", "no", "none"]:
+        _warned = payload.get("_cost_skip_warned", False)
+        _skip_cost = normalized in ["skip", "0", "no", "none"]
+        _confirmed_skip = _warned and _skip_cost
+
+        if _skip_cost and not _warned:
+            # First skip attempt — show warning and stay on this step
+            product = payload.get("current_product", "")
+            payload["_cost_skip_warned"] = True
+            _save(pending, payload)
+            db.commit()
+            send_message(
+                phone,
+                f"⚠ No cost price for *{product.title()}*.\n\n"
+                "Without it, tiTi can't:\n"
+                "• Show your profit or margin on this item\n"
+                "• Warn you when selling below cost\n"
+                "• Include it in profit reports\n\n"
+                "Send the cost price now (e.g. *500*)\n"
+                "or send *0* again to skip anyway."
+            )
+            return {"status": "guided_stock_cost_skip_warned"}
+
+        if _skip_cost or _confirmed_skip:
             payload["cost"] = 0
         else:
             cost_str = normalized.replace(",", "").replace("n", "").strip()
@@ -316,6 +338,7 @@ def handle_guided_stock_pending(db, phone, text, pending, user, business_owner_p
                 return {"status": "guided_stock_cost_invalid"}
             payload["cost"] = int(float(cost_str))
 
+        payload.pop("_cost_skip_warned", None)
         _save(pending, payload)
         pending.action = ACTION_GUIDED_STOCK_SELL
         db.commit()
@@ -361,9 +384,30 @@ def handle_guided_stock_pending(db, phone, text, pending, user, business_owner_p
     # ── BREAKDOWN ─────────────────────────────────────────────────────────────
     if action == ACTION_GUIDED_STOCK_BREAKDOWN:
         product = payload.get("current_product", "")
-        unit = payload.get("current_unit")
+        unit = payload.get("current_unit") or "unit"
 
-        if normalized in ["skip", "no", "none", "0", "-", "n"]:
+        _warned_bd = payload.get("_bd_skip_warned", False)
+        _skip_bd = normalized in ["skip", "no", "none", "0", "-", "n"]
+        _confirmed_skip = _warned_bd and _skip_bd
+
+        if _skip_bd and not _warned_bd:
+            payload["_bd_skip_warned"] = True
+            _save(pending, payload)
+            db.commit()
+            send_message(
+                phone,
+                f"⚠ No retail breakdown for *{product.title()}*.\n\n"
+                "Without it, tiTi can't:\n"
+                "• Offer smaller unit options in POS\n"
+                "• Track retail vs bulk sales separately\n\n"
+                "Send *0* again to skip, or enter the breakdown now\n"
+                f"e.g. *egg 30 70* (30 per {unit} at ₦70 each)"
+            )
+            return {"status": "guided_stock_breakdown_skip_warned"}
+
+        payload.pop("_bd_skip_warned", None)
+
+        if _skip_bd or _confirmed_skip:
             payload["retail_unit"] = None
             payload["retail_per_base"] = None
             payload["retail_price"] = None
@@ -399,7 +443,30 @@ def handle_guided_stock_pending(db, phone, text, pending, user, business_owner_p
 
     # ── SUPPLIER ─────────────────────────────────────────────────────────────
     if action == ACTION_GUIDED_STOCK_SUPPLIER:
-        if normalized in ["skip", "no", "none", "0", "-"]:
+        _warned = payload.get("_sup_skip_warned", False)
+        _skip_sup = normalized in ["skip", "no", "none", "0", "-"]
+        _confirmed_skip = _warned and _skip_sup
+
+        if _skip_sup and not _warned:
+            product = payload.get("current_product", "")
+            payload["_sup_skip_warned"] = True
+            _save(pending, payload)
+            db.commit()
+            send_message(
+                phone,
+                f"⚠ No supplier for *{product.title()}*.\n\n"
+                "Without it, tiTi can't:\n"
+                "• Track restock history by supplier\n"
+                "• Show supplier balances and what you owe\n"
+                "• Group items by supplier for reports\n\n"
+                "Send the supplier name now (e.g. *Dangote Distributor*)\n"
+                "or send *0* again to skip."
+            )
+            return {"status": "guided_stock_supplier_skip_warned"}
+
+        payload.pop("_sup_skip_warned", None)
+
+        if _skip_sup or _confirmed_skip:
             payload["supplier"] = None
         else:
             supplier_name = text.strip()
@@ -528,6 +595,7 @@ def _send_confirm(phone, payload, send_message, warn_margin=False):
         bp = f" at N{ret_price:,} each" if ret_price else ""
         breakdown_line = f"\nRetail: {ret_per} {ret_unit} per {unit or 'unit'}{bp}"
 
+    from messages import with_confirm_disclaimer
     msg = (
         f"Confirm stock item:\n\n"
         f"Product: *{product.title()}{unit_label}*\n"
@@ -539,7 +607,7 @@ def _send_confirm(phone, payload, send_message, warn_margin=False):
         f"{margin_warn}\n\n"
         "Reply *YES* to save or *EDIT* to change."
     )
-    send_message(phone, msg)
+    send_message(phone, with_confirm_disclaimer(msg))
 
 
 def _do_save(db, owner_phone, payload):

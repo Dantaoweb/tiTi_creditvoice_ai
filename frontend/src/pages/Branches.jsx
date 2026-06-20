@@ -1,14 +1,36 @@
 import { useEffect, useState } from "react";
-import { MapPin, Plus, Star, Trash2 } from "lucide-react";
+import { MapPin, Plus, Star, Trash2, Lock } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { usePlan } from "../lib/usePlan";
 
 export default function Branches() {
+  const { allows } = usePlan();
+  const canUseBranches = allows("BRANCHES");
+
   const [branches, setBranches] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [name, setName]         = useState("");
   const [saving, setSaving]     = useState(false);
   const toast = useToast();
+
+  if (!canUseBranches) {
+    return (
+      <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+        <Lock size={36} color="#a78bfa" style={{ margin: "0 auto 16px" }} />
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+          Branches requires Pro
+        </div>
+        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, maxWidth: 420, margin: "0 auto 20px" }}>
+          Tag transactions to multiple shop locations and see performance per branch.
+          Available on the Pro plan.
+        </div>
+        <button className="btn btn-primary" onClick={() => window.location.href = "/app/upgrade"}>
+          Upgrade to Pro
+        </button>
+      </div>
+    );
+  }
 
   async function load() {
     setLoading(true);

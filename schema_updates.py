@@ -573,6 +573,23 @@ def ensure_schema_updates(engine):
                 )
             """))
 
+    # ── school_teachers table ────────────────────────────────────────────────
+    if "school_teachers" not in inspector.get_table_names():
+        _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE school_teachers (
+                    id {_pk},
+                    owner_phone VARCHAR,
+                    name VARCHAR,
+                    subject VARCHAR,
+                    class_name VARCHAR,
+                    phone VARCHAR,
+                    employee_id VARCHAR,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
     # ── failed_parses table ──────────────────────────────────────────────────
     if "failed_parses" not in inspector.get_table_names():
         _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"

@@ -51,6 +51,10 @@ export async function apiPut(path, body) {
   });
 }
 
+export async function apiDelete(path) {
+  return apiFetch(path, {}, { method: "DELETE" });
+}
+
 export async function apiDownload(path, params = {}) {
   const url = new URL(`/app/api/${path}`, window.location.origin);
   Object.entries(params).forEach(([k, v]) => {

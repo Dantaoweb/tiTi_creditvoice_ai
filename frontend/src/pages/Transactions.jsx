@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, MapPin } from "lucide-react";
+import { Download, MapPin, Lock } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiDownload } from "../lib/api";
@@ -8,10 +8,13 @@ import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
+import { usePlan } from "../lib/usePlan";
 
 export default function Transactions() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
+  const { allows } = usePlan();
+  const canExport = allows("EXPORT");
   const L = getBizLabels(user?.menu_group);
   const [rows, setRows]           = useState([]);
   const [branches, setBranches]   = useState([]);
@@ -79,18 +82,30 @@ export default function Transactions() {
                 {t === "all" ? "All" : t}
               </button>
             ))}
-            <div className="export-dropdown">
-              <button className="btn btn-sm btn-ghost export-dropdown-trigger" disabled={exporting}>
-                <Download size={13} />
-                {exporting ? "Exporting…" : "Export"}
-              </button>
-              <div className="export-dropdown-menu">
-                <button onClick={() => handleExport("transactions")}>Transactions CSV</button>
-                <button onClick={() => handleExport("debtors")}>Unpaid Debtors CSV</button>
-                <button onClick={() => handleExport("customers")}>Customer List CSV</button>
-                <button onClick={() => handleExport("stock")}>Stock Inventory CSV</button>
+            {canExport ? (
+              <div className="export-dropdown">
+                <button className="btn btn-sm btn-ghost export-dropdown-trigger" disabled={exporting}>
+                  <Download size={13} />
+                  {exporting ? "Exporting…" : "Export"}
+                </button>
+                <div className="export-dropdown-menu">
+                  <button onClick={() => handleExport("transactions")}>Transactions CSV</button>
+                  <button onClick={() => handleExport("debtors")}>Unpaid Debtors CSV</button>
+                  <button onClick={() => handleExport("customers")}>Customer List CSV</button>
+                  <button onClick={() => handleExport("stock")}>Stock Inventory CSV</button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <button
+                className="btn btn-sm btn-ghost"
+                style={{ opacity: 0.6, cursor: "not-allowed" }}
+                title="Export is available on the Go plan. Upgrade to download your records."
+                onClick={() => window.location.href = "/app/upgrade"}
+              >
+                <Lock size={11} style={{ color: "#a78bfa" }} />
+                <Download size={13} /> Export
+              </button>
+            )}
           </div>
         </div>
         <DataTable

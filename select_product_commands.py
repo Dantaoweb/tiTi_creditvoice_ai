@@ -128,7 +128,8 @@ def build_confirm_message(cart, customer_name, paid, total, due_date_str=None, o
     msg += "\n\nYES to save."
     if item_discount > 0:
         msg += "\nYES RECEIPT to save and show discount on customer receipt."
-    return msg
+    from messages import _CONFIRM_DISCLAIMER
+    return f"{msg}\n\n{_CONFIRM_DISCLAIMER}"
 
 
 def build_owner_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id, config=None):

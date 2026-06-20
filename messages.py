@@ -327,7 +327,8 @@ def build_home_more_menu(user=None):
             "4. Partners & Investors\n"
             "5. Automation / reminders\n"
             "6. Notes\n"
-            "7. Back"
+            "7. Thrift / ajo savings\n"
+            "8. Back"
         )
     if group == "service":
         key = template_key_for_user(user) if user else None
@@ -341,7 +342,8 @@ def build_home_more_menu(user=None):
             "4. Partners & Investors\n"
             "5. Automation / reminders\n"
             "6. Notes\n"
-            "7. Back"
+            "7. Thrift / ajo savings\n"
+            "8. Back"
         )
     return (
         "More options\n\n"
@@ -351,7 +353,8 @@ def build_home_more_menu(user=None):
         "4. Partners & Investors\n"
         "5. Automation / reminders\n"
         "6. Notes\n"
-        "7. Back"
+        "7. Thrift / ajo savings\n"
+        "8. Back"
     )
 
 
@@ -763,16 +766,24 @@ def edit_prompt_for_pending(pending, user=None):
     )
 
 
+_CONFIRM_DISCLAIMER = "_⚠️ tiTi can make mistakes — please double-check these details before confirming._"
+
+
+def with_confirm_disclaimer(msg: str) -> str:
+    """Append the AI disclaimer to any confirmation message."""
+    return f"{msg}\n\n{_CONFIRM_DISCLAIMER}"
+
+
 def apply_voice_confirmation_options(confirm_msg, source_text=None):
-    if not source_text:
-        return confirm_msg
-    confirm_msg = re.sub(
-        r"Reply YES or 1 to save, EDIT or 2 to change\.?",
-        "",
-        confirm_msg
-    ).strip()
-    confirm_msg = f"{confirm_msg}\n\nReply:\n1. Save\n2. Edit text\n3. Send voice again"
-    return f"I heard:\n{source_text}\n\n{confirm_msg}"
+    if source_text:
+        confirm_msg = re.sub(
+            r"Reply YES or 1 to save, EDIT or 2 to change\.?",
+            "",
+            confirm_msg
+        ).strip()
+        confirm_msg = f"{confirm_msg}\n\nReply:\n1. Save\n2. Edit text\n3. Send voice again"
+        confirm_msg = f"I heard:\n{source_text}\n\n{confirm_msg}"
+    return with_confirm_disclaimer(confirm_msg)
 
 
 def build_what_can_do_message(user=None):

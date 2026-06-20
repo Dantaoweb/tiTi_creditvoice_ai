@@ -12,8 +12,9 @@ from pydantic import BaseModel
 from database import SessionLocal
 from models import (
     AppNotification, AutomationSettings, Branch, Customer, FailedParse, FastCaptureSettings,
-    InventoryItem, InventoryMovement, PendingAction, ReminderAutomationSettings, ReminderQueue,
-    Supplier, SupplierPayment, SupplierPurchase, Transaction, TransactionItem, User, utcnow,
+    InventoryItem, InventoryMovement, PendingAction, Referral, ReferralSettings,
+    ReminderAutomationSettings, ReminderQueue,
+    Supplier, SupplierPayment, SupplierPurchase, TokenCode, Transaction, TransactionItem, User, utcnow,
 )
 from parser import normalize_voice_transcript, parse_message, transcribe_audio_bytes
 from reports import (
@@ -61,6 +62,7 @@ class RegisterRequest(BaseModel):
     business_category: Optional[str] = None
     business_type: Optional[str] = None
     business_type_label: Optional[str] = None
+    ref_code: Optional[str] = None
 
 class OtpRequest(BaseModel):
     phone: str
@@ -199,6 +201,32 @@ def _owner_filter(query, model, owner_phone):
     if owner_phone:
         return query.filter(model.owner_phone == owner_phone)
     return query
+
+
+def _active_inventory_count(db, owner_phone: str) -> int:
+    """Count inventory items that are 'active' — have a selling price set."""
+    from models import InventoryItem
+    return db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.selling_price != None,
+    ).count()
+
+
+def _check_inventory_limit(db, owner_phone: str, subscription) -> str | None:
+    """Return an error message if the owner is at their active inventory limit, else None."""
+    from plans import plan_limit, normalize_plan
+    plan = normalize_plan(getattr(subscription, "plan", "BASIC") if subscription else "BASIC")
+    limit = plan_limit(plan, "active_inventory_items")
+    if limit is None:
+        return None
+    count = _active_inventory_count(db, owner_phone)
+    if count >= limit:
+        return (
+            f"You have reached the Basic plan limit of {limit} active products. "
+            f"Draft items (no price set) are unlimited. "
+            f"Upgrade to Go to add unlimited active products."
+        )
+    return None
 
 
 def _session_owner_phone(db, session: dict) -> str:
@@ -403,6 +431,7 @@ def register_web_routes(app):
                 business_category=payload.business_category,
                 business_type=payload.business_type,
                 business_type_label=payload.business_type_label,
+                ref_code=payload.ref_code,
             )
         finally:
             db.close()
@@ -445,6 +474,19 @@ def register_web_routes(app):
             if not user:
                 from fastapi import HTTPException
                 raise HTTPException(status_code=401, detail="User not found.")
+
+            # Enforce expiry: downgrade to BASIC if subscription has lapsed
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            if (
+                user.subscription_plan not in (None, "BASIC")
+                and user.subscription_expires_at
+                and user.subscription_expires_at < now
+            ):
+                user.subscription_plan = "BASIC"
+                user.subscription_status = "EXPIRED"
+                db.commit()
+
+            from business_templates import menu_group_for_user
             return {
                 "id": user.id,
                 "name": user.name,
@@ -452,7 +494,12 @@ def register_web_routes(app):
                 "email": user.email,
                 "role": user.role,
                 "plan": user.subscription_plan,
+                "subscription_plan": user.subscription_plan,
+                "subscription_expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
                 "business_category": user.business_category,
+                "business_type": user.business_type,
+                "business_type_label": user.business_type_label,
+                "menu_group": menu_group_for_user(user),
                 "whatsapp_linked": bool(user.whatsapp_linked),
                 "newsletter_consent": bool(user.newsletter_consent),
             }
@@ -756,9 +803,8 @@ def register_web_routes(app):
             query = db.query(InventoryItem).filter(
                 InventoryItem.is_available == True,
                 InventoryItem.owner_phone == owner_phone,
+                InventoryItem.selling_price != None,
             )
-            if q:
-                query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
             if q:
                 query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
             rows = query.order_by(InventoryItem.name).limit(50).all()
@@ -1035,6 +1081,17 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
+
+            # Enforce active-inventory limit for Basic plan when a price is being set
+            if payload.selling_price is not None:
+                from subscriptions import get_business_subscription
+                owner = db.query(User).filter(User.phone == owner_phone).first()
+                sub = get_business_subscription(db, owner) if owner else None
+                err = _check_inventory_limit(db, owner_phone, sub)
+                if err:
+                    from fastapi import HTTPException
+                    raise HTTPException(status_code=403, detail=err)
+
             _qty = None if payload.is_service else (payload.quantity or 0.0)
             item = InventoryItem(
                 owner_phone=owner_phone,
@@ -1147,6 +1204,16 @@ def register_web_routes(app):
             if payload.cost_price is not None:
                 item.cost_price = payload.cost_price
             if payload.selling_price is not None:
+                # Only enforce limit when activating a previously draft item
+                if item.selling_price is None:
+                    from subscriptions import get_business_subscription
+                    owner_phone = _session_owner_phone(db, session)
+                    owner = db.query(User).filter(User.phone == owner_phone).first()
+                    sub = get_business_subscription(db, owner) if owner else None
+                    err = _check_inventory_limit(db, owner_phone, sub)
+                    if err:
+                        from fastapi import HTTPException
+                        raise HTTPException(status_code=403, detail=err)
                 item.selling_price = payload.selling_price
             if payload.low_stock_alert is not None:
                 item.low_stock_alert = payload.low_stock_alert
@@ -1628,6 +1695,122 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    # ── School Teacher Roster ─────────────────────────────────────────────────
+
+    class SchoolTeacherRequest(BaseModel):
+        name: str
+        subject: Optional[str] = None
+        class_name: Optional[str] = None
+        phone: Optional[str] = None
+        employee_id: Optional[str] = None
+
+    @app.get("/app/api/school/teachers")
+    def web_school_teachers(session: dict = Depends(require_web_auth)):
+        from models import SchoolTeacher
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            rows = db.query(SchoolTeacher).filter(
+                SchoolTeacher.owner_phone == owner_phone
+            ).order_by(SchoolTeacher.name).all()
+            return {"teachers": [
+                {"id": r.id, "name": r.name, "subject": r.subject,
+                 "class_name": r.class_name, "phone": r.phone,
+                 "employee_id": r.employee_id}
+                for r in rows
+            ]}
+        finally:
+            db.close()
+
+    @app.post("/app/api/school/teachers")
+    def web_add_school_teacher(
+        payload: SchoolTeacherRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        from models import SchoolTeacher
+        from subscriptions import get_business_subscription
+        from plans import plan_limit, normalize_plan
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            owner = db.query(User).filter(User.phone == owner_phone).first()
+            sub = get_business_subscription(db, owner) if owner else None
+            plan = normalize_plan(getattr(sub, "plan", "BASIC") if sub else "BASIC")
+            limit = plan_limit(plan, "school_teachers")
+            if limit is not None:
+                count = db.query(SchoolTeacher).filter(
+                    SchoolTeacher.owner_phone == owner_phone
+                ).count()
+                if count >= limit:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            f"You have reached the Basic limit of {limit} teacher records. "
+                            "Upgrade to Go or Pro to add more teachers."
+                        ),
+                    )
+            teacher = SchoolTeacher(
+                owner_phone=owner_phone,
+                name=payload.name.strip(),
+                subject=payload.subject,
+                class_name=payload.class_name,
+                phone=payload.phone,
+                employee_id=payload.employee_id,
+            )
+            db.add(teacher)
+            db.commit()
+            db.refresh(teacher)
+            return {"id": teacher.id, "name": teacher.name}
+        finally:
+            db.close()
+
+    @app.put("/app/api/school/teachers/{teacher_id}")
+    def web_edit_school_teacher(
+        teacher_id: int,
+        payload: SchoolTeacherRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        from models import SchoolTeacher
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            teacher = db.query(SchoolTeacher).filter(
+                SchoolTeacher.id == teacher_id,
+                SchoolTeacher.owner_phone == owner_phone,
+            ).first()
+            if not teacher:
+                raise HTTPException(status_code=404, detail="Teacher not found.")
+            teacher.name       = payload.name.strip()
+            teacher.subject    = payload.subject
+            teacher.class_name = payload.class_name
+            teacher.phone      = payload.phone
+            teacher.employee_id = payload.employee_id
+            db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/school/teachers/{teacher_id}")
+    def web_delete_school_teacher(
+        teacher_id: int,
+        session: dict = Depends(require_web_auth),
+    ):
+        from models import SchoolTeacher
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            teacher = db.query(SchoolTeacher).filter(
+                SchoolTeacher.id == teacher_id,
+                SchoolTeacher.owner_phone == owner_phone,
+            ).first()
+            if not teacher:
+                raise HTTPException(status_code=404, detail="Teacher not found.")
+            db.delete(teacher)
+            db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
     # ── Partners & Investors ──────────────────────────────────────────────────
 
     class PartnerInviteRequest(BaseModel):
@@ -1962,6 +2145,164 @@ def register_web_routes(app):
                 raise HTTPException(status_code=404, detail="Owner not found.")
             result = provision_virtual_account(db, owner_phone, owner.name or owner_phone)
             return {"ok": True, **result}
+        finally:
+            db.close()
+
+    # ── Thrift / Ajo ────────────────────────────────────────────────────────
+
+    @app.get("/app/api/thrift/summary")
+    def web_thrift_summary(
+        period: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        """Return thrift data split into group contributions and personal savings."""
+        import sqlalchemy as _sa
+        from collections import defaultdict
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            period_key = period.upper() if period else None
+            base = get_owner_transaction_query(db, owner_phone, period_key)
+
+            # Group thrift filter: customer-linked with thrift/ajo/esusu/contribution keywords
+            group_filter = _sa.and_(
+                Transaction.customer_id != None,
+                _sa.or_(
+                    Transaction.product.ilike("%thrift%"),
+                    Transaction.product.ilike("%ajo%"),
+                    Transaction.product.ilike("%esusu%"),
+                    Transaction.product.ilike("%contribut%"),
+                    Transaction.type.ilike("%thrift%"),
+                ),
+            )
+            # Personal savings filter: no customer OR product = personal_savings
+            personal_filter = _sa.or_(
+                Transaction.product.ilike("%personal_saving%"),
+                Transaction.product.ilike("%personal saving%"),
+                _sa.and_(
+                    Transaction.customer_id == None,
+                    _sa.or_(
+                        Transaction.product.ilike("%saving%"),
+                        Transaction.product.ilike("%thrift%"),
+                        Transaction.product.ilike("%ajo%"),
+                    ),
+                ),
+            )
+
+            group_rows    = base.filter(group_filter).order_by(Transaction.created_at.desc()).all()
+            personal_rows = base.filter(personal_filter).order_by(Transaction.created_at.desc()).all()
+
+            # Customer lookup for group rows
+            cust_ids  = [r.customer_id for r in group_rows if r.customer_id]
+            customers = {}
+            if cust_ids:
+                customers = {c.id: c for c in db.query(Customer).filter(Customer.id.in_(cust_ids)).all()}
+
+            def _tx(tx, name):
+                return {
+                    "id": tx.id,
+                    "customer_id": tx.customer_id,
+                    "customer_name": name,
+                    "amount": _money(tx.amount),
+                    "product": tx.product,
+                    "created_at": _iso(tx.created_at),
+                }
+
+            group_tx_list = [
+                _tx(tx, customers[tx.customer_id].name if customers.get(tx.customer_id) else "Unknown")
+                for tx in group_rows
+            ]
+            personal_tx_list = [_tx(tx, "Me") for tx in personal_rows]
+
+            # Participant totals (group)
+            totals: dict = defaultdict(lambda: {"name": "Unknown", "count": 0, "total": 0})
+            for tx in group_rows:
+                key = tx.customer_id
+                totals[key]["name"] = customers[tx.customer_id].name if customers.get(tx.customer_id) else "Unknown"
+                totals[key]["count"] += 1
+                totals[key]["total"] += tx.amount or 0
+            participants = sorted(
+                [{"id": k, **v} for k, v in totals.items()],
+                key=lambda p: p["total"], reverse=True,
+            )
+
+            group_total    = sum(tx.amount or 0 for tx in group_rows)
+            personal_total = sum(tx.amount or 0 for tx in personal_rows)
+            return {
+                "group": {
+                    "transactions": group_tx_list,
+                    "participants": participants,
+                    "total": _money(group_total),
+                    "count": len(group_rows),
+                },
+                "personal": {
+                    "transactions": personal_tx_list,
+                    "total": _money(personal_total),
+                    "count": len(personal_rows),
+                },
+            }
+        finally:
+            db.close()
+
+    class ThriftSaveRequest(BaseModel):
+        amount: int
+        note: Optional[str] = None
+
+    @app.post("/app/api/thrift/save")
+    def web_thrift_personal_save(
+        payload: ThriftSaveRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Record a personal savings entry (no participant needed)."""
+        db = SessionLocal()
+        try:
+            if payload.amount <= 0:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
+            note = f": {payload.note}" if payload.note else ""
+            tx = Transaction(
+                customer_id=None,
+                type="DIRECT",
+                amount=payload.amount,
+                product=f"personal_savings{note}",
+                recorded_by_id=session["user_id"],
+                message_id=f"web-save-{uuid.uuid4()}",
+            )
+            db.add(tx)
+            db.commit()
+            return {"ok": True, "id": tx.id, "amount": _money(payload.amount)}
+        finally:
+            db.close()
+
+    class ThriftParticipantRequest(BaseModel):
+        name: str
+        phone: Optional[str] = None
+
+    @app.post("/app/api/thrift/participants")
+    def web_thrift_add_participant(
+        payload: ThriftParticipantRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Add a thrift participant (creates a customer record)."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            # Check for duplicate
+            existing = db.query(Customer).filter(
+                Customer.owner_phone == owner_phone,
+                Customer.name == payload.name.strip().lower(),
+            ).first()
+            if existing:
+                return {"id": existing.id, "name": existing.name, "existing": True}
+            customer = Customer(
+                owner_phone=owner_phone,
+                name=payload.name.strip().lower(),
+                phone=payload.phone,
+            )
+            db.add(customer)
+            db.commit()
+            db.refresh(customer)
+            return {"id": customer.id, "name": customer.name, "existing": False}
         finally:
             db.close()
 
@@ -2555,6 +2896,316 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    # ── Referral system ──────────────────────────────────────────────────────
+
+    def _get_cashback_amount(db) -> int:
+        cfg = db.query(ReferralSettings).order_by(ReferralSettings.id.desc()).first()
+        return cfg.cashback_amount if cfg else 500
+
+    def _count_active_go_invitees(db, referral_code: str) -> int:
+        """Count how many of a referrer's invitees currently have an active GO/PRO subscription."""
+        if not referral_code:
+            return 0
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        referee_phones = [
+            r.referee_phone
+            for r in db.query(Referral).filter(Referral.referral_code == referral_code).all()
+        ]
+        if not referee_phones:
+            return 0
+        return db.query(User).filter(
+            User.phone.in_(referee_phones),
+            User.subscription_plan.in_(["GO", "PRO"]),
+            User.subscription_status == "ACTIVE",
+            (User.subscription_expires_at == None) | (User.subscription_expires_at > now),
+        ).count()
+
+    class SetReferralCodeRequest(BaseModel):
+        code: str
+
+    @app.get("/app/api/referral")
+    def web_referral_get(session: dict = Depends(require_web_auth)):
+        import os
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401)
+
+            plan = (user.subscription_plan or "BASIC").upper()
+            referrals = db.query(Referral).filter(
+                Referral.referral_code == user.referral_code
+            ).all() if user.referral_code else []
+
+            invite_limit = None if plan in ("GO", "PRO") else 2
+            invite_used = len(referrals)
+            cashback_per_referral = _get_cashback_amount(db)
+
+            # Live active count — invitees currently on an active GO/PRO subscription
+            active_go = _count_active_go_invitees(db, user.referral_code)
+            not_yet_go = invite_used - active_go
+            credit_this_month = active_go * cashback_per_referral if plan in ("GO", "PRO") else 0
+
+            base_url = os.getenv("APP_BASE_URL", "").rstrip("/") or ""
+            titi_wa = os.getenv("TITI_WHATSAPP", "").strip()
+            link = f"{base_url}/app/login?mode=register&ref={user.referral_code}" if user.referral_code else None
+            wa_link = f"https://wa.me/{titi_wa}?text=join%20{user.referral_code}" if user.referral_code and titi_wa else None
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            referee_phones = {r.referee_phone for r in referrals}
+            referee_users = {u.phone: u for u in db.query(User).filter(User.phone.in_(referee_phones)).all()} if referee_phones else {}
+
+            return {
+                "referral_code": user.referral_code,
+                "link": link,
+                "wa_link": wa_link,
+                "plan": plan,
+                "invite_limit": invite_limit,
+                "invite_used": invite_used,
+                "active_go": active_go,
+                "not_yet_go": not_yet_go,
+                "cashback_per_referral": cashback_per_referral,
+                "credit_this_month": credit_this_month,
+                "referrals": [
+                    {
+                        "referee_name": r.referee_name,
+                        "referee_phone": r.referee_phone,
+                        "active": (
+                            referee_users.get(r.referee_phone) is not None
+                            and (referee_users[r.referee_phone].subscription_plan or "").upper() in ("GO", "PRO")
+                            and referee_users[r.referee_phone].subscription_status == "ACTIVE"
+                            and (
+                                referee_users[r.referee_phone].subscription_expires_at is None
+                                or referee_users[r.referee_phone].subscription_expires_at > now
+                            )
+                        ),
+                        "created_at": r.created_at.isoformat() if r.created_at else None,
+                    }
+                    for r in referrals
+                ],
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/referral/set-code")
+    def web_referral_set_code(
+        payload: SetReferralCodeRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        import re
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401)
+            clean = payload.code.strip().upper()
+            if not re.match(r"^[A-Z0-9]{3,20}$", clean):
+                raise HTTPException(status_code=400, detail="Code must be 3–20 letters and numbers only, no spaces.")
+            existing = db.query(User).filter(User.referral_code == clean, User.id != user.id).first()
+            if existing:
+                raise HTTPException(status_code=409, detail="That code is already taken. Try another.")
+            user.referral_code = clean
+            db.commit()
+            return {"referral_code": clean}
+        finally:
+            db.close()
+
+    class ReferralSettingsRequest(BaseModel):
+        cashback_amount: int
+
+    @app.get("/app/api/admin/referral-settings")
+    def web_admin_referral_settings_get(session: dict = Depends(require_web_auth)):
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+            amount = _get_cashback_amount(db)
+            return {"cashback_amount": amount}
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/referral-settings")
+    def web_admin_referral_settings_set(
+        payload: ReferralSettingsRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if payload.cashback_amount < 0:
+                raise HTTPException(status_code=400, detail="Amount must be >= 0")
+            cfg = ReferralSettings(
+                cashback_amount=payload.cashback_amount,
+                updated_by=user.phone,
+                updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            )
+            db.add(cfg)
+            db.commit()
+            return {"cashback_amount": payload.cashback_amount}
+        finally:
+            db.close()
+
+    # ── Token codes ──────────────────────────────────────────────────────────
+
+    class TokenGenerateRequest(BaseModel):
+        plan: str
+        duration_days: int
+        count: int
+        batch_label: str = ""
+        expires_in_days: Optional[int] = None
+
+    @app.post("/app/api/admin/token-codes/generate")
+    def web_admin_token_generate(
+        payload: TokenGenerateRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        import secrets, io, csv as _csv
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+
+            plan = payload.plan.upper()
+            if plan not in ("GO", "PRO"):
+                raise HTTPException(status_code=400, detail="plan must be GO or PRO")
+            if not (1 <= payload.count <= 1000):
+                raise HTTPException(status_code=400, detail="count must be 1–1000")
+            if payload.duration_days < 1:
+                raise HTTPException(status_code=400, detail="duration_days must be >= 1")
+
+            expires_at = None
+            if payload.expires_in_days:
+                expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=payload.expires_in_days)
+
+            codes = []
+            for _ in range(payload.count):
+                while True:
+                    raw = secrets.token_urlsafe(6).upper().replace("-", "").replace("_", "")[:8]
+                    code_str = f"{plan}-{raw}"
+                    if not db.query(TokenCode).filter(TokenCode.code == code_str).first():
+                        break
+                tc = TokenCode(
+                    code=code_str,
+                    plan=plan,
+                    duration_days=payload.duration_days,
+                    batch_label=payload.batch_label or None,
+                    issued_by=user.phone,
+                    expires_at=expires_at,
+                )
+                db.add(tc)
+                codes.append(code_str)
+            db.commit()
+
+            buf = io.StringIO()
+            w = _csv.writer(buf)
+            w.writerow(["Code", "Plan", "Duration (days)", "Batch", "Expires"])
+            for c in codes:
+                w.writerow([c, plan, payload.duration_days, payload.batch_label or "", expires_at or ""])
+            buf.seek(0)
+            filename = f"tokens_{plan}_{payload.batch_label or 'batch'}.csv"
+            return StreamingResponse(
+                iter([buf.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        finally:
+            db.close()
+
+    @app.get("/app/api/admin/token-codes")
+    def web_admin_token_list(
+        page: int = Query(default=1, ge=1),
+        per_page: int = Query(default=50, le=200),
+        batch: str = Query(default=""),
+        session: dict = Depends(require_web_auth),
+    ):
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(db, user.phone):
+                raise HTTPException(status_code=403, detail="Admin only")
+
+            q = db.query(TokenCode)
+            if batch:
+                q = q.filter(TokenCode.batch_label.ilike(f"%{batch}%"))
+            total = q.count()
+            rows = q.order_by(TokenCode.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+            return {
+                "total": total,
+                "page": page,
+                "rows": [
+                    {
+                        "id": r.id,
+                        "code": r.code,
+                        "plan": r.plan,
+                        "duration_days": r.duration_days,
+                        "batch_label": r.batch_label,
+                        "redeemed": r.redeemed_at is not None,
+                        "redeemed_by": r.redeemed_by_phone,
+                        "redeemed_at": r.redeemed_at.isoformat() if r.redeemed_at else None,
+                        "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                        "created_at": r.created_at.isoformat() if r.created_at else None,
+                    }
+                    for r in rows
+                ],
+            }
+        finally:
+            db.close()
+
+    class TokenRedeemRequest(BaseModel):
+        code: str
+
+    @app.post("/app/api/token-codes/redeem")
+    def web_token_redeem(
+        payload: TokenRedeemRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+
+            tc = db.query(TokenCode).filter(TokenCode.code == payload.code.strip().upper()).first()
+            if not tc:
+                raise HTTPException(status_code=404, detail="Invalid code")
+            if tc.redeemed_at:
+                raise HTTPException(status_code=409, detail="Code already used")
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            if tc.expires_at and tc.expires_at < now:
+                raise HTTPException(status_code=410, detail="Code has expired")
+
+            tc.redeemed_at = now
+            tc.redeemed_by_phone = user.phone
+
+            # Extend or set plan expiry
+            current_expiry = user.subscription_expires_at
+            if current_expiry and current_expiry > now:
+                new_expiry = current_expiry + timedelta(days=tc.duration_days)
+            else:
+                new_expiry = now + timedelta(days=tc.duration_days)
+
+            user.subscription_plan = tc.plan
+            user.subscription_status = "ACTIVE"
+            user.subscription_expires_at = new_expiry
+            db.commit()
+
+            return {
+                "plan": tc.plan,
+                "duration_days": tc.duration_days,
+                "expires_at": new_expiry.isoformat(),
+                "message": f"Activated! Your plan is now {tc.plan} for {tc.duration_days} days.",
+            }
+        finally:
+            db.close()
+
     # ── TWA / Play Store: Digital Asset Links ────────────────────────────────
     @app.get("/.well-known/assetlinks.json")
     def assetlinks():
@@ -2562,7 +3213,7 @@ def register_web_routes(app):
         Set TWA_PACKAGE_NAME and TWA_SHA256_FINGERPRINT in .env after generating
         your Android package via pwabuilder.com.
         """
-        import json as _json
+        import json as _json, os
         package   = os.getenv("TWA_PACKAGE_NAME", "")
         sha256    = os.getenv("TWA_SHA256_FINGERPRINT", "")
         if not package or not sha256:

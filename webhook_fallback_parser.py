@@ -19,6 +19,33 @@ _GREETINGS = re.compile(
     re.I,
 )
 
+# Keywords that are clearly off-topic — checked before hitting the LLM
+_OFFTOPIC_PATTERNS = re.compile(
+    r"\b("
+    r"football|soccer|premier league|champions league|laliga|bundesliga|naija football|super eagles|"
+    r"ballon d.or|world cup|fa cup|afcon|match today|who won|score|goal|fixture|"
+    r"politics|president|governor|election|senate|aso rock|buhari|tinubu|peter obi|atiku|"
+    r"weather|forecast|temperature|rain today|sun today|"
+    r"movie|nollywood|netflix|series|episode|actor|actress|"
+    r"music|song|artist|album|wizkid|burna|davido|afrobeats|"
+    r"joke|funny|laugh|meme|"
+    r"relationship|girlfriend|boyfriend|marriage|wedding|love|heartbreak|"
+    r"celebrity|gossip|"
+    r"who is the president|capital of|population of|history of"
+    r")\b",
+    re.I,
+)
+
+_OFFTOPIC_REPLY = (
+    "I'm tiTi — your business assistant! 😊\n\n"
+    "I can only help with things related to your business:\n"
+    "• Record a sale or payment\n"
+    "• Check who owes you\n"
+    "• View your stock or inventory\n"
+    "• Get a summary or report\n\n"
+    "Send *menu* to see everything I can do."
+)
+
 
 @dataclass
 class FallbackParseResult:
@@ -56,6 +83,11 @@ def handle_fallback_parse(db, phone, text, parsed, user):
     if faq_key:
         send_whatsapp_message(phone, get_faq_answer(faq_key))
         return FallbackParseResult(response={"status": f"faq_{faq_key}"})
+
+    # Off-topic deflection — no LLM cost, instant response
+    if _OFFTOPIC_PATTERNS.search(text):
+        send_whatsapp_message(phone, _OFFTOPIC_REPLY)
+        return FallbackParseResult(response={"status": "offtopic_deflected"})
 
     fallback = interpret_text_with_openai(text)
     if fallback:

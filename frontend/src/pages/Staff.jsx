@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Copy, Check, Clock, CheckCircle, Pencil, Save, X } from "lucide-react";
+import { UserPlus, Copy, Check, Clock, CheckCircle, Pencil, Save, X, Trash2, GraduationCap, Users, Lock } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiPost, apiPut } from "../lib/api";
+import { apiFetch, apiPost, apiPut, apiDelete } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 import EmptyState from "../components/EmptyState";
 import Skeleton from "../components/Skeleton";
+import { usePlan } from "../lib/usePlan";
+import { LimitBar } from "../components/UpgradeGate";
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
@@ -102,12 +104,153 @@ function ProfileEditRow({ member, onSaved }) {
   );
 }
 
+// ── School Teacher Roster Tab ─────────────────────────────────────────────────
+
+function TeachersTab({ plan, limit: teacherLimit, withinLimit }) {
+  const [rows, setRows]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editRow, setEditRow] = useState(null);
+  const [form, setForm]       = useState({ name: "", subject: "", class_name: "", phone: "", employee_id: "" });
+  const [busy, setBusy]       = useState(false);
+  const [err, setErr]         = useState("");
+
+  function load() {
+    setLoading(true);
+    apiFetch("school/teachers")
+      .then(d => setRows(d.teachers || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(load, []);
+
+  function openAdd() {
+    setForm({ name: "", subject: "", class_name: "", phone: "", employee_id: "" });
+    setEditRow(null);
+    setErr("");
+    setShowAdd(true);
+  }
+
+  function openEdit(row) {
+    setForm({ name: row.name, subject: row.subject || "", class_name: row.class_name || "", phone: row.phone || "", employee_id: row.employee_id || "" });
+    setEditRow(row);
+    setErr("");
+    setShowAdd(true);
+  }
+
+  async function save() {
+    if (!form.name.trim()) { setErr("Name is required."); return; }
+    setBusy(true); setErr("");
+    try {
+      if (editRow) {
+        await apiPut(`school/teachers/${editRow.id}`, form);
+      } else {
+        await apiPost("school/teachers", form);
+      }
+      setShowAdd(false);
+      load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function del(id) {
+    if (!window.confirm("Remove this teacher?")) return;
+    try {
+      await apiDelete(`school/teachers/${id}`);
+      load();
+    } catch (e) { alert(e.message); }
+  }
+
+  const canAdd = withinLimit("school_teachers", rows.length);
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {teacherLimit !== null && (
+        <LimitBar used={rows.length} limit={teacherLimit} label="teacher records" upgradePlan="Go" />
+      )}
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title"><GraduationCap size={16} /> Teacher Roster</span>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={canAdd ? openAdd : undefined}
+            style={canAdd ? {} : { opacity: 0.5, cursor: "not-allowed" }}
+            title={canAdd ? undefined : `Basic plan: ${teacherLimit} teachers. Upgrade to Go for unlimited.`}
+          >
+            + Add Teacher
+          </button>
+        </div>
+
+        {showAdd && (
+          <div style={{ padding: "12px 0", borderTop: "1px solid var(--border)", display: "grid", gap: 12, marginTop: 12 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>{editRow ? "Edit Teacher" : "Add Teacher"}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {[
+                ["Full Name *", "name", "e.g. Musa Ibrahim"],
+                ["Subject", "subject", "e.g. Mathematics"],
+                ["Class", "class_name", "e.g. JSS 2B"],
+                ["Phone", "phone", "e.g. 08012345678"],
+                ["Employee ID", "employee_id", "e.g. TCH001"],
+              ].map(([label, key, ph]) => (
+                <div className="form-group" key={key}>
+                  <label className="form-label">{label}</label>
+                  <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                    placeholder={ph} disabled={busy} />
+                </div>
+              ))}
+            </div>
+            {err && <div className="login-error">{err}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-primary" onClick={save} disabled={busy}>
+                {busy ? "Saving…" : "Save"}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setShowAdd(false)} disabled={busy}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {loading ? <Skeleton rows={3} /> : rows.length === 0 ? (
+          <EmptyState text="No teachers added yet. Click 'Add Teacher' to build your roster." />
+        ) : (
+          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            {rows.map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+                <GraduationCap size={15} style={{ color: "var(--brand)", flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{r.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {[r.subject, r.class_name, r.employee_id].filter(Boolean).join(" · ")}
+                    {r.phone ? ` · ${r.phone}` : ""}
+                  </div>
+                </div>
+                <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => openEdit(r)}>
+                  <Pencil size={12} />
+                </button>
+                <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 12, color: "var(--rose)" }} onClick={() => del(r.id)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 export default function Staff() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
+  const { plan, allows, limit: planLimit, withinLimit } = usePlan();
   const isOwner = user?.role === "user" && !user?.parent_id;
+  const isSchool = user?.menu_group === "school";
+  const canUseAppStaff = isSchool ? allows("SCHOOL_APP_STAFF") : allows("STAFF");
+  const teacherLimit = planLimit("school_teachers");
 
-  const [tab, setTab] = useState("performance");
+  // For schools the default tab is "teachers"; for other biz "performance"
+  const [tab, setTab] = useState(isSchool ? "teachers" : "performance");
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -176,17 +319,71 @@ export default function Staff() {
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
 
       {/* Tab switcher */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {["performance", "profiles"].map(t => (
-          <button key={t} className={`btn ${tab === t ? "btn-primary" : "btn-secondary"}`}
-            style={{ fontSize: 13, textTransform: "capitalize" }} onClick={() => setTab(t)}>
-            {t === "performance" ? "Performance" : "HR Profiles"}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {isSchool && (
+          <button className={`btn ${tab === "teachers" ? "btn-primary" : "btn-secondary"}`}
+            style={{ fontSize: 13 }} onClick={() => setTab("teachers")}>
+            <GraduationCap size={13} /> Teachers
           </button>
-        ))}
+        )}
+        {isSchool ? (
+          <button className={`btn ${tab === "performance" ? "btn-primary" : "btn-secondary"}`}
+            style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}
+            onClick={() => setTab("performance")}>
+            <Users size={13} />
+            Admin Staff
+            {!canUseAppStaff && <Lock size={11} style={{ color: "#a78bfa" }} />}
+          </button>
+        ) : (
+          ["performance", "profiles"].map(t => (
+            <button key={t} className={`btn ${tab === t ? "btn-primary" : "btn-secondary"}`}
+              style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}
+              onClick={() => setTab(t)}>
+              {t === "performance" ? "Performance" : "HR Profiles"}
+              {t === "performance" && !canUseAppStaff && <Lock size={11} style={{ color: "#a78bfa" }} />}
+            </button>
+          ))
+        )}
       </div>
 
+      {/* School teachers tab */}
+      {tab === "teachers" && isSchool && (
+        <TeachersTab plan={plan} limit={teacherLimit} withinLimit={withinLimit} />
+      )}
+
+      {/* Upgrade wall for non-Pro trying to access app-access staff */}
+      {tab === "performance" && !canUseAppStaff && (
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+          <Lock size={36} color="#a78bfa" style={{ margin: "0 auto 16px" }} />
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+            {isSchool ? "Admin Staff requires Pro" : "Staff requires Pro"}
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, maxWidth: 400, margin: "0 auto 20px" }}>
+            {isSchool
+              ? "Invite a bursar, accountant, or admin officer to record fees with your oversight. Available on the Pro plan."
+              : "Let staff members record sales and payments while you keep full visibility. Available on the Pro plan."}
+          </div>
+          <button className="btn btn-primary" onClick={() => window.location.href = "/app/upgrade"}>
+            Upgrade to Pro
+          </button>
+        </div>
+      )}
+
+      {tab === "profiles" && !canUseAppStaff && (
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+          <Lock size={36} color="#a78bfa" style={{ margin: "0 auto 16px" }} />
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>HR Profiles requires Pro</div>
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, maxWidth: 400, margin: "0 auto 20px" }}>
+            Set staff positions, salaries and employee IDs. Available on the Pro plan.
+          </div>
+          <button className="btn btn-primary" onClick={() => window.location.href = "/app/upgrade"}>
+            Upgrade to Pro
+          </button>
+        </div>
+      )}
+
       {/* ── Profiles tab ── */}
-      {tab === "profiles" && (
+      {tab === "profiles" && canUseAppStaff && (
         <>
           {profiles.length === 0 ? (
             <div className="card"><EmptyState text="No active staff profiles yet. Invite staff first, then set their position and salary here." /></div>
@@ -198,7 +395,7 @@ export default function Staff() {
         </>
       )}
 
-      {tab === "performance" && <>
+      {tab === "performance" && canUseAppStaff && <>
 
       <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, minmax(160px, 1fr))" }}>
         <MetricCard loading={loading} label="Total staff sales"    value={nairaFull(totalSales)}    color="green" />

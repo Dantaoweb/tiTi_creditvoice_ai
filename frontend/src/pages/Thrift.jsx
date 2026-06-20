@@ -1,0 +1,392 @@
+import { useEffect, useState } from "react";
+import { Activity, Users, TrendingUp, Plus, Info, PiggyBank, ChevronDown, ChevronUp, UserPlus } from "lucide-react";
+import { useApp } from "../context/AppContext";
+import { apiFetch, apiPost } from "../lib/api";
+import { nairaFull, dateTimeStr } from "../lib/format";
+import MetricCard from "../components/MetricCard";
+import Skeleton from "../components/Skeleton";
+import EmptyState from "../components/EmptyState";
+import DataTable from "../components/DataTable";
+import { useNavigate } from "react-router-dom";
+
+// ── Collapsible explainer ──────────────────────────────────────────────────────
+
+function ThriftExplainer({ mode }) {
+  const [open, setOpen] = useState(false);
+  const text = mode === "group"
+    ? {
+        title: "Group Thrift / Ajo — How it works",
+        body: (
+          <>
+            <p>
+              <strong style={{ color: "#fff" }}>Ajo / esusu / thrift</strong> is a group savings scheme where members
+              contribute money regularly and the pot rotates to each member in turn.
+            </p>
+            <p>Add participants below, then record their contributions on WhatsApp or here.</p>
+            <p><strong style={{ color: "#fff" }}>Record via WhatsApp:</strong></p>
+            <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
+              <li>Amina contributed 5000</li>
+              <li>Tunde paid ajo 2000</li>
+            </ul>
+            <p style={{ marginTop: 8 }}>
+              💡 Connect your <strong style={{ color: "#fff" }}>Wallet</strong> so participants
+              can pay directly — contributions match automatically.
+            </p>
+          </>
+        ),
+      }
+    : {
+        title: "Personal Savings — How it works",
+        body: (
+          <>
+            <p>
+              Track your <strong style={{ color: "#fff" }}>personal savings</strong> alongside
+              your business records — no participants or group needed.
+            </p>
+            <p>
+              Record each deposit with an amount and optional note. See your running total at a glance.
+            </p>
+            <p><strong style={{ color: "#fff" }}>Record via WhatsApp:</strong></p>
+            <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
+              <li>I saved 5000</li>
+              <li>personal savings 10000</li>
+            </ul>
+          </>
+        ),
+      };
+
+  return (
+    <div className="card" style={{ borderLeft: "3px solid #863bff", marginBottom: 0 }}>
+      <div className="card-header" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Info size={14} color="#a78bfa" />
+          <span className="card-title" style={{ color: "#a78bfa", fontSize: 13 }}>{text.title}</span>
+        </div>
+        {open ? <ChevronUp size={14} color="rgba(255,255,255,0.4)" /> : <ChevronDown size={14} color="rgba(255,255,255,0.4)" />}
+      </div>
+      {open && (
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", lineHeight: 1.7, paddingTop: 4 }}>
+          {text.body}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Add participant form ───────────────────────────────────────────────────────
+
+function AddParticipantForm({ onAdded, onCancel }) {
+  const [name, setName]   = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState("");
+
+  async function save() {
+    if (!name.trim()) { setErr("Name is required."); return; }
+    setBusy(true); setErr("");
+    try {
+      const res = await apiPost("thrift/participants", { name: name.trim(), phone: phone.trim() || null });
+      onAdded(res);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ padding: "12px 0", borderTop: "1px solid var(--border)", marginTop: 12, display: "grid", gap: 10 }}>
+      <div className="card-title" style={{ marginBottom: 0 }}>Add Participant</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="form-group">
+          <label className="form-label">Full Name *</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Amina Bello" autoFocus disabled={busy} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Phone (optional)</label>
+          <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 08012345678" disabled={busy} />
+        </div>
+      </div>
+      {err && <div className="login-error">{err}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? "Saving…" : "Add"}</button>
+        <button className="btn btn-secondary btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Record personal saving form ────────────────────────────────────────────────
+
+function RecordSavingForm({ onSaved, onCancel }) {
+  const [amount, setAmount] = useState("");
+  const [note, setNote]     = useState("");
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState("");
+
+  async function save() {
+    const amt = parseInt(amount);
+    if (!amt || amt <= 0) { setErr("Enter a valid amount."); return; }
+    setBusy(true); setErr("");
+    try {
+      await apiPost("thrift/save", { amount: amt, note: note.trim() || null });
+      onSaved();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ padding: "12px 0", borderTop: "1px solid var(--border)", marginTop: 12, display: "grid", gap: 10 }}>
+      <div className="card-title" style={{ marginBottom: 0 }}>Record Saving</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="form-group">
+          <label className="form-label">Amount (₦) *</label>
+          <input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="e.g. 5000" autoFocus disabled={busy} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Note (optional)</label>
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. weekly deposit" disabled={busy} />
+        </div>
+      </div>
+      {err && <div className="login-error">{err}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+        <button className="btn btn-secondary btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Group Thrift tab ───────────────────────────────────────────────────────────
+
+function GroupThrift({ data, loading, reload }) {
+  const navigate = useNavigate();
+  const [showAdd, setShowAdd]   = useState(false);
+  const [innerTab, setInnerTab] = useState("participants");
+
+  const participants = data?.participants || [];
+  const transactions = data?.transactions || [];
+  const total        = data?.total        || 0;
+  const count        = data?.count        || 0;
+
+  return (
+    <>
+      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, minmax(130px, 1fr))" }}>
+        <MetricCard loading={loading} label="Total collected" value={nairaFull(total)} color="green" />
+        <MetricCard loading={loading} label="Contributions"   value={count.toLocaleString()} color="brand" />
+        <MetricCard loading={loading} label="Participants"    value={participants.length.toLocaleString()} color="blue" />
+      </div>
+
+      <ThriftExplainer mode="group" />
+
+      {/* Inner tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {["participants", "history"].map(t => (
+          <button key={t} className={`btn btn-sm ${innerTab === t ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setInnerTab(t)}>
+            {t === "participants" ? <><Users size={12} /> Participants</> : <><Activity size={12} /> History</>}
+          </button>
+        ))}
+      </div>
+
+      {innerTab === "participants" && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title"><Users size={15} /> Participants</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => navigate("/capture")}
+                title="Record a contribution on the capture page">
+                <Plus size={13} /> Record Contribution
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(a => !a)}>
+                <UserPlus size={13} /> Add Participant
+              </button>
+            </div>
+          </div>
+
+          {showAdd && (
+            <AddParticipantForm
+              onAdded={() => { setShowAdd(false); reload(); }}
+              onCancel={() => setShowAdd(false)}
+            />
+          )}
+
+          {loading ? <Skeleton rows={4} /> : participants.length === 0 ? (
+            <EmptyState text={"No participants yet.\nAdd participants and record contributions via WhatsApp:\n→ Amina contributed 5000"} />
+          ) : (
+            <div style={{ overflowX: "auto", marginTop: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)" }}>
+                    <th style={{ padding: "8px 12px", textAlign: "left" }}>Participant</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Contributions</th>
+                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {participants.map((p, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 600 }}>
+                        {(p.name || "—").replace(/\b\w/g, c => c.toUpperCase())}
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", color: "var(--text-muted)" }}>
+                        {p.count}
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700, color: "var(--brand)" }}>
+                        {nairaFull(p.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {innerTab === "history" && (
+        <DataTable
+          loading={loading}
+          rows={transactions}
+          emptyText="No contributions recorded yet."
+          columns={[
+            { key: "customer_name", label: "Participant", render: v => (v || "—").replace(/\b\w/g, c => c.toUpperCase()) },
+            { key: "amount",        label: "Amount",      render: v => <strong style={{ color: "var(--brand)" }}>{nairaFull(v)}</strong> },
+            { key: "product",       label: "Note",        render: v => v || "—" },
+            { key: "created_at",    label: "Date",        render: v => dateTimeStr(v) },
+          ]}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Personal Savings tab ───────────────────────────────────────────────────────
+
+function PersonalSavings({ data, loading, reload }) {
+  const [showForm, setShowForm] = useState(false);
+
+  const transactions = data?.transactions || [];
+  const total        = data?.total        || 0;
+  const count        = data?.count        || 0;
+
+  return (
+    <>
+      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(2, minmax(160px, 1fr))" }}>
+        <MetricCard loading={loading} label="Total saved" value={nairaFull(total)} color="green" />
+        <MetricCard loading={loading} label="Deposits"    value={count.toLocaleString()} color="brand" />
+      </div>
+
+      <ThriftExplainer mode="personal" />
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title"><PiggyBank size={15} /> My Savings</span>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowForm(f => !f)}>
+            <Plus size={13} /> Record Saving
+          </button>
+        </div>
+
+        {showForm && (
+          <RecordSavingForm
+            onSaved={() => { setShowForm(false); reload(); }}
+            onCancel={() => setShowForm(false)}
+          />
+        )}
+
+        {loading ? <Skeleton rows={4} /> : transactions.length === 0 ? (
+          <EmptyState text={"No savings recorded yet.\nTap 'Record Saving' above, or send tiTi:\n→ I saved 5000\n→ personal savings 10000"} />
+        ) : (
+          <DataTable
+            loading={false}
+            rows={transactions}
+            emptyText=""
+            columns={[
+              { key: "amount",     label: "Amount", render: v => <strong style={{ color: "var(--brand)" }}>{nairaFull(v)}</strong> },
+              { key: "product",    label: "Note",   render: v => (v || "").replace("personal_savings", "").replace(/^:\s*/, "") || "—" },
+              { key: "created_at", label: "Date",   render: v => dateTimeStr(v) },
+            ]}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function Thrift() {
+  const { ownerPhone, period } = useApp();
+  const navigate = useNavigate();
+
+  const [data, setData]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]   = useState(null);
+  const [mode, setMode]     = useState("group");
+
+  function load() {
+    setLoading(true);
+    apiFetch("thrift/summary", { period })
+      .then(setData)
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, [ownerPhone, period]);
+
+  return (
+    <>
+      {error && <div style={{ color: "var(--rose)", marginBottom: 12 }}>{error}</div>}
+
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <Activity size={20} color="#a78bfa" />
+        <span style={{ fontSize: 16, fontWeight: 700 }}>Thrift / Ajo & Savings</span>
+      </div>
+
+      {/* Mode toggle */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <button
+          className={`btn ${mode === "group" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setMode("group")}
+          style={{ fontSize: 13 }}
+        >
+          <Users size={14} /> Group Thrift / Ajo
+        </button>
+        <button
+          className={`btn ${mode === "personal" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setMode("personal")}
+          style={{ fontSize: 13 }}
+        >
+          <PiggyBank size={14} /> Personal Savings
+        </button>
+      </div>
+
+      {mode === "group" && (
+        <GroupThrift data={data?.group} loading={loading} reload={load} />
+      )}
+      {mode === "personal" && (
+        <PersonalSavings data={data?.personal} loading={loading} reload={load} />
+      )}
+
+      {/* Wallet CTA */}
+      <div className="card" style={{
+        background: "linear-gradient(135deg, rgba(134,59,255,0.15), rgba(134,59,255,0.05))",
+        border: "1px solid rgba(134,59,255,0.3)",
+        marginTop: 8,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 28 }}>💳</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Receive contributions to your Wallet</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>
+              Connect a CreditVoice virtual account so participants can pay directly —
+              contributions match automatically, no cash handling needed.
+            </div>
+          </div>
+          <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => navigate("/wallet")}>
+            Go to Wallet
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}

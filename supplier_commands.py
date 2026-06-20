@@ -17,7 +17,7 @@ from inventory_suppliers import (
 from business_templates import build_stock_add_guide
 from constants import ACTION_STOCK_MENU
 from guided_stock_commands import build_catalog_message, start_guided_stock_flow
-from messages import apply_voice_confirmation_options
+from messages import apply_voice_confirmation_options, with_confirm_disclaimer
 from models import InventoryItem, PendingAction
 from parser import parse_stock_item_body
 from subscriptions import ensure_feature_allowed
@@ -168,7 +168,7 @@ def handle_supplier_command(
         db.add(pending)
         db.commit()
 
-        send_message(phone, "\n".join(lines))
+        send_message(phone, with_confirm_disclaimer("\n".join(lines)))
         return {"status": "stock_add_prices_confirm"}
 
     # ── Manual stock add (quantity only) ─────────────────────────────────────

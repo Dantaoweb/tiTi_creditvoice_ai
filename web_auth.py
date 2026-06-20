@@ -242,11 +242,16 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
     return _build_auth_response(user)
 
 
+_REFERRAL_TRIAL_DAYS = 14
+_REFERRAL_INVITE_LIMIT_BASIC = 2
+
+
 def web_register(db: Session, name: str, phone: str, pin: str,
                  email: str = None, newsletter_consent: bool = False,
                  business_category: str = None, business_type: str = None,
-                 business_type_label: str = None) -> dict:
+                 business_type_label: str = None, ref_code: str = None) -> dict:
     from email_service import send_welcome_email
+    from models import Referral, ReferralSettings
 
     if not name.strip():
         raise HTTPException(status_code=400, detail="Full name is required.")
@@ -262,21 +267,53 @@ def web_register(db: Session, name: str, phone: str, pin: str,
     if clean_email and db.query(User).filter(User.email == clean_email).first():
         raise HTTPException(status_code=409, detail="This email is already registered.")
 
+    # Validate referral code
+    referrer = None
+    clean_ref = ref_code.strip().upper() if ref_code and ref_code.strip() else None
+    if clean_ref:
+        referrer = db.query(User).filter(User.referral_code == clean_ref).first()
+        if not referrer:
+            raise HTTPException(status_code=404, detail="Referral code not found.")
+        if referrer.phone == phone.strip():
+            raise HTTPException(status_code=400, detail="You can't use your own referral code.")
+        referrer_plan = (referrer.subscription_plan or "BASIC").upper()
+        if referrer_plan == "BASIC":
+            used = db.query(Referral).filter(Referral.referral_code == clean_ref).count()
+            if used >= _REFERRAL_INVITE_LIMIT_BASIC:
+                raise HTTPException(status_code=403, detail="This referral code has reached its invite limit.")
+
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).replace(tzinfo=None)
+    plan = "GO" if referrer else "BASIC"
+    expires_at = (now + __import__("datetime").timedelta(days=_REFERRAL_TRIAL_DAYS)) if referrer else None
+
     user = User(
         name=name.strip(),
         phone=phone.strip(),
         email=clean_email,
         newsletter_consent=newsletter_consent,
         role="owner",
-        subscription_plan="BASIC",
+        subscription_plan=plan,
         subscription_status="ACTIVE",
+        subscription_expires_at=expires_at,
         business_category=business_category or None,
         business_type=business_type or None,
         business_type_label=business_type_label or None,
         recovery_pin_hash=_hash_pin(pin.strip()),
         whatsapp_linked=False,
+        referred_by_code=clean_ref,
     )
     db.add(user)
+    db.flush()
+
+    if referrer:
+        db.add(Referral(
+            referral_code=clean_ref,
+            referrer_phone=referrer.phone,
+            referee_phone=user.phone,
+            referee_name=user.name,
+            status="pending",
+        ))
+
     db.commit()
     db.refresh(user)
 
@@ -304,5 +341,7 @@ def _build_auth_response(user: User) -> dict:
             "menu_group": menu_group_for_user(user),
             "whatsapp_linked": bool(user.whatsapp_linked),
             "newsletter_consent": bool(user.newsletter_consent),
+            "subscription_plan": user.subscription_plan,
+            "subscription_expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
         },
     }

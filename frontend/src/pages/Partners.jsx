@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Trash2, Eye, TrendingUp, Users, Briefcase } from "lucide-react";
+import { UserPlus, Trash2, Eye, TrendingUp, Users, Briefcase, Lock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
+import { usePlan } from "../lib/usePlan";
 import { nairaFull } from "../lib/format";
 import EmptyState from "../components/EmptyState";
 import Skeleton from "../components/Skeleton";
@@ -105,7 +106,9 @@ function InviteForm({ onDone, onCancel }) {
 
 export default function Partners() {
   const { user } = useAuth();
+  const { allows } = usePlan();
   const isOwner = user?.role === "user" && !user?.parent_id;
+  const canUsePartners = allows("PARTNERS");
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -137,6 +140,24 @@ export default function Partners() {
     if (status === "active") return <span className="badge badge-green">Active</span>;
     if (status === "pending") return <span className="badge badge-amber">Pending</span>;
     return <span className="badge badge-gray">{status}</span>;
+  }
+
+  if (!canUsePartners) {
+    return (
+      <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+        <Lock size={36} color="#a78bfa" style={{ margin: "0 auto 16px" }} />
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+          Partners & Investors requires Pro
+        </div>
+        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, maxWidth: 420, margin: "0 auto 20px" }}>
+          Track equity, investment amounts, and partner roles for co-founders, investors, and silent partners.
+          Available on the Pro plan.
+        </div>
+        <button className="btn btn-primary" onClick={() => window.location.href = "/app/upgrade"}>
+          Upgrade to Pro
+        </button>
+      </div>
+    );
   }
 
   return (

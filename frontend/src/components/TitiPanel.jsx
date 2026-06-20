@@ -167,6 +167,13 @@ export default function TitiPanel() {
           </div>
         )}
 
+        <div style={{
+          fontSize: 10, textAlign: "center", color: "rgba(255,255,255,0.3)",
+          padding: "4px 12px 2px", lineHeight: 1.4,
+        }}>
+          tiTi can make mistakes — double-check figures. Your messages help improve tiTi.
+        </div>
+
         <div className="titi-panel-input">
           <input
             ref={inputRef}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, KeyRound, UserPlus, Loader2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
@@ -54,6 +54,10 @@ export default function Login() {
   const [inviteCode, setInviteCode] = useState("");
   const [acceptedName, setAcceptedName] = useState("");
 
+  // Referral code (from URL ?ref= or manual entry)
+  const refFromUrl = params.get("ref") || "";
+  const [refCode, setRefCode] = useState(refFromUrl.toUpperCase());
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
@@ -103,6 +107,7 @@ export default function Login() {
         business_category: regCat || null,
         business_type: regType || null,
         business_type_label: typLabel || null,
+        ref_code: refCode.trim() || null,
       });
       persistSession(data.token, data.user);
       navigate("/home", { replace: true });
@@ -320,6 +325,25 @@ export default function Login() {
               <input type="password" inputMode="numeric" value={regConfirm} onChange={e => setRegConfirm(e.target.value)} placeholder="Repeat PIN" maxLength={8} disabled={busy} />
             </div>
 
+            <div className="form-group">
+              <label className="form-label">
+                Referral Code <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
+              </label>
+              <input
+                value={refCode}
+                onChange={e => setRefCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                placeholder="e.g. DANSHOP"
+                maxLength={20}
+                style={{ fontFamily: "monospace", letterSpacing: 1 }}
+                disabled={busy || !!refFromUrl}
+              />
+              {refFromUrl && (
+                <span className="form-hint" style={{ color: "#a78bfa" }}>
+                  ✓ Referral code applied — you'll get 14 days on GO plan free.
+                </span>
+              )}
+            </div>
+
             <label className="login-checkbox-row">
               <input
                 type="checkbox"
@@ -473,6 +497,22 @@ export default function Login() {
           </form>
         )}
 
+      </div>
+
+      <div style={{
+        textAlign: "center", fontSize: 12,
+        color: "rgba(255,255,255,0.35)", padding: "16px 0 4px",
+      }}>
+        By using CreditVoice you agree to our{" "}
+        <Link to="/terms" style={{ color: "#a78bfa" }}>Terms of Service</Link>
+        {" "}and{" "}
+        <Link to="/privacy" style={{ color: "#a78bfa" }}>Privacy Policy</Link>.
+      </div>
+      <div style={{
+        textAlign: "center", fontSize: 11,
+        color: "rgba(255,255,255,0.2)", padding: "4px 0 16px",
+      }}>
+        © {new Date().getFullYear()} CreditVoice Technology Services. All rights reserved.
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { apiFetch } from "../lib/api";
-import { Download, RefreshCw, Search } from "lucide-react";
+import { apiFetch, apiPost } from "../lib/api";
+import { Download, RefreshCw, Search, Ticket } from "lucide-react";
 
 // ── tiny bar chart ──────────────────────────────────────────────────────────
 
@@ -219,7 +219,233 @@ function UsersTab() {
 
 // ── main admin page ──────────────────────────────────────────────────────────
 
-const TABS = ["Overview", "Users", "Failed Messages"];
+// ── token codes tab ──────────────────────────────────────────────────────────
+
+function TokenCodesTab() {
+  const [plan, setPlan]           = useState("GO");
+  const [days, setDays]           = useState("30");
+  const [count, setCount]         = useState("10");
+  const [batch, setBatch]         = useState("");
+  const [expDays, setExpDays]     = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [genErr, setGenErr]       = useState("");
+
+  const [rows, setRows]           = useState([]);
+  const [total, setTotal]         = useState(0);
+  const [page, setPage]           = useState(1);
+  const [loading, setLoading]     = useState(true);
+  const [filterBatch, setFilterBatch] = useState("");
+
+  function loadCodes(p = page, b = filterBatch) {
+    setLoading(true);
+    apiFetch(`admin/token-codes?page=${p}&per_page=50${b ? `&batch=${encodeURIComponent(b)}` : ""}`)
+      .then(d => { setRows(d.rows || []); setTotal(d.total || 0); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { loadCodes(1, ""); }, []);
+
+  async function generate(e) {
+    e.preventDefault();
+    setGenErr("");
+    const n = parseInt(count);
+    const d = parseInt(days);
+    if (!n || n < 1 || n > 1000) { setGenErr("Count must be 1–1000."); return; }
+    if (!d || d < 1) { setGenErr("Enter a valid number of days."); return; }
+    setGenerating(true);
+    try {
+      const res = await fetch("/app/api/admin/token-codes/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          plan,
+          duration_days: d,
+          count: n,
+          batch_label: batch.trim() || "",
+          expires_in_days: expDays ? parseInt(expDays) : null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to generate");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tokens_${plan}_${batch || "batch"}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      loadCodes(1, "");
+    } catch (e) { setGenErr(e.message); }
+    finally { setGenerating(false); }
+  }
+
+  function search(e) {
+    e.preventDefault();
+    setPage(1);
+    loadCodes(1, filterBatch);
+  }
+
+  const redeemed = rows.filter(r => r.redeemed).length;
+
+  return (
+    <div style={{ display: "grid", gap: 24 }}>
+      {/* Generate form */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title"><Ticket size={15} /> Generate Token Codes</span>
+        </div>
+        <form onSubmit={generate} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginTop: 12 }}>
+          <div className="form-group">
+            <label className="form-label">Plan</label>
+            <select value={plan} onChange={e => setPlan(e.target.value)}>
+              <option value="GO">GO</option>
+              <option value="PRO">PRO</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Duration (days)</label>
+            <input type="number" min="1" value={days} onChange={e => setDays(e.target.value)} placeholder="e.g. 90" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Number of codes</label>
+            <input type="number" min="1" max="1000" value={count} onChange={e => setCount(e.target.value)} placeholder="e.g. 50" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Batch label</label>
+            <input value={batch} onChange={e => setBatch(e.target.value)} placeholder="e.g. NIRSAL-June-2026" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Code expires in (days, optional)</label>
+            <input type="number" min="1" value={expDays} onChange={e => setExpDays(e.target.value)} placeholder="e.g. 365" />
+          </div>
+          <div className="form-group" style={{ display: "flex", alignItems: "flex-end" }}>
+            <button className="btn btn-primary" type="submit" disabled={generating} style={{ width: "100%" }}>
+              <Download size={14} /> {generating ? "Generating…" : "Generate & Download CSV"}
+            </button>
+          </div>
+        </form>
+        {genErr && <div className="login-error" style={{ marginTop: 8 }}>{genErr}</div>}
+      </div>
+
+      {/* Issued codes list */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Issued Codes</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{total} total · {redeemed} redeemed</span>
+        </div>
+        <form onSubmit={search} style={{ display: "flex", gap: 8, margin: "12px 0" }}>
+          <input value={filterBatch} onChange={e => setFilterBatch(e.target.value)} placeholder="Filter by batch label…" style={{ flex: 1 }} />
+          <button className="btn btn-secondary" type="submit"><Search size={13} /></button>
+          <button className="btn btn-secondary" type="button" onClick={() => { setFilterBatch(""); loadCodes(1, ""); }}>
+            <RefreshCw size={13} />
+          </button>
+        </form>
+        {loading ? (
+          <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+        ) : rows.length === 0 ? (
+          <p style={{ color: "var(--text-muted)" }}>No codes yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
+                  {["Code", "Plan", "Days", "Batch", "Expires", "Status", "Redeemed by", "Redeemed at"].map(h => (
+                    <th key={h} style={{ padding: "8px 10px", fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} style={{ borderBottom: "1px solid var(--border)", opacity: r.redeemed ? 0.6 : 1 }}>
+                    <td style={{ padding: "8px 10px", fontFamily: "monospace", fontWeight: 700 }}>{r.code}</td>
+                    <td style={{ padding: "8px 10px" }}>
+                      <span style={{ color: r.plan === "PRO" ? "#f59e0b" : "var(--brand)", fontWeight: 700 }}>{r.plan}</span>
+                    </td>
+                    <td style={{ padding: "8px 10px" }}>{r.duration_days}d</td>
+                    <td style={{ padding: "8px 10px", color: "var(--text-muted)" }}>{r.batch_label || "—"}</td>
+                    <td style={{ padding: "8px 10px", color: "var(--text-muted)" }}>{r.expires_at ? new Date(r.expires_at).toLocaleDateString() : "—"}</td>
+                    <td style={{ padding: "8px 10px" }}>
+                      {r.redeemed
+                        ? <span style={{ color: "var(--text-muted)", fontSize: 11 }}>Used</span>
+                        : <span style={{ color: "#16a34a", fontWeight: 600, fontSize: 11 }}>Available</span>}
+                    </td>
+                    <td style={{ padding: "8px 10px", color: "var(--text-muted)" }}>{r.redeemed_by || "—"}</td>
+                    <td style={{ padding: "8px 10px", color: "var(--text-muted)" }}>{r.redeemed_at ? new Date(r.redeemed_at).toLocaleDateString() : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {total > 50 && (
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+            <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => { setPage(p => p - 1); loadCodes(page - 1, filterBatch); }}>Prev</button>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", alignSelf: "center" }}>Page {page}</span>
+            <button className="btn btn-secondary btn-sm" disabled={page * 50 >= total} onClick={() => { setPage(p => p + 1); loadCodes(page + 1, filterBatch); }}>Next</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── referral settings tab ────────────────────────────────────────────────────
+
+function ReferralSettingsTab() {
+  const [amount, setAmount] = useState("");
+  const [current, setCurrent] = useState(null);
+  const [busy, setBusy]     = useState(false);
+  const [msg, setMsg]       = useState("");
+  const [err, setErr]       = useState("");
+
+  useEffect(() => {
+    apiFetch("admin/referral-settings")
+      .then(d => { setCurrent(d.cashback_amount); setAmount(String(d.cashback_amount)); })
+      .catch(() => {});
+  }, []);
+
+  async function save(e) {
+    e.preventDefault();
+    const n = parseInt(amount);
+    if (isNaN(n) || n < 0) { setErr("Enter a valid amount (₦0 or more)."); return; }
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      await apiPost("admin/referral-settings", { cashback_amount: n });
+      setCurrent(n);
+      setMsg(`Cashback set to ₦${n.toLocaleString()} per successful referral.`);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 480 }}>
+      <div className="card-header">
+        <span className="card-title">Referral Cashback Rate</span>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, marginTop: 8 }}>
+        Amount credited to a GO/PRO referrer's wallet when their invited user upgrades to GO plan.
+        {current !== null && <><br /><strong style={{ color: "var(--ink)" }}>Current: ₦{current?.toLocaleString()}</strong></>}
+      </p>
+      <form onSubmit={save} style={{ display: "flex", gap: 8 }}>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="form-label">Cashback amount (₦)</label>
+          <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 500" disabled={busy} />
+        </div>
+        <div className="form-group" style={{ display: "flex", alignItems: "flex-end" }}>
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+      {msg && <div style={{ color: "#16a34a", fontSize: 13, marginTop: 8 }}>{msg}</div>}
+      {err && <div className="login-error" style={{ marginTop: 8 }}>{err}</div>}
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Users", "Token Codes", "Referrals", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -352,6 +578,8 @@ export default function Admin() {
       )}
 
       {tab === "Users" && <UsersTab />}
+      {tab === "Token Codes" && <TokenCodesTab />}
+      {tab === "Referrals" && <ReferralSettingsTab />}
       {tab === "Failed Messages" && <FailedParsesTab />}
     </div>
   );

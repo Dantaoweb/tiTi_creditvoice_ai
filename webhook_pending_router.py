@@ -939,6 +939,40 @@ def handle_pending_actions(
 
     # ── Start onboarding for unknown users ───────────────────────────────────
     if not user and not parsed:
+        # Detect "join CODE" referral entry — store the code before onboarding starts
+        _ref_match = re.match(r"^(?:join|ref|invite)\s+([A-Za-z0-9]{3,20})$", text.strip(), re.IGNORECASE)
+        if _ref_match:
+            from models import User as _User, Referral as _Referral
+            _ref_code = _ref_match.group(1).upper()
+            _referrer = db.query(_User).filter(_User.referral_code == _ref_code).first()
+            if _referrer:
+                _ref_plan = (_referrer.subscription_plan or "BASIC").upper()
+                _ref_used = db.query(_Referral).filter(_Referral.referral_code == _ref_code).count()
+                if _ref_plan == "BASIC" and _ref_used >= 2:
+                    send_whatsapp_message(phone, f"Sorry, that referral code has reached its limit. You can still join without one — just say *Hello* to start.")
+                    return PendingRouteResult(response={"status": "referral_limit_reached"})
+                if pending:
+                    db.delete(pending)
+                    db.commit()
+                pending = PendingAction(
+                    phone=phone,
+                    action="ONBOARD_USER",
+                    customer_name="",
+                    last_customer="",
+                    items_json=json.dumps({"_ref_code": _ref_code}),
+                )
+                db.add(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    f"👋 Welcome! You're joining with *{_referrer.name.title()}'s* referral code.\n"
+                    "You'll get *14 days on GO plan* free when you sign up.\n\n"
+                    "Let's get you set up — what's your full name?"
+                )
+                return PendingRouteResult(response={"status": "referral_onboard_started"})
+            else:
+                send_whatsapp_message(phone, f"That referral code (*{_ref_code}*) wasn't found. You can still join — just say *Hello* to start.")
+                return PendingRouteResult(response={"status": "referral_code_not_found"})
         return _wrap(start_onboarding(db, phone, pending, send_whatsapp_message))
 
     # ── Staff delegate greeting ──────────────────────────────────────────────

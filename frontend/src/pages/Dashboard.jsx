@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText, MapPin } from "lucide-react";
+import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText, MapPin, Ticket, CheckCircle, Share2, Copy } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiDownload } from "../lib/api";
+import { apiFetch, apiDownload, apiPost } from "../lib/api";
 import { naira, nairaFull, relativeDate } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 import DataTable from "../components/DataTable";
@@ -12,6 +12,255 @@ import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
 
 const WA_NUDGE_KEY = "cv_wa_nudge_dismissed";
+
+function InviteCard() {
+  const [data, setData]       = useState(null);
+  const [open, setOpen]       = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [saving, setSaving]   = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+  const [copied, setCopied]   = useState(false);
+
+  const [titiNumber, setTitiNumber] = useState("");
+
+  function load() {
+    apiFetch("referral").then(setData).catch(() => {});
+  }
+
+  useEffect(() => {
+    load();
+    apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
+  }, []);
+
+  async function setCode(e) {
+    e.preventDefault();
+    if (!codeInput.trim()) return;
+    setSaving(true); setSaveErr("");
+    try {
+      await apiPost("referral/set-code", { code: codeInput.trim() });
+      load();
+      setCodeInput("");
+    } catch (e) { setSaveErr(e.message); }
+    finally { setSaving(false); }
+  }
+
+  function copyLink() {
+    if (!data?.link) return;
+    navigator.clipboard.writeText(data.link).then(() => {
+      setCopied("web");
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const atLimit = data?.invite_limit !== null && data?.invite_used >= data?.invite_limit;
+
+  return (
+    <div className="card" style={{ borderLeft: "3px solid rgba(134,59,255,0.4)" }}>
+      <div className="card-header" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <span className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Share2 size={15} color="#a78bfa" /> Invite a Friend
+          {data?.invite_used > 0 && (
+            <span style={{ fontSize: 11, background: data.active_go > 0 ? "rgba(22,163,74,0.15)" : "rgba(134,59,255,0.15)", color: data.active_go > 0 ? "#16a34a" : "#a78bfa", borderRadius: 4, padding: "2px 6px" }}>
+              {data.active_go > 0 ? `${data.active_go} active` : `${data.invite_used} joined`}
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{open ? "▲" : "▼"}</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 12, display: "grid", gap: 14 }}>
+          {/* Reward info */}
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", background: "rgba(134,59,255,0.08)", borderRadius: 8, padding: "10px 12px", lineHeight: 1.6 }}>
+            Your friend gets <strong style={{ color: "#a78bfa" }}>14 days on GO plan</strong> free.{" "}
+            {data?.plan === "BASIC"
+              ? <>You can invite <strong style={{ color: "var(--ink)" }}>{Math.max(0, 2 - (data?.invite_used || 0))} more</strong> friend{Math.max(0, 2 - (data?.invite_used || 0)) !== 1 ? "s" : ""} on your Basic plan.</>
+              : <>For each friend with an <strong style={{ color: "#16a34a" }}>active GO subscription</strong>, you earn <strong style={{ color: "#16a34a" }}>₦{(data?.cashback_per_referral || 0).toLocaleString()}</strong> plan credit that month — automatically off your next payment.</>
+            }
+          </div>
+
+          {/* Set / show referral code */}
+          {data?.referral_code ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Your referral code</div>
+                <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 18, letterSpacing: 3, color: "#a78bfa" }}>
+                  {data.referral_code}
+                </span>
+              </div>
+
+              {/* Web link */}
+              {data.link && (
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Web sign-up link</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all", flex: 1 }}>{data.link}</span>
+                    <button className="btn btn-secondary btn-sm" onClick={copyLink}>
+                      {copied === "web" ? <><CheckCircle size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* WhatsApp link */}
+              {titiNumber && (
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>WhatsApp link (friend messages tiTi directly)</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", flex: 1 }}>
+                      {`https://wa.me/${titiNumber}?text=join ${data.referral_code}`}
+                    </span>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://wa.me/${titiNumber}?text=join ${data.referral_code}`);
+                        setCopied("wa");
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                    >
+                      {copied === "wa" ? <><CheckCircle size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <form onSubmit={setCode}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Choose your referral code (letters & numbers, 3–20 chars)</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={codeInput}
+                  onChange={e => setCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                  placeholder="e.g. DANSHOP"
+                  style={{ flex: 1, fontFamily: "monospace", letterSpacing: 1 }}
+                  maxLength={20}
+                  disabled={saving}
+                />
+                <button className="btn btn-primary btn-sm" type="submit" disabled={saving || !codeInput.trim()}>
+                  {saving ? "Saving…" : "Set Code"}
+                </button>
+              </div>
+              {saveErr && <div className="login-error" style={{ marginTop: 6 }}>{saveErr}</div>}
+            </form>
+          )}
+
+          {/* Stats */}
+          {data?.invite_used > 0 && (
+            <div style={{ display: "grid", gap: 8 }}>
+              {/* Invite counts */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "10px 4px" }}>
+                  <div style={{ fontWeight: 700, fontSize: 20 }}>{data.invite_used}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Friends joined</div>
+                </div>
+                <div style={{ textAlign: "center", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "10px 4px" }}>
+                  <div style={{ fontWeight: 700, fontSize: 20, color: "#f59e0b" }}>{data.not_yet_go ?? 0}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Not yet on GO</div>
+                </div>
+              </div>
+
+              {/* Plan credit block — only visible to GO/PRO */}
+              {data?.plan !== "BASIC" && (
+                <div style={{
+                  background: data.active_go > 0 ? "rgba(22,163,74,0.1)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${data.active_go > 0 ? "rgba(22,163,74,0.3)" : "var(--border)"}`,
+                  borderRadius: 10, padding: "14px 16px",
+                }}>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>
+                    Plan credit this month
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 28, color: data.active_go > 0 ? "#16a34a" : "var(--text-muted)", letterSpacing: -0.5 }}>
+                    ₦{(data.credit_this_month || 0).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
+                    {data.active_go > 0
+                      ? <>{data.active_go} friend{data.active_go !== 1 ? "s" : ""} active on GO × ₦{(data.cashback_per_referral || 0).toLocaleString()} each</>
+                      : "None of your friends are on an active GO plan yet"}
+                  </div>
+                  {data.active_go > 0 && (
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 6 }}>
+                      Deducted automatically when you renew. Credit resets if their plan lapses.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {atLimit && (
+            <div style={{ fontSize: 13, color: "#f59e0b" }}>
+              You've used both Basic invites. <Link to="/wallet" style={{ color: "#a78bfa" }}>Upgrade to GO</Link> for unlimited invites + cashback.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RedeemCodeCard({ onRedeemed }) {
+  const [open, setOpen]   = useState(false);
+  const [code, setCode]   = useState("");
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState("");
+  const [done, setDone]   = useState(null);
+
+  async function redeem(e) {
+    e.preventDefault();
+    if (!code.trim()) { setErr("Enter a code."); return; }
+    setBusy(true); setErr("");
+    try {
+      const res = await apiPost("token-codes/redeem", { code: code.trim() });
+      setDone(res);
+      setCode("");
+      if (onRedeemed) onRedeemed(res);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  if (done) {
+    return (
+      <div className="card" style={{ borderLeft: "3px solid #16a34a", display: "flex", alignItems: "center", gap: 12 }}>
+        <CheckCircle size={20} color="#16a34a" />
+        <div>
+          <div style={{ fontWeight: 700 }}>Plan activated!</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{done.message}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{ borderLeft: "3px solid rgba(134,59,255,0.4)" }}>
+      <div
+        className="card-header"
+        style={{ cursor: "pointer" }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Ticket size={15} color="#a78bfa" /> Have a plan code?
+        </span>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{open ? "▲" : "▼"}</span>
+      </div>
+      {open && (
+        <form onSubmit={redeem} style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <input
+            value={code}
+            onChange={e => setCode(e.target.value.toUpperCase())}
+            placeholder="e.g. GO-A1B2C3D4"
+            style={{ flex: 1, minWidth: 180, fontFamily: "monospace", letterSpacing: 1 }}
+            disabled={busy}
+            autoFocus
+          />
+          <button className="btn btn-primary btn-sm" type="submit" disabled={busy}>
+            {busy ? "Activating…" : "Activate"}
+          </button>
+          {err && <div className="login-error" style={{ width: "100%", marginTop: 0 }}>{err}</div>}
+        </form>
+      )}
+    </div>
+  );
+}
 
 function WhatsAppNudge({ titiNumber }) {
   const [dismissed, setDismissed] = useState(
@@ -195,6 +444,9 @@ export default function Dashboard() {
           {downloadingPDF ? "Generating PDF…" : "Download Statement PDF"}
         </button>
       </div>
+
+      <InviteCard />
+      <RedeemCodeCard onRedeemed={() => window.location.reload()} />
 
       <div className="export-strip">
         <div className="export-strip-label">

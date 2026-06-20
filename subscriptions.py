@@ -34,6 +34,15 @@ def get_business_subscription(db, user):
 
     if expires_at and expires_at < _utcnow():
         status = "EXPIRED"
+        # Persist the downgrade so the DB reflects reality
+        if owner and plan != PLAN_BASIC:
+            owner.subscription_plan = PLAN_BASIC
+            owner.subscription_status = "EXPIRED"
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+        plan = PLAN_BASIC
 
     if status not in ["ACTIVE", "TRIAL"]:
         plan = PLAN_BASIC

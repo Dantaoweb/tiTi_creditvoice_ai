@@ -1,4 +1,5 @@
 from models import Customer, PendingAction
+from messages import with_confirm_disclaimer
 from transaction_setup import build_projected_balance_line
 
 
@@ -27,9 +28,11 @@ def handle_artisan_payment_pending(
         db.commit()
         send_message(
             phone,
-            f"Confirm service income, no customer debt:\n"
-            f"{pending.product.title()} - N{pending.buy_amount:,}\n\n"
-            "Reply YES or 1 to save, EDIT or 2 to change."
+            with_confirm_disclaimer(
+                f"Confirm service income, no customer debt:\n"
+                f"{pending.product.title()} - N{pending.buy_amount:,}\n\n"
+                "Reply YES or 1 to save, EDIT or 2 to change."
+            ),
         )
         return {"status": "artisan_service_confirm"}
 
@@ -57,10 +60,12 @@ def handle_artisan_payment_pending(
         )
         send_message(
             phone,
-            f"Confirm debt payment:\n"
-            f"{customer.name.title()} paid N{pending.paid_amount:,}\n"
-            f"{balance_after_line}\n\n"
-            "Reply YES or 1 to save, EDIT or 2 to change."
+            with_confirm_disclaimer(
+                f"Confirm debt payment:\n"
+                f"{customer.name.title()} paid N{pending.paid_amount:,}\n"
+                f"{balance_after_line}\n\n"
+                "Reply YES or 1 to save, EDIT or 2 to change."
+            ),
         )
         return {"status": "artisan_debt_payment_confirm"}
 

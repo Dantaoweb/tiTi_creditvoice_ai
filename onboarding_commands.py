@@ -16,7 +16,8 @@ from messages import (
     build_supported_formats_message,
     build_upgrade_message,
 )
-from models import Customer, PendingAction, ReminderMemory, User
+import json as _json
+from models import Customer, PendingAction, Referral, ReminderMemory, User
 from reports import build_dashboard_menu_message
 
 
@@ -51,7 +52,26 @@ def complete_user_onboarding(
     business_type,
     business_type_label,
 ):
+    from datetime import datetime, timezone, timedelta
+
     name = (pending.customer_name or "").strip()
+
+    # Check for referral code stored during onboarding start
+    ref_code = None
+    try:
+        payload = _json.loads(pending.items_json or "{}")
+        ref_code = payload.get("_ref_code")
+    except Exception:
+        pass
+
+    referrer = None
+    if ref_code:
+        referrer = db.query(User).filter(User.referral_code == ref_code).first()
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    plan = "GO" if referrer else "BASIC"
+    expires_at = (now + timedelta(days=14)) if referrer else None
+
     if not user:
         user = User(
             phone=phone,
@@ -60,13 +80,27 @@ def complete_user_onboarding(
             business_category=business_category,
             business_type=business_type,
             business_type_label=business_type_label,
+            subscription_plan=plan,
+            subscription_status="ACTIVE",
+            subscription_expires_at=expires_at,
+            referred_by_code=ref_code,
         )
         db.add(user)
+        db.flush()
     else:
         user.name = name
         user.business_category = business_category
         user.business_type = business_type
         user.business_type_label = business_type_label
+
+    if referrer and user.phone != referrer.phone:
+        db.add(Referral(
+            referral_code=ref_code,
+            referrer_phone=referrer.phone,
+            referee_phone=user.phone,
+            referee_name=user.name,
+            status="pending",
+        ))
 
     db.delete(pending)
     db.add(

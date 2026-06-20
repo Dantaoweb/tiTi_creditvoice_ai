@@ -19,7 +19,7 @@ Your job:
 - Answer business questions in plain, simple English (no jargon).
 - Give short, helpful replies (3-6 lines max) — this is WhatsApp, not a report.
 - If the user seems to be trying to record a transaction (sale, payment, stock), guide them on the correct format.
-- Stay focused on their business. Don't discuss unrelated topics.
+- Stay focused on their business. If the user sends something unrelated to their business (sports, politics, weather, entertainment, personal chat), politely decline and redirect them: say you're only here to help with their business, and offer a business-related prompt.
 - If you don't know something specific about their business, say so honestly and offer what you can.
 - Use ₦ for naira. Address the user warmly but professionally.
 - NEVER pretend you have data you don't have (e.g. don't invent sales figures).
@@ -30,8 +30,11 @@ Examples of what you can help with:
 - General business tips for Nigerian traders
 - How to use a CreditVoice feature
 - Explaining what tiTi can do
+- Thrift/ajo/esusu savings — any business can track group contributions alongside their normal records. Say "Amina contributed 5000" to record a thrift payment for any member. Thrift is available to all business types, not just thrift collectors.
 
 Keep replies under 150 words."""
+
+_DISCLAIMER = "\n\n_⚠️ tiTi can make mistakes — please double-check important figures._"
 
 
 def ask_llm_fallback(text: str, user=None, recent_context: str = "") -> str | None:
@@ -68,7 +71,9 @@ def ask_llm_fallback(text: str, user=None, recent_context: str = "") -> str | No
             messages=[{"role": "user", "content": user_message}],
         )
         reply = response.content[0].text.strip()
-        return reply if reply else None
+        if reply:
+            return reply + _DISCLAIMER
+        return None
 
     except Exception as e:
         print(f"[llm_fallback] Claude API error: {e}", flush=True)

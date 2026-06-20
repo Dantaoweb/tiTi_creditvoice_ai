@@ -5,6 +5,7 @@ import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { naira } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
+import { usePlan } from "../lib/usePlan";
 
 function ProductSearch({ ownerPhone, onAdd }) {
   const [q, setQ] = useState("");
@@ -140,6 +141,8 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
 
 export default function POS() {
   const { ownerPhone } = useApp();
+  const { plan, limit: planLimit } = usePlan();
+  const inventoryLim = planLimit("active_inventory_items");
   const navigate = useNavigate();
 
   const [cart, setCart] = useState([]);
@@ -242,6 +245,20 @@ export default function POS() {
           <span className="pos-cart-count">{cart.length} item{cart.length !== 1 ? "s" : ""}</span>
         </div>
 
+        {inventoryLim !== null && (
+          <div style={{
+            fontSize: 11, color: "rgba(255,255,255,0.4)", padding: "4px 12px 0",
+            display: "flex", justifyContent: "space-between",
+          }}>
+            <span>Basic plan: up to {inventoryLim} active products in POS</span>
+            <span
+              style={{ color: "#a78bfa", cursor: "pointer" }}
+              onClick={() => window.location.href = "/app/upgrade"}
+            >
+              Upgrade to Go →
+            </span>
+          </div>
+        )}
         <ProductSearch ownerPhone={ownerPhone} onAdd={addToCart} />
 
         {cart.length === 0 ? (

@@ -9,6 +9,24 @@ def _group(user):
     return menu_group_for_user(user) if user else "stock"
 
 
+def _thrift_intro_message():
+    return (
+        "💰 *Thrift / Ajo Savings*\n\n"
+        "CreditVoice lets you track thrift contributions alongside your regular business records.\n\n"
+        "*Record a contribution:*\n"
+        "👉 Amina contributed 5000\n"
+        "👉 Tunde paid thrift 2000\n"
+        "👉 Ade saved 3000\n\n"
+        "*How it works:*\n"
+        "• Each member is saved as a customer\n"
+        "• Contributions are tracked like payments\n"
+        "• You can see who has paid and who is behind\n"
+        "• Totals are visible on your dashboard\n\n"
+        "💡 Tip: Connect your CreditVoice Wallet to receive contributions directly into your account.\n\n"
+        "Send MENU to return home."
+    )
+
+
 def _record_help(db, phone, user, pending, send_message):
     from business_templates import template_examples_for_user
     examples = template_examples_for_user(user) if user else [
@@ -482,7 +500,7 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
     group = _group(user)
 
     if group == "school":
-        # 1=Textbooks, 2=Plan, 3=Teachers, 4=Partners, 5=Automation, 6=Notes, 7=Back
+        # 1=Textbooks, 2=Plan, 3=Teachers, 4=Partners, 5=Automation, 6=Notes, 7=Thrift, 8=Back
         if normalized in ["1", "textbooks", "textbook", "textbook stock", "stock", "inventory"]:
             db.delete(pending)
             db.commit()
@@ -517,14 +535,20 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             db.commit()
             return {"parsed": {"type": "VIEW_NOTES", "category": None}}
 
-        if normalized in ["7", "back", "main menu", "home", "menu"]:
+        if normalized in ["7", "thrift", "ajo", "thrift savings", "thrift / ajo savings"]:
+            db.delete(pending)
+            db.commit()
+            send_message(phone, _thrift_intro_message())
+            return {"status": "more_thrift"}
+
+        if normalized in ["8", "back", "main menu", "home", "menu"]:
             pending.action = "OWNER_HOME_MENU"
             db.commit()
             send_message(phone, build_owner_home_menu(user, subscription))
             return {"status": "more_back"}
 
     elif group == "service":
-        # 1=Suppliers/Products, 2=Plan, 3=Staff, 4=Partners, 5=Automation, 6=Notes, 7=Back
+        # 1=Suppliers/Products, 2=Plan, 3=Staff, 4=Partners, 5=Automation, 6=Notes, 7=Thrift, 8=Back
         from business_templates import template_key_for_user as _tku
         _is_salon = _tku(user) == "salon_beauty" if user else False
         if normalized in ["1", "products", "stock", "inventory", "products / stock"] and _is_salon:
@@ -560,14 +584,19 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             db.delete(pending)
             db.commit()
             return {"parsed": {"type": "VIEW_NOTES", "category": None}}
-        if normalized in ["7", "back", "main menu", "home", "menu"]:
+        if normalized in ["7", "thrift", "ajo", "thrift savings", "thrift / ajo savings"]:
+            db.delete(pending)
+            db.commit()
+            send_message(phone, _thrift_intro_message())
+            return {"status": "more_thrift"}
+        if normalized in ["8", "back", "main menu", "home", "menu"]:
             pending.action = "OWNER_HOME_MENU"
             db.commit()
             send_message(phone, build_owner_home_menu(user, subscription))
             return {"status": "more_back"}
 
     else:
-        # 1=Suppliers, 2=Plan, 3=Staff, 4=Partners, 5=Automation, 6=Notes, 7=Back
+        # 1=Suppliers, 2=Plan, 3=Staff, 4=Partners, 5=Automation, 6=Notes, 7=Thrift, 8=Back
         if normalized in ["1", "suppliers", "supplier"]:
             db.delete(pending)
             db.commit()
@@ -602,7 +631,13 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             db.commit()
             return {"parsed": {"type": "VIEW_NOTES", "category": None}}
 
-        if normalized in ["7", "back", "main menu", "home", "menu"]:
+        if normalized in ["7", "thrift", "ajo", "thrift savings", "thrift / ajo savings"]:
+            db.delete(pending)
+            db.commit()
+            send_message(phone, _thrift_intro_message())
+            return {"status": "more_thrift"}
+
+        if normalized in ["8", "back", "main menu", "home", "menu"]:
             pending.action = "OWNER_HOME_MENU"
             db.commit()
             send_message(phone, build_owner_home_menu(user, subscription))

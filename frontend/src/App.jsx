@@ -22,6 +22,9 @@ import Capture      from "./pages/Capture";
 import POS          from "./pages/POS";
 import Receipt      from "./pages/Receipt";
 import Wallet       from "./pages/Wallet";
+import Thrift       from "./pages/Thrift";
+import Terms        from "./pages/Terms";
+import Privacy      from "./pages/Privacy";
 
 function RequireAuth({ children }) {
   const { isAuthed } = useAuth();
@@ -36,6 +39,8 @@ export default function App() {
         {/* Public */}
         <Route index element={<Landing />} />
         <Route path="login" element={<Login />} />
+        <Route path="terms" element={<Terms />} />
+        <Route path="privacy" element={<Privacy />} />
 
         {/* Authenticated — all inside sidebar Layout */}
         <Route
@@ -59,6 +64,7 @@ export default function App() {
           <Route path="notes"        element={<Notes />}        />
           <Route path="reminders"    element={<Reminders />}    />
           <Route path="wallet"       element={<Wallet />}       />
+          <Route path="thrift"       element={<Thrift />}       />
           <Route path="branches"     element={<Branches />}     />
           <Route path="automation"   element={<Automation />}   />
           <Route path="admin"        element={<Admin />}        />

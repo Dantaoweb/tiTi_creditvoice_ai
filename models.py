@@ -86,6 +86,12 @@ class User(Base):
 
     invite_expires_at = Column(DateTime, nullable=True)
 
+    referral_code = Column(String, unique=True, nullable=True, index=True)
+
+    referred_by_code = Column(String, nullable=True)
+
+    wallet_balance = Column(Integer, default=0)
+
     # Staff profile fields
     staff_position = Column(String, nullable=True)   # e.g. "Cashier", "Sales Rep", "Manager"
     staff_level = Column(String, nullable=True)      # e.g. "Junior", "Senior", "Supervisor"
@@ -950,6 +956,24 @@ class AppNotification(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class SchoolTeacher(Base):
+    """Teacher roster for school businesses — record only, no app access.
+    Basic plan: max 3. Go/Pro: unlimited.
+    App-access staff (bursar, accountant) use the normal User/staff model and require Pro.
+    """
+
+    __tablename__ = "school_teachers"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    name        = Column(String)
+    subject     = Column(String, nullable=True)
+    class_name  = Column(String, nullable=True)   # e.g. "JSS 2A", "Primary 4"
+    phone       = Column(String, nullable=True)
+    employee_id = Column(String, nullable=True)   # school-assigned ID
+    created_at  = Column(DateTime, default=utcnow)
+
+
 class FailedParse(Base):
     """Logs messages that tiTi could not understand — used for analytics and improvement."""
 
@@ -962,3 +986,45 @@ class FailedParse(Base):
     resolved_by = Column(String, nullable=True)  # "llm", "openai", None
     llm_reply = Column(Text, nullable=True)      # what tiTi said back
     created_at = Column(DateTime, default=utcnow)
+
+
+class TokenCode(Base):
+
+    __tablename__ = "token_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String, unique=True, index=True)
+    plan = Column(String)                               # "GO" or "PRO"
+    duration_days = Column(Integer)
+    batch_label = Column(String, nullable=True)
+    issued_by = Column(String, nullable=True)
+    redeemed_at = Column(DateTime, nullable=True)
+    redeemed_by_phone = Column(String, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class Referral(Base):
+
+    __tablename__ = "referrals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    referral_code = Column(String, index=True)          # code that was used
+    referrer_phone = Column(String, index=True)         # owner of the code
+    referee_phone = Column(String)                      # new user who signed up
+    referee_name = Column(String, nullable=True)
+    status = Column(String, default="pending")          # "pending" | "rewarded"
+    cashback_amount = Column(Integer, nullable=True)    # naira, set when rewarded
+    rewarded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ReferralSettings(Base):
+
+    __tablename__ = "referral_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cashback_amount = Column(Integer, default=500)
+    updated_by = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=utcnow)
+
