@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, Minus, Trash2, ShoppingCart, User, X } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, User, X, WifiOff } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { naira } from "../lib/format";
+import { enqueue, isNetworkError } from "../lib/offlineQueue";
 
 function ProductSearch({ ownerPhone, onAdd }) {
   const [q, setQ] = useState("");
@@ -194,23 +195,37 @@ export default function POS() {
     if (cart.some(it => it.unit_price <= 0)) { setSaveErr("All items need a price greater than zero."); return; }
     setSaveErr("");
     setSaving(true);
+    const payload = {
+      owner_phone: ownerPhone,
+      customer_id: customer?.id || null,
+      items: cart.map(it => ({
+        inventory_item_id: it.inventory_item_id || null,
+        name: it.name,
+        qty: it.qty,
+        unit: it.unit || null,
+        unit_price: it.unit_price,
+        sold_unit: it.sold_unit || null,
+        fraction: it.fraction || 1.0,
+      })),
+      payment_amount: paid,
+    };
     try {
-      const result = await apiPost("pos/save", {
-        owner_phone: ownerPhone,
-        customer_id: customer?.id || null,
-        items: cart.map(it => ({
-          inventory_item_id: it.inventory_item_id || null,
-          name: it.name,
-          qty: it.qty,
-          unit: it.unit || null,
-          unit_price: it.unit_price,
-          sold_unit: it.sold_unit || null,
-          fraction: it.fraction || 1.0,
-        })),
-        payment_amount: paid,
-      });
+      const result = await apiPost("pos/save", payload);
       navigate(`/pos/receipt/${result.receipt_id}`);
     } catch (e) {
+      if (isNetworkError(e)) {
+        const label = `POS sale — ${cart.length} item(s), ₦${paid.toLocaleString()}`;
+        enqueue("pos/save", payload, label);
+        setCart([]);
+        setCustomer(null);
+        setPaid(0);
+        setSaveErr("");
+        setSaving(false);
+        navigate("/capture", {
+          state: { offlineMsg: "No internet — POS sale saved offline. It will sync when you reconnect." },
+        });
+        return;
+      }
       setSaveErr(e.message);
     } finally {
       setSaving(false);

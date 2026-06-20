@@ -119,7 +119,10 @@ export default function Login() {
     try {
       const res = await apiPost("auth/request-otp", { phone: otpPhone.trim(), channel: "auto" });
       setSelectedChannel(res.channel);
-      const dest = res.channel === "email" ? `email (${res.hint})` : `WhatsApp`;
+      const channels = res.channels || [res.channel];
+      const dest = channels.includes("email") && channels.includes("whatsapp")
+        ? `email (${res.hint}) and WhatsApp`
+        : channels.includes("email") ? `email (${res.hint})` : `WhatsApp`;
       setInfo(`A 6-digit code was sent to your ${dest}.`);
       goMode("set_pin");
     } catch (e) { setErr(e.message); }
@@ -261,7 +264,9 @@ export default function Login() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Email Address</label>
+              <label className="form-label">
+                Email Address <span style={{ color: "#d97706", fontSize: 11, fontWeight: 600 }}>Recommended</span>
+              </label>
               <input
                 type="email"
                 value={regEmail}
@@ -270,7 +275,11 @@ export default function Login() {
                 autoComplete="email"
                 disabled={busy}
               />
-              <span className="form-hint">Optional — used for PIN recovery and updates</span>
+              <span className="form-hint">
+                {regEmail.trim()
+                  ? "✓ If you forget your PIN, we'll send a reset code to this email."
+                  : "Without an email, you can only recover your account via WhatsApp — adding one is safer."}
+              </span>
             </div>
 
             <div className="form-group">

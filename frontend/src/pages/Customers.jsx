@@ -6,6 +6,7 @@ import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr, dateTimeStr } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { getBizLabels } from "../lib/bizLabels";
+import StaleDataBanner from "../components/StaleDataBanner";
 
 // ── Modal wrapper ────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children, wide }) {
@@ -197,6 +198,7 @@ export default function Customers() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isStale, setIsStale] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [payCustomer, setPayCustomer] = useState(null);
@@ -205,8 +207,8 @@ export default function Customers() {
   function load() {
     setLoading(true);
     apiFetch("customers", { owner_phone: ownerPhone })
-      .then(d => setRows(d.customers))
-      .catch(e => setError(e.message))
+      .then(d => { setRows(d.customers); setIsStale(!navigator.onLine); })
+      .catch(e => { setError(e.message); setIsStale(true); })
       .finally(() => setLoading(false));
   }
 
@@ -225,6 +227,7 @@ export default function Customers() {
 
   return (
     <>
+      <StaleDataBanner isStale={isStale} />
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
       <div className="card">
         <div className="card-header">

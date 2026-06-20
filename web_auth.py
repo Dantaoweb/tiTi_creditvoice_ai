@@ -146,13 +146,21 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto") -> dict:
             detail="Phone number not registered. Create an account first.",
         )
 
-    # Resolve channel
-    if channel == "auto":
-        channel = "email" if user.email else "whatsapp"
+    has_email     = bool(user.email)
+    has_whatsapp  = bool(user.whatsapp_linked)
 
-    if channel == "email" and not user.email:
+    # "auto" sends to BOTH channels when both are available (stronger recovery)
+    if channel == "auto":
+        if has_email and has_whatsapp:
+            channel = "both"
+        elif has_email:
+            channel = "email"
+        else:
+            channel = "whatsapp"
+
+    if channel == "email" and not has_email:
         raise HTTPException(status_code=400, detail="No email address on this account. Use WhatsApp instead.")
-    if channel == "whatsapp" and not user.whatsapp_linked:
+    if channel == "whatsapp" and not has_whatsapp:
         raise HTTPException(status_code=400, detail="WhatsApp not linked yet. Use email instead.")
 
     # Clear old OTP
@@ -174,17 +182,31 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto") -> dict:
     ))
     db.commit()
 
-    if channel == "email":
+    sent_channels = []
+
+    if channel in ("email", "both") and has_email:
         ok = send_otp_email(user.email, otp)
-        if not ok:
-            raise HTTPException(status_code=500, detail="Failed to send email. Check SMTP configuration.")
-        return {"sent": True, "channel": "email", "hint": user.email[:2] + "***"}
-    else:
-        send_whatsapp_message(
-            phone,
-            f"Your CreditVoice PIN reset code: *{otp}*\n\nValid for 10 minutes. Do not share this.",
+        if ok:
+            sent_channels.append("email")
+
+    if channel in ("whatsapp", "both") and has_whatsapp:
+        try:
+            send_whatsapp_message(
+                phone,
+                f"Your CreditVoice PIN reset code: *{otp}*\n\nValid for 10 minutes. Do not share this with anyone.",
+            )
+            sent_channels.append("whatsapp")
+        except Exception:
+            pass
+
+    if not sent_channels:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not send the OTP. Check your email and WhatsApp settings.",
         )
-        return {"sent": True, "channel": "whatsapp", "hint": phone}
+
+    hint = user.email[:3] + "***" if "email" in sent_channels and user.email else phone
+    return {"sent": True, "channel": sent_channels[0], "channels": sent_channels, "hint": hint}
 
 
 def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> dict:

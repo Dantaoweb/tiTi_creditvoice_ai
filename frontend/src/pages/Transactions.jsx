@@ -7,6 +7,7 @@ import { nairaFull, dateTimeStr, qty } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
+import StaleDataBanner from "../components/StaleDataBanner";
 
 export default function Transactions() {
   const { ownerPhone, period } = useApp();
@@ -16,6 +17,7 @@ export default function Transactions() {
   const [branches, setBranches]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
+  const [isStale, setIsStale]     = useState(false);
   const [filter, setFilter]       = useState("all");
   const [branchFilter, setBranchFilter] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -40,8 +42,8 @@ export default function Transactions() {
     const params = { period };
     if (branchFilter) params.branch_id = branchFilter;
     apiFetch("transactions", params)
-      .then((d) => setRows(d.transactions))
-      .catch((e) => setError(e.message))
+      .then((d) => { setRows(d.transactions); setIsStale(!navigator.onLine); })
+      .catch((e) => { setError(e.message); setIsStale(true); })
       .finally(() => setLoading(false));
   }, [ownerPhone, period, branchFilter]);
 
@@ -50,6 +52,7 @@ export default function Transactions() {
 
   return (
     <>
+      <StaleDataBanner isStale={isStale} />
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
       <div className="card">
         <div className="card-header">

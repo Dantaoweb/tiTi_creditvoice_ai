@@ -9,6 +9,7 @@ import MetricCard from "../components/MetricCard";
 import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
+import StaleDataBanner from "../components/StaleDataBanner";
 
 const WA_NUDGE_KEY = "cv_wa_nudge_dismissed";
 
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const [txData, setTxData]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [isStale, setIsStale] = useState(false);
   const [exportingType, setExportingType]   = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [branches, setBranches]   = useState([]);
@@ -86,8 +88,8 @@ export default function Dashboard() {
       apiFetch("dashboard", params),
       apiFetch("transactions", txParams),
     ])
-      .then(([d, t]) => { setData(d); setTxData(t); })
-      .catch((e) => setError(e.message))
+      .then(([d, t]) => { setData(d); setTxData(t); setIsStale(!navigator.onLine); })
+      .catch((e) => { setError(e.message); setIsStale(true); })
       .finally(() => setLoading(false));
   }, [ownerPhone, period, branchId]);
 
@@ -101,6 +103,7 @@ export default function Dashboard() {
   return (
     <>
       <WhatsAppNudge titiNumber={titiNumber} />
+      <StaleDataBanner isStale={isStale} />
 
       {error && (
         <div className="card card-body gap-2" style={{ color: "var(--rose)", display: "flex", gap: 8 }}>

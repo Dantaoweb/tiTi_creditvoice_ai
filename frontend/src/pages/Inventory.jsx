@@ -7,6 +7,7 @@ import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, dateStr } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { StockBadge } from "../components/Badge";
+import StaleDataBanner from "../components/StaleDataBanner";
 
 // ── Modal wrapper ────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
@@ -502,6 +503,7 @@ export default function Inventory() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isStale, setIsStale] = useState(false);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
@@ -512,8 +514,8 @@ export default function Inventory() {
   function load() {
     setLoading(true);
     apiFetch("inventory", { owner_phone: ownerPhone })
-      .then(d => setRows(d.items))
-      .catch(e => setError(e.message))
+      .then(d => { setRows(d.items); setIsStale(!navigator.onLine); })
+      .catch(e => { setError(e.message); setIsStale(true); })
       .finally(() => setLoading(false));
   }
 
@@ -532,6 +534,7 @@ export default function Inventory() {
 
   return (
     <>
+      <StaleDataBanner isStale={isStale} />
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
 
       {lowCount > 0 && (

@@ -789,10 +789,11 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             items = [it.model_dump() for it in payload.items]
             result = save_pos_sale(
                 db,
-                payload.owner_phone,
+                owner_phone,
                 session["user_id"],
                 payload.customer_id,
                 items,
@@ -846,15 +847,16 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             existing = db.query(Customer).filter(
-                Customer.owner_phone == payload.owner_phone,
+                Customer.owner_phone == owner_phone,
                 Customer.name == payload.name.strip(),
             ).first()
             if existing:
                 from fastapi import HTTPException
                 raise HTTPException(status_code=409, detail="A customer with this name already exists.")
             c = Customer(
-                owner_phone=payload.owner_phone,
+                owner_phone=owner_phone,
                 name=payload.name.strip(),
                 customer_phone=(payload.phone or "").strip() or None,
             )
@@ -1032,9 +1034,10 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             _qty = None if payload.is_service else (payload.quantity or 0.0)
             item = InventoryItem(
-                owner_phone=payload.owner_phone,
+                owner_phone=owner_phone,
                 name=payload.name.strip().lower(),
                 unit=(payload.unit or "").strip() or None,
                 quantity=_qty,
@@ -1051,7 +1054,7 @@ def register_web_routes(app):
             if not payload.is_service and _qty:
                 db.flush()
                 db.add(InventoryMovement(
-                    owner_phone=payload.owner_phone,
+                    owner_phone=owner_phone,
                     item_id=item.id,
                     movement_type="IN",
                     quantity=_qty,
@@ -1099,20 +1102,21 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
             saved, skipped = 0, 0
             for raw in payload.names:
                 name_clean = str(raw).strip().lower()
                 if not name_clean:
                     continue
                 existing = db.query(InventoryItem).filter(
-                    InventoryItem.owner_phone == payload.owner_phone,
+                    InventoryItem.owner_phone == owner_phone,
                     InventoryItem.name == name_clean,
                 ).first()
                 if existing:
                     skipped += 1
                 else:
                     db.add(InventoryItem(
-                        owner_phone=payload.owner_phone,
+                        owner_phone=owner_phone,
                         name=name_clean,
                         is_available=True,
                         is_service=False,
@@ -1801,7 +1805,7 @@ def register_web_routes(app):
             owner = db.query(User).filter(User.phone == session["phone"]).first()
             if not owner:
                 raise HTTPException(status_code=403, detail="Not authenticated.")
-            owner_phone = payload.owner_phone or owner.phone
+            owner_phone = _session_owner_phone(db, session)
             now = _utcnow()
             note = BusinessNote(
                 owner_phone=owner_phone,
@@ -2050,7 +2054,7 @@ def register_web_routes(app):
         try:
             from customer_automation import get_or_create_automation_settings
             from reminder_automation import get_or_create_reminder_settings
-            phone = payload.owner_phone or session.get("phone")
+            phone = _session_owner_phone(db, session)
             rem = get_or_create_reminder_settings(db, phone)
             if payload.reminder_preview_enabled is not None:
                 rem.preview_enabled = payload.reminder_preview_enabled
@@ -2550,6 +2554,27 @@ def register_web_routes(app):
             }
         finally:
             db.close()
+
+    # ── TWA / Play Store: Digital Asset Links ────────────────────────────────
+    @app.get("/.well-known/assetlinks.json")
+    def assetlinks():
+        """Required for Google Play Store TWA to verify domain ownership.
+        Set TWA_PACKAGE_NAME and TWA_SHA256_FINGERPRINT in .env after generating
+        your Android package via pwabuilder.com.
+        """
+        import json as _json
+        package   = os.getenv("TWA_PACKAGE_NAME", "")
+        sha256    = os.getenv("TWA_SHA256_FINGERPRINT", "")
+        if not package or not sha256:
+            return []          # returns empty array until configured — TWA will skip
+        return _json.loads(f'''[{{
+          "relation": ["delegate_permission/common.handle_all_urls"],
+          "target": {{
+            "namespace": "android_app",
+            "package_name": "{package}",
+            "sha256_cert_fingerprints": ["{sha256}"]
+          }}
+        }}]''')
 
     # ── SPA catch-all (MUST be last — catches all /app/* client-side routes) ──
     @app.get("/app/{full_path:path}", response_class=HTMLResponse)
