@@ -11,7 +11,9 @@ import string
 import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Header, HTTPException
+from typing import Optional
+
+from fastapi import Cookie, Header, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from models import PendingAction, User
@@ -20,6 +22,7 @@ from recovery_commands import _hash_pin, _verify_pin
 _SECRET = os.getenv("WEB_SECRET_KEY", "cv-web-secret-change-in-production")
 _TTL = 7 * 24 * 3600  # 7 days
 _OTP_ACTION = "WEB_OTP"
+_SECURE_COOKIE = os.getenv("ENVIRONMENT", "production") != "development"
 
 if _SECRET == "cv-web-secret-change-in-production":
     import warnings
@@ -77,8 +80,29 @@ def verify_web_token(token: str) -> dict | None:
         return None
 
 
-def require_web_auth(authorization: str = Header(default="")) -> dict:
-    token = authorization.removeprefix("Bearer ").strip()
+def set_auth_cookie(response: Response, token: str) -> None:
+    """Set the session token as an httpOnly cookie."""
+    response.set_cookie(
+        key="cv_session",
+        value=token,
+        httponly=True,
+        secure=_SECURE_COOKIE,
+        samesite="lax",
+        max_age=_TTL,
+        path="/",
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(key="cv_session", path="/")
+
+
+def require_web_auth(
+    cv_session: Optional[str] = Cookie(default=None),
+    authorization: str = Header(default=""),
+) -> dict:
+    # Cookie is the primary auth method; Authorization header kept for backwards compat
+    token = cv_session or authorization.removeprefix("Bearer ").strip()
     payload = verify_web_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
@@ -326,8 +350,11 @@ def web_register(db: Session, name: str, phone: str, pin: str,
 def _build_auth_response(user: User) -> dict:
     from business_templates import menu_group_for_user
     token = create_web_token(user.id, user.phone)
+    session_expires_at = datetime.fromtimestamp(
+        int(time.time()) + _TTL, tz=timezone.utc
+    ).isoformat()
     return {
-        "token": token,
+        "_token": token,  # used internally to set the cookie — not returned to client
         "user": {
             "id": user.id,
             "name": user.name,
@@ -343,5 +370,6 @@ def _build_auth_response(user: User) -> dict:
             "newsletter_consent": bool(user.newsletter_consent),
             "subscription_plan": user.subscription_plan,
             "subscription_expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
+            "session_expires_at": session_expires_at,
         },
     }

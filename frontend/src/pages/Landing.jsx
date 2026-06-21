@@ -68,7 +68,7 @@ export default function Landing() {
         </div>
         <div className="landing-header-actions">
           {waLink && (
-            <a href={waLink} target="_blank" rel="noreferrer" className="btn btn-whatsapp btn-sm">
+            <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp btn-sm">
               Start on WhatsApp
             </a>
           )}
@@ -136,7 +136,7 @@ export default function Landing() {
               Create Account
             </button>
             {waLink && (
-              <a href={waLink} target="_blank" rel="noreferrer" className="btn btn-whatsapp">
+              <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
                 Start on WhatsApp
               </a>
             )}

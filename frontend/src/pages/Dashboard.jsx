@@ -275,7 +275,7 @@ function WhatsAppNudge({ titiNumber }) {
         <strong>Link WhatsApp to unlock more</strong>
         <span>Send reminders to customers, use voice capture, and access tiTi from your phone — send <em>Hello</em> to tiTi on WhatsApp.</span>
       </div>
-      <a href={waLink} target="_blank" rel="noreferrer" className="btn btn-whatsapp btn-sm">
+      <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp btn-sm">
         Open WhatsApp
       </a>
       <button className="wa-nudge-close" onClick={() => { setDismissed(true); localStorage.setItem(WA_NUDGE_KEY, "1"); }}>

@@ -1,22 +1,16 @@
-function _getToken() {
-  return localStorage.getItem("cv_token") || "";
-}
-
 export async function apiFetch(path, params = {}, options = {}) {
   const url = new URL(`/app/api/${path}`, window.location.origin);
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined && v !== "") url.searchParams.set(k, v);
   });
 
-  const headers = { ...(options.headers || {}) };
-  const tok = _getToken();
-  if (tok) headers["Authorization"] = `Bearer ${tok}`;
-
-  const res = await fetch(url.toString(), { ...options, headers });
+  const res = await fetch(url.toString(), {
+    credentials: "include",
+    ...options,
+    headers: { ...(options.headers || {}) },
+  });
 
   if (res.status === 401) {
-    // Clear stale session and force login
-    localStorage.removeItem("cv_token");
     localStorage.removeItem("cv_user");
     window.location.href = "/app/login";
     throw new Error("Session expired.");
@@ -60,12 +54,8 @@ export async function apiDownload(path, params = {}) {
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined && v !== "") url.searchParams.set(k, v);
   });
-  const tok = _getToken();
-  const res = await fetch(url.toString(), {
-    headers: tok ? { Authorization: `Bearer ${tok}` } : {},
-  });
+  const res = await fetch(url.toString(), { credentials: "include" });
   if (res.status === 401) {
-    localStorage.removeItem("cv_token");
     localStorage.removeItem("cv_user");
     window.location.href = "/app/login";
     throw new Error("Session expired.");

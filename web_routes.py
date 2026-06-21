@@ -5,7 +5,7 @@ import json
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -28,7 +28,10 @@ from reports import (
 from subscriptions import get_business_subscription
 from transaction_save import save_confirmed_pending_transaction
 from transaction_setup import handle_transaction_setup
-from web_auth import get_otp_channels, require_web_auth, web_login, web_register, request_web_otp, verify_otp_and_set_pin
+from web_auth import (
+    clear_auth_cookie, get_otp_channels, require_web_auth,
+    set_auth_cookie, web_login, web_register, request_web_otp, verify_otp_and_set_pin,
+)
 from web_pos import get_pos_receipt, save_pos_sale
 from webhook_context import load_webhook_user_context, visibility_recorded_by_id
 
@@ -380,7 +383,32 @@ def _format_demo_reply(parsed) -> str:
 
 # ── Route registration ───────────────────────────────────────────────────────
 
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "media-src 'self' blob:; "
+    "worker-src 'self' blob:; "
+    "manifest-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+
 def register_web_routes(app):
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
+
     # ── Static assets from React build ──────────────────────────────────
     if (DIST_ROOT / "assets").exists():
         app.mount("/app/assets", StaticFiles(directory=DIST_ROOT / "assets"), name="dist_assets")
@@ -394,10 +422,12 @@ def register_web_routes(app):
 
     # ── Auth ─────────────────────────────────────────────────────────────
     @app.post("/app/api/auth/login")
-    def web_auth_login(payload: LoginRequest):
+    def web_auth_login(payload: LoginRequest, response: Response):
         db = SessionLocal()
         try:
-            return web_login(db, payload.phone.strip(), payload.pin.strip())
+            result = web_login(db, payload.phone.strip(), payload.pin.strip())
+            set_auth_cookie(response, result.pop("_token"))
+            return result
         finally:
             db.close()
 
@@ -418,10 +448,10 @@ def register_web_routes(app):
         }
 
     @app.post("/app/api/auth/register")
-    def web_auth_register(payload: RegisterRequest):
+    def web_auth_register(payload: RegisterRequest, response: Response):
         db = SessionLocal()
         try:
-            return web_register(
+            result = web_register(
                 db,
                 payload.name.strip(),
                 payload.phone.strip(),
@@ -433,6 +463,8 @@ def register_web_routes(app):
                 business_type_label=payload.business_type_label,
                 ref_code=payload.ref_code,
             )
+            set_auth_cookie(response, result.pop("_token"))
+            return result
         finally:
             db.close()
 
@@ -459,12 +491,19 @@ def register_web_routes(app):
             db.close()
 
     @app.post("/app/api/auth/set-pin")
-    def web_set_pin(payload: SetPinRequest):
+    def web_set_pin(payload: SetPinRequest, response: Response):
         db = SessionLocal()
         try:
-            return verify_otp_and_set_pin(db, payload.phone.strip(), payload.otp.strip(), payload.new_pin.strip())
+            result = verify_otp_and_set_pin(db, payload.phone.strip(), payload.otp.strip(), payload.new_pin.strip())
+            set_auth_cookie(response, result.pop("_token"))
+            return result
         finally:
             db.close()
+
+    @app.post("/app/api/auth/logout")
+    def web_auth_logout(response: Response):
+        clear_auth_cookie(response)
+        return {"ok": True}
 
     @app.get("/app/api/auth/me")
     def web_auth_me(session: dict = Depends(require_web_auth)):
