@@ -77,6 +77,39 @@ def _ai_rate_check(user_id: str) -> bool:
         return True
 
 
+_admin_lock = threading.Lock()
+_admin_hits: dict = defaultdict(list)
+_ADMIN_LIMIT  = 120   # requests per minute per admin
+_ADMIN_WINDOW = 60
+
+_export_lock = threading.Lock()
+_export_hits: dict = defaultdict(list)
+_EXPORT_LIMIT  = 3    # CSV exports per hour per admin
+_EXPORT_WINDOW = 3600
+
+
+def _admin_rate_check(phone: str) -> bool:
+    now = time.time()
+    cutoff = now - _ADMIN_WINDOW
+    with _admin_lock:
+        _admin_hits[phone] = [t for t in _admin_hits[phone] if t > cutoff]
+        if len(_admin_hits[phone]) >= _ADMIN_LIMIT:
+            return False
+        _admin_hits[phone].append(now)
+        return True
+
+
+def _export_rate_check(phone: str) -> bool:
+    now = time.time()
+    cutoff = now - _EXPORT_WINDOW
+    with _export_lock:
+        _export_hits[phone] = [t for t in _export_hits[phone] if t > cutoff]
+        if len(_export_hits[phone]) >= _EXPORT_LIMIT:
+            return False
+        _export_hits[phone].append(now)
+        return True
+
+
 WEB_ROOT = Path(__file__).parent / "web"
 DIST_ROOT = WEB_ROOT / "dist"
 DIST_INDEX = DIST_ROOT / "index.html"
@@ -2888,6 +2921,8 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
             rows = (
                 db.query(FailedParse)
                 .order_by(FailedParse.created_at.desc())
@@ -2919,6 +2954,12 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _export_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Export limit reached. Max 3 exports per hour.")
+            from audit import audit
+            audit(db, action="ADMIN_DATA_EXPORT", actor_id=user.id, actor_phone=user.phone,
+                  resource="failed_parses.csv")
+            db.commit()
             rows = db.query(FailedParse).order_by(FailedParse.created_at.desc()).limit(5000).all()
             output = io.StringIO()
             writer = csv.writer(output)
@@ -2948,6 +2989,8 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
 
             now = utcnow()
             today_start   = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -3044,6 +3087,8 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
 
             query = db.query(User).filter(User.parent_id == None)
             if q:
@@ -3201,6 +3246,8 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
             amount = _get_cashback_amount(db)
             return {"cashback_amount": amount}
         finally:
@@ -3217,6 +3264,8 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
             if payload.cashback_amount < 0:
                 raise HTTPException(status_code=400, detail="Amount must be >= 0")
             cfg = ReferralSettings(
@@ -3255,6 +3304,8 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
 
             plan = payload.plan.upper()
             if plan not in ("GO", "PRO"):
@@ -3319,6 +3370,8 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
 
             q = db.query(TokenCode)
             if batch:

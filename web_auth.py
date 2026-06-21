@@ -20,7 +20,8 @@ from models import PendingAction, User
 from recovery_commands import _hash_pin, _verify_pin
 
 _SECRET = os.getenv("WEB_SECRET_KEY", "cv-web-secret-change-in-production")
-_TTL = 7 * 24 * 3600  # 7 days
+_TTL       = 7 * 24 * 3600  # 7 days — regular users
+_ADMIN_TTL = 8 * 3600        # 8 hours — admin users
 _OTP_ACTION = "WEB_OTP"
 _SECURE_COOKIE = os.getenv("ENVIRONMENT", "production") != "development"
 
@@ -90,8 +91,8 @@ def _sign(payload: str) -> str:
     return hmac.new(_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
 
-def create_web_token(user_id: str, phone: str) -> str:
-    exp = int(time.time()) + _TTL
+def create_web_token(user_id: str, phone: str, ttl: int = _TTL) -> str:
+    exp = int(time.time()) + ttl
     payload = f"{user_id}|{phone}|{exp}"
     sig = _sign(payload)
     raw = f"{payload}|{sig}"
@@ -172,7 +173,7 @@ def web_login(db: Session, phone: str, pin: str, ip: str = None) -> dict:
     user.pin_locked_until = None
     audit(db, action="LOGIN_OK", actor_id=user.id, actor_phone=user.phone, ip=ip)
     db.commit()
-    return _build_auth_response(user)
+    return _build_auth_response(user, db=db)
 
 
 def get_otp_channels(db: Session, phone: str) -> dict:
@@ -314,7 +315,7 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
     db.delete(pending)
     audit(db, action="PIN_RESET", actor_id=user.id, actor_phone=user.phone)
     db.commit()
-    return _build_auth_response(user)
+    return _build_auth_response(user, db=db)
 
 
 _REFERRAL_TRIAL_DAYS = 14
@@ -399,14 +400,16 @@ def web_register(db: Session, name: str, phone: str, pin: str,
     if clean_email:
         send_welcome_email(clean_email, user.name)
 
-    return _build_auth_response(user)
+    return _build_auth_response(user, db=db)
 
 
-def _build_auth_response(user: User) -> dict:
+def _build_auth_response(user: User, db=None) -> dict:
     from business_templates import menu_group_for_user
-    token = create_web_token(user.id, user.phone)
+    from admin import is_app_admin
+    ttl = _ADMIN_TTL if (db is not None and is_app_admin(user.phone, db)) else _TTL
+    token = create_web_token(user.id, user.phone, ttl=ttl)
     session_expires_at = datetime.fromtimestamp(
-        int(time.time()) + _TTL, tz=timezone.utc
+        int(time.time()) + ttl, tz=timezone.utc
     ).isoformat()
     return {
         "_token": token,  # used internally to set the cookie — not returned to client
