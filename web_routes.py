@@ -58,6 +58,25 @@ def _demo_rate_check(ip: str) -> bool:
         return True
 
 
+# ── AI endpoint rate limiter (voice transcription + chat) ─────────────────────
+# 30 AI calls per user per hour to cap OpenAI spend
+_ai_lock = threading.Lock()
+_ai_hits: dict = defaultdict(list)
+_AI_LIMIT  = 30
+_AI_WINDOW = 3600
+
+
+def _ai_rate_check(user_id: str) -> bool:
+    now = time.time()
+    cutoff = now - _AI_WINDOW
+    with _ai_lock:
+        _ai_hits[user_id] = [t for t in _ai_hits[user_id] if t > cutoff]
+        if len(_ai_hits[user_id]) >= _AI_LIMIT:
+            return False
+        _ai_hits[user_id].append(now)
+        return True
+
+
 WEB_ROOT = Path(__file__).parent / "web"
 DIST_ROOT = WEB_ROOT / "dist"
 DIST_INDEX = DIST_ROOT / "index.html"
@@ -481,9 +500,10 @@ def register_web_routes(app):
         }
 
     @app.post("/app/api/auth/register")
-    def web_auth_register(payload: RegisterRequest, response: Response):
+    def web_auth_register(payload: RegisterRequest, response: Response, request: Request):
         db = SessionLocal()
         try:
+            client_ip = request.client.host if request.client else "unknown"
             result = web_register(
                 db,
                 payload.name.strip(),
@@ -495,6 +515,7 @@ def register_web_routes(app):
                 business_type=payload.business_type,
                 business_type_label=payload.business_type_label,
                 ref_code=payload.ref_code,
+                client_ip=client_ip,
             )
             set_auth_cookie(response, result.pop("_token"))
             return result
@@ -508,7 +529,11 @@ def register_web_routes(app):
         return {"titi_whatsapp": titi_number}
 
     @app.get("/app/api/auth/otp-channels")
-    def web_otp_channels(phone: str = Query(...)):
+    def web_otp_channels(phone: str = Query(...), request: Request = None):
+        from web_auth import _rate_check, _PROBE_LIMIT, _PROBE_WINDOW
+        client_ip = request.client.host if request and request.client else "unknown"
+        if not _rate_check(f"probe:{client_ip}", _PROBE_LIMIT, _PROBE_WINDOW):
+            raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
         db = SessionLocal()
         try:
             return get_otp_channels(db, phone.strip())
@@ -671,7 +696,8 @@ def register_web_routes(app):
 
     @app.post("/app/api/chat/send")
     def web_chat_send(payload: ChatSendRequest, session: dict = Depends(require_web_auth)):
-        """Route a web chat message through the full conversation flow."""
+        if not _ai_rate_check(str(session["user_id"])):
+            raise HTTPException(status_code=429, detail="AI request limit reached. Try again in an hour.")
         from whatsapp_client import send_whatsapp_message, web_collect_start, web_collect_stop
         from webhook_home_handler import handle_home_menu_request
         from webhook_pending_router import handle_pending_actions
@@ -817,6 +843,8 @@ def register_web_routes(app):
 
     @app.post("/app/api/capture/voice")
     def web_capture_voice(payload: CaptureVoiceRequest, session: dict = Depends(require_web_auth)):
+        if not _ai_rate_check(str(session["user_id"])):
+            raise HTTPException(status_code=429, detail="AI request limit reached. Try again in an hour.")
         db = SessionLocal()
         try:
             phone = session["phone"]

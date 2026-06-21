@@ -49,6 +49,18 @@ _auth_attempts: dict[str, list[float]] = defaultdict(list)
 _AUTH_LIMIT  = 10   # max attempts
 _AUTH_WINDOW = 900  # per 15 minutes
 
+# Tighter limits for OTP verification to prevent brute-force of 6-digit codes
+_OTP_VERIFY_LIMIT  = 5   # max wrong guesses per code
+_OTP_VERIFY_WINDOW = 600 # 10 minutes (matches OTP validity)
+
+# Registration: 5 accounts per IP per hour
+_REG_LIMIT  = 5
+_REG_WINDOW = 3600
+
+# OTP-channels probe: 30 phone lookups per IP per 10 minutes
+_PROBE_LIMIT  = 30
+_PROBE_WINDOW = 600
+
 
 def _auth_rate_check(key: str) -> bool:
     """Return True if allowed, False if rate-limited. Key = phone or IP."""
@@ -57,6 +69,18 @@ def _auth_rate_check(key: str) -> bool:
     with _auth_lock:
         _auth_attempts[key] = [t for t in _auth_attempts[key] if t > cutoff]
         if len(_auth_attempts[key]) >= _AUTH_LIMIT:
+            return False
+        _auth_attempts[key].append(now)
+        return True
+
+
+def _rate_check(key: str, limit: int, window: int) -> bool:
+    """Generic sliding-window rate check backed by the same _auth_attempts store."""
+    now = time.time()
+    cutoff = now - window
+    with _auth_lock:
+        _auth_attempts[key] = [t for t in _auth_attempts[key] if t > cutoff]
+        if len(_auth_attempts[key]) >= limit:
             return False
         _auth_attempts[key].append(now)
         return True
@@ -245,6 +269,9 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
     if not new_pin or len(new_pin.strip()) < 4:
         raise HTTPException(status_code=400, detail="PIN must be at least 4 digits.")
 
+    if not _rate_check(f"otp-verify:{phone}", _OTP_VERIFY_LIMIT, _OTP_VERIFY_WINDOW):
+        raise HTTPException(status_code=429, detail="Too many attempts. Request a new code.")
+
     pending = db.query(PendingAction).filter(
         PendingAction.phone == phone,
         PendingAction.action == _OTP_ACTION,
@@ -260,6 +287,13 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
         raise HTTPException(status_code=400, detail="Code expired. Request a new one.")
 
     if not hmac.compare_digest(pending.product, otp.strip()):
+        # Track wrong guesses via the rate limiter bucket; burn OTP after 5 wrong attempts
+        pending.quantity = (pending.quantity or 0) + 1
+        if pending.quantity >= 5:
+            db.delete(pending)
+            db.commit()
+            raise HTTPException(status_code=400, detail="Too many wrong attempts. Request a new code.")
+        db.commit()
         raise HTTPException(status_code=400, detail="Incorrect code. Try again.")
 
     user = db.query(User).filter(User.phone == phone).first()
@@ -281,9 +315,13 @@ _REFERRAL_INVITE_LIMIT_BASIC = 2
 def web_register(db: Session, name: str, phone: str, pin: str,
                  email: str = None, newsletter_consent: bool = False,
                  business_category: str = None, business_type: str = None,
-                 business_type_label: str = None, ref_code: str = None) -> dict:
+                 business_type_label: str = None, ref_code: str = None,
+                 client_ip: str = "unknown") -> dict:
     from email_service import send_welcome_email
     from models import Referral, ReferralSettings
+
+    if not _rate_check(f"register:{client_ip}", _REG_LIMIT, _REG_WINDOW):
+        raise HTTPException(status_code=429, detail="Too many registrations from this network. Try again later.")
 
     if not name.strip():
         raise HTTPException(status_code=400, detail="Full name is required.")
