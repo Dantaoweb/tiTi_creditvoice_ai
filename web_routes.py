@@ -51,10 +51,12 @@ def _demo_rate_check(ip: str) -> bool:
     now = time.time()
     cutoff = now - _DEMO_WINDOW
     with _demo_lock:
-        _demo_hits[ip] = [t for t in _demo_hits[ip] if t > cutoff]
-        if len(_demo_hits[ip]) >= _DEMO_LIMIT:
+        hits = [t for t in _demo_hits[ip] if t > cutoff]
+        if len(hits) >= _DEMO_LIMIT:
+            _demo_hits[ip] = hits
             return False
-        _demo_hits[ip].append(now)
+        hits.append(now)
+        _demo_hits[ip] = hits
         return True
 
 
@@ -70,10 +72,12 @@ def _ai_rate_check(user_id: str) -> bool:
     now = time.time()
     cutoff = now - _AI_WINDOW
     with _ai_lock:
-        _ai_hits[user_id] = [t for t in _ai_hits[user_id] if t > cutoff]
-        if len(_ai_hits[user_id]) >= _AI_LIMIT:
+        hits = [t for t in _ai_hits[user_id] if t > cutoff]
+        if len(hits) >= _AI_LIMIT:
+            _ai_hits[user_id] = hits
             return False
-        _ai_hits[user_id].append(now)
+        hits.append(now)
+        _ai_hits[user_id] = hits
         return True
 
 
@@ -97,10 +101,12 @@ def _admin_rate_check(phone: str) -> bool:
     now = time.time()
     cutoff = now - _ADMIN_WINDOW
     with _admin_lock:
-        _admin_hits[phone] = [t for t in _admin_hits[phone] if t > cutoff]
-        if len(_admin_hits[phone]) >= _ADMIN_LIMIT:
+        hits = [t for t in _admin_hits[phone] if t > cutoff]
+        if len(hits) >= _ADMIN_LIMIT:
+            _admin_hits[phone] = hits
             return False
-        _admin_hits[phone].append(now)
+        hits.append(now)
+        _admin_hits[phone] = hits
         return True
 
 
@@ -108,10 +114,12 @@ def _export_rate_check(phone: str) -> bool:
     now = time.time()
     cutoff = now - _EXPORT_WINDOW
     with _export_lock:
-        _export_hits[phone] = [t for t in _export_hits[phone] if t > cutoff]
-        if len(_export_hits[phone]) >= _EXPORT_LIMIT:
+        hits = [t for t in _export_hits[phone] if t > cutoff]
+        if len(hits) >= _EXPORT_LIMIT:
+            _export_hits[phone] = hits
             return False
-        _export_hits[phone].append(now)
+        hits.append(now)
+        _export_hits[phone] = hits
         return True
 
 
@@ -119,10 +127,12 @@ def _redeem_rate_check(user_id: str) -> bool:
     now = time.time()
     cutoff = now - _REDEEM_WINDOW
     with _redeem_lock:
-        _redeem_hits[user_id] = [t for t in _redeem_hits[user_id] if t > cutoff]
-        if len(_redeem_hits[user_id]) >= _REDEEM_LIMIT:
+        hits = [t for t in _redeem_hits[user_id] if t > cutoff]
+        if len(hits) >= _REDEEM_LIMIT:
+            _redeem_hits[user_id] = hits
             return False
-        _redeem_hits[user_id].append(now)
+        hits.append(now)
+        _redeem_hits[user_id] = hits
         return True
 
 

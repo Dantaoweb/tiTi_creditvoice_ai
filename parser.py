@@ -2,10 +2,18 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import requests
 
 _ai_log = logging.getLogger("creditvoice.openai")
+
+# Cap simultaneous OpenAI calls to 4. Each call holds a DB connection for up
+# to 90 s (audio transcription timeout). With a pool ceiling of 15, leaving
+# headroom of 11 connections for all other requests prevents pool exhaustion
+# under burst AI load.
+_AI_CONCURRENCY = 4
+_ai_semaphore = threading.Semaphore(_AI_CONCURRENCY)
 
 from datetime import datetime, timedelta, timezone
 
@@ -113,23 +121,29 @@ def transcribe_audio_bytes(audio_bytes, mime_type=None):
         return None, "No audio received."
 
     filename = f"voice.{extension_for_mime_type(mime_type)}"
-    _t0 = time.monotonic()
-    response = requests.post(
-        "https://api.openai.com/v1/audio/transcriptions",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-        data={
-            "model": OPENAI_TRANSCRIBE_MODEL,
-            "response_format": "json",
-            "prompt": (
-                "This is a WhatsApp business accounting command for CreditVoice. "
-                "Common words include bought, buy, paid, pay, contributed, contribution, sold, sell, supply, "
-                "rice, beans, cement, sand, naira, k for thousand, m for million."
-            )
-        },
-        files={"file": (filename, audio_bytes, mime_type or "audio/ogg")},
-        timeout=90
-    )
-    _ms = (time.monotonic() - _t0) * 1000
+    if not _ai_semaphore.acquire(blocking=True, timeout=10):
+        _ai_log.warning("transcribe rejected — AI concurrency limit reached")
+        return None, "Server busy, please try again in a moment."
+    try:
+        _t0 = time.monotonic()
+        response = requests.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            data={
+                "model": OPENAI_TRANSCRIBE_MODEL,
+                "response_format": "json",
+                "prompt": (
+                    "This is a WhatsApp business accounting command for CreditVoice. "
+                    "Common words include bought, buy, paid, pay, contributed, contribution, sold, sell, supply, "
+                    "rice, beans, cement, sand, naira, k for thousand, m for million."
+                )
+            },
+            files={"file": (filename, audio_bytes, mime_type or "audio/ogg")},
+            timeout=90
+        )
+        _ms = (time.monotonic() - _t0) * 1000
+    finally:
+        _ai_semaphore.release()
     if response.status_code >= 400:
         _ai_log.error("transcribe status=%s %.0fms", response.status_code, _ms)
         return None, "Voice transcription failed."
@@ -288,6 +302,9 @@ def interpret_text_with_openai(text_value):
         "}"
     )
 
+    if not _ai_semaphore.acquire(blocking=True, timeout=10):
+        _ai_log.warning("parse rejected — AI concurrency limit reached")
+        return None
     try:
         _t0 = time.monotonic()
         response = requests.post(
@@ -311,6 +328,8 @@ def interpret_text_with_openai(text_value):
     except requests.RequestException as exc:
         _ai_log.error("parse request error: %s", repr(exc))
         return None
+    finally:
+        _ai_semaphore.release()
 
     if response.status_code >= 400:
         _ai_log.error("parse status=%s %.0fms", response.status_code, _ms)
@@ -380,6 +399,9 @@ def interpret_text_with_openai_followup(original_message, clarification_question
         "}"
     )
 
+    if not _ai_semaphore.acquire(blocking=True, timeout=10):
+        _ai_log.warning("followup rejected — AI concurrency limit reached")
+        return None
     try:
         _t0 = time.monotonic()
         response = requests.post(
@@ -403,6 +425,8 @@ def interpret_text_with_openai_followup(original_message, clarification_question
     except requests.RequestException as exc:
         _ai_log.error("followup request error: %s", repr(exc))
         return None
+    finally:
+        _ai_semaphore.release()
 
     if response.status_code >= 400:
         _ai_log.error("followup status=%s %.0fms", response.status_code, _ms)
