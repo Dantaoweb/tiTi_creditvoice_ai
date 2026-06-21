@@ -45,8 +45,8 @@ async def lifespan(_app: FastAPI):
     if task:
         task.cancel()
         try:
-            await task
-        except asyncio.CancelledError:
+            await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
 
 

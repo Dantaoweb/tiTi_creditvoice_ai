@@ -2,11 +2,27 @@ import hmac
 import os
 
 from fastapi import Request
+from fastapi.responses import JSONResponse
 
-from database import engine
+from database import engine, SessionLocal
 
 
 def register_http_routes(app):
+    @app.get("/health")
+    def health_check():
+        """Render health check — verifies the app and DB are both reachable."""
+        db = SessionLocal()
+        try:
+            db.execute(__import__("sqlalchemy").text("SELECT 1"))
+            return {"status": "ok", "db": "ok"}
+        except Exception as exc:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "error", "db": str(exc)},
+            )
+        finally:
+            db.close()
+
     @app.get("/debug/schema")
     def debug_schema(token: str):
         expected_token = os.getenv("WEBHOOK_VERIFY_TOKEN", "")
