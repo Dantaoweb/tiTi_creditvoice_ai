@@ -41,6 +41,10 @@ def register_webhook_routes(app):
 
         signature = req.headers.get("X-Hub-Signature-256")
         if not _verify_whatsapp_signature(raw_body, signature):
+            _log.warning(
+                "WhatsApp webhook signature FAILED from %s — possible spoofing attempt",
+                req.client.host if req.client else "unknown",
+            )
             raise HTTPException(status_code=403, detail="Invalid webhook signature.")
 
         try:

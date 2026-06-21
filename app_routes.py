@@ -1,11 +1,15 @@
 import hmac
+import logging
 import os
 import time
+from datetime import datetime, timezone
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from database import engine, SessionLocal
+
+_health_log = logging.getLogger("creditvoice.health")
 
 
 def register_http_routes(app):
@@ -22,24 +26,37 @@ def register_http_routes(app):
 
         uptime_s = int(time.monotonic() - _APP_START)
 
+        # Scheduler is considered healthy if it ran within the last 25 hours.
+        # The cycle is every 6h; 25h allows one missed cycle before alerting.
+        _SCHEDULER_STALE_HOURS = 25
+        last_run = proactive_scheduler.last_run_at
+        if last_run is None:
+            # Not yet run — only flag as stale if the process has been up > 7h
+            scheduler_ok = uptime_s < _SCHEDULER_STALE_HOURS * 3600
+        else:
+            age_h = (datetime.now(timezone.utc) - last_run).total_seconds() / 3600
+            scheduler_ok = age_h < _SCHEDULER_STALE_HOURS
+            if not scheduler_ok:
+                _health_log.warning(
+                    "Proactive scheduler last ran %.1fh ago — expected every 6h", age_h
+                )
+
         db = SessionLocal()
         t0 = time.monotonic()
         try:
             db.execute(__import__("sqlalchemy").text("SELECT 1"))
             db_ms = round((time.monotonic() - t0) * 1000, 1)
-            scheduler_run = (
-                proactive_scheduler.last_run_at.isoformat()
-                if proactive_scheduler.last_run_at else None
-            )
             return {
                 "status": "ok",
                 "db": "ok",
                 "db_latency_ms": db_ms,
                 "uptime_seconds": uptime_s,
-                "scheduler_last_run": scheduler_run,
+                "scheduler_last_run": last_run.isoformat() if last_run else None,
+                "scheduler_ok": scheduler_ok,
             }
         except Exception as exc:
             db_ms = round((time.monotonic() - t0) * 1000, 1)
+            _health_log.error("DB health check failed: %s", exc)
             return JSONResponse(
                 status_code=503,
                 content={
@@ -47,6 +64,7 @@ def register_http_routes(app):
                     "db": str(exc),
                     "db_latency_ms": db_ms,
                     "uptime_seconds": uptime_s,
+                    "scheduler_ok": scheduler_ok,
                 },
             )
         finally:

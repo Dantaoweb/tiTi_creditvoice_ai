@@ -113,7 +113,14 @@ class _RequestTimingMiddleware(BaseHTTPMiddleware):
         t0 = time.monotonic()
         response = await call_next(request)
         ms = (time.monotonic() - t0) * 1000
-        _timing_log.info(
+        if response.status_code >= 500:
+            level = logging.ERROR
+        elif response.status_code >= 400 or ms > 3000:
+            level = logging.WARNING
+        else:
+            level = logging.INFO
+        _timing_log.log(
+            level,
             "%s %s %s %.0fms",
             request.method,
             path,
