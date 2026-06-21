@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: sqlite:///./test.db
+      ENVIRONMENT: development
+      WEB_SECRET_KEY: ci-test-secret-key-not-used-in-production-000000000000000000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check for syntax errors
+        run: python -m py_compile $(git ls-files '*.py' | grep -v '.venv')
+
+      - name: Run tests
+        run: pytest --tb=short -q
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for hardcoded secrets
+        run: |
+          # Fail if any tracked file contains patterns that look like real secrets
+          FOUND=0
+          for f in $(git ls-files '*.py' '*.js' '*.jsx' '*.ts' '*.tsx' '*.env*'); do
+            if grep -qE "(sk-proj-[a-zA-Z0-9_-]{40}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC )?PRIVATE KEY)" "$f"; then
+              echo "FAIL: possible secret in $f"
+              FOUND=1
+            fi
+          done
+          [ $FOUND -eq 0 ] || exit 1
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

@@ -2,13 +2,17 @@ from pathlib import Path
 from typing import Optional
 import base64
 import json
+import os
+import threading
+import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
 from fastapi import Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from database import SessionLocal
 from models import (
     AppNotification, AutomationSettings, Branch, Customer, FailedParse, FastCaptureSettings,
@@ -36,6 +40,24 @@ from web_pos import get_pos_receipt, save_pos_sale
 from webhook_context import load_webhook_user_context, visibility_recorded_by_id
 
 
+# ── Demo endpoint rate limiter ────────────────────────────────────────────────
+_demo_lock = threading.Lock()
+_demo_hits: dict = defaultdict(list)
+_DEMO_LIMIT = 20   # requests per IP
+_DEMO_WINDOW = 60  # per 60 seconds
+
+
+def _demo_rate_check(ip: str) -> bool:
+    now = time.time()
+    cutoff = now - _DEMO_WINDOW
+    with _demo_lock:
+        _demo_hits[ip] = [t for t in _demo_hits[ip] if t > cutoff]
+        if len(_demo_hits[ip]) >= _DEMO_LIMIT:
+            return False
+        _demo_hits[ip].append(now)
+        return True
+
+
 WEB_ROOT = Path(__file__).parent / "web"
 DIST_ROOT = WEB_ROOT / "dist"
 DIST_INDEX = DIST_ROOT / "index.html"
@@ -53,44 +75,44 @@ def _read_index():
 # ── Pydantic request models ──────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
-    phone: str
-    pin: str
+    phone: str = Field(max_length=20)
+    pin: str = Field(max_length=10)
 
 class RegisterRequest(BaseModel):
-    name: str
-    phone: str
-    pin: str
-    email: Optional[str] = None
+    name: str = Field(max_length=120)
+    phone: str = Field(max_length=20)
+    pin: str = Field(max_length=10)
+    email: Optional[str] = Field(default=None, max_length=254)
     newsletter_consent: bool = False
-    business_category: Optional[str] = None
-    business_type: Optional[str] = None
-    business_type_label: Optional[str] = None
-    ref_code: Optional[str] = None
+    business_category: Optional[str] = Field(default=None, max_length=60)
+    business_type: Optional[str] = Field(default=None, max_length=60)
+    business_type_label: Optional[str] = Field(default=None, max_length=120)
+    ref_code: Optional[str] = Field(default=None, max_length=20)
 
 class OtpRequest(BaseModel):
-    phone: str
-    channel: str = "auto"  # "email", "whatsapp", or "auto"
+    phone: str = Field(max_length=20)
+    channel: str = Field(default="auto", max_length=20)
 
 class SetPinRequest(BaseModel):
-    phone: str
-    otp: str
-    new_pin: str
+    phone: str = Field(max_length=20)
+    otp: str = Field(max_length=10)
+    new_pin: str = Field(max_length=10)
 
 
 class DemoChatRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=500)
 
 class ChatSendRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=2000)
 
 class StaffInviteRequest(BaseModel):
-    name: str
-    phone: str
-    email: Optional[str] = None
+    name: str = Field(max_length=120)
+    phone: str = Field(max_length=20)
+    email: Optional[str] = Field(default=None, max_length=254)
 
 class StaffAcceptRequest(BaseModel):
-    phone: str
-    code: str
+    phone: str = Field(max_length=20)
+    code: str = Field(max_length=10)
 
 class FastModeToggleRequest(BaseModel):
     enabled: bool
@@ -98,32 +120,32 @@ class FastModeToggleRequest(BaseModel):
     end_hour: Optional[int] = None
 
 class CapturePreviewRequest(BaseModel):
-    phone: str
-    text: str
+    phone: str = Field(max_length=20)
+    text: str = Field(max_length=2000)
 
 
 class CaptureConfirmRequest(BaseModel):
-    phone: str
+    phone: str = Field(max_length=20)
 
 
 class CaptureVoiceRequest(BaseModel):
-    phone: str
-    audio_base64: str
-    mime_type: Optional[str] = "audio/webm"
+    phone: str = Field(max_length=20)
+    audio_base64: str = Field(max_length=2_000_000)  # ~1.5 MB binary
+    mime_type: Optional[str] = Field(default="audio/webm", max_length=50)
 
 
 class PosCartItem(BaseModel):
     inventory_item_id: Optional[int] = None
-    name: str
+    name: str = Field(max_length=120)
     qty: float = 1.0
-    unit: Optional[str] = None
+    unit: Optional[str] = Field(default=None, max_length=30)
     unit_price: int = 0
-    sold_unit: Optional[str] = None   # retail sub-unit name when selling pieces
-    fraction: Optional[float] = 1.0  # multiplier for fractional base-unit sales
+    sold_unit: Optional[str] = Field(default=None, max_length=30)
+    fraction: Optional[float] = 1.0
 
 
 class PosSaveRequest(BaseModel):
-    owner_phone: str
+    owner_phone: str = Field(max_length=20)
     customer_id: Optional[int] = None
     items: list[PosCartItem]
     payment_amount: int = 0
@@ -131,55 +153,55 @@ class PosSaveRequest(BaseModel):
 
 
 class AddInventoryRequest(BaseModel):
-    owner_phone: str
-    name: str
-    unit: Optional[str] = None
+    owner_phone: str = Field(max_length=20)
+    name: str = Field(max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
     quantity: Optional[float] = 0.0
     cost_price: Optional[int] = None
     selling_price: Optional[int] = None
     low_stock_alert: Optional[int] = None
     is_service: bool = False
-    retail_unit: Optional[str] = None
+    retail_unit: Optional[str] = Field(default=None, max_length=30)
     retail_per_base: Optional[int] = None
     retail_price: Optional[int] = None
 
 
 class EditInventoryRequest(BaseModel):
-    name: Optional[str] = None
-    unit: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
     cost_price: Optional[int] = None
     selling_price: Optional[int] = None
     low_stock_alert: Optional[int] = None
     is_available: Optional[bool] = None
-    retail_unit: Optional[str] = None
+    retail_unit: Optional[str] = Field(default=None, max_length=30)
     retail_per_base: Optional[int] = None
     retail_price: Optional[int] = None
 
 
 class AdjustStockRequest(BaseModel):
     qty_delta: int
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class BulkAddInventoryRequest(BaseModel):
-    owner_phone: str
+    owner_phone: str = Field(max_length=20)
     names: list
 
 
 class AddCustomerRequest(BaseModel):
-    owner_phone: str
-    name: str
-    phone: Optional[str] = None
+    owner_phone: str = Field(max_length=20)
+    name: str = Field(max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=20)
 
 
 class RecordPaymentRequest(BaseModel):
     amount: int
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=500)
     branch_id: Optional[int] = None
 
 
 class CreateBranchRequest(BaseModel):
-    name: str
+    name: str = Field(max_length=60)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -198,6 +220,12 @@ def _money(value):
 
 def _iso(value):
     return value.isoformat() if value else None
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that could break a Content-Disposition filename= field."""
+    import re
+    return re.sub(r'["\\\r\n;]', "_", name)
 
 
 def _owner_filter(query, model, owner_phone):
@@ -407,6 +435,11 @@ def register_web_routes(app):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        if os.getenv("ENVIRONMENT", "production") != "development":
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
         return response
 
     # ── Static assets from React build ──────────────────────────────────
@@ -628,8 +661,11 @@ def register_web_routes(app):
 
     # ── Chat ─────────────────────────────────────────────────────────────
     @app.post("/app/api/chat/demo")
-    def web_chat_demo(payload: DemoChatRequest):
+    def web_chat_demo(payload: DemoChatRequest, request: Request):
         """Parse a message for the public demo — no auth, no database write."""
+        client_ip = request.client.host if request.client else "unknown"
+        if not _demo_rate_check(client_ip):
+            raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
         parsed = parse_message(payload.text.strip()) if payload.text.strip() else None
         return {"reply": _format_demo_reply(parsed)}
 
@@ -890,12 +926,23 @@ def register_web_routes(app):
             db.close()
 
     @app.get("/app/api/pos/receipt/{tx_id}")
-    def web_pos_receipt(tx_id: int):
+    def web_pos_receipt(tx_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
+            owner_phone = _session_owner_phone(db, session)
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if not tx:
+                raise HTTPException(status_code=404, detail="Receipt not found.")
+            # Verify the transaction belongs to this business
+            recorder = db.query(User).filter(User.id == tx.recorded_by_id).first() if tx.recorded_by_id else None
+            recorder_phone = recorder.phone if recorder else None
+            if recorder and recorder.parent_id:
+                parent = db.query(User).filter(User.id == recorder.parent_id).first()
+                recorder_phone = parent.phone if parent else recorder_phone
+            if recorder_phone != owner_phone:
+                raise HTTPException(status_code=404, detail="Receipt not found.")
             receipt = get_pos_receipt(db, tx_id)
             if not receipt:
-                from fastapi import HTTPException
                 raise HTTPException(status_code=404, detail="Receipt not found.")
             return receipt
         finally:
@@ -1007,9 +1054,12 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
-            customer = db.query(Customer).filter(Customer.id == customer_id).first()
+            owner_phone = _session_owner_phone(db, session)
+            customer = db.query(Customer).filter(
+                Customer.id == customer_id,
+                Customer.owner_phone == owner_phone,
+            ).first()
             if not customer:
-                from fastapi import HTTPException
                 raise HTTPException(status_code=404, detail="Customer not found.")
             tx = Transaction(
                 customer_id=customer_id,
@@ -1232,9 +1282,12 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
-            item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+            owner_phone = _session_owner_phone(db, session)
+            item = db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.owner_phone == owner_phone,
+            ).first()
             if not item:
-                from fastapi import HTTPException
                 raise HTTPException(status_code=404, detail="Item not found.")
             if payload.name is not None:
                 item.name = payload.name.strip().lower()
@@ -1246,12 +1299,10 @@ def register_web_routes(app):
                 # Only enforce limit when activating a previously draft item
                 if item.selling_price is None:
                     from subscriptions import get_business_subscription
-                    owner_phone = _session_owner_phone(db, session)
                     owner = db.query(User).filter(User.phone == owner_phone).first()
                     sub = get_business_subscription(db, owner) if owner else None
                     err = _check_inventory_limit(db, owner_phone, sub)
                     if err:
-                        from fastapi import HTTPException
                         raise HTTPException(status_code=403, detail=err)
                 item.selling_price = payload.selling_price
             if payload.low_stock_alert is not None:
@@ -1278,9 +1329,12 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
-            item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+            owner_phone = _session_owner_phone(db, session)
+            item = db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.owner_phone == owner_phone,
+            ).first()
             if not item:
-                from fastapi import HTTPException
                 raise HTTPException(status_code=404, detail="Item not found.")
             delta = payload.qty_delta
             item.quantity = (item.quantity or 0) + delta
@@ -1650,9 +1704,13 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    class WalletMatchRequest(BaseModel):
+        wallet_tx_id: int
+        customer_id: int
+
     @app.post("/app/api/wallet/match")
     def web_wallet_match(
-        payload: dict,
+        payload: WalletMatchRequest,
         session: dict = Depends(require_web_auth),
     ):
         """Manually match an unmatched inbound payment to a customer."""
@@ -1663,8 +1721,8 @@ def register_web_routes(app):
             owner_phone = user_ctx.business_owner_phone or session["phone"]
             tx, err = manually_match_payment(
                 db,
-                payload.get("wallet_tx_id"),
-                payload.get("customer_id"),
+                payload.wallet_tx_id,
+                payload.customer_id,
                 owner_phone,
             )
             if err:
@@ -1702,10 +1760,10 @@ def register_web_routes(app):
             db.close()
 
     class StaffProfileUpdateRequest(BaseModel):
-        staff_position: Optional[str] = None
-        staff_level: Optional[str] = None
+        staff_position: Optional[str] = Field(default=None, max_length=60)
+        staff_level: Optional[str] = Field(default=None, max_length=60)
         staff_salary: Optional[int] = None
-        staff_matric: Optional[str] = None
+        staff_matric: Optional[str] = Field(default=None, max_length=60)
 
     @app.put("/app/api/staff/{user_id}/profile")
     def web_update_staff_profile(
@@ -1737,11 +1795,11 @@ def register_web_routes(app):
     # ── School Teacher Roster ─────────────────────────────────────────────────
 
     class SchoolTeacherRequest(BaseModel):
-        name: str
-        subject: Optional[str] = None
-        class_name: Optional[str] = None
-        phone: Optional[str] = None
-        employee_id: Optional[str] = None
+        name: str = Field(max_length=120)
+        subject: Optional[str] = Field(default=None, max_length=60)
+        class_name: Optional[str] = Field(default=None, max_length=60)
+        phone: Optional[str] = Field(default=None, max_length=20)
+        employee_id: Optional[str] = Field(default=None, max_length=60)
 
     @app.get("/app/api/school/teachers")
     def web_school_teachers(session: dict = Depends(require_web_auth)):
@@ -1853,11 +1911,11 @@ def register_web_routes(app):
     # ── Partners & Investors ──────────────────────────────────────────────────
 
     class PartnerInviteRequest(BaseModel):
-        partner_phone: str
-        role: str = "partner"
+        partner_phone: str = Field(max_length=20)
+        role: str = Field(default="partner", max_length=20)
         equity_percent: Optional[float] = None
         investment_amount: Optional[int] = None
-        notes: Optional[str] = None
+        notes: Optional[str] = Field(default=None, max_length=1000)
 
     @app.get("/app/api/partners")
     def web_partners(session: dict = Depends(require_web_auth)):
@@ -1978,11 +2036,11 @@ def register_web_routes(app):
     # ── Business notes ────────────────────────────────────────────────────────
 
     class CreateNoteRequest(BaseModel):
-        body: str
-        category: str = "memo"
+        body: str = Field(max_length=2000)
+        category: str = Field(default="memo", max_length=30)
         amount: Optional[int] = None
-        visibility: str = "owner_only"
-        owner_phone: Optional[str] = None
+        visibility: str = Field(default="owner_only", max_length=30)
+        owner_phone: Optional[str] = Field(default=None, max_length=20)
 
     @app.get("/app/api/notes")
     def web_notes(
@@ -2285,7 +2343,7 @@ def register_web_routes(app):
 
     class ThriftSaveRequest(BaseModel):
         amount: int
-        note: Optional[str] = None
+        note: Optional[str] = Field(default=None, max_length=500)
 
     @app.post("/app/api/thrift/save")
     def web_thrift_personal_save(
@@ -2314,8 +2372,8 @@ def register_web_routes(app):
             db.close()
 
     class ThriftParticipantRequest(BaseModel):
-        name: str
-        phone: Optional[str] = None
+        name: str = Field(max_length=120)
+        phone: Optional[str] = Field(default=None, max_length=20)
 
     @app.post("/app/api/thrift/participants")
     def web_thrift_add_participant(
@@ -2347,10 +2405,22 @@ def register_web_routes(app):
 
     # ── Reminders ──────────────────────────────────────────────────────────
     @app.get("/app/api/reminders")
-    def web_reminders(owner_phone: Optional[str] = Query(default=None)):
+    def web_reminders(
+        owner_phone: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
         db = SessionLocal()
         try:
-            query = _owner_filter(db.query(ReminderQueue), ReminderQueue, owner_phone)
+            from admin import is_app_admin
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found.")
+            # Admins may view any business; everyone else is bound to their own
+            if owner_phone and is_app_admin(user.phone, db):
+                phone = owner_phone
+            else:
+                phone = _session_owner_phone(db, session)
+            query = _owner_filter(db.query(ReminderQueue), ReminderQueue, phone)
             rows = query.order_by(ReminderQueue.created_at.desc()).limit(200).all()
             return {
                 "reminders": [
@@ -2411,19 +2481,19 @@ def register_web_routes(app):
             db.close()
 
     class AutomationUpdateRequest(BaseModel):
-        owner_phone: Optional[str] = None
+        owner_phone: Optional[str] = Field(default=None, max_length=20)
         # reminder fields
         reminder_preview_enabled: Optional[bool] = None
         reminder_auto_send_enabled: Optional[bool] = None
-        reminder_time: Optional[str] = None
+        reminder_time: Optional[str] = Field(default=None, max_length=10)
         # bot fields
         bot_enabled: Optional[bool] = None
         auto_reply_enabled: Optional[bool] = None
         auto_order_enabled: Optional[bool] = None
         allow_part_payment: Optional[bool] = None
-        payment_modes: Optional[str] = None
-        delivery_note: Optional[str] = None
-        pickup_address: Optional[str] = None
+        payment_modes: Optional[str] = Field(default=None, max_length=200)
+        delivery_note: Optional[str] = Field(default=None, max_length=500)
+        pickup_address: Optional[str] = Field(default=None, max_length=200)
 
     @app.post("/app/api/automation")
     def web_update_automation(
@@ -2476,7 +2546,7 @@ def register_web_routes(app):
             return StreamingResponse(
                 iter([csv_bytes]),
                 media_type="text/csv; charset=utf-8",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                headers={"Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'},
             )
         finally:
             db.close()
@@ -2489,16 +2559,23 @@ def register_web_routes(app):
         session: dict = Depends(require_web_auth),
     ):
         """Authenticated CSV export for the web dashboard."""
+        from admin import is_app_admin
         from export_utils import build_export_csv
         db = SessionLocal()
         try:
-            phone = owner_phone or session.get("phone", "")
+            session_phone = _session_owner_phone(db, session)
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            # Admins may export any phone; everyone else is bound to their own business
+            if owner_phone and user and is_app_admin(user.phone, db):
+                phone = owner_phone
+            else:
+                phone = session_phone
             period_key = period.upper() if period else None
             filename, csv_bytes = build_export_csv(db, phone, period_key, export_type)
             return StreamingResponse(
                 iter([csv_bytes]),
                 media_type="text/csv; charset=utf-8",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                headers={"Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'},
             )
         finally:
             db.close()
@@ -2573,7 +2650,7 @@ def register_web_routes(app):
             return StreamingResponse(
                 iter([pdf_bytes]),
                 media_type="application/pdf",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                headers={"Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'},
             )
         finally:
             db.close()
@@ -2666,7 +2743,7 @@ def register_web_routes(app):
             return StreamingResponse(
                 iter([pdf_bytes]),
                 media_type="application/pdf",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                headers={"Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'},
             )
         finally:
             db.close()
@@ -2745,7 +2822,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
             rows = (
                 db.query(FailedParse)
@@ -2776,7 +2853,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
             rows = db.query(FailedParse).order_by(FailedParse.created_at.desc()).limit(5000).all()
             output = io.StringIO()
@@ -2805,7 +2882,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
 
             now = utcnow()
@@ -2901,7 +2978,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
 
             query = db.query(User).filter(User.parent_id == None)
@@ -2960,7 +3037,7 @@ def register_web_routes(app):
         ).count()
 
     class SetReferralCodeRequest(BaseModel):
-        code: str
+        code: str = Field(max_length=20)
 
     @app.get("/app/api/referral")
     def web_referral_get(session: dict = Depends(require_web_auth)):
@@ -3058,7 +3135,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
             amount = _get_cashback_amount(db)
             return {"cashback_amount": amount}
@@ -3074,7 +3151,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
             if payload.cashback_amount < 0:
                 raise HTTPException(status_code=400, detail="Amount must be >= 0")
@@ -3092,10 +3169,10 @@ def register_web_routes(app):
     # ── Token codes ──────────────────────────────────────────────────────────
 
     class TokenGenerateRequest(BaseModel):
-        plan: str
+        plan: str = Field(max_length=10)
         duration_days: int
         count: int
-        batch_label: str = ""
+        batch_label: str = Field(default="", max_length=60)
         expires_in_days: Optional[int] = None
 
     @app.post("/app/api/admin/token-codes/generate")
@@ -3108,7 +3185,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
 
             plan = payload.plan.upper()
@@ -3152,7 +3229,7 @@ def register_web_routes(app):
             return StreamingResponse(
                 iter([buf.getvalue()]),
                 media_type="text/csv",
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                headers={"Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'},
             )
         finally:
             db.close()
@@ -3168,7 +3245,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
-            if not user or not is_app_admin(db, user.phone):
+            if not user or not is_app_admin(user.phone, db):
                 raise HTTPException(status_code=403, detail="Admin only")
 
             q = db.query(TokenCode)
@@ -3199,7 +3276,7 @@ def register_web_routes(app):
             db.close()
 
     class TokenRedeemRequest(BaseModel):
-        code: str
+        code: str = Field(max_length=20)
 
     @app.post("/app/api/token-codes/redeem")
     def web_token_redeem(

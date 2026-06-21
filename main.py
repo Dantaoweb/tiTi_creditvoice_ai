@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,7 +13,7 @@ from webhook_routes import register_webhook_routes
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     from proactive_scheduler import run_proactive_scheduler
     task = asyncio.create_task(run_proactive_scheduler())
     yield
@@ -23,7 +24,13 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(lifespan=lifespan)
+_dev = os.getenv("ENVIRONMENT", "production") == "development"
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if _dev else None,
+    redoc_url="/redoc" if _dev else None,
+    openapi_url="/openapi.json" if _dev else None,
+)
 
 Base.metadata.create_all(engine)
 ensure_schema_updates(engine)

@@ -5,7 +5,7 @@ try:
 except ImportError:
     load_dotenv = None
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -28,6 +28,12 @@ if _is_sqlite:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    # SQLite does not enforce FK constraints by default — enable per connection.
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fk(dbapi_conn, _):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
 else:
     # PostgreSQL (production): tuned for Render + cloud-managed databases
     # that terminate idle connections and use SSL-terminated load balancers.

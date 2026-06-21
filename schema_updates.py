@@ -1,4 +1,15 @@
+import re
+
 from sqlalchemy import inspect, text
+
+_SAFE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_table(name: str) -> str:
+    """Raise if name is not a plain SQL identifier (guards f-string raw SQL)."""
+    if not _SAFE_IDENT.match(name):
+        raise ValueError(f"Unsafe table name rejected: {name!r}")
+    return name
 
 
 def repair_empty_sqlite_integer_id_tables(engine):
@@ -18,7 +29,7 @@ def repair_empty_sqlite_integer_id_tables(engine):
     inspector = inspect(engine)
 
     for model in models_to_repair:
-        table_name = model.__tablename__
+        table_name = _safe_table(model.__tablename__)
         if table_name not in inspector.get_table_names():
             continue
 

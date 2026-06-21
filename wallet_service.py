@@ -330,7 +330,16 @@ def provision_virtual_account(db, owner_phone: str, business_name: str) -> dict:
 def verify_webhook_signature(payload_bytes: bytes, signature_header: str) -> bool:
     """Verify that the webhook came from Monnify (HMAC-SHA512 of raw body)."""
     if not MONNIFY_SECRET_KEY:
-        return True  # dev mode — no key configured, skip
+        if os.getenv("ENVIRONMENT", "production") == "development":
+            import warnings
+            warnings.warn(
+                "MONNIFY_SECRET_KEY not set — webhook signature check skipped in dev mode.",
+                stacklevel=2,
+            )
+            return True
+        # Fail-secure in production: reject all webhooks if key is not configured
+        print("[wallet] CRITICAL: MONNIFY_SECRET_KEY not set — rejecting webhook.", flush=True)
+        return False
     expected = hmac.new(
         MONNIFY_SECRET_KEY.encode(),
         payload_bytes,

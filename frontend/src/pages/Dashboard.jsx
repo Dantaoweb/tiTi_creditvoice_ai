@@ -108,12 +108,12 @@ function InviteCard() {
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>WhatsApp link (friend messages tiTi directly)</div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <span style={{ fontSize: 11, color: "var(--text-muted)", flex: 1 }}>
-                      {`https://wa.me/${titiNumber}?text=join ${data.referral_code}`}
+                      {`https://wa.me/${titiNumber}?text=${encodeURIComponent("join " + data.referral_code)}`}
                     </span>
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={() => {
-                        navigator.clipboard.writeText(`https://wa.me/${titiNumber}?text=join ${data.referral_code}`);
+                        navigator.clipboard.writeText(`https://wa.me/${titiNumber}?text=${encodeURIComponent("join " + data.referral_code)}`);
                         setCopied("wa");
                         setTimeout(() => setCopied(false), 2000);
                       }}
@@ -267,7 +267,7 @@ function WhatsAppNudge({ titiNumber }) {
     () => localStorage.getItem(WA_NUDGE_KEY) === "1"
   );
   if (dismissed || !titiNumber) return null;
-  const waLink = `https://wa.me/${titiNumber}?text=Hello`;
+  const waLink = `https://wa.me/${titiNumber}?text=${encodeURIComponent("Hello")}`;
   return (
     <div className="wa-nudge">
       <MessageCircle size={18} className="wa-nudge-icon" />

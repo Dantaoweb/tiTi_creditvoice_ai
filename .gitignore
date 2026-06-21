@@ -1,3 +1,64 @@
+# ── Secrets & credentials ─────────────────────────────────────────────────────
 .env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# ── Database files ─────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Cryptographic keys & certificates ─────────────────────────────────────────
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# ── Uploads & generated files ─────────────────────────────────────────────────
+uploads/
+tmp/
+temp/
+
+# ── Node / Frontend build ──────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+# NOTE: web/dist/ is currently tracked because Render serves it directly.
+# To untrack it, add a Render build command:
+#   cd frontend && npm install && npm run build
+# then run: git rm -r --cached web/dist/
+
+# ── OS & editor noise ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml

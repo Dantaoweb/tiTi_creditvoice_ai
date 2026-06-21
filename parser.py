@@ -48,15 +48,38 @@ def get_whatsapp_media_info(media_id):
     return response.json()
 
 
+_ALLOWED_MEDIA_HOSTS = {
+    "lookaside.fbsbx.com",
+    "mmg.whatsapp.net",
+    "media.whatsapp.net",
+    "scontent.whatsapp.net",
+}
+
+
+def _is_safe_media_url(url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        return parsed.scheme == "https" and parsed.netloc in _ALLOWED_MEDIA_HOSTS
+    except Exception:
+        return False
+
+
 def download_whatsapp_media(media_id):
     media_info = get_whatsapp_media_info(media_id)
     if not media_info or not media_info.get("url"):
         return None, None
 
+    media_url = media_info["url"]
+    if not _is_safe_media_url(media_url):
+        print(f"[media] Blocked unsafe media URL: {media_url}", flush=True)
+        return None, None
+
     response = requests.get(
-        media_info["url"],
+        media_url,
         headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
-        timeout=60
+        timeout=60,
+        allow_redirects=False,
     )
     if response.status_code >= 400:
         print("WhatsApp media download error:", response.text, flush=True)

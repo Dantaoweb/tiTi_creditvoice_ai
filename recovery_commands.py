@@ -11,6 +11,7 @@ Recovery flow (from the new phone number):
 """
 import binascii
 import hashlib
+import hmac
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -40,7 +41,7 @@ def _verify_pin(pin: str, stored: str) -> bool:
         salt_hex, dk_hex = stored.split(":")
         salt = binascii.unhexlify(salt_hex)
         dk = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, 100_000)
-        return binascii.hexlify(dk).decode() == dk_hex
+        return hmac.compare_digest(binascii.hexlify(dk).decode(), dk_hex)
     except Exception:
         return False
 

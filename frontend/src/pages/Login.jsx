@@ -73,7 +73,7 @@ export default function Login() {
   function reset() { setErr(""); setInfo(""); }
   function goMode(m) { reset(); setMode(m); }
 
-  const waLink = titiNumber ? `https://wa.me/${titiNumber}?text=Hello` : null;
+  const waLink = titiNumber ? `https://wa.me/${titiNumber}?text=${encodeURIComponent("Hello")}` : null;
 
   // ── Sign in ──────────────────────────────────────────────────────────────
   async function handleLogin(e) {

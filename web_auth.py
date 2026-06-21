@@ -24,11 +24,19 @@ _TTL = 7 * 24 * 3600  # 7 days
 _OTP_ACTION = "WEB_OTP"
 _SECURE_COOKIE = os.getenv("ENVIRONMENT", "production") != "development"
 
-if _SECRET == "cv-web-secret-change-in-production":
+_WEAK_KEYS = {
+    "cv-web-secret-change-in-production",
+    "your_web_secret_key",
+    "change_me",
+    "secret",
+    "replace_with_64_char_hex_secret",
+}
+if _SECRET in _WEAK_KEYS or len(_SECRET) < 32:
     import warnings
     warnings.warn(
-        "WEB_SECRET_KEY is set to the default placeholder. "
-        "Set a strong random value in your .env before going to production.",
+        "WEB_SECRET_KEY is weak or a placeholder. "
+        "Generate a strong value with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        "and set it in your environment before going to production.",
         stacklevel=1,
     )
 
@@ -251,7 +259,7 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
         db.commit()
         raise HTTPException(status_code=400, detail="Code expired. Request a new one.")
 
-    if pending.product != otp.strip():
+    if not hmac.compare_digest(pending.product, otp.strip()):
         raise HTTPException(status_code=400, detail="Incorrect code. Try again.")
 
     user = db.query(User).filter(User.phone == phone).first()

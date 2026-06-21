@@ -32,7 +32,7 @@ export default function Landing() {
 
   if (isAuthed) return <Navigate to="/home" replace />;
 
-  const waLink = titiNumber ? `https://wa.me/${titiNumber}?text=Hello` : null;
+  const waLink = titiNumber ? `https://wa.me/${titiNumber}?text=${encodeURIComponent("Hello")}` : null;
 
   async function handleSend(e) {
     e.preventDefault();
