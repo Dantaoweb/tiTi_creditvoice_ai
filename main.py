@@ -5,6 +5,7 @@ import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app_routes import register_http_routes
@@ -60,6 +61,23 @@ app = FastAPI(
 
 Base.metadata.create_all(engine)
 ensure_schema_updates(engine)
+
+# Explicit CORS policy — driven by env var so it's auditable and intentional.
+# Production: set CORS_ALLOWED_ORIGINS to your Render URL (no trailing slash).
+# Development: Vite proxies /app/api to localhost:8000 so the browser sees
+# same-origin requests — leave blank or set to http://localhost:5173.
+_cors_origins = [
+    o.strip()
+    for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 register_http_routes(app)
 register_web_routes(app)

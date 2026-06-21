@@ -43,3 +43,5 @@ services:
         sync: false
       - key: SENTRY_DSN
         sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
