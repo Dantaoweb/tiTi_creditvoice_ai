@@ -14,14 +14,20 @@ from webhook_routes import register_webhook_routes
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from proactive_scheduler import run_proactive_scheduler
-    task = asyncio.create_task(run_proactive_scheduler())
+    # SCHEDULER_ENABLED guards against duplicate notifications when multiple
+    # workers or instances are running. render.yaml sets it on exactly one
+    # process; unset means disabled (safe default for multi-worker setups).
+    task = None
+    if os.getenv("SCHEDULER_ENABLED", "false").lower() == "true":
+        from proactive_scheduler import run_proactive_scheduler
+        task = asyncio.create_task(run_proactive_scheduler())
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 _dev = os.getenv("ENVIRONMENT", "production") == "development"
