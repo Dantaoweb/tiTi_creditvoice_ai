@@ -117,6 +117,24 @@ register_webhook_routes(app)
 
 _log = logging.getLogger("creditvoice")
 
+# ── Production credential check ───────────────────────────────────────────────
+# Warn loudly at boot when critical third-party secrets are absent so the
+# operator notices immediately rather than discovering the gap via an incident.
+_REQUIRED_PRODUCTION_VARS = [
+    ("META_APP_SECRET",      "WhatsApp webhooks will reject all incoming messages"),
+    ("MONNIFY_API_KEY",      "Monnify payment initiation will fail"),
+    ("MONNIFY_SECRET_KEY",   "Monnify payment webhooks will be rejected"),
+    ("OPENAI_API_KEY",       "AI parsing and voice transcription will be disabled"),
+    ("WEB_SECRET_KEY",       "Session tokens are insecure — using default dev key"),
+    ("WHATSAPP_TOKEN",       "Outbound WhatsApp messages cannot be sent"),
+    ("PHONE_NUMBER_ID",      "Outbound WhatsApp messages cannot be sent"),
+]
+
+if not _dev:
+    _missing = [(v, msg) for v, msg in _REQUIRED_PRODUCTION_VARS if not os.getenv(v)]
+    for _var, _impact in _missing:
+        _log.critical("MISSING ENV VAR: %s — %s", _var, _impact)
+
 
 @app.exception_handler(Exception)
 async def _unhandled_exception(request: Request, exc: Exception):

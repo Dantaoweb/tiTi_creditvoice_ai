@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import os
 
 from fastapi import BackgroundTasks, Request, HTTPException
@@ -7,14 +8,24 @@ from fastapi import BackgroundTasks, Request, HTTPException
 from webhook_message_flow import handle_webhook_body
 
 _APP_SECRET = os.getenv("META_APP_SECRET", "")
+_log = logging.getLogger("creditvoice.webhook")
 
 
 def _verify_whatsapp_signature(raw_body: bytes, signature_header: str | None) -> bool:
     """Verify Meta's X-Hub-Signature-256 header.
-    Returns True if valid or if META_APP_SECRET is not set (dev mode).
+
+    Fails closed: rejects all requests when META_APP_SECRET is not set in
+    production. Only permits unverified requests in development mode so that
+    local testing without a real Meta app still works.
     """
     if not _APP_SECRET:
-        return True  # dev mode — secret not configured
+        if os.getenv("ENVIRONMENT", "production") == "development":
+            return True  # dev mode — secret not configured
+        _log.critical(
+            "META_APP_SECRET not set — rejecting all WhatsApp webhook requests. "
+            "Set this env var in the Render dashboard."
+        )
+        return False
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected = "sha256=" + hmac.new(
