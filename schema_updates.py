@@ -1,8 +1,49 @@
 import re
+from datetime import datetime, timezone
 
 from sqlalchemy import inspect, text
 
 _SAFE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _ensure_schema_versions_table(engine) -> None:
+    """Create the schema_versions tracking table if it doesn't exist.
+
+    Records every migration that has been applied so ops can audit exactly
+    what schema state production is in and when each change landed.
+    """
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS schema_versions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                migration  VARCHAR  NOT NULL UNIQUE,
+                applied_at TIMESTAMP NOT NULL
+            )
+        """)) if engine.dialect.name == "sqlite" else conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS schema_versions (
+                id         SERIAL PRIMARY KEY,
+                migration  VARCHAR  NOT NULL UNIQUE,
+                applied_at TIMESTAMP NOT NULL
+            )
+        """))
+
+
+def _mark_migration(engine, name: str) -> None:
+    """Record that a named migration has been applied (idempotent)."""
+    with engine.begin() as conn:
+        if engine.dialect.name == "sqlite":
+            conn.execute(text(
+                "INSERT OR IGNORE INTO schema_versions (migration, applied_at) VALUES (:m, :t)"
+            ), {"m": name, "t": _utcnow()})
+        else:
+            conn.execute(text(
+                "INSERT INTO schema_versions (migration, applied_at) VALUES (:m, :t) "
+                "ON CONFLICT (migration) DO NOTHING"
+            ), {"m": name, "t": _utcnow()})
 
 
 def _safe_table(name: str) -> str:
@@ -56,6 +97,7 @@ def repair_empty_sqlite_integer_id_tables(engine):
 
 
 def ensure_schema_updates(engine):
+    _ensure_schema_versions_table(engine)
     repair_empty_sqlite_integer_id_tables(engine)
     inspector = inspect(engine)
     user_columns = {
@@ -617,3 +659,8 @@ def ensure_schema_updates(engine):
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """))
+
+    # Record that this full migration batch completed successfully.
+    # The timestamp lets ops confirm exactly when each schema version
+    # was applied to production.
+    _mark_migration(engine, "baseline_schema_v1")

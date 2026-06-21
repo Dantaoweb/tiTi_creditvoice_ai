@@ -1,0 +1,5 @@
+# Every file requires review from the repo owner before merge.
+# Combined with GitHub branch protection (Settings → Branches → main →
+# Require a pull request → Require review from Code Owners) this prevents
+# any direct push or self-merge on the main branch.
+* @Dantaoweb

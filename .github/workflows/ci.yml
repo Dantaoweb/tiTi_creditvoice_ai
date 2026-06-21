@@ -80,6 +80,25 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=high
 
+  migration-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Block destructive schema operations
+        run: |
+          # Fail if schema_updates.py contains DROP TABLE or DROP COLUMN.
+          # These operations are irreversible in production and must never
+          # be merged automatically. If a column or table genuinely needs
+          # to be removed, do it in a separate manual migration after a
+          # deploy that stops reading the column.
+          if grep -iE "DROP\s+(TABLE|COLUMN)" schema_updates.py; then
+            echo "FAIL: schema_updates.py contains a destructive DROP operation."
+            echo "Remove it and perform the cleanup manually after the next deploy."
+            exit 1
+          fi
+          echo "OK: no destructive schema operations found."
+
   frontend:
     runs-on: ubuntu-latest
     steps:
