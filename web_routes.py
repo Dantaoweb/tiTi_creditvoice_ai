@@ -2451,9 +2451,14 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            from admin import is_app_admin
             from customer_automation import get_or_create_automation_settings
             from reminder_automation import get_or_create_reminder_settings
-            phone = owner_phone or session.get("phone")
+            session_user = db.query(User).filter(User.id == session["user_id"]).first()
+            if owner_phone and session_user and is_app_admin(session_user.phone, db):
+                phone = owner_phone
+            else:
+                phone = _session_owner_phone(db, session)
             user = db.query(User).filter(User.phone == phone).first()
             bot = get_or_create_automation_settings(db, phone)
             rem = get_or_create_reminder_settings(db, phone)
@@ -2669,7 +2674,12 @@ def register_web_routes(app):
         )
         db = SessionLocal()
         try:
-            phone      = owner_phone or session.get("phone", "")
+            from admin import is_app_admin
+            session_user = db.query(User).filter(User.id == session["user_id"]).first()
+            if owner_phone and session_user and is_app_admin(session_user.phone, db):
+                phone = owner_phone
+            else:
+                phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
 
             owner_user = db.query(User).filter(User.phone == phone).first()
@@ -2756,7 +2766,7 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user:
                 raise HTTPException(status_code=401)
-            owner_phone = user.phone if not user.parent_id else user.parent_id
+            owner_phone = _session_owner_phone(db, session)
             rows = (
                 db.query(AppNotification)
                 .filter(AppNotification.owner_phone == owner_phone)
@@ -2783,7 +2793,7 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user:
                 raise HTTPException(status_code=401)
-            owner_phone = user.phone if not user.parent_id else user.parent_id
+            owner_phone = _session_owner_phone(db, session)
             notif = db.query(AppNotification).filter(
                 AppNotification.id == notif_id,
                 AppNotification.owner_phone == owner_phone,
@@ -2802,7 +2812,7 @@ def register_web_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user:
                 raise HTTPException(status_code=401)
-            owner_phone = user.phone if not user.parent_id else user.parent_id
+            owner_phone = _session_owner_phone(db, session)
             db.query(AppNotification).filter(
                 AppNotification.owner_phone == owner_phone,
                 AppNotification.is_read == 0,
