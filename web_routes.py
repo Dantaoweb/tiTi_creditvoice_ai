@@ -87,6 +87,11 @@ _export_hits: dict = defaultdict(list)
 _EXPORT_LIMIT  = 3    # CSV exports per hour per admin
 _EXPORT_WINDOW = 3600
 
+_redeem_lock = threading.Lock()
+_redeem_hits: dict = defaultdict(list)
+_REDEEM_LIMIT  = 10   # token-code attempts per hour per user
+_REDEEM_WINDOW = 3600
+
 
 def _admin_rate_check(phone: str) -> bool:
     now = time.time()
@@ -107,6 +112,17 @@ def _export_rate_check(phone: str) -> bool:
         if len(_export_hits[phone]) >= _EXPORT_LIMIT:
             return False
         _export_hits[phone].append(now)
+        return True
+
+
+def _redeem_rate_check(user_id: str) -> bool:
+    now = time.time()
+    cutoff = now - _REDEEM_WINDOW
+    with _redeem_lock:
+        _redeem_hits[user_id] = [t for t in _redeem_hits[user_id] if t > cutoff]
+        if len(_redeem_hits[user_id]) >= _REDEEM_LIMIT:
+            return False
+        _redeem_hits[user_id].append(now)
         return True
 
 
@@ -3517,14 +3533,16 @@ def register_web_routes(app):
             if not user:
                 raise HTTPException(status_code=401, detail="Not authenticated")
 
-            tc = db.query(TokenCode).filter(TokenCode.code == payload.code.strip().upper()).first()
-            if not tc:
-                raise HTTPException(status_code=404, detail="Invalid code")
-            if tc.redeemed_at:
-                raise HTTPException(status_code=409, detail="Code already used")
+            if not _redeem_rate_check(str(session["user_id"])):
+                raise HTTPException(status_code=429, detail="Too many attempts. Try again in an hour.")
+
+            _INVALID = HTTPException(status_code=400, detail="Invalid or expired code.")
+
             now = datetime.now(timezone.utc).replace(tzinfo=None)
-            if tc.expires_at and tc.expires_at < now:
-                raise HTTPException(status_code=410, detail="Code has expired")
+            tc = db.query(TokenCode).filter(TokenCode.code == payload.code.strip().upper()).first()
+            # Collapse all failure states into one generic error to prevent enumeration.
+            if not tc or tc.redeemed_at or (tc.expires_at and tc.expires_at < now):
+                raise _INVALID
 
             tc.redeemed_at = now
             tc.redeemed_by_phone = user.phone

@@ -173,6 +173,11 @@ def get_pending_subscription_payment(db, user):
 
 
 def approve_subscription_payment(db, payment, admin_user):
+    # Idempotency guard — reject if already approved so a duplicate admin
+    # command can never upgrade the subscription a second time.
+    if payment.status != "PENDING":
+        return None
+
     owner = db.query(User).filter(User.id == payment.user_id).first()
     if not owner:
         return None
