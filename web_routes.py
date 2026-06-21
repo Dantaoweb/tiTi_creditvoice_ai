@@ -166,7 +166,7 @@ class PosCartItem(BaseModel):
 class PosSaveRequest(BaseModel):
     owner_phone: str = Field(max_length=20)
     customer_id: Optional[int] = None
-    items: list[PosCartItem]
+    items: list[PosCartItem] = Field(max_length=200)  # max 200 line items per sale
     payment_amount: int = 0
     branch_id: Optional[int] = None
 
@@ -204,7 +204,7 @@ class AdjustStockRequest(BaseModel):
 
 class BulkAddInventoryRequest(BaseModel):
     owner_phone: str = Field(max_length=20)
-    names: list
+    names: list[str] = Field(max_length=100)  # max 100 items; each str validated below
 
 
 class AddCustomerRequest(BaseModel):

@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app_routes import register_http_routes
 from database import Base, engine
@@ -62,7 +64,37 @@ app = FastAPI(
 Base.metadata.create_all(engine)
 ensure_schema_updates(engine)
 
-# Explicit CORS policy — driven by env var so it's auditable and intentional.
+# ── Trusted host validation ───────────────────────────────────────────────────
+# Rejects requests whose Host header isn't in the allowlist, blocking
+# Host header injection attacks. Wildcards allowed (e.g. *.onrender.com).
+_allowed_hosts = [
+    h.strip()
+    for h in os.getenv("ALLOWED_HOSTS", "*").split(",")
+    if h.strip()
+]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
+
+# ── Global request body size limit ───────────────────────────────────────────
+# Caps JSON API requests at 4 MB (voice endpoint uses its own Pydantic
+# max_length of 2 M chars ≈ 1.5 MB binary). Rejects before the body is
+# read so a single oversized upload can't tie up the worker.
+_MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", str(4 * 1024 * 1024)))  # 4 MB
+
+
+class _MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        cl = request.headers.get("content-length")
+        if cl and int(cl) > _MAX_BODY_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "Request body too large."},
+            )
+        return await call_next(request)
+
+
+app.add_middleware(_MaxBodySizeMiddleware)
+
+# ── Explicit CORS policy — driven by env var so it's auditable and intentional.
 # Production: set CORS_ALLOWED_ORIGINS to your Render URL (no trailing slash).
 # Development: Vite proxies /app/api to localhost:8000 so the browser sees
 # same-origin requests — leave blank or set to http://localhost:5173.
