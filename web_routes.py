@@ -450,6 +450,19 @@ def register_web_routes(app):
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):
         response = await call_next(request)
+        path = request.url.path
+
+        # Cache-Control: API responses must never be cached (sensitive financial data)
+        if path.startswith("/app/api/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
+        # Hashed Vite assets are immutable — cache aggressively for performance
+        elif path.startswith("/app/assets/") or path.startswith("/web/static/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+        # SPA HTML shell — never cache so deploys take effect immediately
+        else:
+            response.headers.setdefault("Cache-Control", "no-store")
+
         response.headers.setdefault("Content-Security-Policy", _CSP)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
