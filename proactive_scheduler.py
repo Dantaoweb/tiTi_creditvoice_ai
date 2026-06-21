@@ -220,6 +220,28 @@ def _check_inactivity(db):
 
 # ── Main scheduler loop ─────────────────────────────────────────────────────────
 
+_LOG_RETENTION_DAYS = 90
+
+
+def _purge_old_logs(db) -> None:
+    """Delete parse_logs and failed_parses older than 90 days (NDPR storage limitation).
+
+    Raw WhatsApp message content must not be held longer than necessary.
+    Retention period: 90 days from creation.
+    """
+    from models import FailedParse, ParseLog
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=_LOG_RETENTION_DAYS)
+    deleted_parse   = db.query(ParseLog).filter(ParseLog.created_at < cutoff).delete()
+    deleted_failed  = db.query(FailedParse).filter(FailedParse.created_at < cutoff).delete()
+    if deleted_parse or deleted_failed:
+        db.commit()
+        print(
+            f"[proactive] Log retention: purged {deleted_parse} parse_logs, "
+            f"{deleted_failed} failed_parses older than {_LOG_RETENTION_DAYS} days.",
+            flush=True,
+        )
+
+
 async def run_proactive_scheduler():
     from database import SessionLocal
 
@@ -232,6 +254,7 @@ async def run_proactive_scheduler():
             _check_low_stock(db)
             _check_overdue_debt(db)
             _check_inactivity(db)
+            _purge_old_logs(db)
         except Exception as e:
             print(f"[proactive] Scheduler error: {e}", flush=True)
         finally:

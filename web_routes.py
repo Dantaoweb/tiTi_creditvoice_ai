@@ -610,6 +610,109 @@ def register_web_routes(app):
         clear_auth_cookie(response)
         return {"ok": True}
 
+    # ── NDPR: right to erasure ────────────────────────────────────────────────
+    class DeleteAccountRequest(BaseModel):
+        pin: str
+
+    @app.delete("/app/api/account")
+    def web_delete_account(
+        payload: DeleteAccountRequest,
+        response: Response,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Permanently anonymise the caller's account (NDPR s.2.6 right to erasure).
+
+        PII cleared: name, email, recovery_pin_hash, referral_code, shop_tag,
+        newsletter_consent. Phone replaced with a non-reversible placeholder.
+        Raw message logs (parse_logs, failed_parses) deleted. The User row is
+        kept so that transaction foreign keys remain intact; deleted_at marks it
+        as erased.  Logs the deletion in audit_log and clears the session cookie.
+        """
+        from recovery_commands import _verify_pin
+        from audit import audit
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found.")
+            if user.deleted_at:
+                raise HTTPException(status_code=409, detail="Account already deleted.")
+            if not user.recovery_pin_hash or not _verify_pin(payload.pin.strip(), user.recovery_pin_hash):
+                raise HTTPException(status_code=401, detail="Incorrect PIN.")
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            anon_phone = f"DELETED_{user.id}"
+
+            # Anonymise PII fields on the user record
+            user.name               = "Deleted User"
+            user.email              = None
+            user.recovery_pin_hash  = None
+            user.referral_code      = None
+            user.shop_tag           = None
+            user.newsletter_consent = False
+            user.whatsapp_linked    = False
+            user.pin_attempts       = 0
+            user.pin_locked_until   = None
+            user.deleted_at         = now
+
+            # Replace phone with a non-reversible placeholder so the unique
+            # constraint is freed and the original phone can re-register later
+            from models import ParseLog, FailedParse
+            db.query(ParseLog).filter(ParseLog.phone == user.phone).delete()
+            db.query(ParseLog).filter(ParseLog.owner_phone == user.phone).delete()
+            db.query(FailedParse).filter(FailedParse.phone == user.phone).delete()
+            db.query(FailedParse).filter(FailedParse.owner_phone == user.phone).delete()
+
+            audit(db, action="ACCOUNT_DELETION", actor_id=user.id,
+                  actor_phone=user.phone, resource=f"user:{user.id}")
+
+            user.phone = anon_phone
+            db.commit()
+            clear_auth_cookie(response)
+            return {"ok": True, "message": "Your account and personal data have been deleted."}
+        finally:
+            db.close()
+
+    # ── NDPR: data subject access request (DSAR) ─────────────────────────────
+    @app.get("/app/api/account/personal-data")
+    def web_personal_data(session: dict = Depends(require_web_auth)):
+        """Return a copy of all personal data held for this user (NDPR s.2.5)."""
+        from models import Customer, Transaction, ParseLog
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found.")
+
+            tx_count  = db.query(Transaction).filter(Transaction.owner_phone == user.phone).count()
+            cust_count= db.query(Customer).filter(Customer.owner_phone == user.phone).count()
+            log_count = db.query(ParseLog).filter(ParseLog.phone == user.phone).count()
+
+            return {
+                "personal_data": {
+                    "name":                user.name,
+                    "phone":               user.phone,
+                    "email":               user.email,
+                    "created_at":          user.created_at.isoformat() if user.created_at else None,
+                    "newsletter_consent":  bool(user.newsletter_consent),
+                    "whatsapp_linked":     bool(user.whatsapp_linked),
+                    "subscription_plan":   user.subscription_plan,
+                    "wallet_balance_ngn":  (user.wallet_balance or 0) / 100,
+                },
+                "data_held": {
+                    "transactions":        tx_count,
+                    "customers":           cust_count,
+                    "message_logs":        log_count,
+                },
+                "your_rights": (
+                    "Under the Nigeria Data Protection Regulation (NDPR) you have the right "
+                    "to access, correct, and erase your personal data. To delete your account "
+                    "and all associated personal data, use DELETE /app/api/account with your PIN."
+                ),
+            }
+        finally:
+            db.close()
+
     @app.get("/app/api/auth/me")
     def web_auth_me(session: dict = Depends(require_web_auth)):
         db = SessionLocal()

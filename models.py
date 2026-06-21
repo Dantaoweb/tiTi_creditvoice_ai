@@ -103,6 +103,10 @@ class User(Base):
         default=utcnow
     )
 
+    # Set when the user exercises their right to erasure (NDPR s.2.6).
+    # PII fields are anonymised; this timestamp is kept for compliance records.
+    deleted_at = Column(DateTime, nullable=True)
+
 
 class Branch(Base):
 

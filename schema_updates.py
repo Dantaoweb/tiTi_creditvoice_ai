@@ -94,6 +94,7 @@ def ensure_schema_updates(engine):
         "staff_level": "VARCHAR",
         "staff_salary": "INTEGER",
         "staff_matric": "VARCHAR",
+        "deleted_at": "TIMESTAMP",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
