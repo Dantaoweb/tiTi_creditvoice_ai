@@ -487,10 +487,11 @@ def register_web_routes(app):
 
     # ── Auth ─────────────────────────────────────────────────────────────
     @app.post("/app/api/auth/login")
-    def web_auth_login(payload: LoginRequest, response: Response):
+    def web_auth_login(payload: LoginRequest, response: Response, request: Request):
         db = SessionLocal()
         try:
-            result = web_login(db, payload.phone.strip(), payload.pin.strip())
+            ip = request.client.host if request.client else None
+            result = web_login(db, payload.phone.strip(), payload.pin.strip(), ip=ip)
             set_auth_cookie(response, result.pop("_token"))
             return result
         finally:
@@ -1690,6 +1691,9 @@ def register_web_routes(app):
             if not branch:
                 raise HTTPException(status_code=404, detail="Branch not found.")
             was_default = branch.is_default
+            from audit import audit
+            audit(db, action="DELETE_BRANCH", actor_id=session["user_id"],
+                  actor_phone=session["phone"], resource=f"branch:{branch_id}:{branch.name}")
             db.delete(branch)
             db.commit()
             if was_default:
@@ -1943,6 +1947,9 @@ def register_web_routes(app):
             ).first()
             if not teacher:
                 raise HTTPException(status_code=404, detail="Teacher not found.")
+            from audit import audit
+            audit(db, action="DELETE_TEACHER", actor_id=session["user_id"],
+                  actor_phone=session["phone"], resource=f"teacher:{teacher_id}:{teacher.name}")
             db.delete(teacher)
             db.commit()
             return {"ok": True}
@@ -2068,6 +2075,9 @@ def register_web_routes(app):
             ).first()
             if not bp:
                 raise HTTPException(status_code=404, detail="Partner not found.")
+            from audit import audit
+            audit(db, action="DELETE_PARTNER", actor_id=session["user_id"],
+                  actor_phone=session["phone"], resource=f"partner:{partner_id}:{bp.partner_phone}")
             db.delete(bp)
             db.commit()
             return {"ok": True}
@@ -2157,6 +2167,9 @@ def register_web_routes(app):
             ).first()
             if not note:
                 raise HTTPException(status_code=404, detail="Note not found.")
+            from audit import audit
+            audit(db, action="DELETE_NOTE", actor_id=session["user_id"],
+                  actor_phone=session["phone"], resource=f"note:{note_id}")
             db.delete(note)
             db.commit()
             return {"ok": True}
@@ -3212,6 +3225,10 @@ def register_web_routes(app):
                 updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
             db.add(cfg)
+            from audit import audit
+            audit(db, action="ADMIN_SETTINGS_CHANGE", actor_id=user.id,
+                  actor_phone=user.phone,
+                  resource=f"referral_cashback:{payload.cashback_amount}")
             db.commit()
             return {"cashback_amount": payload.cashback_amount}
         finally:
@@ -3268,6 +3285,10 @@ def register_web_routes(app):
                 )
                 db.add(tc)
                 codes.append(code_str)
+            from audit import audit
+            audit(db, action="ADMIN_TOKEN_GENERATE", actor_id=user.id,
+                  actor_phone=user.phone,
+                  resource=f"{plan}×{payload.count} {payload.duration_days}d")
             db.commit()
 
             buf = io.StringIO()

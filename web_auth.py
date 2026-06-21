@@ -141,7 +141,8 @@ def require_web_auth(
     return payload
 
 
-def web_login(db: Session, phone: str, pin: str) -> dict:
+def web_login(db: Session, phone: str, pin: str, ip: str = None) -> dict:
+    from audit import audit
     if not _auth_rate_check(phone):
         raise HTTPException(status_code=429, detail="Too many login attempts. Please wait 15 minutes.")
     user = db.query(User).filter(User.phone == phone).first()
@@ -163,11 +164,13 @@ def web_login(db: Session, phone: str, pin: str) -> dict:
         if user.pin_attempts >= 5:
             user.pin_locked_until = now + timedelta(hours=1)
             user.pin_attempts = 0
+        audit(db, action="LOGIN_FAIL", actor_phone=phone, ip=ip)
         db.commit()
         raise HTTPException(status_code=401, detail="Incorrect PIN.")
 
     user.pin_attempts = 0
     user.pin_locked_until = None
+    audit(db, action="LOGIN_OK", actor_id=user.id, actor_phone=user.phone, ip=ip)
     db.commit()
     return _build_auth_response(user)
 
@@ -261,6 +264,10 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto") -> dict:
             detail="Could not send the OTP. Check your email and WhatsApp settings.",
         )
 
+    from audit import audit
+    audit(db, action="OTP_REQUEST", actor_phone=phone,
+          resource=",".join(sent_channels))
+    db.commit()
     hint = user.email[:3] + "***" if "email" in sent_channels and user.email else phone
     return {"sent": True, "channel": sent_channels[0], "channels": sent_channels, "hint": hint}
 
@@ -300,10 +307,12 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
+    from audit import audit
     user.recovery_pin_hash = _hash_pin(new_pin.strip())
     user.pin_attempts = 0
     user.pin_locked_until = None
     db.delete(pending)
+    audit(db, action="PIN_RESET", actor_id=user.id, actor_phone=user.phone)
     db.commit()
     return _build_auth_response(user)
 

@@ -1028,3 +1028,28 @@ class ReferralSettings(Base):
     updated_by = Column(String, nullable=True)
     updated_at = Column(DateTime, default=utcnow)
 
+
+class AuditLog(Base):
+    """Tamper-evident log of security-relevant actions.
+
+    Fields:
+      actor_id    — user.id of the person who took the action (None = unauthenticated)
+      actor_phone — phone number at time of action (denormalised for durability)
+      action      — verb: LOGIN_OK, LOGIN_FAIL, LOGOUT, OTP_REQUEST, PIN_RESET,
+                          DELETE_BRANCH, DELETE_NOTE, DELETE_PARTNER, DELETE_TEACHER,
+                          ADMIN_TOKEN_GENERATE, ADMIN_SETTINGS_CHANGE
+      resource    — e.g. "branch:42", "note:7", "token_codes:GO×10"
+      ip          — client IP address
+      created_at  — UTC timestamp
+    """
+
+    __tablename__ = "audit_log"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    actor_id   = Column(Integer, nullable=True)
+    actor_phone= Column(String,  nullable=True)
+    action     = Column(String,  nullable=False, index=True)
+    resource   = Column(String,  nullable=True)
+    ip         = Column(String,  nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+
