@@ -40,3 +40,5 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
+      - key: SENTRY_DSN
+        sync: false

@@ -41,7 +41,8 @@ def handle_early_webhook_message(incoming):
             message = incoming.message
             phone = incoming.phone
             text = incoming.text
-            print(f"Webhook parsed message from {phone}: {text}", flush=True)
+            _p = f"{phone[:4]}***" if phone and len(phone) > 4 else "***"
+            print(f"Webhook message from {_p} [{len(text or '')} chars]", flush=True)
 
             if phone and text:
                 debug_db = SessionLocal()

@@ -30,7 +30,8 @@ def handle_voice_message(db, phone, message, message_type, user):
         )
         return VoiceHandleResult(response={"status": "voice_transcription_failed"})
 
-    print(f"Voice transcript for {phone}: {transcribed_text}", flush=True)
+    _p = f"{phone[:4]}***" if phone and len(phone) > 4 else "***"
+    print(f"Voice transcript received from {_p} [{len(transcribed_text)} chars]", flush=True)
     return VoiceHandleResult(
         text=transcribed_text,
         message_type="text",

@@ -1,15 +1,35 @@
 import asyncio
+import logging
 import os
+import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app_routes import register_http_routes
 from database import Base, engine
 from schema_updates import ensure_schema_updates
 from web_routes import register_web_routes
 from webhook_routes import register_webhook_routes
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+# Sentry error tracking — initialises only when SENTRY_DSN is set in environment
+_sentry_dsn = os.getenv("SENTRY_DSN", "")
+if _sentry_dsn:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=_sentry_dsn,
+            traces_sample_rate=0.1,
+            send_default_pii=False,
+        )
+    except ImportError:
+        logging.warning("SENTRY_DSN set but sentry-sdk not installed — pip install sentry-sdk")
 
 
 @asynccontextmanager
@@ -44,6 +64,22 @@ ensure_schema_updates(engine)
 register_http_routes(app)
 register_web_routes(app)
 register_webhook_routes(app)
+
+_log = logging.getLogger("creditvoice")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception(request: Request, exc: Exception):
+    _log.error(
+        "Unhandled exception: %s %s\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Something went wrong. Please try again."},
+    )
 
 
 @app.get("/")
