@@ -1,5 +1,6 @@
 import hmac
 import os
+import time
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -10,15 +11,43 @@ from database import engine, SessionLocal
 def register_http_routes(app):
     @app.get("/health")
     def health_check():
-        """Render health check — verifies the app and DB are both reachable."""
+        """Render health check — verifies the app and DB are reachable.
+
+        Returns db_latency_ms so degraded DB performance is visible even
+        when the DB is technically up.  Also reports scheduler_last_run so
+        ops can confirm the proactive scheduler is cycling correctly.
+        """
+        import proactive_scheduler
+        from main import _APP_START
+
+        uptime_s = int(time.monotonic() - _APP_START)
+
         db = SessionLocal()
+        t0 = time.monotonic()
         try:
             db.execute(__import__("sqlalchemy").text("SELECT 1"))
-            return {"status": "ok", "db": "ok"}
+            db_ms = round((time.monotonic() - t0) * 1000, 1)
+            scheduler_run = (
+                proactive_scheduler.last_run_at.isoformat()
+                if proactive_scheduler.last_run_at else None
+            )
+            return {
+                "status": "ok",
+                "db": "ok",
+                "db_latency_ms": db_ms,
+                "uptime_seconds": uptime_s,
+                "scheduler_last_run": scheduler_run,
+            }
         except Exception as exc:
+            db_ms = round((time.monotonic() - t0) * 1000, 1)
             return JSONResponse(
                 status_code=503,
-                content={"status": "error", "db": str(exc)},
+                content={
+                    "status": "error",
+                    "db": str(exc),
+                    "db_latency_ms": db_ms,
+                    "uptime_seconds": uptime_s,
+                },
             )
         finally:
             db.close()

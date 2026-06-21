@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 import traceback
 from contextlib import asynccontextmanager
 
@@ -93,6 +94,36 @@ class _MaxBodySizeMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_MaxBodySizeMiddleware)
+
+# ── Request timing middleware ─────────────────────────────────────────────────
+# Logs every API request with method, path, status code, and wall-clock
+# duration in milliseconds. Static asset requests are skipped to avoid
+# flooding the log stream with noise.
+_APP_START = time.monotonic()
+_timing_log = logging.getLogger("creditvoice.timing")
+
+
+class _RequestTimingMiddleware(BaseHTTPMiddleware):
+    _SKIP_PREFIXES = ("/app/assets/", "/web/static/", "/favicon")
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in self._SKIP_PREFIXES):
+            return await call_next(request)
+        t0 = time.monotonic()
+        response = await call_next(request)
+        ms = (time.monotonic() - t0) * 1000
+        _timing_log.info(
+            "%s %s %s %.0fms",
+            request.method,
+            path,
+            response.status_code,
+            ms,
+        )
+        return response
+
+
+app.add_middleware(_RequestTimingMiddleware)
 
 # ── Explicit CORS policy — driven by env var so it's auditable and intentional.
 # Production: set CORS_ALLOWED_ORIGINS to your Render URL (no trailing slash).

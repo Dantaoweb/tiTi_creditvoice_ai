@@ -1,7 +1,11 @@
 import json
+import logging
 import os
 import re
+import time
 import requests
+
+_ai_log = logging.getLogger("creditvoice.openai")
 
 from datetime import datetime, timedelta, timezone
 
@@ -109,6 +113,7 @@ def transcribe_audio_bytes(audio_bytes, mime_type=None):
         return None, "No audio received."
 
     filename = f"voice.{extension_for_mime_type(mime_type)}"
+    _t0 = time.monotonic()
     response = requests.post(
         "https://api.openai.com/v1/audio/transcriptions",
         headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
@@ -124,9 +129,11 @@ def transcribe_audio_bytes(audio_bytes, mime_type=None):
         files={"file": (filename, audio_bytes, mime_type or "audio/ogg")},
         timeout=90
     )
+    _ms = (time.monotonic() - _t0) * 1000
     if response.status_code >= 400:
-        print("OpenAI transcription error:", response.text, flush=True)
+        _ai_log.error("transcribe status=%s %.0fms", response.status_code, _ms)
         return None, "Voice transcription failed."
+    _ai_log.info("transcribe status=200 %.0fms", _ms)
 
     return response.json().get("text", "").strip(), None
 
@@ -282,6 +289,7 @@ def interpret_text_with_openai(text_value):
     )
 
     try:
+        _t0 = time.monotonic()
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
@@ -299,13 +307,15 @@ def interpret_text_with_openai(text_value):
             },
             timeout=30
         )
+        _ms = (time.monotonic() - _t0) * 1000
     except requests.RequestException as exc:
-        print("OpenAI parser fallback request error:", repr(exc), flush=True)
+        _ai_log.error("parse request error: %s", repr(exc))
         return None
 
     if response.status_code >= 400:
-        print("OpenAI parser fallback error:", response.text, flush=True)
+        _ai_log.error("parse status=%s %.0fms", response.status_code, _ms)
         return None
+    _ai_log.info("parse status=200 %.0fms model=%s", _ms, OPENAI_PARSE_MODEL)
 
     content = (
         response.json()
@@ -371,6 +381,7 @@ def interpret_text_with_openai_followup(original_message, clarification_question
     )
 
     try:
+        _t0 = time.monotonic()
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
@@ -388,13 +399,15 @@ def interpret_text_with_openai_followup(original_message, clarification_question
             },
             timeout=30
         )
+        _ms = (time.monotonic() - _t0) * 1000
     except requests.RequestException as exc:
-        print("OpenAI followup parser error:", repr(exc), flush=True)
+        _ai_log.error("followup request error: %s", repr(exc))
         return None
 
     if response.status_code >= 400:
-        print("OpenAI followup parser error:", response.text, flush=True)
+        _ai_log.error("followup status=%s %.0fms", response.status_code, _ms)
         return None
+    _ai_log.info("followup status=200 %.0fms", _ms)
 
     content = (
         response.json()

@@ -17,6 +17,9 @@ from datetime import datetime, timedelta, timezone
 
 _INTERVAL_HOURS = 6
 
+# Exposed so /health can report when the scheduler last completed a full cycle.
+last_run_at: datetime | None = None
+
 
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -255,6 +258,9 @@ async def run_proactive_scheduler():
             _check_overdue_debt(db)
             _check_inactivity(db)
             _purge_old_logs(db)
+            global last_run_at
+            last_run_at = datetime.now(timezone.utc)
+            print("[proactive] Cycle complete.", flush=True)
         except Exception as e:
             print(f"[proactive] Scheduler error: {e}", flush=True)
         finally:
