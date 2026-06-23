@@ -18,6 +18,42 @@ function Spinner() {
   return <Loader2 size={15} className="spin" />;
 }
 
+const COUNTRIES = [
+  { code: "234", flag: "🇳🇬", label: "Nigeria (+234)" },
+];
+
+function PhoneInput({ value, onChange, disabled, autoFocus }) {
+  // value/onChange use the full stored format: "2348012345678"
+  const prefix = "234";
+  const local = value.startsWith(prefix) ? value.slice(prefix.length) : value;
+
+  function handleLocal(e) {
+    let raw = e.target.value.replace(/\D/g, "");
+    if (raw.startsWith("0")) raw = raw.slice(1); // strip leading 0
+    onChange(prefix + raw);
+  }
+
+  return (
+    <div className="phone-input-row">
+      <select className="phone-country-select" disabled={disabled} value={prefix} onChange={() => {}}>
+        {COUNTRIES.map(c => (
+          <option key={c.code} value={c.code}>{c.flag} +{c.code}</option>
+        ))}
+      </select>
+      <input
+        type="tel"
+        className="phone-local-input"
+        value={local}
+        onChange={handleLocal}
+        placeholder="8012345678"
+        maxLength={10}
+        disabled={disabled}
+        autoFocus={autoFocus}
+      />
+    </div>
+  );
+}
+
 // mode: "login" | "register" | "request_otp" | "set_pin"
 export default function Login() {
   const { login, authLoading, authError, persistSession } = useAuth();
@@ -196,15 +232,7 @@ export default function Login() {
           <form onSubmit={handleLogin} className="login-form">
             <div className="form-group">
               <label className="form-label">Phone Number</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="e.g. 2348012345678"
-                autoComplete="username"
-                disabled={authLoading}
-              />
-              <span className="form-hint">Include country code, no + (234 for Nigeria)</span>
+              <PhoneInput value={phone} onChange={setPhone} disabled={authLoading} />
             </div>
 
             <div className="form-group">
@@ -264,8 +292,7 @@ export default function Login() {
 
             <div className="form-group">
               <label className="form-label">Phone Number *</label>
-              <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} placeholder="e.g. 2348012345678" disabled={busy} />
-              <span className="form-hint">Include country code, no +</span>
+              <PhoneInput value={regPhone} onChange={setRegPhone} disabled={busy} />
             </div>
 
             <div className="form-group">
@@ -397,7 +424,7 @@ export default function Login() {
 
             <div className="form-group">
               <label className="form-label">Phone Number</label>
-              <input type="tel" value={otpPhone} onChange={e => setOtpPhone(e.target.value)} placeholder="e.g. 2348012345678" autoFocus disabled={busy} />
+              <PhoneInput value={otpPhone} onChange={setOtpPhone} disabled={busy} autoFocus />
             </div>
 
             {err && <div className="login-error">{err}</div>}
@@ -465,15 +492,7 @@ export default function Login() {
 
             <div className="form-group">
               <label className="form-label">Your Phone Number</label>
-              <input
-                type="tel"
-                value={invitePhone}
-                onChange={e => setInvitePhone(e.target.value)}
-                placeholder="e.g. 2348012345678"
-                autoFocus
-                disabled={busy}
-              />
-              <span className="form-hint">Include country code, no +</span>
+              <PhoneInput value={invitePhone} onChange={setInvitePhone} disabled={busy} autoFocus />
             </div>
 
             <div className="form-group">
