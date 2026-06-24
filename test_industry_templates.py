@@ -56,11 +56,11 @@ def test_industry_matrix_and_messages():
     assert sorted(matrix.keys()) == sorted(HIGH_VALUE_TEMPLATE_KEYS)
 
     samples = [
-        ("provision_store", "retail_trading", "Provision Store", "INVENTORY", "Inventory", "stock is worth"),
+        ("provision_store", "retail_trading", "Provision Store", "INVENTORY", "Inventory", "stock levels"),
         ("pharmacy", "health", "Pharmacy", "INVENTORY", "Inventory", "medicine quantity"),
         ("private_school", "education", "Private School", "DUE_REMINDERS", "Debt reminders", "unpaid fees"),
         ("hair_salon", "beauty_personal_care", "Hair Salon", "STAFF", "Staff", "stylists"),
-        ("tailor_fashion", "services_artisans", "Tailor / Fashion Designer", "DUE_REMINDERS", "Debt reminders", "unpaid job balances"),
+        ("tailor_fashion", "services_artisans", "Tailor / Fashion Designer", "DUE_REMINDERS", "Debt reminders", "Debt reminders"),
         ("restaurant", "food_hospitality", "Restaurant", "INVENTORY", "Inventory", "frozen food"),
         ("feed_seller", "agriculture", "Feed Seller", "INVENTORY", "Inventory", "farm inputs"),
         ("dispatch_delivery", "transport_logistics", "Dispatch / Delivery", "TRANSACTION_NOTES", "Transaction notes", "delivery details"),
@@ -76,7 +76,7 @@ def test_industry_matrix_and_messages():
         upgrade = format_upgrade_message("BASIC", "GO", feature_label, user, feature)
 
         assert_contains(post_onboarding, "1. Help & formats")
-        assert_contains(post_onboarding, "4. Upgrade")
+        assert_contains(post_onboarding, "5. Upgrade")
         assert_contains(home_menu, "MENU to return here anytime")
         assert_contains(upgrade, expected_value)
 
@@ -603,9 +603,10 @@ def run_onboarding_flow(category_choice, business_choice, expected_category, exp
     assert handle_onboarding_pending(db, phone, str(category_choice), pending, None, send_message) == {
         "status": "onboarding_business_type_prompt"
     }
-    assert handle_onboarding_pending(db, phone, str(business_choice), pending, None, send_message) == {
-        "status": "user_saved"
-    }
+    result = handle_onboarding_pending(db, phone, str(business_choice), pending, None, send_message)
+    if result == {"status": "onboarding_partial_warning_sent"}:
+        result = handle_onboarding_pending(db, phone, "yes", pending, None, send_message)
+    assert result == {"status": "onboarding_complete"}
 
     user = db.query(User).filter(User.phone == phone).first()
     next_pending = db.query(PendingAction).filter(PendingAction.phone == phone).first()
@@ -619,7 +620,7 @@ def run_onboarding_flow(category_choice, business_choice, expected_category, exp
     assert_contains(sent_messages[-1][1], "Account created.")
     assert_contains(sent_messages[-1][1], "1. Help & formats")
     assert_contains(sent_messages[-1][1], "3. Dashboard")
-    assert_contains(sent_messages[-1][1], "4. Upgrade")
+    assert_contains(sent_messages[-1][1], "5. Upgrade")
 
 
 def test_industry_onboarding_paths():

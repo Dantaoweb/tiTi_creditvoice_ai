@@ -239,12 +239,12 @@ INDUSTRY_EXAMPLES = {
     "pharmacy": [
         "Mary bought paracetamol 1500",
         "I sold 2 packs amoxicillin at 2500",
-        "stock",
+        "Ayo supplied 10 packs malaria drug at 1800 each",
     ],
     "patent_medicine": [
         "Mary bought malaria drug 2500",
         "I sold 3 bottles cough syrup at 1800",
-        "stock",
+        "Ayo supplied 20 packs malaria drug at 1500",
     ],
     "private_school": [
         "Tunde paid school fees 50000",

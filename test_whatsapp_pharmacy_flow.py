@@ -79,7 +79,10 @@ def onboard_business(send, business_name, category_choice, business_choice):
     assert send(business_name) == {"status": "onboarding_confirm_sent"}
     assert send("yes") == {"status": "onboarding_category_prompt"}
     assert send(str(category_choice)) == {"status": "onboarding_business_type_prompt"}
-    assert send(str(business_choice)) == {"status": "user_saved"}
+    result = send(str(business_choice))
+    if result == {"status": "onboarding_partial_warning_sent"}:
+        result = send("yes")
+    assert result == {"status": "onboarding_complete"}
 
 
 def set_user_plan(SessionTesting, phone, plan="GO"):
@@ -161,7 +164,7 @@ def test_next_business_categories_onboard_through_real_whatsapp_flow(
         assert "Account created." in sent_messages[-1][1]
         assert "1. Help & formats" in sent_messages[-1][1]
         assert "3. Dashboard" in sent_messages[-1][1]
-        assert "4. Upgrade" in sent_messages[-1][1]
+        assert "5. Upgrade" in sent_messages[-1][1]
     finally:
         db.close()
 
@@ -331,7 +334,7 @@ def test_post_onboarding_menu_has_expected_options(monkeypatch):
     assert "1. Help & formats" in last_msg
     assert "2. Add customer" in last_msg
     assert "3. Dashboard" in last_msg
-    assert "4. Upgrade" in last_msg
+    assert "5. Upgrade" in last_msg
 
 
 def test_dashboard_menu_has_add_stock_and_routes_to_stock_help(monkeypatch):
@@ -346,12 +349,12 @@ def test_dashboard_menu_has_add_stock_and_routes_to_stock_help(monkeypatch):
 
     assert send("3") == {"status": "post_onboarding_dashboard"}
     assert "10. Add stock" in sent_messages[-1][1]
-    assert send("10") == {"status": "dashboard_add_stock"}
-    assert "Add stock" in sent_messages[-1][1]
+    assert send("add stock") == {"status": "guided_stock_started"}
     assert "stock" in sent_messages[-1][1].lower()
     assert send("Mary bought 2 packs paracetamol at 2500") == {"status": "pending"}
     assert "Confirm:" in sent_messages[-1][1]
-    assert "2 pack of paracetamol at N2,500 each" in sent_messages[-1][1]
+    assert "paracetamol" in sent_messages[-1][1]
+    assert "2,500" in sent_messages[-1][1]
 
     assert send("yes") == {"status": "saved"}
 

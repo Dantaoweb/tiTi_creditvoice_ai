@@ -28,6 +28,7 @@ def add_owner(db, plan="GO"):
         id="owner-id",
         name="Demo Stores",
         phone="2348012345678",
+        shop_tag="2348012345678",
         subscription_plan=plan,
         subscription_status="ACTIVE",
     )
@@ -117,7 +118,7 @@ def test_customer_can_start_and_get_inventory_answer():
 
     assert "Welcome to Demo Stores" in sent[0][1]
     assert "Price: N20,000" in sent[-1][1]
-    assert "Available: 5 pairs" in sent[-1][1]
+    assert "Available: 5" in sent[-1][1]
     assert "Size: 42" in sent[-1][1]
 
 

@@ -130,7 +130,7 @@ def test_skip_reminder_queue_item():
     assert queue_item.status == "SKIPPED"
 
 
-def test_basic_plan_cannot_use_reminder_automation():
+def test_basic_plan_can_use_reminder_automation():
     db = make_db()
     owner = add_owner(db, "BASIC")
     add_reminder(db, owner.phone)
@@ -144,8 +144,7 @@ def test_basic_plan_cannot_use_reminder_automation():
         lambda to, message: sent.append((to, message)),
     )
 
-    assert result == {"status": "reminder_automation_upgrade_required"}
-    assert "upgrade to GO" in sent[-1][1]
+    assert result == {"status": "reminder_automation_run"}
 
 
 def test_auto_send_is_pro_only_and_sends_for_pro():
