@@ -188,6 +188,6 @@ async def _unhandled_exception(request: Request, exc: Exception):
     )
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def root_redirect():
     return RedirectResponse(url="/app/", status_code=302)
