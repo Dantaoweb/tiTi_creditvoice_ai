@@ -53,50 +53,8 @@ def _safe_table(name: str) -> str:
     return name
 
 
-def repair_empty_sqlite_integer_id_tables(engine):
-    if engine.dialect.name != "sqlite":
-        return
-
-    from models import Customer, CustomerMemory, PendingAction, ReminderMemory, Transaction, User
-
-    models_to_repair = [
-        User,
-        Customer,
-        Transaction,
-        PendingAction,
-        ReminderMemory,
-        CustomerMemory,
-    ]
-    inspector = inspect(engine)
-
-    for model in models_to_repair:
-        table_name = _safe_table(model.__tablename__)
-        if table_name not in inspector.get_table_names():
-            continue
-
-        id_column = next(
-            (
-                column
-                for column in inspector.get_columns(table_name)
-                if column["name"] == "id"
-            ),
-            None,
-        )
-        if not id_column or str(id_column["type"]).upper().startswith("INTEGER"):
-            continue
-
-        with engine.begin() as connection:
-            row_count = connection.execute(
-                text(f"SELECT COUNT(*) FROM {table_name}")
-            ).scalar()
-            if row_count:
-                continue
-
-            connection.execute(text(f"DROP TABLE {table_name}"))
-            model.__table__.create(bind=connection)
-
-
 def ensure_schema_updates(engine):
+    from sqlite_dev_repair import repair_empty_sqlite_integer_id_tables
     _ensure_schema_versions_table(engine)
     repair_empty_sqlite_integer_id_tables(engine)
     inspector = inspect(engine)
