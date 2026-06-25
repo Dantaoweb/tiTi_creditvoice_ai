@@ -1050,7 +1050,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id         = Column(Integer, primary_key=True, autoincrement=True)
-    actor_id   = Column(Integer, nullable=True)
+    actor_id   = Column(String, nullable=True)
     actor_phone= Column(String,  nullable=True)
     action     = Column(String,  nullable=False, index=True)
     resource   = Column(String,  nullable=True)

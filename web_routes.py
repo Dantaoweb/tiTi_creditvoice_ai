@@ -439,14 +439,7 @@ def _preview_capture(db, phone, text, voice_transcript_text=None):
 
 def _format_demo_reply(parsed) -> str:
     if not parsed or "action" not in parsed:
-        return (
-            "I understand plain language — just describe what happened in your business 💡\n\n"
-            "For example, try:\n"
-            "• *Sold 5 bags of rice to Emeka for ₦10,000*\n"
-            "• *Emeka paid ₦2,000*\n"
-            "• *Bought 10 cartons of malt from supplier for ₦15,000*\n\n"
-            "No special format needed — type it the way you'd say it."
-        )
+        return "I hear you! 😊 Just describe a sale, payment, or stock in your own words and I'll get it."
 
     action  = (parsed.get("action") or "").upper()
     product = (parsed.get("product") or "").strip()

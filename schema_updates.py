@@ -213,6 +213,18 @@ def ensure_schema_updates(engine):
                     text("ALTER TABLE transactions ALTER COLUMN customer_id DROP NOT NULL")
                 )
 
+        # audit_log.actor_id was created as INTEGER but User.id is a UUID
+        # string — convert so login commits don't fail with a type error.
+        audit_col_types = {
+            col["name"]: str(col["type"]).upper()
+            for col in inspector.get_columns("audit_log")
+        }
+        if audit_col_types.get("actor_id", "").startswith("INT"):
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE audit_log ALTER COLUMN actor_id TYPE VARCHAR USING actor_id::VARCHAR")
+                )
+
     # ── payload_json column for PendingAction ───────────────────────────────
     # Gives flows a typed JSON payload slot so new state no longer requires
     # adding columns to the shared pending_actions table.
