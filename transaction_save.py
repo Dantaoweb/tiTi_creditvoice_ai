@@ -334,6 +334,7 @@ def save_customer_pending(
         _default_branch_id = _get_default_branch_id(db, business_owner_phone)
 
         if pending.action == "BUY":
+            _pending_items_count = len(pending_items) if pending_items else 0
             tx = Transaction(
                 customer_id=customer.id,
                 type="BUY",
@@ -347,6 +348,7 @@ def save_customer_pending(
                 message_id=message_id,
                 created_at=_utcnow(),
                 branch_id=_default_branch_id,
+                is_invoice=(_pending_items_count > 1),
             )
             db.add(tx)
             db.flush()

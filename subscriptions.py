@@ -5,7 +5,7 @@ def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from messages import get_plan_price
-from models import Customer, SubscriptionPayment, User
+from models import Customer, SubscriptionPayment, Transaction, User
 from plans import (
     FEATURE_MIN_PLAN,
     PLAN_BASIC,
@@ -74,6 +74,28 @@ def ensure_feature_allowed(db, user, feature, feature_label):
 def get_month_start():
     now = _utcnow()
     return datetime(now.year, now.month, 1)
+
+
+def check_monthly_invoice_limit(db, owner_phone, subscription):
+    limit = subscription["limits"].get("monthly_invoice_uses")
+    if limit is None:
+        return True, None
+    count = (
+        db.query(Transaction)
+        .join(Customer, Transaction.customer_id == Customer.id)
+        .filter(
+            Customer.owner_phone == owner_phone,
+            Transaction.is_invoice == True,
+            Transaction.created_at >= get_month_start(),
+        )
+        .count()
+    )
+    if count < limit:
+        return True, None
+    return False, (
+        f"You've used {limit} multi-item invoices this month (Basic limit).\n\n"
+        "Upgrade to Go for unlimited invoice-style transactions."
+    )
 
 
 def check_customer_limit(db, owner_phone, subscription):

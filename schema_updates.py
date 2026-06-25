@@ -248,6 +248,7 @@ def ensure_schema_updates(engine):
         "void_reason": "VARCHAR",
         "voided_by_id": "VARCHAR",
         "voided_at": "TIMESTAMP",
+        "is_invoice": f"BOOLEAN DEFAULT {boolean_false}",
     }
     with engine.begin() as connection:
         for column_name, column_type in transaction_updates.items():

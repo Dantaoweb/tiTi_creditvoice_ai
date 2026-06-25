@@ -5,7 +5,7 @@ from messages import apply_voice_confirmation_options
 from models import Customer, CustomerMemory, InventoryItem, ParseLog, PendingAction, Transaction
 from parser import format_invoice_items
 from reports import get_balance, get_owner_transaction_query
-from subscriptions import check_customer_limit, ensure_feature_allowed, get_month_start
+from subscriptions import check_customer_limit, check_monthly_invoice_limit, ensure_feature_allowed, get_month_start
 
 
 def log_parse(db, phone, owner_phone, raw_input, parsed, source="text", user=None):
@@ -389,7 +389,7 @@ def handle_transaction_setup(
             return {"status": "no_memory"}
 
     if len(parsed.get("invoice_items") or []) > 1:
-        allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVOICE", "Invoice-style multi-item sales")
+        allowed, upgrade_msg = check_monthly_invoice_limit(db, business_owner_phone, subscription)
         if not allowed:
             send_message(phone, upgrade_msg)
             return {"status": "invoice_plan_blocked"}

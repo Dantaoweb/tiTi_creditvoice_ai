@@ -173,6 +173,8 @@ class Transaction(Base):
 
     voided_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
+    is_invoice = Column(Boolean, default=False, nullable=True)
+
     voided_at = Column(DateTime, nullable=True)
 
 

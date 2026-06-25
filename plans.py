@@ -12,6 +12,7 @@ PLAN_LIMITS = {
     PLAN_BASIC: {
         "customers":              50,
         "monthly_transactions":   100,
+        "monthly_invoice_uses":   5,    # multi-item invoice sessions per month
         "thrift_participants":    10,
         "active_inventory_items": 5,    # items with selling_price set
         "active_suppliers":       5,    # suppliers with cost-price items
@@ -21,15 +22,17 @@ PLAN_LIMITS = {
     PLAN_GO: {
         "customers":              None,
         "monthly_transactions":   None,
+        "monthly_invoice_uses":   None,
         "thrift_participants":    None,
         "active_inventory_items": None,
         "active_suppliers":       None,
         "staff":                  0,    # Go = sole proprietor, no staff
-        "school_teachers":        None, # Go schools: unlimited teacher roster
+        "school_teachers":        None,
     },
     PLAN_PRO: {
         "customers":              None,
         "monthly_transactions":   None,
+        "monthly_invoice_uses":   None,
         "thrift_participants":    None,
         "active_inventory_items": None,
         "active_suppliers":       None,
