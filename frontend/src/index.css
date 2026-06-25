@@ -568,9 +568,11 @@ tr.low-stock td { background: #fffbeb; }
 }
 
 /* Desktop: hide mobile-only elements */
-.bottom-tab-bar { display: none; }
-.sidebar-overlay { display: none; }
-.topbar-menu-btn { display: none; }
+@media (min-width: 769px) {
+  .bottom-tab-bar { display: none; }
+  .sidebar-overlay { display: none; }
+  .topbar-menu-btn { display: none; }
+}
 
 /* ── Login page ─────────────────────────────────────────────────────── */
 .login-shell {
