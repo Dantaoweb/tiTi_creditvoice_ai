@@ -421,6 +421,31 @@ INDUSTRY_EXAMPLES = {
         "I received 5000 for iPhone repair",
         "customer summary Bayo",
     ],
+    "artisanal_gold": [
+        "Ade bought 5g gold dust at 450000",
+        "I sold 1 ounce raw gold to Bayo at 3200000",
+        "gold supplier supplied 10g gold at 400000 each",
+    ],
+    "lithium_miner": [
+        "Ade bought 2 tonnes lithium ore at 800000",
+        "I sold 500kg spodumene to Bayo at 1500 per kg",
+        "Emeka balance 2000000 due Friday",
+    ],
+    "gemstone_dealer": [
+        "Ade bought 5 carats tourmaline at 50000",
+        "I sold 2 carats sapphire to Bayo at 120000",
+        "Emeka balance 300000 due Friday",
+    ],
+    "coal_miner": [
+        "I sold 10 tonnes steam coal to Ade at 80000",
+        "Bayo bought 5 tonnes coking coal at 95000 paid 300000",
+        "dashboard",
+    ],
+    "tin_columbite": [
+        "I sold 50kg columbite to Ade at 12000 per kg",
+        "Bayo bought 20kg tin ore at 8000 paid 100000",
+        "stock",
+    ],
 }
 
 HIGH_VALUE_TEMPLATE_KEYS = [
@@ -1053,7 +1078,7 @@ INDUSTRY_TEMPLATES = {
             "Record direct cash sales",
         ],
         "go_value": [
-            "Stock tracking by trip, tonne, or crate",
+            "Stock tracking by trip, tonne, kg, or gram",
             "Supplier and haulage records",
             "Customer debt reports and reminders",
         ],
@@ -2473,6 +2498,14 @@ INDUSTRY_DEFAULT_UNITS = {
     "energy_fuel": ["litre", "drum", "cylinder", "kg"],
     "salon_beauty": ["piece", "bottle", "pack", "set"],
     "quarry_raw_materials": ["trip", "tonne", "load", "truck load"],
+    "artisanal_gold":       ["g", "gram", "ounce", "oz", "kg", "carat"],
+    "gemstone_dealer":      ["carat", "gram", "g", "piece", "kg"],
+    "lithium_miner":        ["tonne", "kg", "g"],
+    "tin_columbite":        ["kg", "tonne", "g"],
+    "coal_miner":           ["tonne", "bag", "kg"],
+    "iron_ore_seller":      ["tonne", "kg"],
+    "limestone_quarry":     ["tonne", "bag", "kg"],
+    "marble_seller":        ["sqm", "piece", "tonne"],
     "thrift_contribution": [],
     "school": [],
     "artisan_services": [],
