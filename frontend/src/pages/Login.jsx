@@ -146,7 +146,8 @@ export default function Login() {
         ref_code: refCode.trim() || null,
       });
       persistSession(data.token, data.user);
-      navigate("/home", { replace: true });
+      setMode("registered");
+      setTimeout(() => navigate("/home", { replace: true }), 3000);
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -226,6 +227,16 @@ export default function Login() {
             <div className="login-sub">Business Desk</div>
           </div>
         </div>
+
+        {/* ── Registration success ── */}
+        {mode === "registered" && (
+          <div className="login-form" style={{ textAlign: "center", padding: "2rem 0" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
+            <div className="login-section-title" style={{ marginBottom: 8 }}>Welcome to CreditVoice!</div>
+            <p style={{ color: "var(--text-secondary)", marginBottom: 4 }}>Your account has been created successfully.</p>
+            <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>Taking you to your dashboard…</p>
+          </div>
+        )}
 
         {/* ── Sign In ── */}
         {mode === "login" && (

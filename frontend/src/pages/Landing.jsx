@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
-import { Send, Package, Users, ShoppingCart, Bell } from "lucide-react";
+import { Send, Package, Users, ShoppingCart, Bell, Mic, MicOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const FEATURES = [
@@ -13,6 +13,11 @@ const FEATURES = [
 const TITI_INTRO =
   "Hi! I'm tiTi 👋\n\nI help small businesses record sales, track customer debts, and manage stock — just by typing or speaking. Try me below.";
 
+const SpeechRecognition =
+  typeof window !== "undefined"
+    ? window.SpeechRecognition || window.webkitSpeechRecognition
+    : null;
+
 export default function Landing() {
   const { isAuthed } = useAuth();
   const navigate = useNavigate();
@@ -21,7 +26,9 @@ export default function Landing() {
   const [input, setInput]           = useState("");
   const [reply, setReply]           = useState(TITI_INTRO);
   const [busy, setBusy]             = useState(false);
-  const inputRef = useRef(null);
+  const [listening, setListening]   = useState(false);
+  const inputRef  = useRef(null);
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
     fetch("/app/api/auth/config")
@@ -33,11 +40,10 @@ export default function Landing() {
   if (isAuthed) return <Navigate to="/home" replace />;
 
   const waLink = titiNumber ? `https://wa.me/${titiNumber}?text=${encodeURIComponent("Hello")}` : null;
+  const voiceSupported = !!SpeechRecognition;
 
-  async function handleSend(e) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text) return;
+  async function submitText(text) {
+    if (!text.trim()) return;
     setBusy(true);
     setReply("…");
     try {
@@ -55,6 +61,39 @@ export default function Landing() {
       setInput("");
       inputRef.current?.focus();
     }
+  }
+
+  function handleSend(e) {
+    e.preventDefault();
+    submitText(input.trim());
+  }
+
+  function handleVoice() {
+    if (!SpeechRecognition) return;
+
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+
+    const rec = new SpeechRecognition();
+    rec.lang = "en-NG";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onstart  = () => setListening(true);
+    rec.onend    = () => setListening(false);
+    rec.onerror  = () => setListening(false);
+
+    rec.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setListening(false);
+      submitText(transcript);
+    };
+
+    recognitionRef.current = rec;
+    rec.start();
   }
 
   return (
@@ -118,11 +157,22 @@ export default function Landing() {
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="e.g. Sold 3 bags of rice to Emeka for ₦4,500"
-              disabled={busy}
+              placeholder={listening ? "Listening…" : "e.g. Sold 3 bags of rice to Emeka for ₦4,500"}
+              disabled={busy || listening}
               autoComplete="off"
             />
-            <button type="submit" className="btn btn-primary" disabled={busy || !input.trim()}>
+            {voiceSupported && (
+              <button
+                type="button"
+                className={`btn ${listening ? "btn-danger" : "btn-secondary"}`}
+                onClick={handleVoice}
+                disabled={busy}
+                title={listening ? "Stop listening" : "Speak your transaction"}
+              >
+                {listening ? <MicOff size={15} /> : <Mic size={15} />}
+              </button>
+            )}
+            <button type="submit" className="btn btn-primary" disabled={busy || listening || !input.trim()}>
               <Send size={15} />
             </button>
           </form>

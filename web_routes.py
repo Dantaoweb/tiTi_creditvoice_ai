@@ -440,11 +440,12 @@ def _preview_capture(db, phone, text, voice_transcript_text=None):
 def _format_demo_reply(parsed) -> str:
     if not parsed or "action" not in parsed:
         return (
-            "I didn't catch that 🤔\n\n"
-            "Try something like:\n"
-            "• Sold 5 bags of rice to Emeka for ₦10,000\n"
-            "• Emeka paid ₦2,000\n"
-            "• Bought 10 cartons of malt from supplier for ₦15,000"
+            "I understand plain language — just describe what happened in your business 💡\n\n"
+            "For example, try:\n"
+            "• *Sold 5 bags of rice to Emeka for ₦10,000*\n"
+            "• *Emeka paid ₦2,000*\n"
+            "• *Bought 10 cartons of malt from supplier for ₦15,000*\n\n"
+            "No special format needed — type it the way you'd say it."
         )
 
     action  = (parsed.get("action") or "").upper()
