@@ -334,7 +334,7 @@ def web_register(db: Session, name: str, phone: str, pin: str,
         raise HTTPException(status_code=429, detail="Too many registrations from this network. Try again later.")
 
     if not name.strip():
-        raise HTTPException(status_code=400, detail="Full name is required.")
+        raise HTTPException(status_code=400, detail="Business name is required.")
     if not phone.strip():
         raise HTTPException(status_code=400, detail="Phone number is required.")
     if not pin.strip() or len(pin.strip()) < 4:

@@ -127,7 +127,7 @@ export default function Login() {
   async function handleRegister(e) {
     e.preventDefault();
     setErr("");
-    if (!regName.trim())  { setErr("Enter your full name."); return; }
+    if (!regName.trim())  { setErr("Enter your business name."); return; }
     if (!regPhone.trim()) { setErr("Enter your phone number."); return; }
     if (!regPin.trim() || regPin.trim().length < 4) { setErr("PIN must be at least 4 digits."); return; }
     if (regPin.trim() !== regConfirm.trim()) { setErr("PINs do not match."); return; }
@@ -297,8 +297,8 @@ export default function Login() {
             <div className="login-section-title">Create Your Account</div>
 
             <div className="form-group">
-              <label className="form-label">Full Name *</label>
-              <input value={regName} onChange={e => setRegName(e.target.value)} placeholder="Your name" autoFocus disabled={busy} />
+              <label className="form-label">Business Name *</label>
+              <input value={regName} onChange={e => setRegName(e.target.value)} placeholder="e.g. Emeka Stores, Grace Pharmacy" autoFocus disabled={busy} />
             </div>
 
             <div className="form-group">
