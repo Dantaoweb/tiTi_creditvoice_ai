@@ -439,7 +439,7 @@ def _preview_capture(db, phone, text, voice_transcript_text=None):
 
 def _format_demo_reply(parsed) -> str:
     if not parsed or "action" not in parsed:
-        return "I hear you! 😊 Just describe a sale, payment, or stock in your own words and I'll get it."
+        return "I get you! 😊 Register now to record real transactions in your own way. Just describe a sale, payment, or stock in your own words and I'll get it."
 
     action  = (parsed.get("action") or "").upper()
     product = (parsed.get("product") or "").strip()
