@@ -95,6 +95,9 @@ def ensure_schema_updates(engine):
         "staff_salary": "INTEGER",
         "staff_matric": "VARCHAR",
         "deleted_at": "TIMESTAMP",
+        "referral_code": "VARCHAR",
+        "referred_by_code": "VARCHAR",
+        "wallet_balance": "INTEGER DEFAULT 0",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
