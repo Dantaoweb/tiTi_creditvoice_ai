@@ -388,7 +388,7 @@ def handle_transaction_setup(
             send_message(phone, "No previous customer found.")
             return {"status": "no_memory"}
 
-    if parsed.get("invoice_items"):
+    if len(parsed.get("invoice_items") or []) > 1:
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVOICE", "Invoice-style multi-item sales")
         if not allowed:
             send_message(phone, upgrade_msg)
