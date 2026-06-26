@@ -80,7 +80,10 @@ export default function Login() {
 
   // OTP / set-pin fields
   const [otpPhone, setOtpPhone] = useState("");
-  const [selectedChannel, setSelectedChannel] = useState(""); // "email" | "whatsapp"
+  const [selectedChannel, setSelectedChannel] = useState("whatsapp"); // "email" | "whatsapp"
+  const [otpEmailInput, setOtpEmailInput] = useState("");   // email entered if not on account
+  const [otpEmailHint, setOtpEmailHint] = useState(null);  // masked email from server
+  const [otpHasEmail, setOtpHasEmail] = useState(false);
   const [otp, setOtp] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -152,19 +155,36 @@ export default function Login() {
     finally { setBusy(false); }
   }
 
-  // ── Request OTP (auto channel: email if set, else WhatsApp) ──────────────
+  // ── Fetch channel info when phone is filled ──────────────────────────────
+  async function fetchOtpChannels(phone) {
+    if (!phone || phone.length < 10) return;
+    try {
+      const res = await apiFetch("auth/otp-channels", { phone });
+      setOtpHasEmail(!!res.has_email);
+      setOtpEmailHint(res.email_hint || null);
+    } catch { /* user may not exist yet — ignore */ }
+  }
+
+  // ── Request OTP ───────────────────────────────────────────────────────────
   async function handleRequestOtp(e) {
     e.preventDefault();
     setErr("");
     if (!otpPhone.trim()) { setErr("Enter your phone number."); return; }
+    if (selectedChannel === "email" && !otpHasEmail && !otpEmailInput.trim()) {
+      setErr("Enter your email address to receive the code."); return;
+    }
     setBusy(true);
     try {
-      const res = await apiPost("auth/request-otp", { phone: otpPhone.trim(), channel: "auto" });
+      const body = { phone: otpPhone.trim(), channel: selectedChannel };
+      if (selectedChannel === "email" && !otpHasEmail && otpEmailInput.trim()) {
+        body.email = otpEmailInput.trim();
+      }
+      const res = await apiPost("auth/request-otp", body);
       setSelectedChannel(res.channel);
       const channels = res.channels || [res.channel];
       const dest = channels.includes("email") && channels.includes("whatsapp")
         ? `email (${res.hint}) and WhatsApp`
-        : channels.includes("email") ? `email (${res.hint})` : `WhatsApp`;
+        : channels.includes("email") ? `email (${res.hint})` : `WhatsApp (+${otpPhone.trim()})`;
       setInfo(`A 6-digit code was sent to your ${dest}.`);
       goMode("set_pin");
     } catch (e) { setErr(e.message); }
@@ -431,12 +451,49 @@ export default function Login() {
             </button>
 
             <div className="login-section-title">Reset Your PIN</div>
-            <p className="login-hint-muted">Enter your phone number. We'll send a one-time code to your email or WhatsApp.</p>
+            <p className="login-hint-muted">Enter your phone number and choose how to receive your code.</p>
 
             <div className="form-group">
               <label className="form-label">Phone Number</label>
-              <PhoneInput value={otpPhone} onChange={setOtpPhone} disabled={busy} autoFocus />
+              <PhoneInput
+                value={otpPhone}
+                onChange={v => { setOtpPhone(v); fetchOtpChannels(v); setOtpHasEmail(false); setOtpEmailHint(null); }}
+                disabled={busy}
+                autoFocus
+              />
             </div>
+
+            <div className="form-group">
+              <label className="form-label">Send code via</label>
+              <div style={{ display: "flex", gap: 10 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 14 }}>
+                  <input type="radio" name="otp_channel" value="whatsapp"
+                    checked={selectedChannel === "whatsapp"}
+                    onChange={() => setSelectedChannel("whatsapp")} />
+                  WhatsApp
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 14 }}>
+                  <input type="radio" name="otp_channel" value="email"
+                    checked={selectedChannel === "email"}
+                    onChange={() => setSelectedChannel("email")} />
+                  Email {otpEmailHint ? `(${otpEmailHint})` : ""}
+                </label>
+              </div>
+            </div>
+
+            {selectedChannel === "email" && !otpHasEmail && (
+              <div className="form-group">
+                <label className="form-label">Your Email Address</label>
+                <input
+                  type="email"
+                  value={otpEmailInput}
+                  onChange={e => setOtpEmailInput(e.target.value)}
+                  placeholder="e.g. you@gmail.com"
+                  disabled={busy}
+                />
+                <span className="form-hint">We'll save this to your account for future use.</span>
+              </div>
+            )}
 
             {err && <div className="login-error">{err}</div>}
 

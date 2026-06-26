@@ -170,6 +170,7 @@ class RegisterRequest(BaseModel):
 class OtpRequest(BaseModel):
     phone: str = Field(max_length=20)
     channel: str = Field(default="auto", max_length=20)
+    email: str = Field(default="", max_length=200)
 
 class SetPinRequest(BaseModel):
     phone: str = Field(max_length=20)
@@ -611,7 +612,8 @@ def register_web_routes(app):
     def web_request_otp(payload: OtpRequest):
         db = SessionLocal()
         try:
-            return request_web_otp(db, payload.phone.strip(), payload.channel)
+            return request_web_otp(db, payload.phone.strip(), payload.channel,
+                                   email=payload.email.strip() if payload.email else None)
         finally:
             db.close()
 

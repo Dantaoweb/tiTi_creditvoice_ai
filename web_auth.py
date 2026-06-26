@@ -187,12 +187,17 @@ def get_otp_channels(db: Session, phone: str) -> dict:
         )
     return {
         "email_hint": mask_email(user.email) if user.email else None,
-        "has_whatsapp": bool(user.whatsapp_linked),
+        "has_whatsapp": True,  # always — we can always send to their phone number
+        "has_email": bool(user.email),
     }
 
 
-def request_web_otp(db: Session, phone: str, channel: str = "auto") -> dict:
-    """Send a 6-digit OTP via email or WhatsApp depending on channel."""
+def request_web_otp(db: Session, phone: str, channel: str = "auto", email: str = None) -> dict:
+    """Send a 6-digit OTP via email or WhatsApp depending on channel.
+
+    WhatsApp is always available (we have the phone number).
+    Email is available when on record, or when the caller supplies one now.
+    """
     if not _auth_rate_check(f"otp:{phone}"):
         raise HTTPException(status_code=429, detail="Too many OTP requests. Please wait 15 minutes.")
 
@@ -206,22 +211,23 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto") -> dict:
             detail="Phone number not registered. Create an account first.",
         )
 
-    has_email     = bool(user.email)
-    has_whatsapp  = bool(user.whatsapp_linked)
+    # If caller supplies an email and user has none, save it now
+    if email and not user.email:
+        clean = email.strip().lower()
+        if "@" in clean and "." in clean:
+            user.email = clean
+            db.commit()
 
-    # "auto" sends to BOTH channels when both are available (stronger recovery)
+    has_email = bool(user.email)
+    # WhatsApp is always available — we know their phone number
+    has_whatsapp = True
+
+    # "auto" prefers both when email is available, otherwise just WhatsApp
     if channel == "auto":
-        if has_email and has_whatsapp:
-            channel = "both"
-        elif has_email:
-            channel = "email"
-        else:
-            channel = "whatsapp"
+        channel = "both" if has_email else "whatsapp"
 
     if channel == "email" and not has_email:
-        raise HTTPException(status_code=400, detail="No email address on this account. Use WhatsApp instead.")
-    if channel == "whatsapp" and not has_whatsapp:
-        raise HTTPException(status_code=400, detail="WhatsApp not linked yet. Use email instead.")
+        raise HTTPException(status_code=400, detail="No email address on this account. Please enter your email below.")
 
     # Clear old OTP
     db.query(PendingAction).filter(
