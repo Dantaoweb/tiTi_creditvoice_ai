@@ -10,7 +10,10 @@ export async function apiFetch(path, params = {}, options = {}) {
     headers: { ...(options.headers || {}) },
   });
 
-  if (res.status === 401) {
+  const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") ||
+    path.includes("/auth/request-otp") || path.includes("/auth/set-pin") || path.includes("/auth/accept-invite");
+
+  if (res.status === 401 && !isAuthEndpoint) {
     localStorage.removeItem("cv_user");
     window.location.href = "/app/login";
     throw new Error("Session expired.");

@@ -552,20 +552,20 @@ export default function Inventory() {
       )}
 
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
           <span className="card-title">{pageTitle} <span className="text-subtle text-sm">({filtered.length})</span></span>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input
               placeholder="Search…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ width: 200 }}
+              style={{ width: 140, minWidth: 100 }}
             />
             <button className="btn btn-secondary btn-sm" onClick={() => setShowCatalog(true)} title="Pick from suggested product list">
-              <Plus size={14} /> From Catalog
+              <Plus size={14} /> Catalog
             </button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)} title="Add many product names at once">
-              <Plus size={14} /> Quick Add Names
+              <Plus size={14} /> Quick Add
             </button>
             <button
               className="btn btn-primary btn-sm"

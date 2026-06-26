@@ -565,6 +565,28 @@ tr.low-stock td { background: #fffbeb; }
   .metrics-grid { grid-template-columns: 1fr; }
   .page-content { padding: 12px 12px 80px; }
   .card { padding: 14px; }
+
+  /* Modals go full-width on small screens so nothing clips off the side */
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal, .modal-wide {
+    max-width: 100%;
+    width: 100%;
+    max-height: 92vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  /* Inventory tab row scrolls horizontally so all tabs are reachable */
+  .inv-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  .inv-tabs::-webkit-scrollbar { display: none; }
+  .inv-tab { white-space: nowrap; flex-shrink: 0; }
 }
 
 /* Desktop: hide mobile-only elements */
