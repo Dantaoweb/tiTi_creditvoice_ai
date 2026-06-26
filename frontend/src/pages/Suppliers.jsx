@@ -6,6 +6,39 @@ import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
 import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, Star } from "lucide-react";
 
+// ── Star rating component ─────────────────────────────────────────────────────
+function StarRating({ value, onChange, size = 22 }) {
+  const [hovered, setHovered] = useState(0);
+  const active = hovered || value;
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <Star
+          key={n}
+          size={size}
+          fill={n <= active ? "#f59e0b" : "none"}
+          color={n <= active ? "#f59e0b" : "#d1d5db"}
+          style={{ cursor: onChange ? "pointer" : "default", transition: "color 0.1s" }}
+          onMouseEnter={() => onChange && setHovered(n)}
+          onMouseLeave={() => onChange && setHovered(0)}
+          onClick={() => onChange && onChange(n)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function StarDisplay({ avg, count }) {
+  if (!avg) return null;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+      <Star size={12} fill="#f59e0b" color="#f59e0b" />
+      <span style={{ fontWeight: 700, color: "#92400e" }}>{avg}</span>
+      <span style={{ color: "var(--text-muted)" }}>({count})</span>
+    </span>
+  );
+}
+
 // ── Tab nav ───────────────────────────────────────────────────────────────────
 function TabNav({ tabs, active, onChange }) {
   return (
@@ -121,11 +154,15 @@ function MySupplyChain() {
 // TAB 2: Find Suppliers (directory)
 // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
 function ContactModal({ supplier, onClose }) {
-  const [product, setProduct] = useState("");
-  const [msg, setMsg]         = useState("");
-  const [busy, setBusy]       = useState(false);
-  const [done, setDone]       = useState(false);
-  const [err, setErr]         = useState("");
+  const [product, setProduct]   = useState("");
+  const [msg, setMsg]           = useState("");
+  const [busy, setBusy]         = useState(false);
+  const [done, setDone]         = useState(false);
+  const [err, setErr]           = useState("");
+  const [stars, setStars]       = useState(0);
+  const [review, setReview]     = useState("");
+  const [rated, setRated]       = useState(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
 
   async function send(e) {
     e.preventDefault();
@@ -141,6 +178,16 @@ function ContactModal({ supplier, onClose }) {
     finally { setBusy(false); }
   }
 
+  async function submitRating() {
+    if (!stars) return;
+    setRatingBusy(true);
+    try {
+      await apiPost(`verified-suppliers/${supplier.id}/rate`, { rating: stars, review });
+      setRated(true);
+    } catch { /* non-blocking */ }
+    finally { setRatingBusy(false); }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
@@ -149,13 +196,43 @@ function ContactModal({ supplier, onClose }) {
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         {done ? (
-          <div style={{ padding: "32px 0", textAlign: "center" }}>
+          <div style={{ padding: "24px 0", textAlign: "center" }}>
             <CheckCircle size={40} color="var(--green)" style={{ marginBottom: 12 }} />
-            <p style={{ fontWeight: 600 }}>Message sent!</p>
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+            <p style={{ fontWeight: 600, marginBottom: 4 }}>Message sent!</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 20 }}>
               {supplier.business_name} will see your enquiry in their inbox.
             </p>
-            <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={onClose}>Done</button>
+
+            {!rated ? (
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                  Have you worked with them before? Rate your experience.
+                </p>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                  <StarRating value={stars} onChange={setStars} size={28} />
+                </div>
+                {stars > 0 && (
+                  <textarea value={review} onChange={e => setReview(e.target.value)}
+                    rows={2} placeholder="Optional: share what went well or what to know…"
+                    style={{ width: "100%", marginBottom: 10, resize: "none" }} />
+                )}
+                <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                  {stars > 0 && (
+                    <button className="btn btn-primary" onClick={submitRating} disabled={ratingBusy}>
+                      {ratingBusy ? "Saving…" : "Submit rating"}
+                    </button>
+                  )}
+                  <button className="btn btn-secondary" onClick={onClose}>
+                    {stars > 0 ? "Skip" : "Close"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p style={{ color: "var(--green)", fontSize: 13, fontWeight: 600 }}>Rating saved — thank you!</p>
+                <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={onClose}>Close</button>
+              </>
+            )}
           </div>
         ) : (
           <form onSubmit={send} style={{ display: "flex", flexDirection: "column", gap: 14, padding: "4px 0" }}>
@@ -207,12 +284,13 @@ function SupplierCard({ s, onContact }) {
             </span>
           </div>
           {s.bio && <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 6px", lineHeight: 1.5 }}>{s.bio}</p>}
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "var(--text-muted)" }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "var(--text-muted)", alignItems: "center" }}>
             {s.states_covered?.length > 0 && (
               <span>📍 {s.states_covered.slice(0,3).join(", ")}{s.states_covered.length > 3 ? ` +${s.states_covered.length - 3} more` : ""}</span>
             )}
             {s.can_deliver && <span>🚚 Delivers</span>}
             {s.products?.length > 0 && <span>📦 {s.products.length} product{s.products.length > 1 ? "s" : ""}</span>}
+            <StarDisplay avg={s.avg_rating} count={s.rating_count} />
           </div>
         </div>
         <button className="btn btn-primary" style={{ flexShrink: 0, fontSize: 13 }} onClick={() => onContact(s)}>

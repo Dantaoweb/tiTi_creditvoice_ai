@@ -447,11 +447,12 @@ function ReferralSettingsTab() {
 
 // ── supplier applications tab ────────────────────────────────────────────────
 function SuppliersTab() {
-  const [apps, setApps]   = useState([]);
-  const [filter, setFilter] = useState("pending");
+  const [apps, setApps]       = useState([]);
+  const [stats, setStats]     = useState(null);
+  const [filter, setFilter]   = useState("pending");
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy]   = useState(null);
-  const [rejectId, setRejectId] = useState(null);
+  const [busy, setBusy]       = useState(null);
+  const [rejectId, setRejectId]     = useState(null);
   const [rejectReason, setRejectReason] = useState("");
 
   function load(s) {
@@ -462,7 +463,10 @@ function SuppliersTab() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(filter); }, [filter]);
+  useEffect(() => {
+    load(filter);
+    apiFetch("admin/supplier-stats").then(setStats).catch(() => {});
+  }, [filter]);
 
   async function approve(id) {
     setBusy(id);
@@ -489,6 +493,50 @@ function SuppliersTab() {
 
   return (
     <div>
+      {/* Connection stats */}
+      {stats && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 12, marginBottom: 24 }}>
+          {[
+            { label: "Contacts sent",         value: stats.total_contacts,     color: "#2563eb" },
+            { label: "Confirmed connections",  value: stats.total_connections,  color: "#059669" },
+            { label: "Overall avg rating",     value: stats.overall_avg_rating ? `${stats.overall_avg_rating} ★` : "—", color: "#d97706" },
+            { label: "Approved suppliers",     value: stats.approved_suppliers, color: "#7c3aed" },
+          ].map(s => (
+            <div key={s.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value ?? "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {stats?.per_supplier?.length > 0 && (
+        <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 16, marginBottom: 24 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Per-supplier connections</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12 }}>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Supplier</th>
+                <th style={{ textAlign: "right", padding: "4px 8px" }}>Contacts</th>
+                <th style={{ textAlign: "right", padding: "4px 8px" }}>Ratings</th>
+                <th style={{ textAlign: "right", padding: "4px 8px" }}>Avg rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.per_supplier.map(s => (
+                <tr key={s.supplier_id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 8px" }}>{s.business_name}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{s.contacts}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>{s.ratings}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right", color: s.avg_rating ? "#d97706" : "var(--text-muted)" }}>
+                    {s.avg_rating ? `${s.avg_rating} ★` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {["pending","approved","rejected","all"].map(s => (
           <button key={s} onClick={() => setFilter(s)} style={{
@@ -559,16 +607,61 @@ function SuppliersTab() {
 }
 
 // ── opportunities admin tab ──────────────────────────────────────────────────
-function OpportunitiesTab() {
-  const [opps, setOpps]     = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [busy, setBusy]     = useState(false);
-  const [err, setErr]       = useState("");
+const EMPTY_FIELD = { label: "", type: "text", placeholder: "", required: false, options: "" };
 
-  const empty = { title: "", partner_name: "", category: "general", description: "", link_url: "", is_active: true };
-  const [form, setForm]     = useState({ ...empty });
+function FieldEditor({ fields, onChange }) {
+  function update(i, val) { onChange(fields.map((f, j) => j === i ? val : f)); }
+  function remove(i)      { onChange(fields.filter((_, j) => j !== i)); }
+  function add()          { onChange([...fields, { ...EMPTY_FIELD }]); }
+
+  return (
+    <div>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Application form fields</div>
+      {fields.map((f, i) => (
+        <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+          <input value={f.label} onChange={e => update(i, { ...f, label: e.target.value })}
+            placeholder="Field label" style={{ flex: "1 1 140px" }} />
+          <select value={f.type} onChange={e => update(i, { ...f, type: e.target.value })} style={{ flex: "0 0 100px" }}>
+            <option value="text">Text</option>
+            <option value="number">Number</option>
+            <option value="textarea">Long text</option>
+            <option value="select">Dropdown</option>
+          </select>
+          {f.type === "select" && (
+            <input value={f.options} onChange={e => update(i, { ...f, options: e.target.value })}
+              placeholder="opt1,opt2,opt3" style={{ flex: "1 1 140px" }} title="Comma-separated options" />
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={f.required} onChange={e => update(i, { ...f, required: e.target.checked })} />
+            Required
+          </label>
+          <button type="button" onClick={() => remove(i)}
+            style={{ background: "none", border: "none", color: "var(--rose)", cursor: "pointer", fontSize: 16 }}>×</button>
+        </div>
+      ))}
+      <button type="button" onClick={add} style={{ fontSize: 12, color: "var(--brand)", background: "none",
+        border: "1px dashed var(--brand)", borderRadius: 6, padding: "4px 12px", cursor: "pointer" }}>
+        + Add field
+      </button>
+    </div>
+  );
+}
+
+function OpportunitiesTab() {
+  const [opps, setOpps]           = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [showForm, setShowForm]   = useState(false);
+  const [editing, setEditing]     = useState(null);
+  const [busy, setBusy]           = useState(false);
+  const [err, setErr]             = useState("");
+  const [viewApps, setViewApps]   = useState(null);   // opportunity being viewed for applications
+  const [oppApps, setOppApps]     = useState([]);
+  const [appFilter, setAppFilter] = useState("all");
+  const [updatingApp, setUpdatingApp] = useState(null);
+  const [appNote, setAppNote]     = useState("");
+
+  const empty = { title: "", partner_name: "", category: "general", description: "", link_url: "", is_active: true, application_fields: [] };
+  const [form, setForm]           = useState({ ...empty });
 
   const CATS = ["finance","equipment","trade","products","general"];
 
@@ -582,21 +675,34 @@ function OpportunitiesTab() {
 
   useEffect(() => { load(); }, []);
 
-  function startEdit(o) { setEditing(o.id); setForm({ ...o }); setShowForm(true); }
-  function startNew()   { setEditing(null); setForm({ ...empty }); setShowForm(true); }
+  function startEdit(o) {
+    setEditing(o.id);
+    setForm({ ...o, application_fields: JSON.parse(o.application_fields || "[]") });
+    setShowForm(true);
+  }
+  function startNew() { setEditing(null); setForm({ ...empty }); setShowForm(true); }
 
   async function save(e) {
     e.preventDefault(); setErr(""); setBusy(true);
     try {
+      const body = {
+        ...form,
+        application_fields: JSON.stringify(
+          (form.application_fields || []).map(f => ({
+            ...f,
+            options: f.type === "select" ? f.options.split(",").map(s => s.trim()).filter(Boolean) : [],
+          }))
+        ),
+      };
       if (editing) {
         await fetch(`/app/api/admin/opportunities/${editing}`, {
           method: "PUT", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
         });
       } else {
         await fetch("/app/api/admin/opportunities", {
           method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
         });
       }
       setShowForm(false); setEditing(null); load();
@@ -608,6 +714,90 @@ function OpportunitiesTab() {
     if (!confirm("Delete this opportunity?")) return;
     await fetch(`/app/api/admin/opportunities/${id}`, { method: "DELETE", credentials: "include" });
     load();
+  }
+
+  function viewApplications(opp) {
+    setViewApps(opp);
+    apiFetch(`admin/opportunity-applications?opportunity_id=${opp.id}`)
+      .then(d => setOppApps(d.applications || []))
+      .catch(() => setOppApps([]));
+  }
+
+  async function updateAppStatus(appId, status, notes) {
+    setUpdatingApp(appId);
+    try {
+      await fetch(`/app/api/admin/opportunity-applications/${appId}/status`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, admin_notes: notes }),
+      });
+      setOppApps(prev => prev.map(a => a.id === appId ? { ...a, status, admin_notes: notes } : a));
+    } finally { setUpdatingApp(null); }
+  }
+
+  const APP_STATUSES = ["submitted","reviewing","approved","declined"];
+  const filteredOppApps = appFilter === "all" ? oppApps : oppApps.filter(a => a.status === appFilter);
+  const dateStr = s => s ? new Date(s).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+  // Applications view
+  if (viewApps) {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <button onClick={() => setViewApps(null)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13 }}>← Back</button>
+          <strong style={{ fontSize: 15 }}>Applications: {viewApps.title}</strong>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{oppApps.length} total</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {["all", ...APP_STATUSES].map(s => (
+            <button key={s} onClick={() => setAppFilter(s)} style={{
+              padding: "5px 12px", borderRadius: 99, border: "1px solid", cursor: "pointer", fontSize: 12,
+              background: appFilter === s ? "var(--brand)" : "transparent",
+              color: appFilter === s ? "#fff" : "var(--text-muted)",
+              borderColor: appFilter === s ? "var(--brand)" : "var(--border)",
+            }}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
+          ))}
+        </div>
+        {filteredOppApps.length === 0 ? (
+          <p style={{ color: "var(--text-muted)" }}>No {appFilter === "all" ? "" : appFilter} applications.</p>
+        ) : filteredOppApps.map(a => (
+          <div key={a.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 16, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+              <div>
+                <strong style={{ fontSize: 14 }}>{a.applicant_name}</strong>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>{a.applicant_phone}</span>
+                {a.applicant_email && <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>{a.applicant_email}</span>}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, border: "1px solid var(--border)" }}>{a.status}</span>
+            </div>
+            {Object.keys(a.answers).length > 0 && (
+              <div style={{ fontSize: 13, marginBottom: 10, color: "var(--text-secondary)", lineHeight: 1.8 }}>
+                {Object.entries(a.answers).map(([k, v]) => v ? (
+                  <div key={k}><strong>{k}:</strong> {v}</div>
+                ) : null)}
+              </div>
+            )}
+            {a.admin_notes && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+                <strong>Your note to user:</strong> {a.admin_notes}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select defaultValue={a.status} onChange={e => {
+                const newStatus = e.target.value;
+                const note = prompt("Optional message to applicant:", a.admin_notes || "") ?? a.admin_notes ?? "";
+                updateAppStatus(a.id, newStatus, note);
+              }} style={{ fontSize: 13, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)" }}
+                disabled={updatingApp === a.id}>
+                {APP_STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
+              {updatingApp === a.id && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Saving…</span>}
+              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>Applied {dateStr(a.created_at)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -622,7 +812,7 @@ function OpportunitiesTab() {
 
       {showForm && (
         <form onSubmit={save} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10,
-          padding: 20, marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+          padding: 20, marginBottom: 20, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Title *</label>
@@ -647,6 +837,10 @@ function OpportunitiesTab() {
             <label className="form-label">Description *</label>
             <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
           </div>
+          <FieldEditor
+            fields={form.application_fields || []}
+            onChange={fields => setForm(f => ({ ...f, application_fields: fields }))}
+          />
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer" }}>
             <input type="checkbox" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))} />
             Active (visible to users)
@@ -682,7 +876,11 @@ function OpportunitiesTab() {
             {o.partner_name && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{o.partner_name}</div>}
             <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "4px 0 0" }}>{o.description.slice(0, 120)}{o.description.length > 120 ? "…" : ""}</p>
           </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+            <button onClick={() => viewApplications(o)} style={{ background: "none", border: "1px solid var(--brand)",
+              color: "var(--brand)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+              Applications
+            </button>
             <button onClick={() => startEdit(o)} style={{ background: "none", border: "1px solid var(--border)",
               borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>Edit</button>
             <button onClick={() => del(o.id)} style={{ background: "none", border: "1px solid var(--rose)",

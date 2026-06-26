@@ -1086,19 +1086,51 @@ class SupplierContactMessage(Base):
     created_at         = Column(DateTime, default=utcnow)
 
 
+class SupplierRating(Base):
+    """A retailer's rating of a verified supplier they did business with."""
+
+    __tablename__ = "supplier_ratings"
+
+    id                 = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    supplier_id        = Column(String, ForeignKey("verified_suppliers.id"), nullable=False, index=True)
+    from_phone         = Column(String, nullable=False)
+    from_business_name = Column(String, nullable=True)
+    rating             = Column(Integer, nullable=False)   # 1–5
+    review             = Column(Text, nullable=True)
+    created_at         = Column(DateTime, default=utcnow)
+
+
 class Opportunity(Base):
     """An opportunity card created by admin and visible to all users."""
 
     __tablename__ = "opportunities"
 
-    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    title        = Column(String, nullable=False)
-    partner_name = Column(String, nullable=True)
-    category     = Column(String, nullable=True)  # finance/equipment/trade/products
-    description  = Column(Text, nullable=False)
-    link_url     = Column(String, nullable=True)
-    is_active    = Column(Boolean, default=True)
-    created_at   = Column(DateTime, default=utcnow)
+    id                 = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title              = Column(String, nullable=False)
+    partner_name       = Column(String, nullable=True)
+    category           = Column(String, nullable=True)  # finance/equipment/trade/products
+    description        = Column(Text, nullable=False)
+    link_url           = Column(String, nullable=True)
+    application_fields = Column(Text, default="[]")     # JSON array of custom intake fields
+    is_active          = Column(Boolean, default=True)
+    created_at         = Column(DateTime, default=utcnow)
+
+
+class OpportunityApplication(Base):
+    """A user's application for an opportunity, submitted through CreditVoice."""
+
+    __tablename__ = "opportunity_applications"
+
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    opportunity_id   = Column(String, ForeignKey("opportunities.id"), nullable=False, index=True)
+    applicant_phone  = Column(String, nullable=False)
+    applicant_name   = Column(String, nullable=True)
+    applicant_email  = Column(String, nullable=True)
+    answers          = Column(Text, default="{}")   # JSON: {field_label: answer}
+    status           = Column(String, default="submitted")  # submitted/reviewing/approved/declined
+    admin_notes      = Column(Text, nullable=True)
+    created_at       = Column(DateTime, default=utcnow)
+    updated_at       = Column(DateTime, nullable=True)
 
 
 class AuditLog(Base):

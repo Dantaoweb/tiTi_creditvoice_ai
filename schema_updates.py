@@ -705,6 +705,46 @@ def ensure_schema_updates(engine):
                 )
             """))
 
+    # ── Supplier ratings ────────────────────────────────────────────────────
+    if "supplier_ratings" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE supplier_ratings (
+                    id                 {_pk_str},
+                    supplier_id        VARCHAR NOT NULL,
+                    from_phone         VARCHAR NOT NULL,
+                    from_business_name VARCHAR,
+                    rating             INTEGER NOT NULL,
+                    review             TEXT,
+                    created_at         TIMESTAMP {_now}
+                )
+            """))
+
+    # ── Opportunity applications ─────────────────────────────────────────────
+    if "opportunity_applications" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE opportunity_applications (
+                    id               {_pk_str},
+                    opportunity_id   VARCHAR NOT NULL,
+                    applicant_phone  VARCHAR NOT NULL,
+                    applicant_name   VARCHAR,
+                    applicant_email  VARCHAR,
+                    answers          TEXT DEFAULT '{{}}',
+                    status           VARCHAR DEFAULT 'submitted',
+                    admin_notes      TEXT,
+                    created_at       TIMESTAMP {_now},
+                    updated_at       TIMESTAMP
+                )
+            """))
+
+    # ── application_fields column on opportunities ───────────────────────────
+    opp_columns = {col["name"] for col in inspector.get_columns("opportunities")} \
+        if "opportunities" in existing_tables else set()
+    if "application_fields" not in opp_columns and "opportunities" in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE opportunities ADD COLUMN application_fields TEXT DEFAULT '[]'"))
+
     # Record that this full migration batch completed successfully.
     # The timestamp lets ops confirm exactly when each schema version
     # was applied to production.

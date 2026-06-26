@@ -16,7 +16,9 @@ from typing import Optional, List
 from database import SessionLocal
 from models import (
     Opportunity,
+    OpportunityApplication,
     SupplierContactMessage,
+    SupplierRating,
     User,
     VerifiedSupplier,
     VerifiedSupplierProduct,
@@ -98,9 +100,31 @@ class RejectIn(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class RatingIn(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    review: str = Field(default="", max_length=600)
+
+
+class OpportunityApplicationIn(BaseModel):
+    answers: dict = Field(default_factory=dict)
+
+
+class ApplicationStatusIn(BaseModel):
+    status:      str = Field(max_length=20)   # submitted/reviewing/approved/declined
+    admin_notes: str = Field(default="", max_length=1000)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True):
+def _rating_stats(db: Session, supplier_id: str) -> dict:
+    ratings = db.query(SupplierRating).filter(SupplierRating.supplier_id == supplier_id).all()
+    if not ratings:
+        return {"avg_rating": None, "rating_count": 0}
+    avg = round(sum(r.rating for r in ratings) / len(ratings), 1)
+    return {"avg_rating": avg, "rating_count": len(ratings)}
+
+
+def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True, include_ratings=True):
     user = db.query(User).filter(User.phone == vs.owner_phone).first()
     products = []
     if include_products:
@@ -120,6 +144,10 @@ def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True):
             }
             for p in rows
         ]
+    stats = _rating_stats(db, vs.id) if include_ratings else {"avg_rating": None, "rating_count": 0}
+    contact_count = db.query(SupplierContactMessage).filter(
+        SupplierContactMessage.supplier_id == vs.id
+    ).count() if include_ratings else 0
     return {
         "id": vs.id,
         "owner_phone": vs.owner_phone,
@@ -136,6 +164,9 @@ def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True):
         "reviewed_at": vs.reviewed_at.isoformat() if vs.reviewed_at else None,
         "created_at": vs.created_at.isoformat() if vs.created_at else None,
         "products": products,
+        "avg_rating": stats["avg_rating"],
+        "rating_count": stats["rating_count"],
+        "contact_count": contact_count,
     }
 
 
@@ -583,6 +614,232 @@ def register_supplier_routes(app, get_db=None):
             if opp:
                 db.delete(opp)
                 db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    # ── Supplier ratings ───────────────────────────────────────────────────────
+
+    @app.post("/app/api/verified-suppliers/{supplier_id}/rate")
+    def rate_supplier(request: Request, supplier_id: str, payload: RatingIn):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            vs = db.query(VerifiedSupplier).filter(
+                VerifiedSupplier.id == supplier_id,
+                VerifiedSupplier.verification_status == "approved",
+            ).first()
+            if not vs:
+                raise HTTPException(status_code=404, detail="Supplier not found.")
+            if vs.owner_phone == phone:
+                raise HTTPException(status_code=400, detail="You cannot rate yourself.")
+
+            existing = db.query(SupplierRating).filter(
+                SupplierRating.supplier_id == supplier_id,
+                SupplierRating.from_phone == phone,
+            ).first()
+
+            user = db.query(User).filter(User.phone == phone).first()
+            biz  = (user.business_type_label or user.name or phone) if user else phone
+
+            if existing:
+                existing.rating = payload.rating
+                existing.review = payload.review or None
+            else:
+                db.add(SupplierRating(
+                    id                 = str(uuid.uuid4()),
+                    supplier_id        = supplier_id,
+                    from_phone         = phone,
+                    from_business_name = biz,
+                    rating             = payload.rating,
+                    review             = payload.review or None,
+                ))
+            db.commit()
+            return {"ok": True}
+        finally:
+            db.close()
+
+    @app.get("/app/api/verified-suppliers/{supplier_id}/ratings")
+    def get_supplier_ratings(supplier_id: str):
+        db = SessionLocal()
+        try:
+            ratings = db.query(SupplierRating).filter(
+                SupplierRating.supplier_id == supplier_id
+            ).order_by(SupplierRating.created_at.desc()).all()
+            return {
+                "ratings": [
+                    {
+                        "id": r.id,
+                        "from_business_name": r.from_business_name or r.from_phone,
+                        "rating": r.rating,
+                        "review": r.review or "",
+                        "created_at": r.created_at.isoformat() if r.created_at else None,
+                    }
+                    for r in ratings
+                ],
+                **_rating_stats(db, supplier_id),
+            }
+        finally:
+            db.close()
+
+    # ── Opportunity applications ───────────────────────────────────────────────
+
+    @app.post("/app/api/opportunities/{opp_id}/apply")
+    def apply_opportunity(request: Request, opp_id: str, payload: OpportunityApplicationIn):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            opp = db.query(Opportunity).filter(
+                Opportunity.id == opp_id,
+                Opportunity.is_active == True,
+            ).first()
+            if not opp:
+                raise HTTPException(status_code=404, detail="Opportunity not found.")
+
+            existing = db.query(OpportunityApplication).filter(
+                OpportunityApplication.opportunity_id == opp_id,
+                OpportunityApplication.applicant_phone == phone,
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="You have already applied for this opportunity.")
+
+            user = db.query(User).filter(User.phone == phone).first()
+            db.add(OpportunityApplication(
+                id              = str(uuid.uuid4()),
+                opportunity_id  = opp_id,
+                applicant_phone = phone,
+                applicant_name  = (user.business_type_label or user.name) if user else None,
+                applicant_email = user.email if user else None,
+                answers         = json.dumps(payload.answers),
+            ))
+            db.commit()
+            return {"ok": True, "message": "Application submitted successfully."}
+        finally:
+            db.close()
+
+    @app.get("/app/api/opportunities/my-applications")
+    def my_opportunity_applications(request: Request):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            apps = db.query(OpportunityApplication).filter(
+                OpportunityApplication.applicant_phone == phone,
+            ).order_by(OpportunityApplication.created_at.desc()).all()
+
+            result = []
+            for a in apps:
+                opp = db.query(Opportunity).filter(Opportunity.id == a.opportunity_id).first()
+                result.append({
+                    "id": a.id,
+                    "opportunity_id": a.opportunity_id,
+                    "opportunity_title": opp.title if opp else "—",
+                    "opportunity_partner": opp.partner_name if opp else "",
+                    "opportunity_category": opp.category if opp else "",
+                    "answers": json.loads(a.answers or "{}"),
+                    "status": a.status,
+                    "admin_notes": a.admin_notes or "",
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                    "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+                })
+            return {"applications": result}
+        finally:
+            db.close()
+
+    # ── Admin: supplier connection stats ──────────────────────────────────────
+
+    @app.get("/app/api/admin/supplier-stats")
+    def admin_supplier_stats(request: Request):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            _require_admin(db, phone)
+
+            total_contacts = db.query(SupplierContactMessage).count()
+            total_ratings  = db.query(SupplierRating).count()
+            all_ratings    = db.query(SupplierRating).all()
+            avg_rating     = round(sum(r.rating for r in all_ratings) / len(all_ratings), 1) if all_ratings else None
+
+            approved = db.query(VerifiedSupplier).filter(
+                VerifiedSupplier.verification_status == "approved"
+            ).all()
+
+            per_supplier = []
+            for vs in approved:
+                user = db.query(User).filter(User.phone == vs.owner_phone).first()
+                bname = (user.business_type_label or user.name or vs.owner_phone) if user else vs.owner_phone
+                stats = _rating_stats(db, vs.id)
+                contacts = db.query(SupplierContactMessage).filter(
+                    SupplierContactMessage.supplier_id == vs.id
+                ).count()
+                per_supplier.append({
+                    "supplier_id": vs.id,
+                    "business_name": bname,
+                    "contacts": contacts,
+                    "ratings": stats["rating_count"],
+                    "avg_rating": stats["avg_rating"],
+                })
+            per_supplier.sort(key=lambda x: x["contacts"], reverse=True)
+
+            return {
+                "total_contacts": total_contacts,
+                "total_connections": total_ratings,
+                "overall_avg_rating": avg_rating,
+                "approved_suppliers": len(approved),
+                "per_supplier": per_supplier,
+            }
+        finally:
+            db.close()
+
+    # ── Admin: opportunity applications ───────────────────────────────────────
+
+    @app.get("/app/api/admin/opportunity-applications")
+    def admin_opportunity_applications(request: Request, opportunity_id: str = "", status: str = ""):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            _require_admin(db, phone)
+            q = db.query(OpportunityApplication)
+            if opportunity_id:
+                q = q.filter(OpportunityApplication.opportunity_id == opportunity_id)
+            if status:
+                q = q.filter(OpportunityApplication.status == status)
+            apps = q.order_by(OpportunityApplication.created_at.desc()).all()
+            result = []
+            for a in apps:
+                opp = db.query(Opportunity).filter(Opportunity.id == a.opportunity_id).first()
+                result.append({
+                    "id": a.id,
+                    "opportunity_id": a.opportunity_id,
+                    "opportunity_title": opp.title if opp else "—",
+                    "applicant_phone": a.applicant_phone,
+                    "applicant_name": a.applicant_name or a.applicant_phone,
+                    "applicant_email": a.applicant_email or "",
+                    "answers": json.loads(a.answers or "{}"),
+                    "status": a.status,
+                    "admin_notes": a.admin_notes or "",
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                    "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+                })
+            return {"applications": result, "total": len(result)}
+        finally:
+            db.close()
+
+    @app.patch("/app/api/admin/opportunity-applications/{app_id}/status")
+    def admin_update_application_status(request: Request, app_id: str, payload: ApplicationStatusIn):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            _require_admin(db, phone)
+            valid = {"submitted", "reviewing", "approved", "declined"}
+            if payload.status not in valid:
+                raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(valid)}")
+            app = db.query(OpportunityApplication).filter(OpportunityApplication.id == app_id).first()
+            if not app:
+                raise HTTPException(status_code=404)
+            app.status      = payload.status
+            app.admin_notes = payload.admin_notes or None
+            app.updated_at  = _utcnow()
+            db.commit()
             return {"ok": True}
         finally:
             db.close()
