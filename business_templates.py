@@ -294,7 +294,7 @@ INDUSTRY_EXAMPLES = {
     ],
     "dispatch_delivery": [
         "I received 2500 for delivery",
-        "Bola delivery 6000 paid 4000",
+        "Bola owes 6000 for delivery paid 4000",
         "today sales",
     ],
     "property_manager": [
@@ -319,7 +319,7 @@ INDUSTRY_EXAMPLES = {
     ],
     "fuel_marketer": [
         "Ade bought 5000 liters diesel at 1150 each",
-        "I supply 10000 liters AGO to Bayo at 1100",
+        "Bayo bought 10000 liters AGO at 1100",
         "depot supplied 20000 liters at 1050 paid 15000000",
     ],
     "kerosene_diesel": [
@@ -328,28 +328,28 @@ INDUSTRY_EXAMPLES = {
         "stock",
     ],
     "lpg_gas": [
-        "Ade refilled 12.5kg cylinder at 15000",
-        "I sold 3 cylinders gas at 12000 each",
+        "Ade refilled 12.5kg cylinder for 15000",
+        "I sold 3 cylinders gas for 12000 each",
         "today sales",
     ],
     "sand_seller": [
-        "I sold 5 trips sand to Bayo at 35000",
+        "Bayo bought 5 trips sharp sand at 35000",
         "Ade bought 3 trips sand at 30000 paid 50000",
-        "stock",
+        "unpaid debtors",
     ],
     "granite_supplier": [
         "Ade bought 10 tonnes granite at 8000",
-        "I supply 5 loads gravel to site A at 25000",
-        "Bayo balance 50000 due Friday",
+        "I sold 5 loads gravel at 25000 each",
+        "unpaid debtors",
     ],
     "quarry_owner": [
-        "I sold 3 trips granite to Emeka at 40000",
+        "Emeka bought 3 trips granite at 40000",
         "Bayo bought 5 tonnes stone at 7500 paid 25000",
-        "dashboard",
+        "unpaid debtors",
     ],
     "block_making": [
         "Ade bought 500 blocks at 200 each",
-        "I sold 1000 blocks to Bayo at 180 paid 150000",
+        "Bayo bought 1000 blocks at 180 paid 150000",
         "stock",
     ],
     "clinic": [
@@ -423,28 +423,148 @@ INDUSTRY_EXAMPLES = {
         "customer summary Bayo",
     ],
     "artisanal_gold": [
-        "Ade bought 5g gold dust at 450000",
-        "I sold 1 ounce raw gold to Bayo at 3200000",
-        "gold supplier supplied 10g gold at 400000 each",
+        "Ade bought 5g gold dust at 800000",
+        "Bayo bought 1 ounce raw gold at 5000000 paid 3000000",
+        "gold supplier supplied 10g gold at 750000 each",
     ],
     "lithium_miner": [
         "Ade bought 2 tonnes lithium ore at 800000",
-        "I sold 500kg spodumene to Bayo at 1500 per kg",
-        "Emeka balance 2000000 due Friday",
+        "Bayo bought 500kg spodumene at 800000 paid 500000",
+        "unpaid debtors",
     ],
     "gemstone_dealer": [
         "Ade bought 5 carats tourmaline at 50000",
-        "I sold 2 carats sapphire to Bayo at 120000",
-        "Emeka balance 300000 due Friday",
+        "Bayo bought 2 carats sapphire at 120000 paid 150000",
+        "unpaid debtors",
     ],
     "coal_miner": [
-        "I sold 10 tonnes steam coal to Ade at 80000",
+        "Ade bought 10 tonnes steam coal at 80000",
         "Bayo bought 5 tonnes coking coal at 95000 paid 300000",
-        "dashboard",
+        "unpaid debtors",
     ],
     "tin_columbite": [
-        "I sold 50kg columbite to Ade at 12000 per kg",
+        "Ade bought 50kg columbite at 12000 each",
         "Bayo bought 20kg tin ore at 8000 paid 100000",
+        "stock",
+    ],
+    # ── Food / Hospitality ────────────────────────────────────────────────────
+    "bakery": [
+        "I sold 10 loaves bread at 500",
+        "Ade bought 3 birthday cakes at 15000 paid 20000",
+        "today sales",
+    ],
+    "catering": [
+        "I received 80000 for wedding catering",
+        "Bayo event catering 50000 paid 30000",
+        "customer summary Bayo",
+    ],
+    "bar_lounge": [
+        "I sold 5 packs orange juice at 1500",
+        "Ade bought drinks 8000 paid 5000",
+        "today sales",
+    ],
+    "frozen_food": [
+        "Ade bought 2 cartons chicken at 35000",
+        "I sold 5kg fish at 4500",
+        "stock",
+    ],
+    # ── Transport / Logistics ─────────────────────────────────────────────────
+    "logistics_company": [
+        "Emeka Ltd bought haulage 200000 paid 100000",
+        "I received 150000 for container delivery",
+        "unpaid debtors",
+    ],
+    "car_hire": [
+        "Bayo hired saloon car 3 days at 20000",
+        "I received 60000 for wedding car hire",
+        "customer summary Bayo",
+    ],
+    "truck_supply": [
+        "Ade bought tipper trip at 40000 paid 25000",
+        "Emeka owes 80000 for 2 tipper trips",
+        "unpaid debtors",
+    ],
+    "fleet_owner": [
+        "Emeka keke paid 2000 remittance",
+        "Bayo taxi paid 5000 daily remittance",
+        "customer summary Emeka",
+    ],
+    # ── Real Estate / Rentals ─────────────────────────────────────────────────
+    "estate_agent": [
+        "Bayo paid agency commission 100000",
+        "Emeka owes agency fee 50000",
+        "unpaid debtors",
+    ],
+    "shortlet": [
+        "Bola booked studio 2 nights at 20000",
+        "Grace paid 30000 for 1-bed apartment",
+        "customer summary Bola",
+    ],
+    "stall_rent": [
+        "Stall 15 Mama Bola paid 10000 monthly rent",
+        "Alhaji Sule stall 7 owes 20000 rent",
+        "unpaid debtors",
+    ],
+    "equipment_rental": [
+        "Bayo hired generator for 2 days 10000",
+        "Chike paid 15000 for projector rental",
+        "customer summary Bayo",
+    ],
+    "event_rental": [
+        "Bayo hired 100 chairs 2 canopies 25000 paid 15000",
+        "Amina paid 15000 for canopy hire",
+        "unpaid debtors",
+    ],
+    # ── Thrift / Contributions ────────────────────────────────────────────────
+    "daily_contribution": [
+        "Ade paid 500 daily contribution",
+        "Mama Bola paid 200 today",
+        "customer summary Ade",
+    ],
+    "ajo_esusu": [
+        "Amina ajo 5000",
+        "Tunde paid esusu 10000",
+        "customer summary Amina",
+    ],
+    "savings_group": [
+        "Amina contributed 10000 savings",
+        "Tunde paid monthly savings 5000",
+        "customer summary Amina",
+    ],
+    "cooperative_savings": [
+        "Ade paid monthly levy 2000",
+        "Bayo paid cooperative savings 5000",
+        "unpaid debtors",
+    ],
+    # ── Quarry / Raw Materials ────────────────────────────────────────────────
+    "laterite_seller": [
+        "Bayo bought 3 trips laterite at 20000",
+        "Ade bought 2 trips red soil at 15000 paid 20000",
+        "unpaid debtors",
+    ],
+    "limestone_quarry": [
+        "Ade bought 10 tonnes limestone at 15000",
+        "Emeka bought 5 trips limestone dust at 20000 paid 60000",
+        "unpaid debtors",
+    ],
+    "marble_seller": [
+        "Ade bought 20 sqm white marble at 35000",
+        "Bayo bought 5 slabs marble at 120000 paid 400000",
+        "stock",
+    ],
+    "iron_ore_seller": [
+        "Ade bought 5 tonnes iron ore at 150000",
+        "Emeka bought 10 tonnes hematite at 160000 paid 1000000",
+        "unpaid debtors",
+    ],
+    "bitumen_supplier": [
+        "Ade bought 10 drums bitumen at 85000",
+        "Lagos State PWD bought 2 tonnes asphalt mix at 150000 paid 200000",
+        "unpaid debtors",
+    ],
+    "lubricants": [
+        "Bayo bought 4 litres engine oil at 8500",
+        "I sold 25 litres gear oil at 45000",
         "stock",
     ],
 }
@@ -467,7 +587,7 @@ BUSINESS_TEMPLATE_ALIASES = {
     "provision_store": "retail_trading",
     "mini_supermarket": "retail_trading",
     "wholesale_shop": "retail_trading",
-    "building_materials": "retail_trading",
+    "building_materials": "household_hardware",
     "foodstuff_seller": "retail_trading",
     "boutique_clothing": "retail_trading",
     "phone_accessories": "retail_trading",
@@ -494,7 +614,6 @@ BUSINESS_TEMPLATE_ALIASES = {
     "madrasa_islamiyyah": "school",
     "other_education": "school",
     "hair_salon": "salon_beauty",
-    "barbing_salon": "salon_beauty",
     "nail_studio": "salon_beauty",
     "makeup_artist": "salon_beauty",
     "spa_massage": "salon_beauty",
@@ -1166,12 +1285,12 @@ INDUSTRY_TEMPLATES = {
             "Permission control",
         ],
         "examples": [
-            "Ade bought Camry 2018 at 3500000 paid 2000000",
-            "Bayo bought Honda Accord 2016 2800000 full payment",
+            "Ade bought Tokunbo Camry at 3500000 paid 2000000",
+            "Bayo bought Honda Accord full payment 2800000",
             "I bought Tokunbo Toyota Corolla from Alhaji at 1200000",
         ],
         "quick_actions": [
-            ("Record sale", "Send: Ade bought Camry 2018 at 3500000 paid 2000000"),
+            ("Record sale", "Send: Ade bought Tokunbo Camry at 3500000 paid 2000000"),
             ("Record payment", "Send: Ade paid 500000"),
             ("Customer account", "Send: customer summary Ade"),
             ("Stock", "Send: stock"),
@@ -2269,7 +2388,7 @@ INDUSTRY_PRODUCT_CATALOG = {
         ("vegetable oil", "oil"),
         ("water", "beverage"),
         ("soft drink", "beverage"),
-        ("beer", "beverage"),
+        ("orange juice", "beverage"),
         ("malt", "beverage"),
         ("bread", "bakery"),
         ("flour", "ingredient"),
@@ -2863,8 +2982,8 @@ SERVICE_PRICE_CATALOG = {
         ("equipment hire",      "per event",        20000),
     ],
     "bar_lounge": [
-        ("beer",                "bottle (small)",   500),
-        ("beer",                "bottle (big)",     800),
+        ("orange juice",         "bottle (small)",   500),
+        ("orange juice",         "bottle (big)",     800),
         ("stout",               "bottle",           700),
         ("malt",                "bottle",           500),
         ("soft drink",          "bottle",           300),

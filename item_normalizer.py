@@ -117,6 +117,24 @@ UNIT_ALIASES = {
     "trays": "tray",
     "tray": "tray",
     "creates": "crate",   # common typo for "crates"
+    "trips": "trip",
+    "trip": "trip",
+    "tonnes": "tonne",
+    "tonne": "tonne",
+    "carats": "carat",
+    "carat": "carat",
+    "ounces": "ounce",
+    "ounce": "ounce",
+    "oz": "ounce",
+    "cylinders": "cylinder",
+    "cylinder": "cylinder",
+    "drums": "drum",
+    "drum": "drum",
+    "slabs": "slab",
+    "slab": "slab",
+    "sqm": "sqm",
+    "grams": "gram",
+    "gram": "gram",
     "kg": "kg",
     "g": "g",
     "ml": "ml",
@@ -147,7 +165,7 @@ def normalize_unit(unit):
 def clean_product_name(product):
     clean = str(product or "").lower().strip()
     clean = re.sub(r"[,.;:]+$", "", clean)
-    clean = re.sub(r"\b(each|per\s+unit|per\s+piece)\b", "", clean)
+    clean = re.sub(r"\b(each|per\s+unit|per\s+piece|per\s+kg|per\s+gram|per\s+tonne|per\s+ton|per\s+litre|per\s+liter|per\s+ounce|per\s+oz|per\s+carat)\b", "", clean)
     # Strip leading article "a"/"an" — "a bag of feed" → "bag of feed"
     clean = re.sub(r"^an?\s+", "", clean)
     clean = re.sub(r"\s+", " ", clean).strip()
