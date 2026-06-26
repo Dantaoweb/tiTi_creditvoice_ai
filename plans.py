@@ -52,10 +52,10 @@ FEATURE_MIN_PLAN = {
     "REMINDER_AUTOMATION":    PLAN_BASIC,
     "WALLET":                 PLAN_BASIC,
     "SCHOOL_TEACHER_ROSTER":  PLAN_BASIC,   # school-only; 3 on Basic, unlimited on Pro
+    "INVOICE":                PLAN_BASIC,   # Basic: 5 multi-item invoice uses/month
 
     # ── Available on Go ──────────────────────────────────────────────────────
     "EXPORT":                 PLAN_GO,
-    "INVOICE":                PLAN_GO,
     "TRANSACTION_NOTES":      PLAN_GO,
     "ADVANCED_REPORTS":       PLAN_GO,
     "THRIFT_PARTICIPANTS":    PLAN_GO,
