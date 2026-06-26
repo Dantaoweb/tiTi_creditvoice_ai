@@ -22,7 +22,8 @@ import Capture      from "./pages/Capture";
 import POS          from "./pages/POS";
 import Receipt      from "./pages/Receipt";
 import Wallet       from "./pages/Wallet";
-import Thrift       from "./pages/Thrift";
+import Thrift        from "./pages/Thrift";
+import Opportunities from "./pages/Opportunities";
 import Terms        from "./pages/Terms";
 import Privacy      from "./pages/Privacy";
 
@@ -66,8 +67,9 @@ export default function App() {
           <Route path="wallet"       element={<Wallet />}       />
           <Route path="thrift"       element={<Thrift />}       />
           <Route path="branches"     element={<Branches />}     />
-          <Route path="automation"   element={<Automation />}   />
-          <Route path="admin"        element={<Admin />}        />
+          <Route path="automation"     element={<Automation />}     />
+          <Route path="opportunities" element={<Opportunities />} />
+          <Route path="admin"        element={<Admin />}          />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

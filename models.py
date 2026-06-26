@@ -1035,6 +1035,72 @@ class ReferralSettings(Base):
     updated_at = Column(DateTime, default=utcnow)
 
 
+class VerifiedSupplier(Base):
+    """A CreditVoice user who has applied to appear in the supplier directory."""
+
+    __tablename__ = "verified_suppliers"
+
+    id               = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone      = Column(String, ForeignKey("users.phone"), unique=True, nullable=False, index=True)
+    supplier_type    = Column(String, nullable=False)  # producer/manufacturer/importer/authorized_distributor/wholesaler
+    bio              = Column(Text, nullable=True)
+    states_covered   = Column(Text, default="[]")      # JSON list of Nigerian states
+    can_deliver      = Column(Boolean, default=False)
+    delivery_notes   = Column(Text, nullable=True)
+    cac_number       = Column(String, nullable=True)
+    verification_status = Column(String, default="pending")  # pending/approved/rejected
+    rejection_reason = Column(Text, nullable=True)
+    reviewed_at      = Column(DateTime, nullable=True)
+    created_at       = Column(DateTime, default=utcnow)
+    updated_at       = Column(DateTime, nullable=True)
+
+
+class VerifiedSupplierProduct(Base):
+    """A product line listed by a verified supplier."""
+
+    __tablename__ = "verified_supplier_products"
+
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    supplier_id     = Column(String, ForeignKey("verified_suppliers.id"), nullable=False, index=True)
+    product_name    = Column(String, nullable=False)
+    category        = Column(String, nullable=True)
+    available_sizes = Column(Text, default="[]")   # JSON list of size strings e.g. ["50kg bag","25kg bag"]
+    min_order_qty   = Column(Float, nullable=True)
+    min_order_unit  = Column(String, nullable=True)
+    price_range     = Column(String, nullable=True) # descriptive e.g. "₦45,000–₦48,000 per bag"
+    quality_notes   = Column(Text, nullable=True)
+
+
+class SupplierContactMessage(Base):
+    """An enquiry sent by a retailer to a verified supplier via the dashboard."""
+
+    __tablename__ = "supplier_contact_messages"
+
+    id                 = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    supplier_id        = Column(String, ForeignKey("verified_suppliers.id"), nullable=False, index=True)
+    from_phone         = Column(String, nullable=False)
+    from_business_name = Column(String, nullable=True)
+    product_interest   = Column(String, nullable=True)
+    message            = Column(Text, nullable=False)
+    status             = Column(String, default="unread")  # unread/read
+    created_at         = Column(DateTime, default=utcnow)
+
+
+class Opportunity(Base):
+    """An opportunity card created by admin and visible to all users."""
+
+    __tablename__ = "opportunities"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title        = Column(String, nullable=False)
+    partner_name = Column(String, nullable=True)
+    category     = Column(String, nullable=True)  # finance/equipment/trade/products
+    description  = Column(Text, nullable=False)
+    link_url     = Column(String, nullable=True)
+    is_active    = Column(Boolean, default=True)
+    created_at   = Column(DateTime, default=utcnow)
+
+
 class AuditLog(Base):
     """Tamper-evident log of security-relevant actions.
 

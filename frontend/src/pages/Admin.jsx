@@ -445,7 +445,256 @@ function ReferralSettingsTab() {
   );
 }
 
-const TABS = ["Overview", "Users", "Token Codes", "Referrals", "Failed Messages"];
+// ── supplier applications tab ────────────────────────────────────────────────
+function SuppliersTab() {
+  const [apps, setApps]   = useState([]);
+  const [filter, setFilter] = useState("pending");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy]   = useState(null);
+  const [rejectId, setRejectId] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  function load(s) {
+    setLoading(true);
+    apiFetch(`admin/supplier-applications?status=${s}`)
+      .then(d => setApps(d.applications || []))
+      .catch(() => setApps([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { load(filter); }, [filter]);
+
+  async function approve(id) {
+    setBusy(id);
+    try {
+      await fetch(`/app/api/admin/supplier-applications/${id}/approve`, { method: "POST", credentials: "include" });
+      load(filter);
+    } finally { setBusy(null); }
+  }
+
+  async function reject(id) {
+    setBusy(id);
+    try {
+      await fetch(`/app/api/admin/supplier-applications/${id}/reject`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: rejectReason }),
+      });
+      setRejectId(null); setRejectReason("");
+      load(filter);
+    } finally { setBusy(null); }
+  }
+
+  const STATUS_COLORS = { pending: "#d97706", approved: "#059669", rejected: "#dc2626" };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {["pending","approved","rejected","all"].map(s => (
+          <button key={s} onClick={() => setFilter(s)} style={{
+            padding: "5px 14px", borderRadius: 99, border: "1px solid", cursor: "pointer", fontSize: 13,
+            background: filter === s ? "var(--brand)" : "transparent",
+            color: filter === s ? "#fff" : "var(--text-muted)",
+            borderColor: filter === s ? "var(--brand)" : "var(--border)",
+          }}>{s.charAt(0).toUpperCase() + s.slice(1)}</button>
+        ))}
+      </div>
+      {loading ? <p style={{ color: "var(--text-muted)" }}>Loading…</p> : apps.length === 0 ? (
+        <p style={{ color: "var(--text-muted)" }}>No {filter} applications.</p>
+      ) : apps.map(a => (
+        <div key={a.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 16, marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            <strong style={{ fontSize: 15 }}>{a.business_name}</strong>
+            <span style={{ fontSize: 12, fontWeight: 700, color: STATUS_COLORS[a.verification_status] || "#666",
+              background: "#f9fafb", borderRadius: 99, padding: "3px 10px", border: "1px solid var(--border)" }}>
+              {a.verification_status}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
+            <span>Type: <strong>{a.supplier_type_label}</strong></span>
+            <span>Phone: {a.owner_phone}</span>
+            {a.cac_number && <span>CAC: {a.cac_number}</span>}
+            {a.states_covered?.length > 0 && <span>States: {a.states_covered.join(", ")}</span>}
+          </div>
+          {a.bio && <p style={{ fontSize: 13, marginBottom: 8, color: "var(--text-secondary)" }}>{a.bio}</p>}
+          {a.products?.length > 0 && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+              <strong>Products:</strong> {a.products.map(p => `${p.product_name}${p.min_order_qty ? ` (min ${p.min_order_qty} ${p.min_order_unit || ""})` : ""}`).join(" · ")}
+            </div>
+          )}
+          {a.verification_status === "pending" && (
+            rejectId === a.id ? (
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                  placeholder="Reason for rejection (optional)" style={{ flex: 1, minWidth: 200 }} />
+                <button onClick={() => reject(a.id)} disabled={busy === a.id}
+                  style={{ background: "var(--rose)", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 13 }}>
+                  Confirm Reject
+                </button>
+                <button onClick={() => { setRejectId(null); setRejectReason(""); }}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontSize: 13 }}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => approve(a.id)} disabled={busy === a.id}
+                  style={{ background: "#059669", color: "#fff", border: "none", borderRadius: 6, padding: "6px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                  Approve
+                </button>
+                <button onClick={() => setRejectId(a.id)}
+                  style={{ background: "none", border: "1px solid var(--rose)", color: "var(--rose)", borderRadius: 6, padding: "6px 16px", cursor: "pointer", fontSize: 13 }}>
+                  Reject
+                </button>
+              </div>
+            )
+          )}
+          {a.rejection_reason && (
+            <p style={{ fontSize: 12, color: "var(--rose)", marginTop: 8 }}>Reason: {a.rejection_reason}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── opportunities admin tab ──────────────────────────────────────────────────
+function OpportunitiesTab() {
+  const [opps, setOpps]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState("");
+
+  const empty = { title: "", partner_name: "", category: "general", description: "", link_url: "", is_active: true };
+  const [form, setForm]     = useState({ ...empty });
+
+  const CATS = ["finance","equipment","trade","products","general"];
+
+  function load() {
+    setLoading(true);
+    apiFetch("admin/opportunities")
+      .then(d => setOpps(d.opportunities || []))
+      .catch(() => setOpps([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { load(); }, []);
+
+  function startEdit(o) { setEditing(o.id); setForm({ ...o }); setShowForm(true); }
+  function startNew()   { setEditing(null); setForm({ ...empty }); setShowForm(true); }
+
+  async function save(e) {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      if (editing) {
+        await fetch(`/app/api/admin/opportunities/${editing}`, {
+          method: "PUT", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+        });
+      } else {
+        await fetch("/app/api/admin/opportunities", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+        });
+      }
+      setShowForm(false); setEditing(null); load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function del(id) {
+    if (!confirm("Delete this opportunity?")) return;
+    await fetch(`/app/api/admin/opportunities/${id}`, { method: "DELETE", credentials: "include" });
+    load();
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+        <strong style={{ fontSize: 15 }}>Opportunities</strong>
+        <button onClick={startNew} style={{ background: "var(--brand)", color: "#fff", border: "none",
+          borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+          + New opportunity
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={save} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10,
+          padding: 20, marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Title *</label>
+              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Partner name</label>
+              <input value={form.partner_name} onChange={e => setForm(f => ({ ...f, partner_name: e.target.value }))} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Category</label>
+              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+                {CATS.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Link URL</label>
+              <input type="url" value={form.link_url} onChange={e => setForm(f => ({ ...f, link_url: e.target.value }))} placeholder="https://…" />
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Description *</label>
+            <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer" }}>
+            <input type="checkbox" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))} />
+            Active (visible to users)
+          </label>
+          {err && <div className="login-error">{err}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="submit" disabled={busy} style={{ background: "var(--brand)", color: "#fff", border: "none",
+              borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 13 }}>
+              {busy ? "Saving…" : editing ? "Save changes" : "Create"}
+            </button>
+            <button type="button" onClick={() => { setShowForm(false); setErr(""); }} style={{
+              background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 13 }}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? <p style={{ color: "var(--text-muted)" }}>Loading…</p> : opps.length === 0 ? (
+        <p style={{ color: "var(--text-muted)" }}>No opportunities yet. Click "+ New opportunity" to add one.</p>
+      ) : opps.map(o => (
+        <div key={o.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 14, marginBottom: 10,
+          display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, opacity: o.is_active ? 1 : 0.55 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+              <strong style={{ fontSize: 14 }}>{o.title}</strong>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--surface)",
+                borderRadius: 99, padding: "2px 8px", border: "1px solid var(--border)" }}>
+                {o.category}
+              </span>
+              {!o.is_active && <span style={{ fontSize: 11, color: "var(--rose)", fontWeight: 600 }}>hidden</span>}
+            </div>
+            {o.partner_name && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{o.partner_name}</div>}
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "4px 0 0" }}>{o.description.slice(0, 120)}{o.description.length > 120 ? "…" : ""}</p>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button onClick={() => startEdit(o)} style={{ background: "none", border: "1px solid var(--border)",
+              borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>Edit</button>
+            <button onClick={() => del(o.id)} style={{ background: "none", border: "1px solid var(--rose)",
+              color: "var(--rose)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>Delete</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Users", "Suppliers", "Opportunities", "Token Codes", "Referrals", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -577,10 +826,12 @@ export default function Admin() {
         )
       )}
 
-      {tab === "Users" && <UsersTab />}
-      {tab === "Token Codes" && <TokenCodesTab />}
-      {tab === "Referrals" && <ReferralSettingsTab />}
-      {tab === "Failed Messages" && <FailedParsesTab />}
+      {tab === "Users"          && <UsersTab />}
+      {tab === "Suppliers"      && <SuppliersTab />}
+      {tab === "Opportunities"  && <OpportunitiesTab />}
+      {tab === "Token Codes"    && <TokenCodesTab />}
+      {tab === "Referrals"      && <ReferralSettingsTab />}
+      {tab === "Failed Messages"&& <FailedParsesTab />}
     </div>
   );
 }

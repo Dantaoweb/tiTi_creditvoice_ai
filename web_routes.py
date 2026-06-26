@@ -3595,6 +3595,10 @@ def register_web_routes(app):
           }}
         }}]''')
 
+    # ── Verified supplier directory + opportunities ───────────────────────
+    from supplier_routes import register_supplier_routes
+    register_supplier_routes(app)
+
     # ── SPA catch-all (MUST be last — catches all /app/* client-side routes) ──
     @app.get("/app/{full_path:path}", response_class=HTMLResponse)
     def web_app_spa(full_path: str):

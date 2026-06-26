@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
-  Handshake, FileText, Menu, X, ShieldCheck, Activity,
+  Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -30,8 +30,9 @@ function buildNav(L) {
     { to: "/partners",     label: "Partners",         icon: Handshake       },
     { to: "/notes",        label: "Notes",            icon: FileText        },
     { to: "/branches",     label: "Branches",         icon: MapPin          },
-    { to: "/automation",   label: "Automation",       icon: Zap             },
-    { to: "/admin",        label: "Admin",            icon: ShieldCheck, adminOnly: true },
+    { to: "/automation",    label: "Automation",       icon: Zap               },
+    { to: "/opportunities", label: "Opportunities",   icon: Sparkles          },
+    { to: "/admin",         label: "Admin",           icon: ShieldCheck, adminOnly: true },
   ];
 }
 
@@ -63,8 +64,9 @@ export default function Layout() {
     "/wallet":       "Wallet",
     "/thrift":       "Thrift / Ajo Savings",
     "/branches":     "Branches",
-    "/automation":   "Automation",
-    "/admin":        "Admin Dashboard",
+    "/automation":    "Automation",
+    "/opportunities": "Opportunities",
+    "/admin":         "Admin Dashboard",
   };
 
   const path = location.pathname.replace("/app", "") || "/home";

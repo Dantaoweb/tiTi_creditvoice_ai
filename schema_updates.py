@@ -634,6 +634,77 @@ def ensure_schema_updates(engine):
                 )
             """))
 
+    # ── Verified supplier directory tables ──────────────────────────────────
+    _pk_str = "VARCHAR PRIMARY KEY"
+    _bool_f = "BOOLEAN DEFAULT FALSE" if engine.dialect.name == "postgresql" else "INTEGER DEFAULT 0"
+    _now    = "DEFAULT NOW()" if engine.dialect.name == "postgresql" else ""
+
+    if "verified_suppliers" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE verified_suppliers (
+                    id               {_pk_str},
+                    owner_phone      VARCHAR UNIQUE NOT NULL,
+                    supplier_type    VARCHAR NOT NULL,
+                    bio              TEXT,
+                    states_covered   TEXT DEFAULT '[]',
+                    can_deliver      {_bool_f},
+                    delivery_notes   TEXT,
+                    cac_number       VARCHAR,
+                    verification_status VARCHAR DEFAULT 'pending',
+                    rejection_reason TEXT,
+                    reviewed_at      TIMESTAMP,
+                    created_at       TIMESTAMP {_now},
+                    updated_at       TIMESTAMP
+                )
+            """))
+
+    if "verified_supplier_products" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE verified_supplier_products (
+                    id              {_pk_str},
+                    supplier_id     VARCHAR NOT NULL,
+                    product_name    VARCHAR NOT NULL,
+                    category        VARCHAR,
+                    available_sizes TEXT DEFAULT '[]',
+                    min_order_qty   REAL,
+                    min_order_unit  VARCHAR,
+                    price_range     VARCHAR,
+                    quality_notes   TEXT
+                )
+            """))
+
+    if "supplier_contact_messages" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE supplier_contact_messages (
+                    id                 {_pk_str},
+                    supplier_id        VARCHAR NOT NULL,
+                    from_phone         VARCHAR NOT NULL,
+                    from_business_name VARCHAR,
+                    product_interest   VARCHAR,
+                    message            TEXT NOT NULL,
+                    status             VARCHAR DEFAULT 'unread',
+                    created_at         TIMESTAMP {_now}
+                )
+            """))
+
+    if "opportunities" not in existing_tables:
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE opportunities (
+                    id           {_pk_str},
+                    title        VARCHAR NOT NULL,
+                    partner_name VARCHAR,
+                    category     VARCHAR,
+                    description  TEXT NOT NULL,
+                    link_url     VARCHAR,
+                    is_active    {_bool_f.replace('FALSE','TRUE').replace('0','1')},
+                    created_at   TIMESTAMP {_now}
+                )
+            """))
+
     # Record that this full migration batch completed successfully.
     # The timestamp lets ops confirm exactly when each schema version
     # was applied to production.
