@@ -601,11 +601,28 @@ tr.low-stock td { background: #fffbeb; }
   min-height: 100vh;
   background: var(--sidebar-bg);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 24px;
   border-top: 4px solid var(--yellow);
+  overflow-x: hidden;
 }
+
+.login-footer {
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  padding: 16px 0 24px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.35);
+  line-height: 1.9;
+}
+.login-footer a {
+  color: rgba(255,255,255,0.6);
+  text-decoration: underline;
+}
+.login-footer p { margin: 0; }
 
 .login-card {
   background: #fff;

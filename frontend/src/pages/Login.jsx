@@ -586,28 +586,13 @@ export default function Login() {
 
       </div>
 
-      <div style={{
-        textAlign: "center", fontSize: 12,
-        color: "rgba(255,255,255,0.4)", padding: "20px 16px 4px",
-        lineHeight: 1.7,
-      }}>
-        By signing up you agree to our{" "}
-        <Link to="/terms" style={{ color: "#c4b5fd", textDecoration: "underline" }}>Terms of Service</Link>
-        {" "}and{" "}
-        <Link to="/privacy" style={{ color: "#c4b5fd", textDecoration: "underline" }}>Privacy Policy</Link>
-      </div>
-      <div style={{
-        display: "flex", justifyContent: "center", gap: 16,
-        padding: "8px 0 4px",
-      }}>
-        <Link to="/terms" style={{ color: "rgba(255,255,255,0.35)", fontSize: 12, textDecoration: "none" }}>Terms</Link>
-        <Link to="/privacy" style={{ color: "rgba(255,255,255,0.35)", fontSize: 12, textDecoration: "none" }}>Privacy</Link>
-      </div>
-      <div style={{
-        textAlign: "center", fontSize: 11,
-        color: "rgba(255,255,255,0.2)", padding: "4px 0 20px",
-      }}>
-        © {new Date().getFullYear()} CreditVoice Technology Services
+      <div className="login-footer">
+        <p>
+          By signing up you agree to our{" "}
+          <Link to="/terms">Terms of Service</Link>{" "}and{" "}
+          <Link to="/privacy">Privacy Policy</Link>
+        </p>
+        <p>© {new Date().getFullYear()} CreditVoice Technology Services</p>
       </div>
     </div>
   );
