@@ -16,6 +16,7 @@ BUSINESS_CATEGORIES = [
             ("electronics_shop", "Electronics Shop"),
             ("cosmetics_shop", "Cosmetics Shop"),
             ("spare_parts", "Spare Parts Seller"),
+            ("car_dealer", "Car Dealer / Auto Sales"),
             ("kitchen_utensils", "Kitchen Utensils / Cookware"),
             ("hardware_store", "Hardware / Building Materials Shop"),
             ("household_goods", "Household Goods Shop"),
@@ -500,6 +501,7 @@ BUSINESS_TEMPLATE_ALIASES = {
     "beauty_products": "salon_beauty",
     "other_beauty": "salon_beauty",
     "laundry_dry_cleaning": "laundry",
+    "car_dealer":           "car_dealer",
     "car_wash":             "car_wash",
     "tailor_fashion":       "tailor",
     "barbing_salon":        "barber",
@@ -1145,6 +1147,44 @@ INDUSTRY_TEMPLATES = {
         "recommended_go": "GO adds reminders for unpaid laundry balances and better reports.",
         "recommended_pro": "PRO fits laundries with attendants recording jobs for the owner.",
     },
+    "car_dealer": {
+        "label": "Car Dealer / Auto Sales",
+        "fit": "car dealerships selling new and Tokunbo (used) vehicles, tracking deposits, customer balances, and car stock",
+        "basic_value": [
+            "Record car sales with deposit and outstanding balance",
+            "Track customer payments until full collection",
+            "See unpaid balances and debtors list",
+        ],
+        "go_value": [
+            "Car stock management — track available vehicles by make and model",
+            "Supplier / import purchase records",
+            "Debt reminders for outstanding balances",
+        ],
+        "pro_value": [
+            "Sales staff recording",
+            "Owner view across all staff transactions",
+            "Permission control",
+        ],
+        "examples": [
+            "Ade bought Camry 2018 at 3500000 paid 2000000",
+            "Bayo bought Honda Accord 2016 2800000 full payment",
+            "I bought Tokunbo Toyota Corolla from Alhaji at 1200000",
+        ],
+        "quick_actions": [
+            ("Record sale", "Send: Ade bought Camry 2018 at 3500000 paid 2000000"),
+            ("Record payment", "Send: Ade paid 500000"),
+            ("Customer account", "Send: customer summary Ade"),
+            ("Stock", "Send: stock"),
+        ],
+        "next_steps": [
+            "Record sales: [customer] bought [make model year] at [price] paid [deposit]",
+            "For full payment: [customer] bought [car] [price] full payment",
+            "Confirm with YES to save, or EDIT to correct.",
+            "Send MENU to see the main menu.",
+        ],
+        "recommended_go": "GO adds car stock management, supplier purchase records, and debt reminders.",
+        "recommended_pro": "PRO fits dealerships with sales staff recording transactions for the owner.",
+    },
     "car_wash": {
         "label": "Car Wash",
         "fit": "car wash businesses tracking jobs, service tiers, and customer balances",
@@ -1380,6 +1420,12 @@ RECEIPT_CONFIG = {
         "customer_label": "Customer",
         "amount_label": "Total",
         "footer": "Thank you for choosing us. Your clothes are ready!",
+    },
+    "car_dealer": {
+        "title": "Vehicle Sale Receipt",
+        "customer_label": "Buyer",
+        "amount_label": "Sale Amount",
+        "footer": "Thank you. Drive safely and enjoy your vehicle.",
     },
     "car_wash": {
         "title": "Car Wash Receipt",
