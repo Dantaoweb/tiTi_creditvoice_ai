@@ -531,7 +531,16 @@ def register_web_routes(app):
     # ── Static assets from React build ──────────────────────────────────
     if (DIST_ROOT / "assets").exists():
         app.mount("/app/assets", StaticFiles(directory=DIST_ROOT / "assets"), name="dist_assets")
-    elif (WEB_ROOT / "static").exists():
+    else:
+        # Assets not built yet — return 404 so the browser shows an error
+        # instead of falling through to the SPA catch-all (which would serve
+        # index.html as JS/CSS, causing a silent blank page).
+        @app.get("/app/assets/{file_path:path}")
+        def dist_assets_not_built(file_path: str):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Frontend not built. Run: cd frontend && npm run build")
+
+    if (WEB_ROOT / "static").exists():
         app.mount("/web/static", StaticFiles(directory=WEB_ROOT / "static"), name="web_static")
 
     # ── SPA root (exact) ─────────────────────────────────────────────────
