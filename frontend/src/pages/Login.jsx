@@ -148,7 +148,7 @@ export default function Login() {
         business_type_label: typLabel || null,
         ref_code: refCode.trim() || null,
       });
-      persistSession(data.token, data.user);
+      persistSession(data.user);
       setMode("registered");
       setTimeout(() => navigate("/home", { replace: true }), 3000);
     } catch (e) { setErr(e.message); }
@@ -207,7 +207,7 @@ export default function Login() {
         otp: otp.trim(),
         new_pin: newPin.trim(),
       });
-      persistSession(data.token, data.user);
+      persistSession(data.user);
       navigate("/home", { replace: true });
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }

@@ -263,18 +263,36 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto", email: str =
 
     if channel in ("whatsapp", "both") and has_whatsapp:
         try:
-            send_whatsapp_message(
+            ok = send_whatsapp_message(
                 phone,
                 f"Your CreditVoice PIN reset code: *{otp}*\n\nValid for 10 minutes. Do not share this with anyone.",
             )
-            sent_channels.append("whatsapp")
+            if ok:
+                sent_channels.append("whatsapp")
         except Exception:
             pass
 
     if not sent_channels:
+        # Clean up the undelivered OTP so it doesn't linger
+        db.query(PendingAction).filter(
+            PendingAction.phone == phone,
+            PendingAction.action == _OTP_ACTION,
+        ).delete()
+        db.commit()
+        if has_email:
+            raise HTTPException(
+                status_code=500,
+                detail="Could not send the code. Please switch to Email delivery and try again.",
+            )
         raise HTTPException(
             status_code=500,
-            detail="Could not send the OTP. Check your email and WhatsApp settings.",
+            detail=(
+                "Could not send the code via WhatsApp. This usually happens when you haven't "
+                "messaged TiTi on WhatsApp recently (WhatsApp only allows us to message you "
+                "if you messaged us in the last 24 hours). Please send any message to TiTi "
+                "first, then try again — or add your email address to your account for a "
+                "reliable reset option."
+            ),
         )
 
     from audit import audit
