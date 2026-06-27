@@ -2192,17 +2192,23 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .qf-sub-tab {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  flex: 1;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
-  padding: 10px 14px;
+  padding: 10px 8px;
   font-size: 13px;
   font-weight: 500;
   color: var(--muted);
   cursor: pointer;
   transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .qf-sub-tab.active {
   color: var(--brand);

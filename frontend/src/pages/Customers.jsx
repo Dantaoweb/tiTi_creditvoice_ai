@@ -232,12 +232,12 @@ export default function Customers() {
       <div className="card">
         <div className="card-header">
           <span className="card-title">{L.customers} <span className="text-subtle text-sm">({filtered.length})</span></span>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 1, minWidth: 0 }}>
             <input
               placeholder="Search name or phone…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ width: 220 }}
+              style={{ flex: 1, minWidth: 0 }}
             />
             <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
               <Plus size={14} /> {L.addCustomer}

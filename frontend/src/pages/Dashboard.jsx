@@ -383,7 +383,7 @@ export default function Dashboard() {
         <MetricCard loading={loading} label={L.totalCustomers}                           value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
         <div className="card">
           <div className="card-header">
             <span className="card-title">{L.topDebtors}</span>

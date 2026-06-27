@@ -189,9 +189,9 @@ function GroupThrift({ data, loading, reload }) {
 
       {innerTab === "participants" && (
         <div className="card">
-          <div className="card-header">
+          <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
             <span className="card-title"><Users size={15} /> Participants</span>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="btn btn-secondary btn-sm" onClick={() => navigate("/capture")}
                 title="Record a contribution on the capture page">
                 <Plus size={13} /> Record Contribution
