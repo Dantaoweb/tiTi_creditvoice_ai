@@ -157,8 +157,7 @@ FAST_CAPTURE_REVIEW_ACTIONS = {ACTION_FAST_CAPTURE_REVIEW}
 BUY_KEYWORDS = [
     "bought", "buy", "purchase", "purchased", "collect", "collected",
     "took", "take", "carry", "carried", "owes", "owe", "owing",
-    "hired", "hire", "rented", "rent", "booked", "book",
-    "reserved", "reserve",
+    "hired", "rented", "booked", "reserved",
 ]
 
 PAY_KEYWORDS = [
