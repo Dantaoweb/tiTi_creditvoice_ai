@@ -8,6 +8,12 @@ import { nairaFull } from "../lib/format";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
 
+function fmtAmt(s) {
+  const raw = String(s || "").replace(/[^0-9]/g, "");
+  return raw ? Number(raw).toLocaleString("en-NG") : "";
+}
+function parseAmt(s) { return Number(String(s || "").replace(/,/g, "")); }
+
 async function blobToBase64(blob) {
   const buffer = await blob.arrayBuffer();
   let binary = "";
@@ -177,7 +183,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
     setLoading(true); setError(null);
     try {
       const qtyNum = Math.max(1, Number(qty) || 1);
-      const total  = Number(amount);
+      const total  = parseAmt(amount);
       const body   = {
         owner_phone:    ownerPhone,
         customer_id:    customer?.id || null,
@@ -191,7 +197,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
     } catch (e) {
       if (isNetworkError(e)) {
         const qtyNum = Math.max(1, Number(qty) || 1);
-        const total  = Number(amount);
+        const total  = parseAmt(amount);
         enqueue("pos/save", {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
           items: [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
@@ -214,19 +220,19 @@ function SaleForm({ ownerPhone, onSuccess }) {
         <label className="form-label">Product / Service *</label>
         <input value={product} onChange={e => setProduct(e.target.value)} placeholder="e.g. Rice, Cement, Haircut" required />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.4fr", gap: 8 }}>
         <div className="form-group">
-          <label className="form-label">Quantity</label>
+          <label className="form-label">Qty</label>
           <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Unit <span className="text-subtle">(optional)</span></label>
-          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="bags, litres, pcs…" />
+          <label className="form-label">Unit</label>
+          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="bags, pcs…" />
         </div>
-      </div>
-      <div className="form-group">
-        <label className="form-label">Total amount (₦) *</label>
-        <input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 5000" required />
+        <div className="form-group">
+          <label className="form-label">Amount (₦) *</label>
+          <input inputMode="numeric" value={amount} onChange={e => setAmount(fmtAmt(e.target.value))} placeholder="0" required />
+        </div>
       </div>
       <div className="form-group">
         <label className="form-label">Customer <span className="text-subtle">— leave blank for cash sale</span></label>
@@ -259,15 +265,15 @@ function PaymentForm({ ownerPhone, onSuccess }) {
     if (!customer || !amount) return;
     setLoading(true); setError(null);
     try {
-      await apiPost(`customers/${customer.id}/pay`, { amount: Number(amount), note: note || null, branch_id: branchId || null });
-      onSuccess(`Payment of ${nairaFull(Number(amount))} from ${customer.name} recorded.`);
+      await apiPost(`customers/${customer.id}/pay`, { amount: parseAmt(amount), note: note || null, branch_id: branchId || null });
+      onSuccess(`Payment of ${nairaFull(parseAmt(amount))} from ${customer.name} recorded.`);
       setCustomer(null); setAmount(""); setNote("");
     } catch (e) {
       if (isNetworkError(e)) {
         enqueue(
           `customers/${customer.id}/pay`,
-          { amount: Number(amount), note: note || null, branch_id: branchId || null },
-          `Payment ${nairaFull(Number(amount))} from ${customer.name}`,
+          { amount: parseAmt(amount), note: note || null, branch_id: branchId || null },
+          `Payment ${nairaFull(parseAmt(amount))} from ${customer.name}`,
         );
         onSuccess(`No internet — payment saved offline. Will sync automatically when you reconnect.`);
         setCustomer(null); setAmount(""); setNote("");
@@ -286,19 +292,21 @@ function PaymentForm({ ownerPhone, onSuccess }) {
         <CustomerSearch ownerPhone={ownerPhone} placeholder="Search by name…" filterDebtors onSelect={setCustomer} value={customer} />
         <div className="form-hint">Shows customers with outstanding balance.</div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Amount paid (₦) *</label>
-        <input
-          type="number" min="1"
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-          placeholder={customer?.balance > 0 ? String(customer.balance) : "e.g. 2000"}
-          required
-        />
-      </div>
-      <div className="form-group">
-        <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Bank transfer, Part payment" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div className="form-group">
+          <label className="form-label">Amount paid (₦) *</label>
+          <input
+            inputMode="numeric"
+            value={amount}
+            onChange={e => setAmount(fmtAmt(e.target.value))}
+            placeholder={customer?.balance > 0 ? fmtAmt(String(customer.balance)) : "0"}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Bank transfer…" />
+        </div>
       </div>
       <BranchSelector ownerPhone={ownerPhone} value={branchId} onChange={setBranchId} />
       {error && <div className="modal-error">{error}</div>}
@@ -324,7 +332,7 @@ function StockForm({ ownerPhone, onSuccess }) {
     try {
       const body = {
         qty_delta: Number(qty),
-        note:      note || (cost ? `Received @ N${cost}/unit` : "Stock received"),
+        note:      note || (cost ? `Received @ N${parseAmt(cost)}/unit` : "Stock received"),
       };
       await apiPost(`inventory/${item.id}/adjust`, body);
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock.`);
@@ -358,8 +366,8 @@ function StockForm({ ownerPhone, onSuccess }) {
           <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} placeholder="10" required />
         </div>
         <div className="form-group">
-          <label className="form-label">Cost/unit (₦) <span className="text-subtle">optional</span></label>
-          <input type="number" min="0" value={cost} onChange={e => setCost(e.target.value)} placeholder="for your records" />
+          <label className="form-label">Cost/unit (₦)</label>
+          <input inputMode="numeric" value={cost} onChange={e => setCost(fmtAmt(e.target.value))} placeholder="0" />
         </div>
       </div>
       <div className="form-group">

@@ -2240,8 +2240,18 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 /* ── Quick Form input elements ───────────────────────────────────────── */
 .qf-form {
   display: grid;
-  gap: 14px;
-  padding-top: 14px;
+  gap: 10px;
+  padding-top: 12px;
+}
+.qf-form input, .qf-form select {
+  height: 32px;
+  font-size: 13px;
+}
+.qf-form .form-group {
+  gap: 4px;
+}
+.qf-form .form-label {
+  font-size: 11px;
 }
 .qf-search-wrap {
   position: relative;
