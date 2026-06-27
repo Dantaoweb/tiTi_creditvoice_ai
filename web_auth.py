@@ -279,10 +279,15 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto", email: str =
             PendingAction.action == _OTP_ACTION,
         ).delete()
         db.commit()
+        if channel == "email":
+            raise HTTPException(
+                status_code=500,
+                detail="Could not send the code by email. Please check that your email address is correct, or switch to WhatsApp and try again.",
+            )
         if has_email:
             raise HTTPException(
                 status_code=500,
-                detail="Could not send the code. Please switch to Email delivery and try again.",
+                detail="Could not send via WhatsApp. Please select Email delivery and try again.",
             )
         raise HTTPException(
             status_code=500,
@@ -290,8 +295,7 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto", email: str =
                 "Could not send the code via WhatsApp. This usually happens when you haven't "
                 "messaged TiTi on WhatsApp recently (WhatsApp only allows us to message you "
                 "if you messaged us in the last 24 hours). Please send any message to TiTi "
-                "first, then try again — or add your email address to your account for a "
-                "reliable reset option."
+                "first, then try again — or add your email address to your account."
             ),
         )
 
