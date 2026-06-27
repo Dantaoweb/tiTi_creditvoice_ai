@@ -127,7 +127,13 @@ def set_auth_cookie(response: Response, token: str) -> None:
 
 
 def clear_auth_cookie(response: Response) -> None:
-    response.delete_cookie(key="cv_session", path="/")
+    response.delete_cookie(
+        key="cv_session",
+        path="/",
+        httponly=True,
+        secure=_SECURE_COOKIE,
+        samesite="lax",
+    )
 
 
 def require_web_auth(
