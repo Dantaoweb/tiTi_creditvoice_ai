@@ -187,7 +187,7 @@ export default function Notes() {
     <>
       {/* Summary */}
       {notes.length > 0 && (
-        <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, minmax(130px, 1fr))", marginBottom: 16 }}>
+        <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", marginBottom: 16 }}>
           <div className="card" style={{ gap: 4, padding: "14px 16px" }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Total Notes</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{notes.length}</div>

@@ -388,7 +388,7 @@ export default function Staff() {
           {profiles.length === 0 ? (
             <div className="card"><EmptyState text="No active staff profiles yet. Invite staff first, then set their position and salary here." /></div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(340px, 100%), 1fr))", gap: 16 }}>
               {profiles.map(m => <ProfileEditRow key={m.id} member={m} onSaved={loadProfiles} />)}
             </div>
           )}
@@ -397,7 +397,7 @@ export default function Staff() {
 
       {tab === "performance" && canUseAppStaff && <>
 
-      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, minmax(160px, 1fr))" }}>
+      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
         <MetricCard loading={loading} label="Total staff sales"    value={nairaFull(totalSales)}    color="green" />
         <MetricCard loading={loading} label="Total payments taken" value={nairaFull(totalPayments)} color="blue"  />
         <MetricCard loading={loading} label="Total transactions"   value={totalTx.toLocaleString()} color="amber" />
@@ -500,7 +500,7 @@ export default function Staff() {
       ) : staff.length === 0 ? (
         <div className="card"><EmptyState text="No active staff yet. Use the invite form above to add your first staff member." /></div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))", gap: 16 }}>
           {staff.map((member) => (
             <div key={member.id} className="card">
               <div className="card-header">

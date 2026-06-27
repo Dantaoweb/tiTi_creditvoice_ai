@@ -101,7 +101,7 @@ function MySupplyChain() {
   return (
     <>
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
-      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, minmax(160px, 1fr))" }}>
+      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
         <MetricCard loading={loading} label="Total owed to suppliers" value={nairaFull(totalOwed)}  color="rose"  />
         <MetricCard loading={loading} label="Total paid to suppliers" value={nairaFull(totalPaid)}  color="green" />
         <MetricCard loading={loading} label="Suppliers with overdue"  value={dueCount}              color="amber" />
@@ -316,7 +316,7 @@ function SupplierCard({ s, onContact }) {
                   padding: "12px 20px", borderBottom: "1px solid var(--border)",
                   display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 13,
                 }}>
-                  <strong style={{ minWidth: 140 }}>{p.product_name}</strong>
+                  <strong style={{ minWidth: 0 }}>{p.product_name}</strong>
                   {p.min_order_qty && (
                     <span style={{ color: "var(--text-muted)" }}>
                       Min: {p.min_order_qty} {p.min_order_unit || "units"}
@@ -696,7 +696,7 @@ function SupplierProfileTab({ userPlan }) {
     return (
       <>
         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-          <div className="card" style={{ flex: 1, minWidth: 220, padding: 20 }}>
+          <div className="card" style={{ flex: 1, minWidth: 0, padding: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <StatusBadge status="approved" />
             </div>
@@ -705,7 +705,7 @@ function SupplierProfileTab({ userPlan }) {
               Edit Profile
             </button>
           </div>
-          <div className="card" style={{ flex: 1, minWidth: 220, padding: 20, cursor: "pointer" }} onClick={() => setInboxView(true)}>
+          <div className="card" style={{ flex: 1, minWidth: 0, padding: 20, cursor: "pointer" }} onClick={() => setInboxView(true)}>
             <div style={{ fontSize: 22, fontWeight: 800, color: unread > 0 ? "var(--brand)" : "var(--text-secondary)" }}>
               {unread > 0 ? unread : inbox.length}
             </div>

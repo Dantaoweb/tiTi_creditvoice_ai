@@ -169,7 +169,7 @@ function GroupThrift({ data, loading, reload }) {
 
   return (
     <>
-      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, minmax(130px, 1fr))" }}>
+      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))" }}>
         <MetricCard loading={loading} label="Total collected" value={nairaFull(total)} color="green" />
         <MetricCard loading={loading} label="Contributions"   value={count.toLocaleString()} color="brand" />
         <MetricCard loading={loading} label="Participants"    value={participants.length.toLocaleString()} color="blue" />
@@ -270,7 +270,7 @@ function PersonalSavings({ data, loading, reload }) {
 
   return (
     <>
-      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(2, minmax(160px, 1fr))" }}>
+      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
         <MetricCard loading={loading} label="Total saved" value={nairaFull(total)} color="green" />
         <MetricCard loading={loading} label="Deposits"    value={count.toLocaleString()} color="brand" />
       </div>
