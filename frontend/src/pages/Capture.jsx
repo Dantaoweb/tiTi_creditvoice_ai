@@ -220,7 +220,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
         <label className="form-label">Product / Service *</label>
         <input value={product} onChange={e => setProduct(e.target.value)} placeholder="e.g. Rice, Cement, Haircut" required />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.4fr", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <div className="form-group">
           <label className="form-label">Qty</label>
           <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} />
@@ -229,10 +229,10 @@ function SaleForm({ ownerPhone, onSuccess }) {
           <label className="form-label">Unit</label>
           <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="bags, pcs…" />
         </div>
-        <div className="form-group">
-          <label className="form-label">Amount (₦) *</label>
-          <input inputMode="numeric" value={amount} onChange={e => setAmount(fmtAmt(e.target.value))} placeholder="0" required />
-        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Amount (₦) *</label>
+        <input inputMode="numeric" value={amount} onChange={e => setAmount(fmtAmt(e.target.value))} placeholder="0" required />
       </div>
       <div className="form-group">
         <label className="form-label">Customer <span className="text-subtle">— leave blank for cash sale</span></label>
@@ -401,9 +401,9 @@ function QuickFormPanel({ ownerPhone }) {
 
   return (
     <div className="card" style={{ maxWidth: 560 }}>
-      <div className="card-header" style={{ borderBottom: "none", paddingBottom: 0 }}>
+      <div style={{ paddingBottom: 0 }}>
         <span className="card-title">Quick Record</span>
-        <span className="card-subtitle">Fill in the fields — no command syntax needed</span>
+        <div className="card-subtitle" style={{ marginTop: 2 }}>Fill in the fields — no command syntax needed</div>
       </div>
       <div className="qf-sub-tabs">
         {FORM_TABS.map(({ key, label, icon: Icon }) => (
