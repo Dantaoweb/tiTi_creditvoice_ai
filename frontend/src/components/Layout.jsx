@@ -91,7 +91,7 @@ export default function Layout() {
 
       <aside className={`sidebar${drawerOpen ? " sidebar-open" : ""}`}>
         <div className="sidebar-brand">
-          <div className="sidebar-mark">CV</div>
+          <img src="/app/logo.png" alt="CreditVoice" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} />
           <div>
             <div className="sidebar-name">CreditVoice</div>
             <div className="sidebar-sub">Business Desk</div>

@@ -241,7 +241,7 @@ export default function Login() {
       <div className="login-card">
 
         <div className="login-brand">
-          <div className="sidebar-mark" style={{ width: 44, height: 44, fontSize: 18 }}>CV</div>
+          <img src="/app/logo.png" alt="CreditVoice" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} />
           <div>
             <div className="login-title">CreditVoice</div>
             <div className="login-sub">Business Desk</div>
