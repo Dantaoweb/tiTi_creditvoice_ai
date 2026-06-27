@@ -49,10 +49,9 @@ temp/
 # ── Node / Frontend build ──────────────────────────────────────────────────────
 frontend/node_modules/
 frontend/dist/
-# NOTE: web/dist/ is currently tracked because Render serves it directly.
-# To untrack it, add a Render build command:
-#   cd frontend && npm install && npm run build
-# then run: git rm -r --cached web/dist/
+# web/dist/ is tracked because Render serves it directly (no build step on Render).
+# The !web/dist/ lines are required to override the dist/ rule above.
+!web/dist/
 !web/dist/assets/
 
 # ── OS & editor noise ─────────────────────────────────────────────────────────
