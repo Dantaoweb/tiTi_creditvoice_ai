@@ -3608,6 +3608,19 @@ def register_web_routes(app):
     from supplier_routes import register_supplier_routes
     register_supplier_routes(app)
 
+    # ── Root-level dist files (favicon, logo, icons, etc.) ──────────────────
+    # These live in web/dist/ root but NOT under /app/assets/, so they would
+    # otherwise fall through to the SPA catch-all and get served as HTML.
+    _DIST_ROOT_STATIC = ["favicon.png", "favicon.svg", "logo.png", "icons.svg", "offline.html"]
+    for _sf in _DIST_ROOT_STATIC:
+        _fp = DIST_ROOT / _sf
+        if _fp.exists():
+            def _make_static_route(file_path):
+                def _route():
+                    return FileResponse(file_path)
+                return _route
+            app.add_api_route(f"/app/{_sf}", _make_static_route(_fp), methods=["GET"])
+
     # ── SPA catch-all (MUST be last — catches all /app/* client-side routes) ──
     @app.get("/app/{full_path:path}", response_class=HTMLResponse)
     def web_app_spa(full_path: str):

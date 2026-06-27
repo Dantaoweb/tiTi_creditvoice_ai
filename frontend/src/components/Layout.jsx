@@ -92,10 +92,6 @@ export default function Layout() {
       <aside className={`sidebar${drawerOpen ? " sidebar-open" : ""}`}>
         <div className="sidebar-brand">
           <img src="/app/logo.png" alt="CreditVoice" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} />
-          <div>
-            <div className="sidebar-name">CreditVoice</div>
-            <div className="sidebar-sub">Business Desk</div>
-          </div>
           {/* Close button inside drawer on mobile */}
           <button
             onClick={closeDrawer}
