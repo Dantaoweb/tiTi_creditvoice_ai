@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, User, X, WifiOff } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
-import { naira } from "../lib/format";
+import { nairaFull, nairaInWords } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
 
@@ -62,7 +62,7 @@ function ProductSearch({ ownerPhone, onAdd }) {
             <button key={p.id} className="pos-product-row" onClick={() => pick(p)}>
               <span className="pos-product-name">{p.name}{p.unit ? ` (${p.unit})` : ""}</span>
               <span className="pos-product-meta">
-                {naira(p.selling_price)}
+                {nairaFull(p.selling_price)}
                 {p.is_service
                   ? <span className="pos-stock pos-stock--service">Available</span>
                   : <span className="pos-stock">{p.quantity} in stock</span>
@@ -104,7 +104,7 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
         <User size={13} />
         <span>{customer.name}</span>
         {customer.balance > 0 && (
-          <span className="pos-customer-debt">owes {naira(customer.balance)}</span>
+          <span className="pos-customer-debt">owes {nairaFull(customer.balance)}</span>
         )}
         <button onClick={onClear}><X size={13} /></button>
       </div>
@@ -129,7 +129,7 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
               <span className="pos-product-name">{c.name}</span>
               <span className="pos-product-meta">
                 {c.phone || "no phone"}
-                {c.balance > 0 && <span className="pos-stock">owes {naira(c.balance)}</span>}
+                {c.balance > 0 && <span className="pos-stock">owes {nairaFull(c.balance)}</span>}
               </span>
             </button>
           ))}
@@ -336,7 +336,7 @@ export default function POS() {
                       placeholder="0"
                     />
                   </div>
-                  <span className="pos-line-total">{naira(it.qty * it.unit_price)}</span>
+                  <span className="pos-line-total">{nairaFull(it.qty * it.unit_price)}</span>
                 </div>
               </div>
             ))}
@@ -366,8 +366,13 @@ export default function POS() {
         <div className="pos-summary-section">
           <div className="pos-total-row">
             <span>Subtotal</span>
-            <span>{naira(total)}</span>
+            <span>{nairaFull(total)}</span>
           </div>
+          {total > 0 && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
+              {nairaInWords(total)}
+            </div>
+          )}
         </div>
 
         <div className="pos-summary-section">
@@ -384,11 +389,11 @@ export default function POS() {
             />
           </div>
           {change > 0 && (
-            <div className="pos-change">Change: {naira(change)}</div>
+            <div className="pos-change">Change: {nairaFull(change)}</div>
           )}
           {customer && owed > 0 && (
             <>
-              <div className="pos-owed">Credit: {naira(owed)} recorded as debt</div>
+              <div className="pos-owed">Credit: {nairaFull(owed)} recorded as debt</div>
               <label className="pos-summary-label" style={{ display: "block", marginTop: 10 }}>
                 Payment due date <span style={{ opacity: 0.5, fontWeight: 400 }}>(optional)</span>
               </label>
@@ -411,7 +416,7 @@ export default function POS() {
           onClick={handleSave}
           disabled={saving || cart.length === 0}
         >
-          {saving ? "Saving…" : `Save Sale · ${naira(total)}`}
+          {saving ? "Saving…" : `Save Sale · ${nairaFull(total)}`}
         </button>
       </div>
     </div>

@@ -745,6 +745,23 @@ def ensure_schema_updates(engine):
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE opportunities ADD COLUMN application_fields TEXT DEFAULT '[]'"))
 
+    # ── transaction_items columns ────────────────────────────────────────────
+    # 'unit' and other columns were added to the model after some databases
+    # were already created. create_all does not ALTER existing tables, so we
+    # do it here explicitly.
+    if "transaction_items" in inspector.get_table_names():
+        tx_item_columns = {col["name"] for col in inspector.get_columns("transaction_items")}
+        tx_item_updates = {
+            "unit": "VARCHAR",
+            "branch_id": "INTEGER",
+        }
+        with engine.begin() as connection:
+            for col, typ in tx_item_updates.items():
+                if col not in tx_item_columns:
+                    connection.execute(text(
+                        f"ALTER TABLE transaction_items ADD COLUMN {col} {typ}"
+                    ))
+
     # Record that this full migration batch completed successfully.
     # The timestamp lets ops confirm exactly when each schema version
     # was applied to production.

@@ -9,6 +9,27 @@ export function nairaFull(value) {
   return `₦${Number(value || 0).toLocaleString()}`;
 }
 
+const _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+  "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+  "Seventeen", "Eighteen", "Nineteen"];
+const _TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+function _toWords(n) {
+  if (n === 0) return "";
+  if (n < 20) return _ONES[n];
+  if (n < 100) return _TENS[Math.floor(n / 10)] + (n % 10 ? " " + _ONES[n % 10] : "");
+  if (n < 1_000) return _ONES[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + _toWords(n % 100) : "");
+  if (n < 1_000_000) return _toWords(Math.floor(n / 1_000)) + " Thousand" + (n % 1_000 ? " " + _toWords(n % 1_000) : "");
+  if (n < 1_000_000_000) return _toWords(Math.floor(n / 1_000_000)) + " Million" + (n % 1_000_000 ? " " + _toWords(n % 1_000_000) : "");
+  return _toWords(Math.floor(n / 1_000_000_000)) + " Billion" + (n % 1_000_000_000 ? " " + _toWords(n % 1_000_000_000) : "");
+}
+
+export function nairaInWords(value) {
+  const n = Math.floor(Number(value || 0));
+  if (n === 0) return "Zero Naira";
+  return _toWords(n) + " Naira";
+}
+
 export function dateStr(value) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("en-NG", {
