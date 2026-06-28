@@ -3666,18 +3666,32 @@ def register_web_routes(app):
     from supplier_routes import register_supplier_routes
     register_supplier_routes(app)
 
-    # ── Root-level dist files (favicon, logo, icons, etc.) ──────────────────
-    # These live in web/dist/ root but NOT under /app/assets/, so they would
-    # otherwise fall through to the SPA catch-all and get served as HTML.
+    # ── Root-level dist files (favicon, logo, icons) ────────────────────────
+    # These live in web/dist/ root but NOT under /app/assets/, so requests
+    # would otherwise hit the SPA catch-all and be served as HTML.
+    _STATIC_TYPES = {
+        ".png": "image/png",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+        ".html": "text/html",
+        ".webmanifest": "application/manifest+json",
+    }
     _DIST_ROOT_STATIC = ["favicon.png", "favicon.svg", "logo.png", "icons.svg", "offline.html"]
     for _sf in _DIST_ROOT_STATIC:
         _fp = DIST_ROOT / _sf
-        if _fp.exists():
-            def _make_static_route(file_path):
-                def _route():
-                    return FileResponse(file_path)
-                return _route
-            app.add_api_route(f"/app/{_sf}", _make_static_route(_fp), methods=["GET"])
+        if not _fp.exists():
+            continue
+        _mt = _STATIC_TYPES.get(_fp.suffix, "application/octet-stream")
+        def _make_static_route(file_path, media_type):
+            def _route():
+                return FileResponse(str(file_path), media_type=media_type)
+            return _route
+        app.add_api_route(
+            f"/app/{_sf}",
+            _make_static_route(_fp, _mt),
+            methods=["GET"],
+            include_in_schema=False,
+        )
 
     # ── SPA catch-all (MUST be last — catches all /app/* client-side routes) ──
     @app.get("/app/{full_path:path}", response_class=HTMLResponse)

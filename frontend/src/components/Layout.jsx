@@ -145,7 +145,7 @@ export default function Layout() {
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-left" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {/* Hamburger — visible only on mobile via CSS */}
+            {/* Hamburger + logo — visible only on mobile via CSS */}
             <button
               className="topbar-menu-btn"
               onClick={() => setDrawerOpen(true)}
@@ -153,10 +153,15 @@ export default function Layout() {
             >
               <Menu size={22} />
             </button>
-            <div>
-              <div className="topbar-eyebrow">CreditVoice</div>
-              <h1>{title}</h1>
-            </div>
+            <img
+              src="/app/logo.png"
+              alt="logo"
+              className="topbar-logo"
+              style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover" }}
+            />
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.3px", lineHeight: 1 }}>
+              {title}
+            </h1>
           </div>
 
           <div className="topbar-sync" style={{ display: "flex", alignItems: "center", gap: 8 }}>
