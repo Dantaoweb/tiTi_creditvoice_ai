@@ -148,6 +148,7 @@ export default function POS() {
   const [cart, setCart] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [payment, setPayment] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
 
@@ -211,6 +212,7 @@ export default function POS() {
         fraction: it.fraction || 1.0,
       })),
       payment_amount: paid,
+      due_date: (customer && owed > 0 && dueDate) ? dueDate : null,
     };
     try {
       const result = await apiPost("pos/save", payload);
@@ -222,6 +224,7 @@ export default function POS() {
         setCart([]);
         setCustomer(null);
         setPayment(0);
+        setDueDate("");
         setSaveErr("");
         setSaving(false);
         navigate("/capture", {
@@ -384,7 +387,19 @@ export default function POS() {
             <div className="pos-change">Change: {naira(change)}</div>
           )}
           {customer && owed > 0 && (
-            <div className="pos-owed">Credit: {naira(owed)} will be recorded as debt</div>
+            <>
+              <div className="pos-owed">Credit: {naira(owed)} recorded as debt</div>
+              <label className="pos-summary-label" style={{ display: "block", marginTop: 10 }}>
+                Payment due date <span style={{ opacity: 0.5, fontWeight: 400 }}>(optional)</span>
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+                style={{ width: "100%", marginTop: 4 }}
+                min={new Date().toISOString().slice(0, 10)}
+              />
+            </>
           )}
         </div>
 

@@ -229,6 +229,7 @@ class PosSaveRequest(BaseModel):
     items: list[PosCartItem] = Field(max_length=200)  # max 200 line items per sale
     payment_amount: int = 0
     branch_id: Optional[int] = None
+    due_date: Optional[datetime] = None
 
 
 class AddInventoryRequest(BaseModel):
@@ -1129,6 +1130,7 @@ def register_web_routes(app):
                 items,
                 payload.payment_amount,
                 branch_id=payload.branch_id,
+                due_date=payload.due_date,
             )
             return result
         finally:
@@ -1150,7 +1152,9 @@ def register_web_routes(app):
                 recorder_phone = parent.phone if parent else recorder_phone
             if recorder_phone != owner_phone:
                 raise HTTPException(status_code=404, detail="Receipt not found.")
-            receipt = get_pos_receipt(db, tx_id)
+            session_user = db.query(User).filter(User.id == session["user_id"]).first()
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
+            receipt = get_pos_receipt(db, tx_id, user=owner_user or session_user)
             if not receipt:
                 raise HTTPException(status_code=404, detail="Receipt not found.")
             return receipt

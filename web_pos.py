@@ -4,7 +4,7 @@ import uuid
 from models import Customer, InventoryItem, InventoryMovement, Transaction, TransactionItem, User, utcnow
 
 
-def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, branch_id=None):
+def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, branch_id=None, due_date=None):
     """
     Save a POS sale and deduct inventory.
 
@@ -32,6 +32,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, 
         recorded_by_id=user_id,
         message_id=f"web-pos-{uuid.uuid4()}",
         branch_id=branch_id,
+        due_date=due_date if is_credit else None,
     )
     db.add(main_tx)
     db.flush()
@@ -102,26 +103,50 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, 
 
     return {
         "receipt_id": main_tx.id,
-        "total": total,
+        "total": int(total),
         "paid": paid,
         "change": 0,
-        "balance_owed": total - paid if has_customer else 0,
+        "balance_owed": int(total - paid) if has_customer else 0,
         "transaction_type": tx_type,
         "pay_tx_id": pay_tx_id,
     }
 
 
-def get_pos_receipt(db, tx_id):
+def get_pos_receipt(db, tx_id, user=None):
     tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
     if not tx:
         return None
     items = db.query(TransactionItem).filter(TransactionItem.transaction_id == tx_id).all()
     customer = db.query(Customer).filter(Customer.id == tx.customer_id).first() if tx.customer_id else None
     recorder = db.query(User).filter(User.id == tx.recorded_by_id).first() if tx.recorded_by_id else None
+
+    # Find the linked PAY transaction to get actual paid amount for credit sales
+    paid_amount = tx.amount  # default: fully paid
+    if tx.type == "BUY":
+        pay_tx = db.query(Transaction).filter(
+            Transaction.product == f"Part payment — POS #{tx_id}",
+            Transaction.customer_id == tx.customer_id,
+        ).first()
+        paid_amount = pay_tx.amount if pay_tx else 0
+
+    balance_owed = max(0, tx.amount - paid_amount) if customer else 0
+
+    # Business-specific receipt config
+    from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG
+    config = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
+
+    # Business name from user record
+    biz_name = None
+    if user:
+        biz_name = getattr(user, "business_name", None) or getattr(user, "name", None)
+
     return {
         "id": tx.id,
         "type": tx.type,
         "total": tx.amount,
+        "paid": paid_amount,
+        "balance_owed": balance_owed,
+        "due_date": tx.due_date.isoformat() if tx.due_date else None,
         "created_at": tx.created_at.isoformat() if tx.created_at else None,
         "customer": {
             "id": customer.id,
@@ -129,6 +154,8 @@ def get_pos_receipt(db, tx_id):
             "phone": customer.customer_phone,
         } if customer else None,
         "recorded_by": recorder.name if recorder else None,
+        "biz_name": biz_name,
+        "config": config,
         "items": [
             {
                 "product": it.product,
