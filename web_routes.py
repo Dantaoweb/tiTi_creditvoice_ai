@@ -2735,6 +2735,55 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.post("/app/api/reminders/{reminder_id}/send")
+    def web_send_reminder(reminder_id: int, session: dict = Depends(require_web_auth)):
+        """Approve and send a single pending reminder from the web dashboard."""
+        db = SessionLocal()
+        try:
+            from models import ReminderQueue
+            from twilio_client import send_whatsapp_message
+            owner_phone = _session_owner_phone(db, session)
+            item = (
+                db.query(ReminderQueue)
+                .filter(ReminderQueue.id == reminder_id, ReminderQueue.owner_phone == owner_phone)
+                .first()
+            )
+            if not item:
+                raise HTTPException(status_code=404, detail="Reminder not found.")
+            if item.status == "SENT":
+                raise HTTPException(status_code=400, detail="Reminder already sent.")
+            if not item.customer_phone:
+                raise HTTPException(status_code=400, detail="No customer phone on this reminder.")
+            send_whatsapp_message(item.customer_phone, item.message_text)
+            from reminder_automation import create_send_log
+            item.status = "SENT"
+            create_send_log(db, owner_phone, item)
+            db.commit()
+            return {"ok": True, "sent_to": item.customer_name}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(exc))
+        finally:
+            db.close()
+
+    @app.post("/app/api/reminders/run")
+    def web_run_reminder_automation(session: dict = Depends(require_web_auth)):
+        """Trigger reminder automation for the current owner from the web dashboard."""
+        db = SessionLocal()
+        try:
+            from twilio_client import send_whatsapp_message
+            from reminder_automation import run_reminder_automation
+            owner_phone = _session_owner_phone(db, session)
+            result = run_reminder_automation(db, owner_phone, send_whatsapp_message)
+            return result
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(exc))
+        finally:
+            db.close()
+
     # ── Automation settings ───────────────────────────────────────────────────
     BOT_MENU_GROUPS = {"retail_trading", "pharmacy", "salon_beauty", "food_hospitality"}
 
