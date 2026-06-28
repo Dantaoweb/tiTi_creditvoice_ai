@@ -1641,6 +1641,30 @@ def parse_message(text):
     ]:
         return {"type": "PERSONAL_SAVINGS_BALANCE"}
 
+    # ── Token code redemption ────────────────────────────────────────────────────
+    # "redeem ABC123" | "activate code ABC123" | "use code ABC123"
+    _redeem_m = re.match(
+        r"^(?:redeem|activate|use|apply)\s+(?:code\s+)?(?P<code>[A-Z0-9\-]{4,20})$",
+        clean_text.upper(),
+    )
+    if _redeem_m:
+        return {"type": "REDEEM_TOKEN", "code": _redeem_m.group("code").replace("-", "")}
+
+    # ── Branch management ────────────────────────────────────────────────────────
+    # "my branches" | "list branches" | "branches"
+    if clean_text in ["my branches", "branches", "branch list", "list branches", "list my branches", "show branches"]:
+        return {"type": "BRANCH_LIST"}
+
+    # "add branch Main Street" | "create branch Ajah"
+    _branch_add_m = re.match(
+        r"^(?:add|create|new)\s+branch\s+(?P<name>.+)$",
+        clean_text,
+    )
+    if _branch_add_m:
+        name = _branch_add_m.group("name").strip()
+        if name:
+            return {"type": "BRANCH_ADD", "name": name}
+
     # ── Thrift / Ajo participant management ─────────────────────────────────────
     # "add thrift member Amina" | "add ajo member Tunde Bello" | "add participant Kemi"
     _thrift_add_m = re.match(

@@ -332,6 +332,98 @@ def handle_parsed_command(
             )
         return {"status": "thrift_report_sent"}
 
+    # ── Token code redemption ─────────────────────────────────────────────────
+    if parsed["type"] == "REDEEM_TOKEN":
+        if not user:
+            send_whatsapp_message(phone, "Register first before redeeming a code.")
+            return {"status": "redeem_no_user"}
+        from models import TokenCode
+        from datetime import datetime, timezone, timedelta
+        code = parsed.get("code", "").strip().upper()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        tc = db.query(TokenCode).filter(TokenCode.code == code).first()
+        if not tc or tc.redeemed_at or (tc.expires_at and tc.expires_at < now):
+            send_whatsapp_message(phone, "❌ That code is invalid, already used, or has expired.\n\nCheck the code and try again.")
+            return {"status": "redeem_invalid"}
+        tc.redeemed_at = now
+        tc.redeemed_by_phone = user.phone
+        current_expiry = user.subscription_expires_at
+        if current_expiry and current_expiry > now:
+            new_expiry = current_expiry + timedelta(days=tc.duration_days)
+        else:
+            new_expiry = now + timedelta(days=tc.duration_days)
+        user.subscription_plan = tc.plan
+        user.subscription_status = "ACTIVE"
+        user.subscription_expires_at = new_expiry
+        db.commit()
+        expire_str = new_expiry.strftime("%d %b %Y")
+        send_whatsapp_message(
+            phone,
+            f"✅ *Code redeemed!*\n\n"
+            f"Plan: *{tc.plan}*\n"
+            f"Duration: {tc.duration_days} days\n"
+            f"Active until: *{expire_str}*\n\n"
+            "All features are now unlocked. Enjoy!"
+        )
+        return {"status": "redeem_success"}
+
+    # ── Branch management ─────────────────────────────────────────────────────
+    if parsed["type"] == "BRANCH_LIST":
+        if not user:
+            send_whatsapp_message(phone, "Register first to manage branches.")
+            return {"status": "branch_list_no_user"}
+        from models import Branch
+        branches = (
+            db.query(Branch)
+            .filter(Branch.owner_phone == business_owner_phone)
+            .order_by(Branch.created_at)
+            .all()
+        )
+        if not branches:
+            send_whatsapp_message(
+                phone,
+                "📍 *Branches*\n\nNo branches set up yet.\n\n"
+                "Add one:\n→ add branch Main Market\n→ add branch Ajah Shop"
+            )
+        else:
+            lines = "\n".join(
+                f"{i}. {b.name}{' ★' if b.is_default else ''}"
+                for i, b in enumerate(branches, 1)
+            )
+            send_whatsapp_message(
+                phone,
+                f"📍 *Your Branches*\n\n{lines}\n\n"
+                "★ = default branch\n\n"
+                "Add more: _add branch [name]_"
+            )
+        return {"status": "branch_list_sent"}
+
+    if parsed["type"] == "BRANCH_ADD":
+        if not user:
+            send_whatsapp_message(phone, "Register first to add branches.")
+            return {"status": "branch_add_no_user"}
+        from models import Branch
+        name = parsed.get("name", "").strip()
+        existing = (
+            db.query(Branch)
+            .filter(Branch.owner_phone == business_owner_phone, Branch.name.ilike(name))
+            .first()
+        )
+        if existing:
+            send_whatsapp_message(phone, f"📍 *{name.title()}* already exists as a branch.")
+            return {"status": "branch_add_exists"}
+        is_first = not db.query(Branch).filter(Branch.owner_phone == business_owner_phone).first()
+        branch = Branch(owner_phone=business_owner_phone, name=name.lower(), is_default=is_first)
+        db.add(branch)
+        db.commit()
+        default_note = " (set as default since it's your first)" if is_first else ""
+        send_whatsapp_message(
+            phone,
+            f"✅ Branch *{name.title()}* added{default_note}.\n\n"
+            "Send _my branches_ to see all your branches."
+        )
+        return {"status": "branch_add_done"}
+
     # ── Staff profile ─────────────────────────────────────────────────────────
     if parsed["type"] == "SET_STAFF_PROFILE":
         return handle_set_staff_profile(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)
