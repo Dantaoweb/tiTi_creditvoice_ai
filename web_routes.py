@@ -1021,6 +1021,11 @@ def register_web_routes(app):
         try:
             phone = session["phone"]
             return _preview_capture(db, phone, payload.text.strip())
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Preview failed: {exc}")
         finally:
             db.close()
 
@@ -1074,6 +1079,11 @@ def register_web_routes(app):
                 pending_items, subscription, send_message,
             )
             return {"status": (result or {}).get("status", "saved"), "messages": messages}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Could not save transaction: {exc}")
         finally:
             db.close()
 
