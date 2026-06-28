@@ -2274,7 +2274,10 @@ def register_web_routes(app):
             owner_phone = owner.phone if owner.parent_id is None else (
                 db.query(User).filter(User.id == owner.parent_id).first() or owner
             ).phone
+            is_staff = owner.parent_id is not None
             query = db.query(BusinessNote).filter(BusinessNote.owner_phone == owner_phone)
+            if is_staff:
+                query = query.filter(BusinessNote.visibility == "all")
             if category:
                 query = query.filter(BusinessNote.category == category)
             notes = query.order_by(BusinessNote.created_at.desc()).limit(100).all()
@@ -2328,9 +2331,12 @@ def register_web_routes(app):
         try:
             from models import BusinessNote
             owner = db.query(User).filter(User.phone == session["phone"]).first()
+            owner_phone = owner.phone if owner.parent_id is None else (
+                db.query(User).filter(User.id == owner.parent_id).first() or owner
+            ).phone
             note = db.query(BusinessNote).filter(
                 BusinessNote.id == note_id,
-                BusinessNote.owner_phone == owner.phone,
+                BusinessNote.owner_phone == owner_phone,
             ).first()
             if not note:
                 raise HTTPException(status_code=404, detail="Note not found.")
@@ -2615,7 +2621,7 @@ def register_web_routes(app):
             customer = Customer(
                 owner_phone=owner_phone,
                 name=payload.name.strip().lower(),
-                phone=payload.phone,
+                customer_phone=payload.phone,
             )
             db.add(customer)
             db.commit()

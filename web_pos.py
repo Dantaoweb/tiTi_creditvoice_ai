@@ -16,7 +16,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, 
 
     Returns receipt dict.
     """
-    total = sum(int(it.get("qty", 1)) * int(it.get("unit_price", 0)) for it in items)
+    total = sum(float(it.get("qty", 1)) * int(it.get("unit_price", 0)) for it in items)
     paid = min(int(payment_amount or 0), total)
 
     has_customer = bool(customer_id)

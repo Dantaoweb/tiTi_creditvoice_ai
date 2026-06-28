@@ -254,7 +254,7 @@ def register_supplier_routes(app, get_db=None):
             # Supplier status is a PRO feature
             user = db.query(User).filter(User.phone == phone).first()
             plan = (user.subscription_plan or "BASIC").upper() if user else "BASIC"
-            if plan not in ("PRO",):
+            if plan not in ("PRO", "ENTERPRISE"):
                 raise HTTPException(
                     status_code=403,
                     detail=(

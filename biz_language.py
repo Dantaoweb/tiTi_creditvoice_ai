@@ -85,6 +85,42 @@ BIZ_LANG = {
         "example_pay":      "Tunde paid dues 3000",
     },
 
+    # ── Clinic / Health ─────────────────────────────────────────────────────────
+    "clinic": {
+        "action_word":      "visit",
+        "confirm_style":    "label",      # "NAME visit: ITEM"
+        "total_label":      "Total",
+        "credit_sales":     "Consultations on credit",
+        "direct_sales":     "Cash consultations",
+        "total_sales":      "Total income",
+        "outstanding":      "Outstanding balance",
+        "payments":         "Payments received",
+        "total_customers":  "Total patients",
+        "new_customers":    "New patients",
+        "paid_customers":   "Patients who paid",
+        "show_product_tip": False,
+        "example_credit":   "Emeka consultation 5000 paid 2000",
+        "example_pay":      "Ngozi paid balance 3000",
+    },
+
+    # ── Food / Hospitality ───────────────────────────────────────────────────────
+    "food": {
+        "action_word":      "order",
+        "confirm_style":    "label",      # "NAME order: ITEM"
+        "total_label":      "Total",
+        "credit_sales":     "Orders on credit",
+        "direct_sales":     "Cash orders",
+        "total_sales":      "Total sales",
+        "outstanding":      "Outstanding balance",
+        "payments":         "Payments received",
+        "total_customers":  "Total customers",
+        "new_customers":    "New customers",
+        "paid_customers":   "Customers who paid",
+        "show_product_tip": True,
+        "example_credit":   "Ade ordered jollof rice 3000 paid 1500",
+        "example_pay":      "Tunde paid balance 1500",
+    },
+
     # ── Thrift / Ajo / Cooperative ──────────────────────────────────────────────
     "thrift": {
         "action_word":      "contributed",

@@ -221,7 +221,7 @@ export default function POS() {
         enqueue("pos/save", payload, label);
         setCart([]);
         setCustomer(null);
-        setPaid(0);
+        setPayment(0);
         setSaveErr("");
         setSaving(false);
         navigate("/capture", {

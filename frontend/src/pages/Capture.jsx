@@ -168,6 +168,8 @@ function BranchSelector({ ownerPhone, value, onChange }) {
 // ── Form panels ──────────────────────────────────────────────────────────────
 
 function SaleForm({ ownerPhone, onSuccess }) {
+  const { user }                = useAuth();
+  const L                       = getBizLabels(user?.menu_group);
   const [product, setProduct]   = useState("");
   const [qty, setQty]           = useState("1");
   const [unit, setUnit]         = useState("");
@@ -237,8 +239,8 @@ function SaleForm({ ownerPhone, onSuccess }) {
         </div>
       </div>
       <div className="form-group">
-        <label className="form-label">Customer <span className="text-subtle">— leave blank for cash sale</span></label>
-        <CustomerSearch ownerPhone={ownerPhone} placeholder="Search customer name…" onSelect={setCustomer} value={customer} />
+        <label className="form-label">{L.customer} <span className="text-subtle">— leave blank for cash sale</span></label>
+        <CustomerSearch ownerPhone={ownerPhone} placeholder={`Search ${L.customerName.toLowerCase()}…`} onSelect={setCustomer} value={customer} />
       </div>
       <BranchSelector ownerPhone={ownerPhone} value={branchId} onChange={setBranchId} />
       <div className="qf-type-hint">
@@ -255,6 +257,8 @@ function SaleForm({ ownerPhone, onSuccess }) {
 }
 
 function PaymentForm({ ownerPhone, onSuccess }) {
+  const { user }                = useAuth();
+  const L                       = getBizLabels(user?.menu_group);
   const [customer, setCustomer] = useState(null);
   const [amount, setAmount]     = useState("");
   const [note, setNote]         = useState("");
@@ -290,9 +294,9 @@ function PaymentForm({ ownerPhone, onSuccess }) {
   return (
     <form onSubmit={handleSubmit} className="qf-form">
       <div className="form-group">
-        <label className="form-label">Customer who paid *</label>
-        <CustomerSearch ownerPhone={ownerPhone} placeholder="Search by name…" filterDebtors onSelect={setCustomer} value={customer} />
-        <div className="form-hint">Shows customers with outstanding balance.</div>
+        <label className="form-label">{L.customer} who paid *</label>
+        <CustomerSearch ownerPhone={ownerPhone} placeholder={`Search ${L.customerName.toLowerCase()}…`} filterDebtors onSelect={setCustomer} value={customer} />
+        <div className="form-hint">Shows {L.customers.toLowerCase()} with outstanding balance.</div>
       </div>
       <div className="qf-row qf-row--sm-xl">
         <div className="form-group">

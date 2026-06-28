@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, Users, TrendingUp, Plus, Info, PiggyBank, ChevronDown, ChevronUp, UserPlus } from "lucide-react";
+import { Activity, Users, TrendingUp, Plus, Info, Landmark, ChevronDown, ChevronUp, UserPlus } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateTimeStr } from "../lib/format";
@@ -65,7 +65,7 @@ function ThriftExplainer({ mode }) {
         {open ? <ChevronUp size={14} color="rgba(255,255,255,0.4)" /> : <ChevronDown size={14} color="rgba(255,255,255,0.4)" />}
       </div>
       {open && (
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", lineHeight: 1.7, paddingTop: 4 }}>
+        <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.7, paddingTop: 4 }}>
           {text.body}
         </div>
       )}
@@ -279,7 +279,7 @@ function PersonalSavings({ data, loading, reload }) {
 
       <div className="card">
         <div className="card-header">
-          <span className="card-title"><PiggyBank size={15} /> My Savings</span>
+          <span className="card-title"><Landmark size={15} /> My Savings</span>
           <button className="btn btn-primary btn-sm" onClick={() => setShowForm(f => !f)}>
             <Plus size={13} /> Record Saving
           </button>
@@ -356,7 +356,7 @@ export default function Thrift() {
           onClick={() => setMode("personal")}
           style={{ fontSize: 13 }}
         >
-          <PiggyBank size={14} /> Personal Savings
+          <Landmark size={14} /> Personal Savings
         </button>
       </div>
 
@@ -377,13 +377,13 @@ export default function Thrift() {
           <div style={{ fontSize: 28 }}>💳</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Receive contributions to your Wallet</div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
               Connect a CreditVoice virtual account so participants can pay directly —
               contributions match automatically, no cash handling needed.
             </div>
           </div>
           <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => navigate("/wallet")}>
-            Go to Wallet
+            Connect Wallet
           </button>
         </div>
       </div>
