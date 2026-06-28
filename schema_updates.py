@@ -244,11 +244,14 @@ def ensure_schema_updates(engine):
     }
     boolean_false = "FALSE" if engine.dialect.name == "postgresql" else "0"
     transaction_updates = {
-        "is_voided": f"BOOLEAN DEFAULT {boolean_false}",
+        "quantity":    "INTEGER",
+        "unit":        "VARCHAR",
+        "unit_price":  "INTEGER",
+        "is_voided":   f"BOOLEAN DEFAULT {boolean_false}",
         "void_reason": "VARCHAR",
         "voided_by_id": "VARCHAR",
-        "voided_at": "TIMESTAMP",
-        "is_invoice": f"BOOLEAN DEFAULT {boolean_false}",
+        "voided_at":   "TIMESTAMP",
+        "is_invoice":  f"BOOLEAN DEFAULT {boolean_false}",
     }
     with engine.begin() as connection:
         for column_name, column_type in transaction_updates.items():
