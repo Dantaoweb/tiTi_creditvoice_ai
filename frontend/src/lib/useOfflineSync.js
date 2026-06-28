@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { getQueue, dequeue } from "./offlineQueue";
+import { getQueue, getFailedQueue, dequeue, markFailed, clearFailed } from "./offlineQueue";
 import { apiPost } from "./api";
 import { useToast } from "../components/Toast";
 
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [pending,  setPending]  = useState(() => getQueue().length);
+  const [failed,   setFailed]   = useState(() => getFailedQueue().length);
   const [syncing,  setSyncing]  = useState(false);
   const toast = useToast();
 
-  const refresh = useCallback(() => setPending(getQueue().length), []);
+  const refresh = useCallback(() => {
+    setPending(getQueue().length);
+    setFailed(getFailedQueue().length);
+  }, []);
 
   const sync = useCallback(async () => {
     const q = getQueue();
@@ -24,9 +28,12 @@ export function useOfflineSync() {
       } catch (e) {
         if (e.message?.includes("Session expired")) {
           dequeue(item.id);
+          continue;
         }
-        // network still down or server error — leave in queue
+        // Network still down — stop and retry later
         if (e instanceof TypeError) break;
+        // Server error (4xx/5xx) — move to failed queue so it doesn't block others
+        markFailed(item, e.message || "Server error");
       }
     }
     setSyncing(false);
@@ -37,15 +44,27 @@ export function useOfflineSync() {
         "success",
       );
     }
+    const nowFailed = getFailedQueue().length;
+    if (nowFailed > 0) {
+      toast(
+        `${nowFailed} record${nowFailed !== 1 ? "s" : ""} failed to sync — check Offline Queue.`,
+        "error",
+      );
+    }
   }, [toast, refresh]);
+
+  const dismissFailed = useCallback(() => {
+    clearFailed();
+    refresh();
+  }, [refresh]);
 
   useEffect(() => {
     const onOnline  = () => { setIsOnline(true);  sync(); };
     const onOffline = () => setIsOnline(false);
     const onQueued  = () => refresh();
-    window.addEventListener("online",             onOnline);
-    window.addEventListener("offline",            onOffline);
-    window.addEventListener("cv:queue-updated",   onQueued);
+    window.addEventListener("online",           onOnline);
+    window.addEventListener("offline",          onOffline);
+    window.addEventListener("cv:queue-updated", onQueued);
     return () => {
       window.removeEventListener("online",           onOnline);
       window.removeEventListener("offline",          onOffline);
@@ -59,5 +78,5 @@ export function useOfflineSync() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { isOnline, pending, syncing, refresh };
+  return { isOnline, pending, failed, syncing, refresh, dismissFailed };
 }

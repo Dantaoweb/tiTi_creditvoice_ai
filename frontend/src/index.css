@@ -2117,6 +2117,12 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   border: 1px solid #93c5fd;
   animation: pulse-chip 1.4s ease-in-out infinite;
 }
+.sync-chip--failed {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  cursor: pointer;
+}
 @keyframes pulse-chip {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.6; }

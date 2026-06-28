@@ -46,7 +46,7 @@ export default function Layout() {
   const L = getBizLabels(user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
   const NAV = buildNav(L).filter(item => !item.adminOnly || isAdmin);
-  const { isOnline, pending, syncing } = useOfflineSync();
+  const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {
     "/home":         "Chat with tiTi",
@@ -170,6 +170,15 @@ export default function Layout() {
               <span className="sync-chip sync-chip--syncing">
                 {syncing ? `Syncing ${pending}…` : `${pending} pending`}
               </span>
+            )}
+            {failed > 0 && (
+              <button
+                className="sync-chip sync-chip--failed"
+                onClick={dismissFailed}
+                title={`${failed} record${failed !== 1 ? "s" : ""} failed to sync. Click to dismiss.`}
+              >
+                {failed} failed ×
+              </button>
             )}
             <NotificationBell />
           </div>
