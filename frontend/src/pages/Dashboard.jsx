@@ -10,6 +10,8 @@ import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
+import { usePlan } from "../lib/usePlan";
+import { Lock } from "lucide-react";
 
 const WA_NUDGE_KEY = "cv_wa_nudge_dismissed";
 
@@ -288,6 +290,8 @@ function WhatsAppNudge({ titiNumber }) {
 export default function Dashboard() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
+  const { allows } = usePlan();
+  const canExport = allows("EXPORT");
   const L = getBizLabels(user?.menu_group);
   const [titiNumber, setTitiNumber] = useState("");
 
@@ -456,21 +460,33 @@ export default function Dashboard() {
           <Download size={13} />
           Export data
         </div>
-        {[
-          { key: "transactions", label: "Transactions" },
-          { key: "debtors",      label: "Unpaid Debtors" },
-          { key: "customers",    label: "Customers" },
-          { key: "stock",        label: "Stock Inventory" },
-        ].map(({ key, label }) => (
+        {canExport ? (
+          [
+            { key: "transactions", label: "Transactions" },
+            { key: "debtors",      label: "Unpaid Debtors" },
+            { key: "customers",    label: "Customers" },
+            { key: "stock",        label: "Stock Inventory" },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              className="btn btn-ghost btn-sm"
+              onClick={() => handleExport(key)}
+              disabled={exportingType === key}
+            >
+              {exportingType === key ? "Downloading…" : `${label} CSV`}
+            </button>
+          ))
+        ) : (
           <button
-            key={key}
             className="btn btn-ghost btn-sm"
-            onClick={() => handleExport(key)}
-            disabled={exportingType === key}
+            style={{ opacity: 0.6, cursor: "not-allowed" }}
+            title="CSV export is available on the Go plan."
+            onClick={() => window.location.href = "/app/upgrade"}
           >
-            {exportingType === key ? "Downloading…" : `${label} CSV`}
+            <Lock size={11} style={{ color: "#a78bfa" }} />
+            <Download size={13} /> Export (Go plan)
           </button>
-        ))}
+        )}
       </div>
     </>
   );
