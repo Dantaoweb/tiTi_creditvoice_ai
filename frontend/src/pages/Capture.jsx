@@ -406,7 +406,7 @@ function QuickFormPanel({ ownerPhone }) {
   }
 
   return (
-    <div className="card" style={{ maxWidth: 560 }}>
+    <div className="card" style={{ maxWidth: 560, overflow: "visible" }}>
       <div style={{ paddingBottom: 0 }}>
         <span className="card-title">Quick Record</span>
         <div className="card-subtitle" style={{ marginTop: 2 }}>Fill in the fields — no command syntax needed</div>
