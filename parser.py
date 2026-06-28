@@ -1606,6 +1606,41 @@ def parse_message(text):
     if clean_text in ["formats", "format", "f"]:
         return {"type": "FORMATS"}
 
+    # ── Personal savings ────────────────────────────────────────────────────────
+    # "I saved 5000"  |  "personal savings 10000"  |  "my savings 2000 school fees"
+    # Must come BEFORE transaction parsing because "I saved N" contains the PAY keyword "saved"
+    # which would otherwise create a PAY transaction for a customer named "I".
+    _ps_amount_m = re.match(
+        r"^(?:i\s+)?(?:have\s+)?(?:save[d]?|set\s+aside)\s+(?P<amt>[\d,]+(?:\.\d+)?)(?:\s+(?P<note>.+))?$",
+        clean_text,
+    ) or re.match(
+        r"^(?:personal\s+)?savings?\s+(?P<amt>[\d,]+(?:\.\d+)?)(?:\s+(?P<note>.+))?$",
+        clean_text,
+    ) or re.match(
+        r"^my\s+savings?\s+(?P<amt>[\d,]+(?:\.\d+)?)(?:\s+(?P<note>.+))?$",
+        clean_text,
+    )
+    if _ps_amount_m:
+        _ps_raw = _ps_amount_m.group("amt").replace(",", "")
+        try:
+            _ps_amt = int(float(_ps_raw))
+        except ValueError:
+            _ps_amt = 0
+        if _ps_amt > 0:
+            return {
+                "type": "PERSONAL_SAVINGS",
+                "amount": _ps_amt,
+                "note": (_ps_amount_m.group("note") or "").strip(),
+            }
+
+    # Personal savings balance query
+    if clean_text in [
+        "my savings", "my savings balance", "personal savings", "personal savings balance",
+        "savings balance", "how much have i saved", "how much did i save",
+        "total savings", "my total savings", "savings total",
+    ]:
+        return {"type": "PERSONAL_SAVINGS_BALANCE"}
+
     if clean_text in ["stock", "stocks", "my stock", "my stocks", "inventory", "my inventory"] or \
             re.match(r"^(?:show|check|view|see|display)\s+(?:my\s+)?(?:stocks?|inventory)$", clean_text):
         return {"type": "INVENTORY_LIST"}
@@ -2518,6 +2553,7 @@ def parse_message(text):
             "wallet":       ["wallet", "receive payment", "virtual account", "bank transfer", "pay me", "accept payment"],
             "transactions": ["transactions", "sales history", "see my sales", "view sales", "sales record", "transaction history"],
             "debt":         ["debt", "debtors", "who owes", "unpaid", "customer debt", "owe me"],
+            "savings":      ["personal savings", "my savings", "save money", "record savings", "how to save", "savings balance"],
         }
         for _topic, _keywords in _guide_topics.items():
             if any(_kw in clean_text for _kw in _keywords):

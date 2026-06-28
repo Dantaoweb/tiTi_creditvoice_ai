@@ -199,6 +199,58 @@ def handle_parsed_command(
             visible_recorded_by_id, send_whatsapp_message,
         )
 
+    # ── Personal savings ──────────────────────────────────────────────────────
+    if parsed["type"] == "PERSONAL_SAVINGS":
+        if not user:
+            send_whatsapp_message(phone, "Register first to record personal savings.")
+            return {"status": "personal_savings_no_user"}
+        from models import Transaction
+        import uuid as _uuid
+        amount = parsed["amount"]
+        note = parsed.get("note") or ""
+        product = f"personal_savings: {note}" if note else "personal_savings"
+        tx = Transaction(
+            customer_id=None,
+            type="DIRECT",
+            amount=amount,
+            product=product,
+            recorded_by_id=visible_recorded_by_id,
+            message_id=f"wa-save-{_uuid.uuid4()}",
+        )
+        db.add(tx)
+        db.commit()
+        note_part = f" ({note.title()})" if note else ""
+        send_whatsapp_message(
+            phone,
+            f"💰 *₦{amount:,}* saved{note_part}.\n\n"
+            "Your personal savings have been recorded.\n"
+            "Send *my savings* to see your total."
+        )
+        return {"status": "personal_savings_saved"}
+
+    if parsed["type"] == "PERSONAL_SAVINGS_BALANCE":
+        if not user:
+            send_whatsapp_message(phone, "Register first to check your savings.")
+            return {"status": "personal_savings_balance_no_user"}
+        from models import Transaction
+        from sqlalchemy import func as _func
+        total = (
+            db.query(_func.coalesce(_func.sum(Transaction.amount), 0))
+            .filter(
+                Transaction.recorded_by_id == visible_recorded_by_id,
+                Transaction.type == "DIRECT",
+                Transaction.product.ilike("personal_savings%"),
+                Transaction.is_voided != True,
+            )
+            .scalar()
+        ) or 0
+        send_whatsapp_message(
+            phone,
+            f"💰 *Personal Savings*\n\nTotal saved: *₦{int(total):,}*\n\n"
+            "Send *my savings N* to add more — e.g. *my savings 5000*"
+        )
+        return {"status": "personal_savings_balance"}
+
     # ── Staff profile ─────────────────────────────────────────────────────────
     if parsed["type"] == "SET_STAFF_PROFILE":
         return handle_set_staff_profile(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)

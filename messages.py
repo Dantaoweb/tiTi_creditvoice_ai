@@ -1046,6 +1046,22 @@ def build_app_guide_message(topic):
             "4. Tap *Send Reminder* to chase a payment\n\n"
             "tiTi also sends you automatic debt alerts every 3 days for overdue balances."
         ),
+        "savings": (
+            "💰 *How to record personal savings*\n\n"
+            "Personal savings are separate from your business — they're for money you're\n"
+            "setting aside for yourself (school fees, house rent, emergency fund, etc.)\n\n"
+            "*On WhatsApp — just type:*\n"
+            "• _I saved 5000_ — record ₦5,000 as saved\n"
+            "• _personal savings 10000 school fees_ — save with a note\n"
+            "• _my savings 2000 emergency_ — same thing\n"
+            "• _my savings balance_ — see your total saved\n\n"
+            "*On the web app:*\n"
+            "1. Click *Thrift* in the sidebar\n"
+            "2. Tap *Record Saving*\n"
+            "3. Enter the amount and an optional note\n"
+            "4. Tap *Save* — it's added to your personal savings total\n\n"
+            "💡 Personal savings appear in the Thrift section, separate from group contributions."
+        ),
     }
 
     text = guides.get(topic)
