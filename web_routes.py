@@ -1134,6 +1134,11 @@ def register_web_routes(app):
                 due_date=payload.due_date,
             )
             return result
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Could not save sale: {exc}")
         finally:
             db.close()
 
@@ -1288,6 +1293,11 @@ def register_web_routes(app):
             db.commit()
             new_balance = _money(get_balance(db, customer_id))
             return {"id": tx.id, "amount": payload.amount, "new_balance": new_balance}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Could not record payment: {exc}")
         finally:
             db.close()
 
@@ -1565,6 +1575,11 @@ def register_web_routes(app):
             ))
             db.commit()
             return {"id": item.id, "new_quantity": item.quantity}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Could not adjust stock: {exc}")
         finally:
             db.close()
 
