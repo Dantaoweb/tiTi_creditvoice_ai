@@ -39,7 +39,7 @@ def verify_export_token(token: str):
         return None
 
 
-def build_export_csv(db, owner_phone: str, period_key, export_type: str):
+def build_export_csv(db, owner_phone: str, period_key, export_type: str, branch_id=None):
     """Returns (filename, csv_bytes_utf8bom) for the requested data set."""
     from reports import get_balance, get_owner_transaction_query, get_unpaid_debtors
     from models import Customer, InventoryItem, Transaction, User
@@ -104,7 +104,7 @@ def build_export_csv(db, owner_phone: str, period_key, export_type: str):
         filename = f"creditvoice-customers-{label}.csv"
 
     else:  # transactions (default)
-        query = get_owner_transaction_query(db, owner_phone, period_key, include_voided=True)
+        query = get_owner_transaction_query(db, owner_phone, period_key, include_voided=True, branch_id=branch_id)
         txs = query.order_by(Transaction.created_at.desc()).all()
 
         c_ids = [t.customer_id for t in txs if t.customer_id]

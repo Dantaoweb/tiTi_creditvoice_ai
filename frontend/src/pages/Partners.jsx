@@ -131,9 +131,17 @@ export default function Partners() {
     finally { setRemoving(null); }
   }
 
+  async function respondToInvite(id, action) {
+    try {
+      await fetch(`/app/api/partners/${id}/${action}`, { method: "POST", credentials: "include" });
+      load();
+    } catch (_) {}
+  }
+
   const myPartners = data?.partners || [];
   const myRoles = data?.as_partner || [];
   const pending = myPartners.filter(p => p.status === "pending");
+  const pendingInvites = myRoles.filter(p => p.status === "pending");
   const active = myPartners.filter(p => p.status === "active");
 
   function statusBadge(status) {
@@ -174,6 +182,12 @@ export default function Partners() {
           <button className={`btn ${tab === "my_roles" ? "btn-primary" : "btn-secondary"}`}
             style={{ fontSize: 13 }} onClick={() => setTab("my_roles")}>
             <Briefcase size={13} /> Businesses I'm In
+            {pendingInvites.length > 0 && (
+              <span style={{
+                background: "var(--amber)", color: "#000", borderRadius: "99px",
+                padding: "0 6px", fontSize: 11, fontWeight: 700, marginLeft: 4,
+              }}>{pendingInvites.length}</span>
+            )}
           </button>
         )}
       </div>
@@ -296,9 +310,12 @@ export default function Partners() {
                       <div className="card-title">{p.business_name}</div>
                       <div className="card-subtitle">Owner: {p.owner_name} · {p.owner_phone}</div>
                     </div>
-                    <span className={`badge ${ROLE_COLORS[p.role] || "badge-gray"}`}>
-                      {ROLE_LABELS[p.role] || p.role}
-                    </span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <span className={`badge ${ROLE_COLORS[p.role] || "badge-gray"}`}>
+                        {ROLE_LABELS[p.role] || p.role}
+                      </span>
+                      {statusBadge(p.status)}
+                    </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8, marginTop: 12 }}>
                     {p.equity_percent != null && (
@@ -312,6 +329,18 @@ export default function Partners() {
                       <strong style={{ fontSize: 12 }}>{p.access_level?.replace("_", " ")}</strong>
                     </div>
                   </div>
+                  {p.status === "pending" && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <button className="btn btn-primary" style={{ fontSize: 12 }}
+                        onClick={() => respondToInvite(p.id, "accept")}>
+                        Accept Invitation
+                      </button>
+                      <button className="btn btn-secondary" style={{ fontSize: 12, color: "var(--rose)" }}
+                        onClick={() => respondToInvite(p.id, "decline")}>
+                        Decline
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

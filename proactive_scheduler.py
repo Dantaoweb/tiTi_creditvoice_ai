@@ -221,6 +221,32 @@ def _check_inactivity(db):
             print(f"[proactive] inactivity error for {owner.phone}: {e}", flush=True)
 
 
+# ── Reminder automation ─────────────────────────────────────────────────────────
+
+def _check_reminder_automation(db):
+    """Run reminder automation for every owner who has auto_send_enabled."""
+    from models import User
+    from reminder_automation import get_or_create_reminder_settings, run_reminder_automation
+    from whatsapp_client import send_whatsapp_message
+
+    owners = db.query(User).filter(
+        User.role == "user",
+        User.parent_id == None,
+        User.phone != None,
+    ).all()
+
+    for owner in owners:
+        try:
+            settings = get_or_create_reminder_settings(db, owner.phone)
+            if not getattr(settings, "auto_send_enabled", False):
+                continue
+            result = run_reminder_automation(db, owner.phone, send_whatsapp_message)
+            if result.get("sent", 0) > 0:
+                print(f"[proactive] reminders: sent {result['sent']} for {owner.phone}", flush=True)
+        except Exception as e:
+            print(f"[proactive] reminder_automation error for {owner.phone}: {e}", flush=True)
+
+
 # ── Main scheduler loop ─────────────────────────────────────────────────────────
 
 _LOG_RETENTION_DAYS = 90
@@ -257,6 +283,7 @@ async def run_proactive_scheduler():
             _check_low_stock(db)
             _check_overdue_debt(db)
             _check_inactivity(db)
+            _check_reminder_automation(db)
             _purge_old_logs(db)
             global last_run_at
             last_run_at = datetime.now(timezone.utc)

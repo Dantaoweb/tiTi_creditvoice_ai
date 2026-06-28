@@ -136,7 +136,7 @@ def get_period_range(period):
     return None, None
 
 
-def get_owner_transaction_query(db, owner_phone, period=None, recorded_by_id=None, include_voided=False):
+def get_owner_transaction_query(db, owner_phone, period=None, recorded_by_id=None, include_voided=False, branch_id=None):
     query = db.query(Transaction).outerjoin(Customer, Transaction.customer_id == Customer.id)
     if not include_voided:
         query = query.filter(Transaction.is_voided != True)
@@ -159,6 +159,8 @@ def get_owner_transaction_query(db, owner_phone, period=None, recorded_by_id=Non
         query = query.filter(business_filter)
     if recorded_by_id:
         query = query.filter(Transaction.recorded_by_id == recorded_by_id)
+    if branch_id:
+        query = query.filter(Transaction.branch_id == int(branch_id))
     if period:
         start, end = get_period_range(period)
         if start and end:
@@ -169,8 +171,8 @@ def get_owner_transaction_query(db, owner_phone, period=None, recorded_by_id=Non
     return query
 
 
-def get_transaction_stats(db, owner_phone, period=None, recorded_by_id=None):
-    query = get_owner_transaction_query(db, owner_phone, period, recorded_by_id)
+def get_transaction_stats(db, owner_phone, period=None, recorded_by_id=None, branch_id=None):
+    query = get_owner_transaction_query(db, owner_phone, period, recorded_by_id, branch_id=branch_id)
     total_buy = query.filter(Transaction.type == "BUY").with_entities(
         func.coalesce(func.sum(Transaction.amount), 0)
     ).scalar()
@@ -191,8 +193,8 @@ def get_transaction_stats(db, owner_phone, period=None, recorded_by_id=None):
     }
 
 
-def get_dashboard_summary(db, owner_phone=None, period=None, recorded_by_id=None):
-    stats = get_transaction_stats(db, owner_phone, period, recorded_by_id)
+def get_dashboard_summary(db, owner_phone=None, period=None, recorded_by_id=None, branch_id=None):
+    stats = get_transaction_stats(db, owner_phone, period, recorded_by_id, branch_id=branch_id)
     return {
         "total_customers": get_customer_count(db, owner_phone, None, recorded_by_id),
         "new_customers": get_new_customer_count(db, owner_phone, period, recorded_by_id),

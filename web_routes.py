@@ -789,13 +789,14 @@ def register_web_routes(app):
     @app.get("/app/api/dashboard")
     def web_dashboard(
         period: Optional[str] = Query(default="TODAY"),
+        branch_id: Optional[int] = Query(default=None),
         session: dict = Depends(require_web_auth),
     ):
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
-            summary = get_dashboard_summary(db, owner_phone, period_key)
+            summary = get_dashboard_summary(db, owner_phone, period_key, branch_id=branch_id)
             debtors, _ = get_unpaid_debtors(db, owner_phone)
             low_stock_count = db.query(InventoryItem).filter(
                 InventoryItem.owner_phone == owner_phone,
@@ -2148,10 +2149,10 @@ def register_web_routes(app):
             my_partners = db.query(BusinessPartner).filter(
                 BusinessPartner.owner_phone == owner.phone
             ).all()
-            # Businesses I am a partner in
+            # Businesses I am a partner in (active + pending so they can accept)
             my_roles = db.query(BusinessPartner).filter(
                 BusinessPartner.partner_phone == owner.phone,
-                BusinessPartner.status == "active",
+                BusinessPartner.status.in_(["active", "pending"]),
             ).all()
             def _bp(p):
                 pu = db.query(User).filter(User.phone == p.partner_phone).first()
@@ -2252,6 +2253,52 @@ def register_web_routes(app):
             db.delete(bp)
             db.commit()
             return {"ok": True}
+        finally:
+            db.close()
+
+    @app.post("/app/api/partners/{partner_id}/accept")
+    def web_partner_accept(partner_id: int, session: dict = Depends(require_web_auth)):
+        """Partner accepts an invitation sent to their phone."""
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            from partner_commands import _utcnow
+            me = db.query(User).filter(User.phone == session["phone"]).first()
+            if not me:
+                raise HTTPException(status_code=403, detail="Not found.")
+            bp = db.query(BusinessPartner).filter(
+                BusinessPartner.id == partner_id,
+                BusinessPartner.partner_phone == me.phone,
+                BusinessPartner.status == "pending",
+            ).first()
+            if not bp:
+                raise HTTPException(status_code=404, detail="Invitation not found or already actioned.")
+            bp.status = "active"
+            bp.accepted_at = _utcnow()
+            db.commit()
+            return {"ok": True, "status": "active"}
+        finally:
+            db.close()
+
+    @app.post("/app/api/partners/{partner_id}/decline")
+    def web_partner_decline(partner_id: int, session: dict = Depends(require_web_auth)):
+        """Partner declines an invitation."""
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            me = db.query(User).filter(User.phone == session["phone"]).first()
+            if not me:
+                raise HTTPException(status_code=403, detail="Not found.")
+            bp = db.query(BusinessPartner).filter(
+                BusinessPartner.id == partner_id,
+                BusinessPartner.partner_phone == me.phone,
+                BusinessPartner.status == "pending",
+            ).first()
+            if not bp:
+                raise HTTPException(status_code=404, detail="Invitation not found or already actioned.")
+            db.delete(bp)
+            db.commit()
+            return {"ok": True, "status": "declined"}
         finally:
             db.close()
 
@@ -2792,6 +2839,7 @@ def register_web_routes(app):
         export_type: str = Query(default="transactions"),
         owner_phone: Optional[str] = Query(default=None),
         period: Optional[str] = Query(default=None),
+        branch_id: Optional[int] = Query(default=None),
         session: dict = Depends(require_web_auth),
     ):
         """Authenticated CSV export for the web dashboard."""
@@ -2807,7 +2855,7 @@ def register_web_routes(app):
             else:
                 phone = session_phone
             period_key = period.upper() if period else None
-            filename, csv_bytes = build_export_csv(db, phone, period_key, export_type)
+            filename, csv_bytes = build_export_csv(db, phone, period_key, export_type, branch_id=branch_id)
             return StreamingResponse(
                 iter([csv_bytes]),
                 media_type="text/csv; charset=utf-8",

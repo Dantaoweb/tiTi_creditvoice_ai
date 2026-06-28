@@ -308,7 +308,9 @@ export default function Dashboard() {
   async function handleExport(exportType) {
     setExportingType(exportType);
     try {
-      await apiDownload("export", { export_type: exportType, owner_phone: ownerPhone, period });
+      const params = { export_type: exportType, owner_phone: ownerPhone, period };
+      if (branchId) params.branch_id = branchId;
+      await apiDownload("export", params);
     } catch (e) {
       alert(e.message);
     } finally {
@@ -331,6 +333,7 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     const params = { period };
+    if (branchId) params.branch_id = branchId;
     const txParams = { period };
     if (branchId) txParams.branch_id = branchId;
     Promise.all([
