@@ -212,6 +212,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: "", unit: "", quantity: 0,
     cost_price: "", selling_price: "", low_stock_alert: "",
+    retail_unit: "", retail_per_base: "", retail_price: "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -234,6 +235,9 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
         selling_price: form.selling_price ? parseInt(form.selling_price) : null,
         low_stock_alert: isService ? null : (form.low_stock_alert ? parseInt(form.low_stock_alert) : null),
         is_service: isService,
+        retail_unit: !isService ? (form.retail_unit.trim() || null) : null,
+        retail_per_base: (!isService && form.retail_per_base !== "") ? parseInt(form.retail_per_base) : null,
+        retail_price: (!isService && form.retail_price !== "") ? parseInt(form.retail_price) : null,
       });
       onSaved(item);
       onClose();
@@ -305,6 +309,31 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
             <div className="form-group">
               <label className="form-label">Low-stock alert</label>
               <input type="number" min={0} value={form.low_stock_alert} onChange={e => set("low_stock_alert", e.target.value)} placeholder="optional" />
+            </div>
+          </div>
+        )}
+
+        {!isService && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 4 }}>
+            <div className="form-label" style={{ marginBottom: 8, color: "var(--text-muted)", fontSize: 12 }}>
+              Retail Breakdown (optional) — e.g. sell sachets from a pack
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Sub-unit name</label>
+                <input value={form.retail_unit} onChange={e => set("retail_unit", e.target.value)}
+                  placeholder="e.g. sachet" />
+              </div>
+              <div className="form-group" style={{ width: 110 }}>
+                <label className="form-label">Per {form.unit || "unit"}</label>
+                <input type="number" min={1} value={form.retail_per_base}
+                  onChange={e => set("retail_per_base", e.target.value)} placeholder="e.g. 15" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Sub-unit price (₦)</label>
+                <input type="number" min={0} value={form.retail_price}
+                  onChange={e => set("retail_price", e.target.value)} placeholder="e.g. 34" />
+              </div>
             </div>
           </div>
         )}
