@@ -2252,6 +2252,46 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 }
 .qf-form .form-label {
   font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Proportional 2-column rows — mobile only */
+.qf-row {
+  display: grid;
+  gap: 8px;
+}
+.qf-row .form-group { min-width: 0; }
+
+/* Product|Qty  — product wide, qty narrow */
+.qf-row--lg-sm { grid-template-columns: 1.8fr 1fr; }
+/* Unit|Amount  — unit narrow, amount wide */
+.qf-row--sm-lg { grid-template-columns: 1fr 1.8fr; }
+/* Amount|Note  — amount narrow, note wide */
+.qf-row--sm-xl { grid-template-columns: 1fr 2fr; }
+
+/* On desktop collapse back to single column */
+@media (min-width: 600px) {
+  .qf-row--lg-sm,
+  .qf-row--sm-lg,
+  .qf-row--sm-xl { grid-template-columns: 1fr; }
+}
+
+/* Submit button — centered on mobile, full-width on desktop */
+.qf-form .qf-btn {
+  width: 100%;
+}
+@media (max-width: 599px) {
+  .qf-form .qf-btn {
+    display: block;
+    margin: 2px auto 0;
+    min-width: 150px;
+    width: auto;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
 }
 .qf-search-wrap {
   position: relative;

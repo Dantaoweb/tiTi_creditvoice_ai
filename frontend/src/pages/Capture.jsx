@@ -216,23 +216,25 @@ function SaleForm({ ownerPhone, onSuccess }) {
 
   return (
     <form onSubmit={handleSubmit} className="qf-form">
-      <div className="form-group">
-        <label className="form-label">Product / Service *</label>
-        <input value={product} onChange={e => setProduct(e.target.value)} placeholder="e.g. Rice, Cement, Haircut" required />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div className="qf-row qf-row--lg-sm">
+        <div className="form-group">
+          <label className="form-label">Product / Service *</label>
+          <input value={product} onChange={e => setProduct(e.target.value)} placeholder="Rice, Cement, Haircut…" required />
+        </div>
         <div className="form-group">
           <label className="form-label">Qty</label>
           <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} />
         </div>
+      </div>
+      <div className="qf-row qf-row--sm-lg">
         <div className="form-group">
           <label className="form-label">Unit</label>
           <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="bags, pcs…" />
         </div>
-      </div>
-      <div className="form-group">
-        <label className="form-label">Amount (₦) *</label>
-        <input inputMode="numeric" value={amount} onChange={e => setAmount(fmtAmt(e.target.value))} placeholder="0" required />
+        <div className="form-group">
+          <label className="form-label">Amount (₦) *</label>
+          <input inputMode="numeric" value={amount} onChange={e => setAmount(fmtAmt(e.target.value))} placeholder="0" required />
+        </div>
       </div>
       <div className="form-group">
         <label className="form-label">Customer <span className="text-subtle">— leave blank for cash sale</span></label>
@@ -245,7 +247,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
           : "Cash sale → no customer debt"}
       </div>
       {error && <div className="modal-error">{error}</div>}
-      <button type="submit" className="btn btn-primary" disabled={loading}>
+      <button type="submit" className="btn btn-primary qf-btn" disabled={loading}>
         {loading ? "Saving…" : "Record Sale"}
       </button>
     </form>
@@ -292,7 +294,7 @@ function PaymentForm({ ownerPhone, onSuccess }) {
         <CustomerSearch ownerPhone={ownerPhone} placeholder="Search by name…" filterDebtors onSelect={setCustomer} value={customer} />
         <div className="form-hint">Shows customers with outstanding balance.</div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div className="qf-row qf-row--sm-xl">
         <div className="form-group">
           <label className="form-label">Amount paid (₦) *</label>
           <input
@@ -305,12 +307,12 @@ function PaymentForm({ ownerPhone, onSuccess }) {
         </div>
         <div className="form-group">
           <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Bank transfer…" />
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Bank transfer, cash…" />
         </div>
       </div>
       <BranchSelector ownerPhone={ownerPhone} value={branchId} onChange={setBranchId} />
       {error && <div className="modal-error">{error}</div>}
-      <button type="submit" className="btn btn-primary" disabled={loading || !customer}>
+      <button type="submit" className="btn btn-primary qf-btn" disabled={loading || !customer}>
         {loading ? "Saving…" : "Record Payment"}
       </button>
     </form>
@@ -360,13 +362,13 @@ function StockForm({ ownerPhone, onSuccess }) {
         <label className="form-label">Product *</label>
         <InventorySearch ownerPhone={ownerPhone} onSelect={setItem} value={item} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="qf-row qf-row--sm-lg">
         <div className="form-group">
           <label className="form-label">Qty received *</label>
           <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} placeholder="10" required />
         </div>
         <div className="form-group">
-          <label className="form-label">Cost/unit (₦)</label>
+          <label className="form-label">Cost per unit (₦)</label>
           <input inputMode="numeric" value={cost} onChange={e => setCost(fmtAmt(e.target.value))} placeholder="0" />
         </div>
       </div>
@@ -375,7 +377,7 @@ function StockForm({ ownerPhone, onSuccess }) {
         <input value={note} onChange={e => setNote(e.target.value)} placeholder="Supplier name, delivery ref…" />
       </div>
       {error && <div className="modal-error">{error}</div>}
-      <button type="submit" className="btn btn-primary" disabled={loading || !item}>
+      <button type="submit" className="btn btn-primary qf-btn" disabled={loading || !item}>
         {loading ? "Saving…" : "Add to Stock"}
       </button>
     </form>
