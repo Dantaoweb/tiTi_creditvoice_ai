@@ -406,16 +406,10 @@ def get_customer_count(db, owner_phone=None, period=None, recorded_by_id=None):
     if period:
         start, end = get_period_range(period)
         if start and end:
-            if recorded_by_id:
-                query = query.filter(
-                    Transaction.created_at >= start,
-                    Transaction.created_at < end
-                )
-            else:
-                query = query.filter(
-                    Customer.created_at >= start,
-                    Customer.created_at < end
-                )
+            query = query.filter(
+                Customer.created_at >= start,
+                Customer.created_at < end
+            )
     if recorded_by_id:
         return query.distinct(Customer.id).count()
     return query.count()

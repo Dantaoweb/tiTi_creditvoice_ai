@@ -2486,18 +2486,32 @@ def register_web_routes(app):
             )
 
             match_note = ""
+            unmatched_note = ""
             if tx.matched_customer_id:
                 from models import Customer as _Customer
+                from sqlalchemy import func as _func
                 c = db.query(_Customer).filter(_Customer.id == tx.matched_customer_id).first()
                 if c:
-                    match_note = f"\nMatched to {c.name.title()} and recorded as payment."
+                    # Compute remaining balance for that customer
+                    from models import Transaction as _Tx
+                    total_owed = db.query(_func.coalesce(_func.sum(_Tx.amount), 0)).filter(
+                        _Tx.customer_id == c.id, _Tx.type == "BUY", _Tx.is_voided != True
+                    ).scalar() or 0
+                    total_paid = db.query(_func.coalesce(_func.sum(_Tx.amount), 0)).filter(
+                        _Tx.customer_id == c.id, _Tx.type == "PAY", _Tx.is_voided != True
+                    ).scalar() or 0
+                    balance = max(0, int(total_owed) - int(total_paid))
+                    balance_line = f"\nBalance remaining: ₦{balance:,}" if balance > 0 else "\nAccount fully cleared ✅"
+                    match_note = f"\nMatched to *{c.name.title()}* and recorded as payment.{balance_line}"
+            else:
+                unmatched_note = "\n\nNo customer matched — open the Wallet to assign this payment."
 
             send_whatsapp_message(
                 wallet.owner_phone,
-                f"💰 Payment received: ₦{amount:,}\n"
+                f"💰 *Payment received: ₦{amount:,}*\n"
                 f"From: {sender or 'Unknown'} ({s_bank})\n"
-                f"Ref: {ref}{match_note}\n\n"
-                "Open CreditVoice Wallet to review."
+                f"Ref: {ref}"
+                f"{match_note}{unmatched_note}"
             )
             return {"ok": True, "reference": tx.reference}
         finally:
