@@ -19,17 +19,17 @@ function ThriftExplainer({ mode }) {
         body: (
           <>
             <p>
-              <strong style={{ color: "#fff" }}>Ajo / esusu / thrift</strong> is a group savings scheme where members
+              <strong style={{ color: "#6d28d9" }}>Ajo / esusu / thrift</strong> is a group savings scheme where members
               contribute money regularly and the pot rotates to each member in turn.
             </p>
             <p>Add participants below, then record their contributions on WhatsApp or here.</p>
-            <p><strong style={{ color: "#fff" }}>Record via WhatsApp:</strong></p>
+            <p><strong style={{ color: "#6d28d9" }}>Record via WhatsApp:</strong></p>
             <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
               <li>Amina contributed 5000</li>
               <li>Tunde paid ajo 2000</li>
             </ul>
             <p style={{ marginTop: 8 }}>
-              💡 Connect your <strong style={{ color: "#fff" }}>Wallet</strong> so participants
+              💡 Connect your <strong style={{ color: "#6d28d9" }}>Wallet</strong> so participants
               can pay directly — contributions match automatically.
             </p>
           </>
@@ -40,13 +40,13 @@ function ThriftExplainer({ mode }) {
         body: (
           <>
             <p>
-              Track your <strong style={{ color: "#fff" }}>personal savings</strong> alongside
+              Track your <strong style={{ color: "#6d28d9" }}>personal savings</strong> alongside
               your business records — no participants or group needed.
             </p>
             <p>
               Record each deposit with an amount and optional note. See your running total at a glance.
             </p>
-            <p><strong style={{ color: "#fff" }}>Record via WhatsApp:</strong></p>
+            <p><strong style={{ color: "#6d28d9" }}>Record via WhatsApp:</strong></p>
             <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
               <li>I saved 5000</li>
               <li>personal savings 10000</li>
@@ -62,10 +62,10 @@ function ThriftExplainer({ mode }) {
           <Info size={14} color="#a78bfa" />
           <span className="card-title" style={{ color: "#a78bfa", fontSize: 13 }}>{text.title}</span>
         </div>
-        {open ? <ChevronUp size={14} color="rgba(255,255,255,0.4)" /> : <ChevronDown size={14} color="rgba(255,255,255,0.4)" />}
+        {open ? <ChevronUp size={14} color="var(--muted)" /> : <ChevronDown size={14} color="var(--muted)" />}
       </div>
       {open && (
-        <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.7, paddingTop: 4 }}>
+        <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.7, paddingTop: 4 }}>
           {text.body}
         </div>
       )}
@@ -279,7 +279,7 @@ function PersonalSavings({ data, loading, reload }) {
 
       <div className="card">
         <div className="card-header">
-          <span className="card-title"><Landmark size={15} /> My Savings</span>
+          <span className="card-title">My Savings</span>
           <button className="btn btn-primary btn-sm" onClick={() => setShowForm(f => !f)}>
             <Plus size={13} /> Record Saving
           </button>

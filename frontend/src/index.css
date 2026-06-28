@@ -2645,10 +2645,12 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   justify-content: flex-end;
   gap: 14px;
   padding: 12px 0;
+  /* leave right gap on mobile so tiTi FAB doesn't overlap the Save button */
+  padding-right: env(safe-area-inset-right, 0);
   position: sticky;
   bottom: 0;
   background: var(--bg);
-  z-index: 10;
+  z-index: 500;
 }
 .auto-saved-msg { font-size: 13px; color: #166534; font-weight: 500; }
 

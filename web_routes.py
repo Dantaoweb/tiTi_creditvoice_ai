@@ -2547,13 +2547,14 @@ def register_web_routes(app):
         """Return thrift data split into group contributions and personal savings."""
         import sqlalchemy as _sa
         from collections import defaultdict
+        import logging as _log
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
             base = get_owner_transaction_query(db, owner_phone, period_key)
 
-            # Group thrift filter: customer-linked with thrift/ajo/esusu/contribution keywords
+            # Group thrift: customer-linked transactions with thrift/ajo/esusu/contribution keywords
             group_filter = _sa.and_(
                 Transaction.customer_id != None,
                 _sa.or_(
@@ -2561,15 +2562,15 @@ def register_web_routes(app):
                     Transaction.product.ilike("%ajo%"),
                     Transaction.product.ilike("%esusu%"),
                     Transaction.product.ilike("%contribut%"),
-                    Transaction.type.ilike("%thrift%"),
                 ),
             )
-            # Personal savings filter: no customer OR product = personal_savings
+            # Personal savings: DIRECT type with personal_savings product OR savings/thrift/ajo with no customer
             personal_filter = _sa.or_(
-                Transaction.product.ilike("%personal_saving%"),
-                Transaction.product.ilike("%personal saving%"),
+                _sa.and_(Transaction.type == "DIRECT", Transaction.product.ilike("%personal_saving%")),
+                _sa.and_(Transaction.type == "DIRECT", Transaction.product.ilike("%personal saving%")),
                 _sa.and_(
                     Transaction.customer_id == None,
+                    Transaction.type == "DIRECT",
                     _sa.or_(
                         Transaction.product.ilike("%saving%"),
                         Transaction.product.ilike("%thrift%"),
@@ -2582,8 +2583,8 @@ def register_web_routes(app):
             personal_rows = base.filter(personal_filter).order_by(Transaction.created_at.desc()).all()
 
             # Customer lookup for group rows
-            cust_ids  = [r.customer_id for r in group_rows if r.customer_id]
-            customers = {}
+            cust_ids  = list({r.customer_id for r in group_rows if r.customer_id})
+            customers: dict = {}
             if cust_ids:
                 customers = {c.id: c for c in db.query(Customer).filter(Customer.id.in_(cust_ids)).all()}
 
@@ -2593,43 +2594,44 @@ def register_web_routes(app):
                     "customer_id": tx.customer_id,
                     "customer_name": name,
                     "amount": _money(tx.amount),
-                    "product": tx.product,
+                    "product": (tx.product or "").replace("personal_savings", "").replace("personal savings", "").strip(": ") or None,
                     "created_at": _iso(tx.created_at),
                 }
 
-            group_tx_list = [
-                _tx(tx, customers[tx.customer_id].name if customers.get(tx.customer_id) else "Unknown")
-                for tx in group_rows
-            ]
+            group_tx_list    = [_tx(tx, customers[tx.customer_id].name if customers.get(tx.customer_id) else "Unknown") for tx in group_rows]
             personal_tx_list = [_tx(tx, "Me") for tx in personal_rows]
 
             # Participant totals (group)
             totals: dict = defaultdict(lambda: {"name": "Unknown", "count": 0, "total": 0})
             for tx in group_rows:
                 key = tx.customer_id
-                totals[key]["name"] = customers[tx.customer_id].name if customers.get(tx.customer_id) else "Unknown"
+                c = customers.get(key)
+                totals[key]["name"]  = c.name if c else "Unknown"
                 totals[key]["count"] += 1
-                totals[key]["total"] += tx.amount or 0
+                totals[key]["total"] += int(tx.amount or 0)
             participants = sorted(
                 [{"id": k, **v} for k, v in totals.items()],
                 key=lambda p: p["total"], reverse=True,
             )
 
-            group_total    = sum(tx.amount or 0 for tx in group_rows)
-            personal_total = sum(tx.amount or 0 for tx in personal_rows)
+            group_total    = sum(int(tx.amount or 0) for tx in group_rows)
+            personal_total = sum(int(tx.amount or 0) for tx in personal_rows)
             return {
                 "group": {
                     "transactions": group_tx_list,
                     "participants": participants,
-                    "total": _money(group_total),
+                    "total": group_total,
                     "count": len(group_rows),
                 },
                 "personal": {
                     "transactions": personal_tx_list,
-                    "total": _money(personal_total),
+                    "total": personal_total,
                     "count": len(personal_rows),
                 },
             }
+        except Exception as _e:
+            _log.getLogger("creditvoice.thrift").exception("thrift/summary error")
+            raise HTTPException(status_code=500, detail=f"Thrift summary failed: {_e}")
         finally:
             db.close()
 
