@@ -6,7 +6,8 @@ export function naira(value) {
 }
 
 export function nairaFull(value) {
-  return `₦${Number(value || 0).toLocaleString()}`;
+  const n = Math.round(Number(value || 0));
+  return `₦${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 }
 
 const _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",

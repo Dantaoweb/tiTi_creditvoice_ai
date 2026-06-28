@@ -164,6 +164,12 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
   );
 }
 
+function fmtAmt(s) {
+  const raw = String(s || "").replace(/[^0-9]/g, "");
+  return raw ? Number(raw).toLocaleString("en-US") : "";
+}
+function parseAmt(s) { return Number(String(s || "").replace(/,/g, "")); }
+
 // ── Main POS page ───────────────────────────────────────────────────────────
 
 export default function POS() {
@@ -179,9 +185,9 @@ export default function POS() {
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
 
-  const total = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
-  const paid  = Math.min(Number(payment) || 0, total);
-  const change = Math.max(0, (Number(payment) || 0) - total);
+  const total  = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
+  const paid   = Math.min(parseAmt(payment), total);
+  const change = Math.max(0, parseAmt(payment) - total);
   const owed   = customer ? total - paid : 0;
 
   function addToCart(product) {
@@ -248,7 +254,7 @@ export default function POS() {
       if (isNetworkError(e)) {
         const label = `POS sale — ${cart.length} item(s), ₦${paid.toLocaleString()}`;
         enqueue("pos/save", payload, label);
-        setCart([]); setCustomer(null); setPayment(0); setDueDate(""); setSaveErr("");
+        setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setSaveErr("");
         setSaving(false);
         navigate("/capture", {
           state: { offlineMsg: "No internet — POS sale saved offline. It will sync when you reconnect." },
@@ -401,9 +407,10 @@ export default function POS() {
             <div className="pos-price-wrap" style={{ marginTop: 6 }}>
               <span className="pos-currency">₦</span>
               <input
-                type="number" min={0}
+                type="text"
+                inputMode="numeric"
                 value={payment}
-                onChange={e => setPayment(e.target.value)}
+                onChange={e => setPayment(fmtAmt(e.target.value))}
                 placeholder="0"
                 style={{ flex: 1, fontSize: "1.1rem", fontWeight: 600 }}
               />
