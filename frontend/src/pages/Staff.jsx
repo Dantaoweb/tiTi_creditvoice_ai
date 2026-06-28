@@ -9,6 +9,7 @@ import EmptyState from "../components/EmptyState";
 import Skeleton from "../components/Skeleton";
 import { usePlan } from "../lib/usePlan";
 import { LimitBar } from "../components/UpgradeGate";
+import { useToast } from "../components/Toast";
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
@@ -107,6 +108,7 @@ function ProfileEditRow({ member, onSaved }) {
 // ── School Teacher Roster Tab ─────────────────────────────────────────────────
 
 function TeachersTab({ plan, limit: teacherLimit, withinLimit }) {
+  const toast = useToast();
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -158,7 +160,7 @@ function TeachersTab({ plan, limit: teacherLimit, withinLimit }) {
     try {
       await apiDelete(`school/teachers/${id}`);
       load();
-    } catch (e) { alert(e.message); }
+    } catch (e) { toast(e.message, "error"); }
   }
 
   const canAdd = withinLimit("school_teachers", rows.length);

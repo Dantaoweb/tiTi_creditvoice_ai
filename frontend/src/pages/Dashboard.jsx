@@ -11,6 +11,7 @@ import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
 import { usePlan } from "../lib/usePlan";
+import { useToast } from "../components/Toast";
 import { Lock } from "lucide-react";
 
 const WA_NUDGE_KEY = "cv_wa_nudge_dismissed";
@@ -293,6 +294,7 @@ export default function Dashboard() {
   const { allows } = usePlan();
   const canExport = allows("EXPORT");
   const L = getBizLabels(user?.menu_group);
+  const toast = useToast();
   const [titiNumber, setTitiNumber] = useState("");
 
   useEffect(() => {
@@ -316,7 +318,7 @@ export default function Dashboard() {
       if (branchId) params.branch_id = branchId;
       await apiDownload("export", params);
     } catch (e) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setExportingType(null);
     }
@@ -327,7 +329,7 @@ export default function Dashboard() {
     try {
       await apiDownload("loan-statement", { owner_phone: ownerPhone, period });
     } catch (e) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setDownloadingPDF(false);
     }

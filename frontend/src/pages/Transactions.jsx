@@ -9,6 +9,7 @@ import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
 import { usePlan } from "../lib/usePlan";
+import { useToast } from "../components/Toast";
 
 export default function Transactions() {
   const { ownerPhone, period } = useApp();
@@ -16,6 +17,7 @@ export default function Transactions() {
   const { allows } = usePlan();
   const canExport = allows("EXPORT");
   const L = getBizLabels(user?.menu_group);
+  const toast = useToast();
   const [rows, setRows]           = useState([]);
   const [branches, setBranches]   = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -30,7 +32,7 @@ export default function Transactions() {
     try {
       await apiDownload("export", { export_type: exportType, owner_phone: ownerPhone, period });
     } catch (e) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setExporting(false);
     }
