@@ -251,6 +251,87 @@ def handle_parsed_command(
         )
         return {"status": "personal_savings_balance"}
 
+    # ── Thrift / Ajo participant management ──────────────────────────────────
+    if parsed["type"] == "ADD_THRIFT_MEMBER":
+        if not user:
+            send_whatsapp_message(phone, "Register first to manage thrift participants.")
+            return {"status": "add_thrift_no_user"}
+        name = parsed.get("name", "").strip().lower()
+        if not name:
+            send_whatsapp_message(phone, "Please include a name. Example:\n→ add thrift member Amina Bello")
+            return {"status": "add_thrift_no_name"}
+        from models import Customer
+        existing = db.query(Customer).filter(
+            Customer.owner_phone == business_owner_phone,
+            Customer.name == name,
+        ).first()
+        if existing:
+            send_whatsapp_message(
+                phone,
+                f"✅ *{name.title()}* is already in your records.\n\n"
+                f"To record their contribution:\n→ {name.title()} contributed 5000"
+            )
+        else:
+            customer = Customer(owner_phone=business_owner_phone, name=name)
+            db.add(customer)
+            db.commit()
+            send_whatsapp_message(
+                phone,
+                f"✅ *{name.title()}* added as a thrift participant.\n\n"
+                f"To record their contribution:\n→ {name.title()} contributed 5000\n→ {name.title()} paid ajo 3000"
+            )
+        return {"status": "add_thrift_member_done"}
+
+    if parsed["type"] == "THRIFT_REPORT":
+        if not user:
+            send_whatsapp_message(phone, "Register first to view thrift totals.")
+            return {"status": "thrift_report_no_user"}
+        from models import Customer, Transaction
+        from sqlalchemy import func as _func, or_ as _or
+        # Contributions are transactions with thrift/ajo/esusu/contribution keywords
+        rows = (
+            db.query(
+                Customer.name,
+                _func.count(Transaction.id).label("count"),
+                _func.coalesce(_func.sum(Transaction.amount), 0).label("total"),
+            )
+            .join(Transaction, Transaction.customer_id == Customer.id)
+            .filter(
+                Customer.owner_phone == business_owner_phone,
+                Transaction.is_voided != True,
+                _or(
+                    Transaction.product.ilike("%thrift%"),
+                    Transaction.product.ilike("%ajo%"),
+                    Transaction.product.ilike("%esusu%"),
+                    Transaction.product.ilike("%contribut%"),
+                ),
+            )
+            .group_by(Customer.id, Customer.name)
+            .order_by(_func.sum(Transaction.amount).desc())
+            .limit(20)
+            .all()
+        )
+        if not rows:
+            send_whatsapp_message(
+                phone,
+                "💰 *Thrift / Ajo Report*\n\n"
+                "No contributions recorded yet.\n\n"
+                "Record a contribution:\n→ Amina contributed 5000\n→ Tunde paid ajo 2000"
+            )
+        else:
+            grand_total = sum(r.total for r in rows)
+            lines = "\n".join(
+                f"{i}. {r.name.title()} — ₦{int(r.total):,} ({r.count}x)"
+                for i, r in enumerate(rows, 1)
+            )
+            send_whatsapp_message(
+                phone,
+                f"💰 *Thrift / Ajo Report*\n\n"
+                f"{lines}\n\n"
+                f"*Total collected: ₦{int(grand_total):,}*"
+            )
+        return {"status": "thrift_report_sent"}
+
     # ── Staff profile ─────────────────────────────────────────────────────────
     if parsed["type"] == "SET_STAFF_PROFILE":
         return handle_set_staff_profile(db, phone, parsed, user, business_owner_phone, send_whatsapp_message)

@@ -1046,6 +1046,23 @@ def build_app_guide_message(topic):
             "4. Tap *Send Reminder* to chase a payment\n\n"
             "tiTi also sends you automatic debt alerts every 3 days for overdue balances."
         ),
+        "thrift": (
+            "💰 *How to use Thrift / Ajo*\n\n"
+            "*On WhatsApp — record contributions:*\n"
+            "• _Amina contributed 5000_ — records ₦5,000 from Amina\n"
+            "• _Tunde paid ajo 3000_ — same thing\n"
+            "• _Ada esusu 2000_ — same thing\n\n"
+            "*Manage participants on WhatsApp:*\n"
+            "• _add thrift member Amina Bello_ — adds Amina as a participant\n"
+            "• _thrift report_ — shows how much each member has contributed\n"
+            "• _thrift totals_ — same thing\n\n"
+            "*On the web app:*\n"
+            "1. Click *Thrift* in the sidebar\n"
+            "2. Tap *Add Participant* to register members\n"
+            "3. Tap *Record Contribution* for each payment\n"
+            "4. The *Participants* tab shows each member's total at a glance\n\n"
+            "💡 Connect your Wallet so members can transfer directly — contributions match automatically."
+        ),
         "savings": (
             "💰 *How to record personal savings*\n\n"
             "Personal savings are separate from your business — they're for money you're\n"

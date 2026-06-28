@@ -1641,6 +1641,31 @@ def parse_message(text):
     ]:
         return {"type": "PERSONAL_SAVINGS_BALANCE"}
 
+    # ── Thrift / Ajo participant management ─────────────────────────────────────
+    # "add thrift member Amina" | "add ajo member Tunde Bello" | "add participant Kemi"
+    _thrift_add_m = re.match(
+        r"^add\s+(?:thrift|ajo|esusu|contribution|savings?)\s+(?:member|participant|person|contributor)s?\s+(?P<name>.+)$",
+        clean_text,
+    ) or re.match(
+        r"^add\s+(?:participant|member)\s+(?P<name>.+)$",
+        clean_text,
+    )
+    if _thrift_add_m:
+        name = _thrift_add_m.group("name").strip()
+        if name:
+            return {"type": "ADD_THRIFT_MEMBER", "name": name}
+
+    # "thrift report" | "ajo totals" | "who paid thrift" | "thrift summary"
+    if clean_text in [
+        "thrift report", "thrift totals", "thrift summary", "thrift status",
+        "ajo report", "ajo totals", "ajo summary", "ajo status",
+        "esusu report", "esusu totals",
+        "who paid thrift", "who paid ajo", "who has paid thrift",
+        "contribution report", "contribution totals", "contributions",
+        "show thrift", "check thrift", "view thrift",
+    ]:
+        return {"type": "THRIFT_REPORT"}
+
     if clean_text in ["stock", "stocks", "my stock", "my stocks", "inventory", "my inventory"] or \
             re.match(r"^(?:show|check|view|see|display)\s+(?:my\s+)?(?:stocks?|inventory)$", clean_text):
         return {"type": "INVENTORY_LIST"}
@@ -2554,6 +2579,7 @@ def parse_message(text):
             "transactions": ["transactions", "sales history", "see my sales", "view sales", "sales record", "transaction history"],
             "debt":         ["debt", "debtors", "who owes", "unpaid", "customer debt", "owe me"],
             "savings":      ["personal savings", "my savings", "save money", "record savings", "how to save", "savings balance"],
+            "thrift":       ["thrift", "ajo", "esusu", "group savings", "thrift savings", "add thrift member", "add ajo member", "thrift report", "contribution", "contributions"],
         }
         for _topic, _keywords in _guide_topics.items():
             if any(_kw in clean_text for _kw in _keywords):
