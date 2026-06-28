@@ -2741,7 +2741,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             from models import ReminderQueue
-            from twilio_client import send_whatsapp_message
+            from whatsapp_client import send_whatsapp_message
             owner_phone = _session_owner_phone(db, session)
             item = (
                 db.query(ReminderQueue)
@@ -2773,7 +2773,7 @@ def register_web_routes(app):
         """Trigger reminder automation for the current owner from the web dashboard."""
         db = SessionLocal()
         try:
-            from twilio_client import send_whatsapp_message
+            from whatsapp_client import send_whatsapp_message
             from reminder_automation import run_reminder_automation
             owner_phone = _session_owner_phone(db, session)
             result = run_reminder_automation(db, owner_phone, send_whatsapp_message)
