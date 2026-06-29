@@ -289,7 +289,7 @@ function WhatsAppNudge({ titiNumber }) {
 }
 
 export default function Dashboard() {
-  const { ownerPhone, period } = useApp();
+  const { ownerPhone, period, setPeriod } = useApp();
   const { user } = useAuth();
   const { allows } = usePlan();
   const canExport = allows("EXPORT");
@@ -384,6 +384,25 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      {/* ── Period picker (always visible; topbar version hidden on mobile) ── */}
+      <div className="dash-period-strip">
+        {[
+          { value: "TODAY", label: "Today" },
+          { value: "WEEK",  label: "This Week" },
+          { value: "MONTH", label: "This Month" },
+          { value: "YEAR",  label: "This Year" },
+          { value: "",      label: "All Time" },
+        ].map(({ value, label }) => (
+          <button
+            key={value}
+            className={`btn btn-sm btn-pill${period === value ? " btn-primary" : " btn-ghost"}`}
+            onClick={() => setPeriod(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* ── Primary metrics ── */}
       <div className="metrics-grid">

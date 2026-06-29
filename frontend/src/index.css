@@ -2546,6 +2546,19 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   white-space: nowrap;
 }
 
+.dash-period-strip {
+  display: none; /* hidden on desktop — topbar controls handle it there */
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: none;
+}
+.dash-period-strip::-webkit-scrollbar { display: none; }
+@media (max-width: 768px) {
+  .dash-period-strip { display: flex; }
+}
+
 .branch-filter-bar {
   display: flex;
   align-items: center;
