@@ -244,6 +244,7 @@ def ensure_schema_updates(engine):
     }
     boolean_false = "FALSE" if engine.dialect.name == "postgresql" else "0"
     transaction_updates = {
+        "branch_id":   "INTEGER",
         "quantity":    "INTEGER",
         "unit":        "VARCHAR",
         "unit_price":  "INTEGER",
