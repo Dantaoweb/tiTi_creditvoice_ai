@@ -25,7 +25,9 @@ from reports import (
     dashboard_period_label,
     get_balance,
     get_dashboard_summary,
+    get_margin_summary,
     get_owner_transaction_query,
+    get_product_sales_by_period,
     get_staff_performance,
     get_unpaid_debtors,
 )
@@ -808,6 +810,8 @@ def register_web_routes(app):
                 InventoryItem.low_stock_alert != None,
                 InventoryItem.quantity <= InventoryItem.low_stock_alert,
             ).count()
+            top_products_raw = get_product_sales_by_period(db, owner_phone, period_key)[:8]
+            margin = get_margin_summary(db, owner_phone, period_key)
             return {
                 "period": period_key,
                 "period_label": dashboard_period_label(period_key),
@@ -819,6 +823,20 @@ def register_web_routes(app):
                     key=lambda row: row["balance"],
                     reverse=True,
                 )[:5],
+                "top_products": [
+                    {
+                        "name": r.product,
+                        "qty": r.total_quantity,
+                        "amount": r.total_amount,
+                    }
+                    for r in top_products_raw
+                ],
+                "margin": {
+                    "expected": margin["expected"],
+                    "actual": margin["actual"],
+                    "discount_gap": margin["discount_gap"],
+                    "below_cost_products": margin["below_cost_products"],
+                },
             }
         finally:
             db.close()

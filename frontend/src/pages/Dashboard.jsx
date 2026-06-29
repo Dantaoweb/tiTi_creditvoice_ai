@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText, MapPin, Ticket, CheckCircle, Share2, Copy } from "lucide-react";
+import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText, MapPin, Ticket, CheckCircle, Share2, Copy, BarChart2, AlertTriangle } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiDownload, apiPost } from "../lib/api";
@@ -385,6 +385,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── Primary metrics ── */}
       <div className="metrics-grid">
         <MetricCard loading={loading} label={`${L.totalSales || "Sales"} ${periodLabel}`} value={nairaFull(s.total_sales_amount)} color="green" />
         <MetricCard loading={loading} label={L.payments    || "Payments received"}       value={nairaFull(s.total_pay_amount)}   color="blue"  />
@@ -392,6 +393,16 @@ export default function Dashboard() {
         <MetricCard loading={loading} label={L.totalCustomers}                           value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
       </div>
 
+      {/* ── Secondary metrics ── */}
+      <div className="metrics-grid metrics-grid--secondary">
+        <MetricCard loading={loading} label={`Credit sales ${periodLabel}`}  value={nairaFull(s.credit_sales_amount)}                     color="rose"  small />
+        <MetricCard loading={loading} label={`Direct sales ${periodLabel}`}  value={nairaFull(s.direct_sales_amount)}                     color="green" small />
+        <MetricCard loading={loading} label={`New ${L.customers || "customers"} ${periodLabel}`} value={Number(s.new_customers || 0).toLocaleString()} color="blue"  small />
+        <MetricCard loading={loading} label={`Paid ${L.customers || "customers"} ${periodLabel}`} value={Number(s.paid_customers || 0).toLocaleString()} color="brand" small />
+        <MetricCard loading={loading} label={`Transactions ${periodLabel}`}  value={Number(s.total_transactions || 0).toLocaleString()}   color="muted" small />
+      </div>
+
+      {/* ── Cards row ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
         <div className="card">
           <div className="card-header">
@@ -405,6 +416,12 @@ export default function Dashboard() {
             columns={[
               { key: "name",    label: L.customer,  render: (r) => <strong>{r.name}</strong> },
               { key: "balance", label: "Balance",   render: (r) => <span className="text-rose font-bold">{nairaFull(r.balance)}</span>, sortKey: "balance" },
+              { key: "due",     label: "Due",        render: (r) => r.overdue
+                ? <span className="badge" style={{ background: "rgba(239,68,68,0.12)", color: "var(--rose)", fontSize: 11 }}>Overdue {r.overdue_days}d</span>
+                : r.due_date
+                  ? <span className="td-muted" style={{ fontSize: 11 }}>{new Date(r.due_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short" })}</span>
+                  : <span className="td-muted">—</span>
+              },
             ]}
           />
         </div>
@@ -426,7 +443,60 @@ export default function Dashboard() {
             ]}
           />
         </div>
+
+        {/* Product leaderboard */}
+        {(loading || (data?.top_products || []).length > 0) && (
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <BarChart2 size={15} /> Top Products {periodLabel}
+              </span>
+              <Link to="/inventory" className="btn btn-ghost btn-sm">View all</Link>
+            </div>
+            <DataTable
+              loading={loading}
+              rows={data?.top_products || []}
+              emptyText="No product sales yet."
+              columns={[
+                { key: "name",   label: "Product", render: (r) => <strong>{r.name}</strong> },
+                { key: "qty",    label: "Qty",     render: (r) => <span>{Number(r.qty).toLocaleString()}</span> },
+                { key: "amount", label: "Revenue", render: (r) => <span className="text-green">{nairaFull(r.amount)}</span>, sortKey: "amount" },
+              ]}
+            />
+          </div>
+        )}
       </div>
+
+      {/* ── Margin insight ── */}
+      {!loading && data?.margin && (data.margin.discount_gap > 0 || data.margin.below_cost_products?.length > 0) && (
+        <div className="card card-body" style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 14 }}>
+            <AlertTriangle size={15} color="var(--amber)" /> Margin Insight
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
+            <div style={{ background: "var(--line-2)", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>Expected revenue</div>
+              <div style={{ fontWeight: 700 }}>{nairaFull(data.margin.expected)}</div>
+            </div>
+            <div style={{ background: "var(--line-2)", borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>Actual recorded</div>
+              <div style={{ fontWeight: 700 }}>{nairaFull(data.margin.actual)}</div>
+            </div>
+            {data.margin.discount_gap > 0 && (
+              <div style={{ background: "rgba(239,68,68,0.08)", borderRadius: 8, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, color: "var(--rose)", marginBottom: 3 }}>Discount gap</div>
+                <div style={{ fontWeight: 700, color: "var(--rose)" }}>{nairaFull(data.margin.discount_gap)}</div>
+              </div>
+            )}
+          </div>
+          {data.margin.below_cost_products?.length > 0 && (
+            <div style={{ fontSize: 12, color: "var(--rose)" }}>
+              Selling below cost: <strong>{data.margin.below_cost_products.slice(0, 5).join(", ")}</strong>
+              {data.margin.below_cost_products.length > 5 && ` +${data.margin.below_cost_products.length - 5} more`}
+            </div>
+          )}
+        </div>
+      )}
 
       {!!data?.low_stock_count && (
         <div className="card card-body" style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--amber)" }}>
