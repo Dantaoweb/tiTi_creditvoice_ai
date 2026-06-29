@@ -356,9 +356,10 @@ export default function POS() {
                     <div className="pos-price-wrap">
                       <span className="pos-currency">₦</span>
                       <input
-                        type="number" min={0}
-                        value={it.unit_price || ""}
-                        onChange={e => updateItem(idx, "unit_price", parseInt(e.target.value) || 0)}
+                        type="text"
+                        inputMode="numeric"
+                        value={fmtAmt(String(it.unit_price || ""))}
+                        onChange={e => updateItem(idx, "unit_price", parseAmt(e.target.value))}
                         placeholder="0"
                       />
                     </div>
