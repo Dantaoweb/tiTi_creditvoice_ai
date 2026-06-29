@@ -570,8 +570,12 @@ tr.low-stock td { background: #fffbeb; }
   .modal, .modal-wide {
     max-width: 100%;
     width: 100%;
-    max-height: 92vh;
+    max-height: 85vh;
     border-radius: var(--radius) var(--radius) 0 0;
+  }
+  /* Keep footer above the system nav bar (Android gesture strip / iOS home indicator) */
+  .modal-footer {
+    padding-bottom: max(14px, calc(10px + env(safe-area-inset-bottom, 0px)));
   }
 
   /* Inventory tab row scrolls horizontally so all tabs are reachable */
@@ -901,6 +905,7 @@ tr.low-stock td { background: #fffbeb; }
   flex-direction: column;
   gap: 14px;
   flex: 1;
+  min-height: 0; /* lets flex child shrink so footer is never pushed out */
 }
 
 .modal-footer {
@@ -909,6 +914,8 @@ tr.low-stock td { background: #fffbeb; }
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-shrink: 0; /* footer never gets compressed */
+  background: #fff;
 }
 
 .modal-error {
