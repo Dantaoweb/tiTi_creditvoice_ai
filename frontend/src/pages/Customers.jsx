@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Plus, Wallet, History, X } from "lucide-react";
+import { Plus, Wallet, History, X, Pencil, Check } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiPost } from "../lib/api";
+import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, dateStr, dateTimeStr } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { getBizLabels } from "../lib/bizLabels";
@@ -124,6 +124,65 @@ function PaymentModal({ customer, onClose, onSaved }) {
 }
 
 // ── History modal ────────────────────────────────────────────────────────────
+function DueDateCell({ tx, onUpdated }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(tx.due_date ? tx.due_date.slice(0, 10) : "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await apiPut(`transactions/${tx.id}/due-date`, { due_date: val || null });
+      onUpdated(tx.id, result.due_date);
+      setEditing(false);
+    } catch { /* keep editing open on error */ }
+    finally { setSaving(false); }
+  }
+
+  if (tx.type !== "BUY") return <td className="td-muted">—</td>;
+
+  if (editing) {
+    return (
+      <td style={{ whiteSpace: "nowrap" }}>
+        <input
+          type="date"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          style={{ fontSize: 12, padding: "2px 4px", width: 130 }}
+        />
+        <button
+          className="btn btn-sm btn-primary"
+          onClick={save}
+          disabled={saving}
+          style={{ marginLeft: 4, padding: "2px 8px", fontSize: 12 }}
+        >
+          <Check size={12} />
+        </button>
+        <button
+          className="btn btn-sm btn-ghost"
+          onClick={() => setEditing(false)}
+          style={{ padding: "2px 6px", fontSize: 12 }}
+        >
+          <X size={12} />
+        </button>
+      </td>
+    );
+  }
+
+  return (
+    <td className="td-muted" style={{ whiteSpace: "nowrap" }}>
+      {tx.due_date ? dateStr(tx.due_date) : "—"}
+      <button
+        onClick={() => setEditing(true)}
+        title="Edit due date"
+        style={{ background: "none", border: "none", cursor: "pointer", marginLeft: 4, opacity: 0.5, verticalAlign: "middle" }}
+      >
+        <Pencil size={11} />
+      </button>
+    </td>
+  );
+}
+
 function HistoryModal({ customer, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -135,6 +194,15 @@ function HistoryModal({ customer, onClose }) {
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }, [customer.id]);
+
+  function handleDueDateUpdated(txId, newDueDate) {
+    setData(prev => ({
+      ...prev,
+      transactions: prev.transactions.map(tx =>
+        tx.id === txId ? { ...tx, due_date: newDueDate } : tx
+      ),
+    }));
+  }
 
   const TX_COLORS = { BUY: "var(--rose)", PAY: "var(--brand)", SALE: "var(--blue)" };
 
@@ -160,6 +228,7 @@ function HistoryModal({ customer, onClose }) {
                     <th>Type</th>
                     <th>Amount</th>
                     <th>Description</th>
+                    <th>Due Date</th>
                     <th>Staff</th>
                   </tr>
                 </thead>
@@ -174,6 +243,7 @@ function HistoryModal({ customer, onClose }) {
                       </td>
                       <td><strong>{nairaFull(tx.amount)}</strong></td>
                       <td>{tx.product || "—"}</td>
+                      <DueDateCell tx={tx} onUpdated={handleDueDateUpdated} />
                       <td className="td-muted">{tx.recorded_by || "—"}</td>
                     </tr>
                   ))}

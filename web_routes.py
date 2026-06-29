@@ -280,6 +280,10 @@ class RecordPaymentRequest(BaseModel):
     branch_id: Optional[int] = None
 
 
+class SetTransactionDueDateRequest(BaseModel):
+    due_date: Optional[str] = None  # ISO date string "YYYY-MM-DD" or null to clear
+
+
 class CreateBranchRequest(BaseModel):
     name: str = Field(max_length=60)
 
@@ -1308,6 +1312,36 @@ def register_web_routes(app):
         except Exception as exc:
             import traceback; traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Could not record payment: {exc}")
+        finally:
+            db.close()
+
+    @app.put("/app/api/transactions/{tx_id}/due-date")
+    def web_set_transaction_due_date(
+        tx_id: int,
+        payload: SetTransactionDueDateRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        from datetime import datetime as _dt
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if not tx or not tx.customer_id:
+                raise HTTPException(status_code=404, detail="Transaction not found.")
+            customer = db.query(Customer).filter(
+                Customer.id == tx.customer_id,
+                Customer.owner_phone == owner_phone,
+            ).first()
+            if not customer:
+                raise HTTPException(status_code=403, detail="Not authorized.")
+            tx.due_date = _dt.fromisoformat(payload.due_date) if payload.due_date else None
+            db.commit()
+            return {"id": tx.id, "due_date": _iso(tx.due_date)}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Could not update due date: {exc}")
         finally:
             db.close()
 

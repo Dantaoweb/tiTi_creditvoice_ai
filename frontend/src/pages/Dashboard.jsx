@@ -4,7 +4,7 @@ import { TrendingUp, AlertCircle, MessageCircle, X, Download, FileText, MapPin, 
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiDownload, apiPost } from "../lib/api";
-import { naira, nairaFull, relativeDate } from "../lib/format";
+import { nairaFull, relativeDate } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
@@ -386,9 +386,9 @@ export default function Dashboard() {
       )}
 
       <div className="metrics-grid">
-        <MetricCard loading={loading} label={`${L.totalSales || "Sales"} ${periodLabel}`} value={naira(s.total_sales_amount)} color="green" />
-        <MetricCard loading={loading} label={L.payments    || "Payments received"}       value={naira(s.total_pay_amount)}   color="blue"  />
-        <MetricCard loading={loading} label={L.outstanding || "Outstanding balance"}     value={naira(s.total_outstanding)}  color="amber" />
+        <MetricCard loading={loading} label={`${L.totalSales || "Sales"} ${periodLabel}`} value={nairaFull(s.total_sales_amount)} color="green" />
+        <MetricCard loading={loading} label={L.payments    || "Payments received"}       value={nairaFull(s.total_pay_amount)}   color="blue"  />
+        <MetricCard loading={loading} label={L.outstanding || "Outstanding balance"}     value={nairaFull(s.total_outstanding)}  color="amber" />
         <MetricCard loading={loading} label={L.totalCustomers}                           value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
       </div>
 

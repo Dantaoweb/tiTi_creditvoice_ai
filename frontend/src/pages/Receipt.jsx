@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Printer, ArrowLeft } from "lucide-react";
 import { apiFetch } from "../lib/api";
-import { naira, dateTimeStr } from "../lib/format";
+import { nairaFull, dateTimeStr } from "../lib/format";
 
 export default function Receipt() {
   const { id } = useParams();
@@ -74,25 +74,25 @@ export default function Receipt() {
               <tr key={i}>
                 <td>{it.product}{it.unit ? ` (${it.unit})` : ""}</td>
                 <td className="receipt-right">{it.qty}</td>
-                <td className="receipt-right">{naira(it.unit_price)}</td>
-                <td className="receipt-right">{naira(it.total)}</td>
+                <td className="receipt-right">{nairaFull(it.unit_price)}</td>
+                <td className="receipt-right">{nairaFull(it.total)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="receipt-total-row">
               <td colSpan={3}>Total</td>
-              <td className="receipt-right">{naira(receipt.total)}</td>
+              <td className="receipt-right">{nairaFull(receipt.total)}</td>
             </tr>
             {isCredit && (
               <>
                 <tr>
                   <td colSpan={3}>Paid</td>
-                  <td className="receipt-right">{naira(paid)}</td>
+                  <td className="receipt-right">{nairaFull(paid)}</td>
                 </tr>
                 <tr style={{ fontWeight: 700, color: owed > 0 ? "#b91c1c" : "#166534" }}>
                   <td colSpan={3}>Balance owed</td>
-                  <td className="receipt-right">{naira(owed)}</td>
+                  <td className="receipt-right">{nairaFull(owed)}</td>
                 </tr>
               </>
             )}
