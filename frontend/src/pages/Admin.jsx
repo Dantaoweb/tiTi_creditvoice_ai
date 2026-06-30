@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../lib/api";
+import { nairaFull } from "../lib/format";
 import { Download, RefreshCw, Search, Ticket } from "lucide-react";
 
 // ── tiny bar chart ──────────────────────────────────────────────────────────
@@ -416,7 +417,7 @@ function ReferralSettingsTab() {
     try {
       await apiPost("admin/referral-settings", { cashback_amount: n });
       setCurrent(n);
-      setMsg(`Cashback set to ₦${n.toLocaleString()} per successful referral.`);
+      setMsg(`Cashback set to ${nairaFull(n)} per successful referral.`);
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -428,7 +429,7 @@ function ReferralSettingsTab() {
       </div>
       <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, marginTop: 8 }}>
         Amount credited to a GO/PRO referrer's wallet when their invited user upgrades to GO plan.
-        {current !== null && <><br /><strong style={{ color: "var(--ink)" }}>Current: ₦{current?.toLocaleString()}</strong></>}
+        {current !== null && <><br /><strong style={{ color: "var(--ink)" }}>Current: {nairaFull(current)}</strong></>}
       </p>
       <form onSubmit={save} style={{ display: "flex", gap: 8 }}>
         <div className="form-group" style={{ flex: 1 }}>

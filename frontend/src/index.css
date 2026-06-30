@@ -570,6 +570,10 @@ tr.low-stock td { background: #fffbeb; }
   .page-content { padding: 12px 12px 80px; }
   .card { padding: 14px; }
 
+  /* Form rows stack to single column on small phones */
+  .form-row { flex-direction: column; }
+  .form-row .form-group { width: 100% !important; }
+
   /* Modals go full-width on small screens so nothing clips off the side */
   .modal-overlay {
     padding: 0;
@@ -578,7 +582,7 @@ tr.low-stock td { background: #fffbeb; }
   .modal, .modal-wide {
     max-width: 100%;
     width: 100%;
-    max-height: 85vh;
+    max-height: 90vh;
     border-radius: var(--radius) var(--radius) 0 0;
   }
   /* Keep footer above the system nav bar (Android gesture strip / iOS home indicator) */
@@ -595,6 +599,9 @@ tr.low-stock td { background: #fffbeb; }
   }
   .inv-tabs::-webkit-scrollbar { display: none; }
   .inv-tab { white-space: nowrap; flex-shrink: 0; }
+
+  /* Footer stacks tighter on phones */
+  .app-footer { padding: 16px 16px 24px; gap: 12px; }
 }
 
 /* Desktop: hide mobile-only elements */
@@ -2925,4 +2932,32 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   font-size: 12px;
   color: rgba(232,234,246,0.3);
   line-height: 1.7;
+}
+
+/* ── App Footer (all authenticated pages) ────────────────────────── */
+.app-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 16px 20px;
+  margin-top: 32px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.app-footer a {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+  line-height: 1.4;
+}
+.app-footer a:hover { color: var(--brand); text-decoration: underline; }
+
+.app-footer-copy {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
 }

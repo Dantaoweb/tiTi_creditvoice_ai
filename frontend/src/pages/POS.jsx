@@ -252,7 +252,7 @@ export default function POS() {
       navigate(`/pos/receipt/${result.receipt_id}`);
     } catch (e) {
       if (isNetworkError(e)) {
-        const label = `POS sale — ${cart.length} item(s), ₦${paid.toLocaleString()}`;
+        const label = `POS sale — ${cart.length} item(s), ${nairaFull(paid)}`;
         enqueue("pos/save", payload, label);
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setSaveErr("");
         setSaving(false);
@@ -333,7 +333,7 @@ export default function POS() {
                         }}
                       >
                         Per {it.retail_unit}
-                        {it.retail_price ? ` (₦${it.retail_price.toLocaleString()})` : ""}
+                        {it.retail_price ? ` (${nairaFull(it.retail_price)})` : ""}
                       </button>
                     </div>
                   )}

@@ -78,7 +78,7 @@ function InviteCard() {
             Your friend gets <strong style={{ color: "#a78bfa" }}>14 days on GO plan</strong> free.{" "}
             {data?.plan === "BASIC"
               ? <>You can invite <strong style={{ color: "var(--ink)" }}>{Math.max(0, 2 - (data?.invite_used || 0))} more</strong> friend{Math.max(0, 2 - (data?.invite_used || 0)) !== 1 ? "s" : ""} on your Basic plan.</>
-              : <>For each friend with an <strong style={{ color: "#16a34a" }}>active GO subscription</strong>, you earn <strong style={{ color: "#16a34a" }}>₦{(data?.cashback_per_referral || 0).toLocaleString()}</strong> plan credit that month — automatically off your next payment.</>
+              : <>For each friend with an <strong style={{ color: "#16a34a" }}>active GO subscription</strong>, you earn <strong style={{ color: "#16a34a" }}>{nairaFull(data?.cashback_per_referral || 0)}</strong> plan credit that month — automatically off your next payment.</>
             }
           </div>
 
@@ -173,11 +173,11 @@ function InviteCard() {
                     Plan credit this month
                   </div>
                   <div style={{ fontWeight: 800, fontSize: 28, color: data.active_go > 0 ? "#16a34a" : "var(--text-muted)", letterSpacing: -0.5 }}>
-                    ₦{(data.credit_this_month || 0).toLocaleString()}
+                    {nairaFull(data.credit_this_month || 0)}
                   </div>
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
                     {data.active_go > 0
-                      ? <>{data.active_go} friend{data.active_go !== 1 ? "s" : ""} active on GO × ₦{(data.cashback_per_referral || 0).toLocaleString()} each</>
+                      ? <>{data.active_go} friend{data.active_go !== 1 ? "s" : ""} active on GO × {nairaFull(data.cashback_per_referral || 0)} each</>
                       : "None of your friends are on an active GO plan yet"}
                   </div>
                   {data.active_go > 0 && (
