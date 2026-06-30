@@ -994,11 +994,7 @@ def register_web_routes(app):
                     db.delete(pending)
                     db.commit()
                     pending = None
-                    send_whatsapp_message(
-                        phone,
-                        "Your previous session has expired.\n\nSend your message again to continue.",
-                    )
-                    return {"reply": "\n\n".join(collected) or "Session expired.", "ok": False}
+                    # Silent expiry — no message sent, spinner just stops on the client
 
             # Pending actions router (yes/no, onboarding, confirmations, etc.)
             pending_result = handle_pending_actions(

@@ -140,7 +140,10 @@ export default function TitiPanel() {
     pushMsg("you", text);
     try {
       const data = await apiPost("chat/send", { text });
-      pushMsg("titi", data.reply || "Done!", data.ok !== false);
+      if (data.reply && data.reply.trim()) {
+        pushMsg("titi", data.reply, data.ok !== false);
+      }
+      // empty reply = silent session expiry — spinner just stops, no bubble
     } catch (err) {
       pushMsg("titi", err.message || "Something went wrong.", false);
     } finally {

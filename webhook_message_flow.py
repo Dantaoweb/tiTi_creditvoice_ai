@@ -246,11 +246,7 @@ def handle_webhook_body(body):
                 db.delete(pending)
                 db.commit()
                 pending = None
-                send_whatsapp_message(
-                    phone,
-                    "Your previous session has expired.\n\n"
-                    "Send your message again to continue."
-                )
+                # Silent expiry — no message sent, user will get a normal response to their current text
 
         if not user and message_type == "text":
             app_admin_dashboard_result = handle_app_admin_dashboard_pending(
