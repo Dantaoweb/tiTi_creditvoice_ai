@@ -10,6 +10,7 @@ from artisan_commands import handle_artisan_payment_pending
 from constants import (
     ACTION_ARTISAN_PAYMENT_CHOICE,
     ACTION_AWAITING_CLARIFICATION,
+    ACTION_SLOT_FILL,
     ACTION_AWAITING_STOCK_PRICE,
     ACTION_CHANGE_DUE_DATE,
     ACTION_DASHBOARD_MENU,
@@ -855,6 +856,55 @@ def handle_pending_actions(
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
         return PendingRouteResult(response={"status": "stock_price_resolved_confirm"})
+
+    # ── Slot-fill conversation (DB-driven, no LLM) ──────────────────────────
+    if pending and pending.action == ACTION_SLOT_FILL and not is_command:
+        from slot_extractor import SlotState, build_ask_message, slots_to_text, _extract_amount
+
+        state = SlotState.from_json(pending.payload_json or "{}")
+        user_reply = text.strip()
+
+        if state.ask_for == "product":
+            # User just told us WHAT — strip leading/trailing punctuation
+            product = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", user_reply).strip()
+            if not product:
+                # They gave us nothing useful — ask again
+                send_whatsapp_message(phone, build_ask_message(state))
+                return PendingRouteResult(response={"status": "slot_fill_retry_product"})
+            state.product  = product
+            state.ask_for  = "amount"
+            # Update pending with new state
+            pending.product      = product
+            pending.payload_json = state.to_json()
+            db.commit()
+            send_whatsapp_message(phone, build_ask_message(state))
+            return PendingRouteResult(response={"status": "slot_fill_got_product"})
+
+        if state.ask_for == "amount":
+            amount = _extract_amount(user_reply)
+            if not amount:
+                # Might be "five thousand" etc. — try parse once before giving up
+                send_whatsapp_message(
+                    phone,
+                    f"Please enter a number — e.g. 5000 or 15k"
+                )
+                return PendingRouteResult(response={"status": "slot_fill_bad_amount"})
+
+            state.amount  = amount
+            state.ask_for = None
+            db.delete(pending)
+            db.commit()
+
+            canonical = slots_to_text(state)
+            if canonical:
+                slot_parsed = parse_message(canonical)
+                if slot_parsed:
+                    print(f"Slot-fill resolved: {canonical}", flush=True)
+                    return PendingRouteResult(parsed=slot_parsed, is_command=False)
+
+            # Canonical text still failed — hand to OpenAI as last resort
+            send_whatsapp_message(phone, build_invalid_message(user))
+            return PendingRouteResult(response={"status": "slot_fill_unresolved"})
 
     # ── Awaiting clarification follow-up ────────────────────────────────────
     if pending and pending.action == ACTION_AWAITING_CLARIFICATION and not is_command:

@@ -2,12 +2,13 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from constants import ACTION_AWAITING_CLARIFICATION
+from constants import ACTION_AWAITING_CLARIFICATION, ACTION_SLOT_FILL
 from faq import detect_faq, get_faq_answer
 from llm_fallback import ask_llm_fallback
 from messages import build_invalid_message
 from models import FailedParse, PendingAction
 from parser import interpret_text_with_openai, parse_message
+from slot_extractor import build_ask_message, extract_transaction_slots
 from whatsapp_client import send_whatsapp_message
 
 
@@ -88,6 +89,40 @@ def handle_fallback_parse(db, phone, text, parsed, user):
     if _OFFTOPIC_PATTERNS.search(text):
         send_whatsapp_message(phone, _OFFTOPIC_REPLY)
         return FallbackParseResult(response={"status": "offtopic_deflected"})
+
+    # ── Slot-filling (DB-driven, no LLM) ────────────────────────────────────
+    # Runs before OpenAI: if we can find a known customer in the text we
+    # start a structured slot-fill conversation instead of guessing.
+    if user:
+        owner_phone = getattr(user, "phone", None)
+        recorded_by_id = user.id if getattr(user, "role", None) == "staff" else None
+        slot_state = extract_transaction_slots(text, db, owner_phone, recorded_by_id)
+        if slot_state:
+            if slot_state.is_complete:
+                # Rare: text was actually parseable at slot level — hand back
+                from slot_extractor import slots_to_text
+                from parser import parse_message as _pm
+                canonical = slots_to_text(slot_state)
+                if canonical:
+                    reparsed = _pm(canonical)
+                    if reparsed:
+                        return FallbackParseResult(parsed=reparsed, text=canonical,
+                                                   is_command=False)
+            else:
+                # Save slot state and ask for the next missing piece
+                db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+                db.add(PendingAction(
+                    phone          = phone,
+                    action         = ACTION_SLOT_FILL,
+                    customer_name  = slot_state.customer_name,
+                    customer_phone = slot_state.customer_phone,
+                    product        = slot_state.product or "",
+                    payload_json   = slot_state.to_json(),
+                ))
+                db.commit()
+                ask_msg = build_ask_message(slot_state)
+                send_whatsapp_message(phone, ask_msg)
+                return FallbackParseResult(response={"status": "slot_fill_started"})
 
     fallback = interpret_text_with_openai(text)
     if fallback:
