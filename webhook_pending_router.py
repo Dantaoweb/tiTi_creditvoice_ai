@@ -870,6 +870,22 @@ def handle_pending_actions(
                 if followup_parsed:
                     print(f"OpenAI clarification resolved: {normalized}", flush=True)
                     return PendingRouteResult(parsed=followup_parsed, is_command=followup_parsed["type"] != "TRANSACTION")
+                # Normalized but still incomplete (e.g. product known, amount missing).
+                # Ask one more round rather than giving up.
+                next_q = (followup.get("clarification_question") or "").strip()
+                if not next_q:
+                    next_q = f"How much? e.g. {normalized} 5000"
+                db.add(PendingAction(
+                    phone=phone,
+                    customer_name="",
+                    last_customer="",
+                    action=ACTION_AWAITING_CLARIFICATION,
+                    source_text=normalized,
+                    product=next_q,
+                ))
+                db.commit()
+                send_whatsapp_message(phone, next_q)
+                return PendingRouteResult(response={"status": "clarification_needs_amount"})
         send_whatsapp_message(phone, build_invalid_message(user))
         return PendingRouteResult(response={"status": "clarification_unresolved"})
 

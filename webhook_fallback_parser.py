@@ -130,6 +130,12 @@ def handle_fallback_parse(db, phone, text, parsed, user):
             db.commit()
         except Exception:
             pass
+        # If the LLM is asking a clarifying question, save the context so the
+        # next message is processed as an answer — not as a fresh standalone request.
+        from llm_fallback import _DISCLAIMER
+        clean_reply = llm_reply.replace(_DISCLAIMER, "").strip()
+        if "?" in clean_reply:
+            _save_clarification_pending(db, phone, text, clean_reply)
         send_whatsapp_message(phone, llm_reply)
         return FallbackParseResult(response={"status": "llm_fallback"})
 
