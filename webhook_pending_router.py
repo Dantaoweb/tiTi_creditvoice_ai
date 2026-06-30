@@ -869,7 +869,7 @@ def handle_pending_actions(
             product = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", user_reply).strip()
             if not product:
                 # They gave us nothing useful — ask again
-                send_whatsapp_message(phone, build_ask_message(state))
+                send_whatsapp_message(phone, build_ask_message(state, user))
                 return PendingRouteResult(response={"status": "slot_fill_retry_product"})
             state.product  = product
             state.ask_for  = "amount"
@@ -877,7 +877,7 @@ def handle_pending_actions(
             pending.product      = product
             pending.payload_json = state.to_json()
             db.commit()
-            send_whatsapp_message(phone, build_ask_message(state))
+            send_whatsapp_message(phone, build_ask_message(state, user))
             return PendingRouteResult(response={"status": "slot_fill_got_product"})
 
         if state.ask_for == "amount":

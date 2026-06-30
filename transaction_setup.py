@@ -223,15 +223,21 @@ def build_customer_confirm_message(customer, parsed, user=None):
                 f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
 
-        pfx = confirm_prefix(customer.name, user)
+        pfx     = confirm_prefix(customer.name, user)
+        product = (parsed.get("product") or "").strip()
+        # Include product name if present — "Ade fee: school fees — N15,000"
+        amount_line = (
+            f"{product} — N{parsed['buy_amount']:,}" if product
+            else f"N{parsed['buy_amount']:,}"
+        )
         if parsed["due_date"]:
             due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
             return (
-                f"{pfx} N{parsed['buy_amount']:,}\n"
+                f"{pfx} {amount_line}\n"
                 f"Due: {due_date_text}{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
         return (
-            f"{pfx} N{parsed['buy_amount']:,}"
+            f"{pfx} {amount_line}"
             f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
         )
 

@@ -120,7 +120,7 @@ def handle_fallback_parse(db, phone, text, parsed, user):
                     payload_json   = slot_state.to_json(),
                 ))
                 db.commit()
-                ask_msg = build_ask_message(slot_state)
+                ask_msg = build_ask_message(slot_state, user)
                 send_whatsapp_message(phone, ask_msg)
                 return FallbackParseResult(response={"status": "slot_fill_started"})
 

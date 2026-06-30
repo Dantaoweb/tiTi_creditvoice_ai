@@ -76,10 +76,42 @@ _VAGUE_WORDS = {
     "transport", "delivery", "supply", "supplies",
 }
 
-# Suggested specifics per vague word (shown as hints to the user)
-_HINTS: dict = {
-    "fees":      "school fees, exam fees, registration fees, uniform fees",
-    "fee":       "school fees, exam fees, registration fees",
+# Hints per (business_group, vague_word) — specific beats generic
+_BIZ_HINTS: dict[tuple, str] = {
+    ("school",  "fees"):     "school fees, exam fees, term fees, uniform fees, registration fees",
+    ("school",  "fee"):      "school fees, exam fees, registration fees, term fees",
+    ("school",  "payment"):  "school fees, exam fees, books, uniform",
+    ("school",  "goods"):    "books, stationery, uniform, school bag",
+    ("school",  "supply"):   "books, stationery, uniform",
+    ("school",  "supplies"): "books, stationery, uniform",
+    ("service", "repair"):   "engine repair, brake repair, AC repair, body work, electrical fault",
+    ("service", "work"):     "plumbing, electrical, painting, tiling, carpentry",
+    ("service", "job"):      "sewing, alteration, embroidery, lace, style",
+    ("service", "service"):  "haircut, braiding, weave, relaxer, nails, pedicure",
+    ("service", "services"): "haircut, braiding, weave, relaxer, nails, pedicure",
+    ("service", "charge"):   "service charge, call-out fee, parts",
+    ("service", "delivery"): "delivery, dispatch, logistics",
+    ("service", "goods"):    "specify the item(s) or job",
+    ("food",    "goods"):    "rice, beans, yam, plantain, drink, protein",
+    ("food",    "stuff"):    "specify the food items",
+    ("food",    "order"):    "specify the order items",
+    ("food",    "service"):  "delivery, table service, take-away",
+    ("fee",     "fees"):     "monthly dues, annual dues, levy, fine",
+    ("fee",     "fee"):      "registration fee, subscription fee, penalty",
+    ("fee",     "dues"):     "monthly dues, annual dues, welfare levy",
+    ("fee",     "payment"):  "dues, levy, fine, subscription",
+    ("clinic",  "service"):  "consultation, lab test, drugs, dressing, injection",
+    ("clinic",  "services"): "consultation, lab test, drugs, admission",
+    ("clinic",  "visit"):    "consultation, checkup, dressing, injection",
+    ("clinic",  "goods"):    "drugs, consumables, lab kit",
+    ("thrift",  "payment"):  "monthly contribution, weekly contribution",
+    ("thrift",  "fees"):     "joining fee, management fee, levy",
+}
+
+# Generic fallback hints (used when no biz-specific entry matches)
+_GENERIC_HINTS: dict[str, str] = {
+    "fees":      "specify the type of fees",
+    "fee":       "specify the type of fee",
     "repair":    "phone repair, car repair, generator repair, AC repair",
     "work":      "plumbing work, electrical work, painting, carpentry",
     "service":   "specify the type of service",
@@ -90,7 +122,82 @@ _HINTS: dict = {
     "stuff":     "specify the item(s)",
     "supply":    "specify what was supplied",
     "supplies":  "specify what was supplied",
+    "charge":    "service charge, delivery charge, repair charge",
+    "charges":   "service charges, delivery charges",
+    "job":       "specify the job type",
+    "jobs":      "specify the job types",
 }
+
+# Business-type-aware question templates
+# Keys map to biz_language group names (stock, school, service, fee, food, clinic, thrift)
+_BIZ_QUESTIONS: dict[str, dict] = {
+    "school": {
+        "product_buy":  "What fee for {name}?",
+        "product_pay":  "What fee did {name} pay?",
+        "amount_buy":   "How much is {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much is {name}'s fee?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "service": {
+        "product_buy":  "What job/service for {name}?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much for {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much for {name}'s job?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "fee": {
+        "product_buy":  "What dues/levy for {name}?",
+        "product_pay":  "What did {name} pay?",
+        "amount_buy":   "How much is {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much does {name} owe?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "food": {
+        "product_buy":  "What did {name} order?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much for {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much is {name}'s order?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "clinic": {
+        "product_buy":  "What was {name}'s visit for?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much for {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much is {name}'s bill?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "thrift": {
+        "product_buy":  "What contribution/levy for {name}?",
+        "product_pay":  "What did {name} pay?",
+        "amount_buy":   "How much is {name}'s {product}?",
+        "amount_pay":   "How much did {name} contribute?",
+        "amount_buy_np": "How much does {name} owe?",
+        "amount_pay_np": "How much did {name} contribute?",
+    },
+    "_default": {
+        "product_buy":  "What did {name} buy?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much did {name} owe for {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much did {name} owe?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+}
+
+
+def _get_group(user) -> str:
+    if not user:
+        return "_default"
+    try:
+        from business_templates import menu_group_for_user
+        return menu_group_for_user(user) or "_default"
+    except Exception:
+        return "_default"
 
 
 def _is_vague(product: str) -> bool:
@@ -99,8 +206,13 @@ def _is_vague(product: str) -> bool:
     return product.strip().lower() in _VAGUE_WORDS
 
 
-def _hints_for(product: str) -> str:
-    return _HINTS.get(product.strip().lower(), "")
+def _hints_for(product: str, user=None) -> str:
+    key = product.strip().lower()
+    group = _get_group(user)
+    biz_hit = _BIZ_HINTS.get((group, key))
+    if biz_hit:
+        return biz_hit
+    return _GENERIC_HINTS.get(key, "")
 
 
 # ── Customer name extraction from DB ─────────────────────────────────────────
@@ -219,21 +331,28 @@ class SlotState:
 
 # ── Ask-message builder ───────────────────────────────────────────────────────
 
-def build_ask_message(state: SlotState) -> str:
+def build_ask_message(state: SlotState, user=None) -> str:
     name    = state.customer_name or "the customer"
     product = state.product or ""
+    group   = _get_group(user)
+    q       = _BIZ_QUESTIONS.get(group) or _BIZ_QUESTIONS["_default"]
 
     if state.ask_for == "product":
-        hints = _hints_for(product) if product else ""
-        base = f"What did {name} {'pay for' if state.tx_type == 'PAY' else 'buy/owe'}?"
+        template = q["product_pay"] if state.tx_type == "PAY" else q["product_buy"]
+        base = template.format(name=name, product=product)
+        hints = _hints_for(product, user) if product else ""
         if hints:
             base += f"\ne.g. {hints}"
         return base
 
     if state.ask_for == "amount":
-        tx_verb = {"PAY": "pay", "SALE": "sell for", "BUY": "owe"}.get(state.tx_type, "owe")
-        prod_str = f" for {product}" if product else ""
-        return f"How much did {name} {tx_verb}{prod_str}?\ne.g. 5000 or 15k"
+        if product:
+            template = q["amount_pay"] if state.tx_type == "PAY" else q["amount_buy"]
+            question = template.format(name=name, product=product)
+        else:
+            template = q["amount_pay_np"] if state.tx_type == "PAY" else q["amount_buy_np"]
+            question = template.format(name=name)
+        return f"{question}\ne.g. 5000 or 15k"
 
     return ""   # should not reach here
 
