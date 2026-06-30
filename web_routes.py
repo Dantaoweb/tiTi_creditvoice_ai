@@ -929,6 +929,17 @@ def register_web_routes(app):
 
             subscription = get_business_subscription(db, user)
             visible_recorded_by_id_val = visibility_recorded_by_id(user)
+
+            # Natural language query handler — runs before the transaction parser
+            # so queries like "how much does Bankole owe?" are answered directly
+            # instead of being misclassified as incomplete transactions.
+            from query_handler import handle_natural_language_query
+            _query_reply = handle_natural_language_query(
+                db, business_owner_phone, text, visible_recorded_by_id_val
+            )
+            if _query_reply:
+                return {"reply": _query_reply, "ok": True}
+
             parsed = parse_message(text)
             is_command = bool(parsed and parsed["type"] != "TRANSACTION")
 

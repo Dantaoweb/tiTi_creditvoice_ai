@@ -323,6 +323,18 @@ def handle_webhook_body(body):
         if user and message_type == "text":
             check_fast_mode_expiry_notice(db, business_owner_phone, phone, send_whatsapp_message)
 
+        # Natural language query handler — intercepts before command routing
+        # so queries like "how much does Bankole owe?" are answered directly
+        # instead of being misclassified as incomplete transactions.
+        if user and message_type == "text":
+            from query_handler import handle_natural_language_query
+            _query_reply = handle_natural_language_query(
+                db, business_owner_phone, text, visible_recorded_by_id
+            )
+            if _query_reply:
+                send_whatsapp_message(phone, _query_reply)
+                return {"status": "query_handled"}
+
         pending_result = handle_pending_actions(
             db,
             phone,
