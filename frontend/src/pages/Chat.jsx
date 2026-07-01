@@ -263,6 +263,13 @@ export default function Chat() {
         </button>
       </form>
 
+      <a
+        href="mailto:support@creditvoice.ai"
+        className="chat-support-link"
+      >
+        Contact Support
+      </a>
+
     </div>
   );
 }

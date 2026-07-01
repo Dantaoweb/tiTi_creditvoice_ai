@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet, Link, useNavigate, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
@@ -208,12 +208,6 @@ export default function Layout() {
 
         <main className="page-content">
           <Outlet />
-          <footer className="app-footer">
-            <Link to="/terms">Terms of Service</Link>
-            <Link to="/privacy">Privacy Policy</Link>
-            <a href="mailto:support@creditvoice.ai">Contact Support</a>
-            <span className="app-footer-copy">© {new Date().getFullYear()} CreditVoice AI</span>
-          </footer>
         </main>
       </div>
 

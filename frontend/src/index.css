@@ -574,7 +574,7 @@ tr.low-stock td { background: #fffbeb; }
   .form-row { flex-direction: column; }
   .form-row .form-group { width: 100% !important; }
 
-  /* Modals go full-width on small screens so nothing clips off the side */
+  /* Modals go full-width, slide up from bottom on small screens */
   .modal-overlay {
     padding: 0;
     align-items: flex-end;
@@ -582,10 +582,14 @@ tr.low-stock td { background: #fffbeb; }
   .modal, .modal-wide {
     max-width: 100%;
     width: 100%;
-    max-height: 90vh;
+    /* 95dvh on mobile — more room, still leaves a sliver at top to tap-close */
+    max-height: 95vh;
+    max-height: 95dvh;
     border-radius: var(--radius) var(--radius) 0 0;
   }
-  /* Keep footer above the system nav bar (Android gesture strip / iOS home indicator) */
+  /* Compact body padding on small phones — recovers ~24px to show more form */
+  .modal-body { padding: 14px 16px; gap: 10px; }
+  /* Footer: safe area covers Android gesture strip / iOS home indicator */
   .modal-footer {
     padding-bottom: max(14px, calc(10px + env(safe-area-inset-bottom, 0px)));
   }
@@ -599,9 +603,6 @@ tr.low-stock td { background: #fffbeb; }
   }
   .inv-tabs::-webkit-scrollbar { display: none; }
   .inv-tab { white-space: nowrap; flex-shrink: 0; }
-
-  /* Footer stacks tighter on phones */
-  .app-footer { padding: 16px 16px 24px; gap: 12px; }
 }
 
 /* Desktop: hide mobile-only elements */
@@ -883,7 +884,10 @@ tr.low-stock td { background: #fffbeb; }
   box-shadow: 0 16px 48px rgba(0,0,0,0.18);
   width: 100%;
   max-width: 480px;
+  /* dvh = dynamic viewport height — excludes browser chrome & soft keyboard.
+     vh fallback for older browsers that don't support dvh yet. */
   max-height: 90vh;
+  max-height: 90dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -897,6 +901,12 @@ tr.low-stock td { background: #fffbeb; }
   justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid var(--line);
+  /* Sticky so header stays visible when body scrolls */
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  flex-shrink: 0;
 }
 
 .modal-title { font-size: 14.5px; font-weight: 700; color: var(--ink); }
@@ -916,6 +926,8 @@ tr.low-stock td { background: #fffbeb; }
 .modal-body {
   padding: 20px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* momentum scrolling on iOS */
+  overscroll-behavior: contain;      /* stop scroll bleeding to page behind modal */
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -929,8 +941,11 @@ tr.low-stock td { background: #fffbeb; }
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  flex-shrink: 0; /* footer never gets compressed */
+  flex-shrink: 0;    /* flex: footer never gets compressed */
+  position: sticky;  /* belt-and-suspenders: sticks to bottom even if flex misbehaves */
+  bottom: 0;
   background: #fff;
+  z-index: 1;
 }
 
 .modal-error {
@@ -2145,6 +2160,18 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 }
 .chat-fast-bar-off:hover { background: #fef3c7; }
 
+/* Contact Support link — chat page only */
+.chat-support-link {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 6px 0 2px;
+  transition: color 0.15s;
+}
+.chat-support-link:hover { color: var(--brand); text-decoration: underline; }
+
 /* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 540px) {
   .landing-features { grid-template-columns: 1fr; }
@@ -2934,30 +2961,3 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   line-height: 1.7;
 }
 
-/* ── App Footer (all authenticated pages) ────────────────────────── */
-.app-footer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 16px 20px;
-  margin-top: 32px;
-  border-top: 1px solid var(--line);
-  text-align: center;
-}
-
-.app-footer a {
-  display: block;
-  font-size: 12px;
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: color 0.15s;
-  line-height: 1.4;
-}
-.app-footer a:hover { color: var(--brand); text-decoration: underline; }
-
-.app-footer-copy {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
-}
