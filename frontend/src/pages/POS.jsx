@@ -184,11 +184,23 @@ export default function POS() {
   const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
+  const creditRef = useRef(null);
+  const creditVisible = useRef(false);
 
   const total  = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
   const paid   = Math.min(parseAmt(payment), total);
   const change = Math.max(0, parseAmt(payment) - total);
   const owed   = customer ? total - paid : 0;
+  const showCredit = customer && owed > 0;
+
+  // Scroll the credit section into view the first time it appears
+  useEffect(() => {
+    if (showCredit && !creditVisible.current) {
+      creditVisible.current = true;
+      setTimeout(() => creditRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
+    }
+    if (!showCredit) creditVisible.current = false;
+  }, [showCredit]);
 
   function addToCart(product) {
     setCart(prev => {
@@ -419,22 +431,38 @@ export default function POS() {
             {change > 0 && (
               <div className="pos-change">Change: {nairaFull(change)}</div>
             )}
-            {customer && owed > 0 && (
-              <>
-                <div className="pos-owed">Credit: {nairaFull(owed)} recorded as debt</div>
-                <label className="pos-summary-label" style={{ display: "block", marginTop: 10 }}>
-                  Payment due date <span style={{ opacity: 0.5, fontWeight: 400 }}>(optional)</span>
+            {/* Warning: partial payment with no customer — debt won't be tracked */}
+            {!customer && total > 0 && parseAmt(payment) > 0 && parseAmt(payment) < total && (
+              <div className="pos-credit-warn">
+                ⚠ Select a customer above to record the {nairaFull(total - parseAmt(payment))} balance as credit debt
+              </div>
+            )}
+          </div>
+
+          {/* Credit section — prominent card, auto-scrolls into view */}
+          {showCredit && (
+            <div className="pos-credit-card" ref={creditRef}>
+              <div className="pos-credit-card-header">
+                <span className="pos-credit-label">Credit balance</span>
+                <span className="pos-credit-amount">{nairaFull(owed)}</span>
+              </div>
+              <div className="pos-credit-card-body">
+                <label className="pos-summary-label">
+                  Payment due date <span style={{ opacity: 0.55, fontWeight: 400 }}>(optional)</span>
                 </label>
                 <input
                   type="date"
                   value={dueDate}
                   onChange={e => setDueDate(e.target.value)}
-                  style={{ width: "100%", marginTop: 4 }}
+                  style={{ width: "100%", marginTop: 6 }}
                   min={new Date().toISOString().slice(0, 10)}
                 />
-              </>
-            )}
-          </div>
+                {!dueDate && (
+                  <span className="form-hint">Set a due date to enable WhatsApp reminders</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {saveErr && <div className="pos-error">{saveErr}</div>}
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback } from "react";
-import { apiPost } from "../lib/api";
+import { apiPost, apiFetch } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -56,12 +56,19 @@ export function AuthProvider({ children }) {
     _persist(usr);
   }
 
+  async function refreshUser() {
+    try {
+      const data = await apiFetch("auth/me");
+      _persist({ ...user, ...data });
+    } catch { /* silent — stale data is fine */ }
+  }
+
   const isAuthed = !!user && !_isSessionExpired(user);
 
   return (
     <AuthContext.Provider value={{
       user, authLoading, authError,
-      login, logout, persistSession,
+      login, logout, persistSession, refreshUser,
       isAuthed,
     }}>
       {children}

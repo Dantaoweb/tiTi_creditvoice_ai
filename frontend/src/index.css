@@ -1399,6 +1399,50 @@ tr.low-stock td { background: #fffbeb; }
   color: var(--amber);
 }
 
+/* Warning when partial payment entered but no customer selected */
+.pos-credit-warn {
+  margin-top: 8px;
+  padding: 9px 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: #9a3412;
+  line-height: 1.4;
+}
+
+/* Credit card — appears when customer has outstanding balance */
+.pos-credit-card {
+  margin: 0 16px 4px;
+  border: 2px solid #f59e0b;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fffbeb;
+}
+.pos-credit-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-bottom: 1px solid #fde68a;
+}
+.pos-credit-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.pos-credit-amount {
+  font-size: 16px;
+  font-weight: 800;
+  color: #92400e;
+}
+.pos-credit-card-body {
+  padding: 12px 14px;
+}
+
 .pos-customer-pill {
   display: inline-flex;
   align-items: center;
@@ -2959,5 +3003,386 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   font-size: 12px;
   color: rgba(232,234,246,0.3);
   line-height: 1.7;
+}
+
+/* ── Page tabs (Customers, etc.) ─────────────────────────────────────────── */
+.page-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--line);
+  padding: 0 16px;
+}
+.page-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.page-tab:hover { color: var(--ink); }
+.page-tab.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  font-weight: 600;
+}
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* ── Debtors tab ─────────────────────────────────────────────────────────── */
+.debtors-tab { display: flex; flex-direction: column; gap: 16px; }
+
+.debtors-summary {
+  display: flex;
+  gap: 12px;
+}
+.debtors-stat {
+  flex: 1;
+  background: var(--surface, #f9fafb);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: center;
+}
+.debtors-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.debtors-stat-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.debtors-reminder-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--surface, #f9fafb);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.debtors-mode-wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.debtors-mode-pills {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.debtors-mode-pill {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+.debtors-mode-pill.active {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+.debtors-mode-pill:disabled { opacity: 0.5; cursor: default; }
+
+.debtors-table-wrap { overflow-x: auto; }
+.debtors-table { width: 100%; }
+.row-overdue { background: #fff5f5; }
+.row-overdue:hover { background: #fee2e2 !important; }
+
+/* ── Reminder preview cards ──────────────────────────────────────────────── */
+.reminder-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reminder-card-sent {
+  opacity: 0.5;
+}
+.reminder-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.reminder-card-msg {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface, #f9fafb);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .debtors-summary { gap: 8px; }
+  .debtors-stat { padding: 10px 10px; }
+  .debtors-stat-value { font-size: 16px; }
+  .debtors-reminder-bar { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Upgrade page ────────────────────────────────────────────────────────── */
+.upgrade-shell {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-bottom: 40px;
+}
+
+/* Current plan banner */
+.upgrade-current-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--surface, #f9fafb);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 14px;
+}
+.upgrade-current-label { color: var(--muted); }
+.upgrade-pending-chip {
+  font-size: 12px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-weight: 500;
+}
+.upgrade-success-banner {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Plan cards */
+.upgrade-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.upgrade-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: box-shadow 0.2s;
+}
+.upgrade-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+.upgrade-card--current {
+  border-color: #863bff;
+  box-shadow: 0 0 0 2px #863bff33;
+}
+.upgrade-card--featured {
+  border-color: #863bff;
+}
+.upgrade-popular-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #863bff;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 14px;
+  border-radius: 20px;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+.upgrade-card-name {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.upgrade-card-price {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.upgrade-card-period {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 2px;
+}
+.upgrade-card-desc {
+  font-size: 13px;
+  color: var(--muted);
+}
+.upgrade-card-current-chip {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #863bff;
+  background: #f3e8ff;
+  border-radius: 8px;
+  padding: 8px;
+}
+.upgrade-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.upgrade-pay-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 13px;
+  padding: 10px 14px;
+}
+
+/* Feature table */
+.upgrade-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.upgrade-table-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface, #f9fafb);
+}
+.upgrade-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.upgrade-table th {
+  padding: 10px 14px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--surface, #f9fafb);
+  border-bottom: 1px solid var(--line);
+}
+.upgrade-table th:first-child { text-align: left; }
+.upgrade-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  vertical-align: middle;
+}
+.upgrade-table td:first-child { text-align: left; }
+.upgrade-table tr:last-child td { border-bottom: none; }
+.upgrade-row-alt { background: var(--surface, #f9fafb); }
+.upgrade-feature-label { font-size: 13px; color: var(--ink); }
+.upgrade-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #16a34a;
+}
+.upgrade-cross {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d1d5db;
+}
+.upgrade-cell-text {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Bank transfer modal */
+.upgrade-bank-amount {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.upgrade-bank-card {
+  background: var(--surface, #f9fafb);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.upgrade-bank-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  gap: 12px;
+}
+.upgrade-bank-label { color: var(--muted); white-space: nowrap; }
+.upgrade-bank-value { font-weight: 600; text-align: right; }
+
+.upgrade-help-note {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 0;
+}
+.upgrade-help-note a { color: var(--brand); }
+
+@media (max-width: 700px) {
+  .upgrade-cards {
+    grid-template-columns: 1fr;
+  }
+  .upgrade-card--featured { order: -1; }
+  .upgrade-table th:nth-child(4),
+  .upgrade-table td:nth-child(4) { display: none; }
+}
+@media (max-width: 480px) {
+  .upgrade-table { font-size: 12px; }
+  .upgrade-table th, .upgrade-table td { padding: 8px 10px; }
 }
 

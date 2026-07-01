@@ -26,6 +26,7 @@ import Thrift        from "./pages/Thrift";
 import Opportunities from "./pages/Opportunities";
 import Terms        from "./pages/Terms";
 import Privacy      from "./pages/Privacy";
+import Upgrade      from "./pages/Upgrade";
 
 function RequireAuth({ children }) {
   const { isAuthed } = useAuth();
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="automation"     element={<Automation />}     />
           <Route path="opportunities" element={<Opportunities />} />
           <Route path="admin"        element={<Admin />}          />
+          <Route path="upgrade"      element={<Upgrade />}        />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
