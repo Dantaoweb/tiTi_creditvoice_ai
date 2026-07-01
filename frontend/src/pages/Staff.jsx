@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Copy, Check, Clock, CheckCircle, Pencil, Save, X, Trash2, GraduationCap, Users, Lock } from "lucide-react";
+import { UserPlus, Copy, Check, Clock, CheckCircle, Pencil, Save, X, Trash2, GraduationCap, Users, Lock, TrendingUp, Award } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut, apiDelete } from "../lib/api";
@@ -404,6 +404,58 @@ export default function Staff() {
         <MetricCard loading={loading} label="Total payments taken" value={nairaFull(totalPayments)} color="blue"  />
         <MetricCard loading={loading} label="Total transactions"   value={totalTx.toLocaleString()} color="amber" />
       </div>
+
+      {/* ── Staff Leaderboard ── */}
+      {!loading && staff.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title"><TrendingUp size={15} /> Staff Leaderboard</span>
+            <span className="text-subtle text-sm">{period || "All time"}</span>
+          </div>
+          <div className="staff-leaderboard">
+            {staff.map((m, i) => {
+              const pct = totalSales > 0 ? Math.round((m.sales / totalSales) * 100) : 0;
+              const avg = m.transactions > 0 ? Math.round(m.sales / m.transactions) : 0;
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+              return (
+                <div key={m.id || m.name} className="staff-lb-row">
+                  <div className="staff-lb-rank">
+                    {medal ? <span>{medal}</span> : <span className="staff-lb-num">#{i + 1}</span>}
+                  </div>
+                  <div className="staff-lb-info">
+                    <div className="staff-lb-name">
+                      {(m.name || "Staff").replace(/\b\w/g, c => c.toUpperCase())}
+                      {m.staff_position && (
+                        <span className="staff-lb-pos">{m.staff_position}</span>
+                      )}
+                    </div>
+                    <div className="staff-lb-bar-wrap">
+                      <div className="staff-lb-bar">
+                        <div
+                          className="staff-lb-bar-fill"
+                          style={{ width: `${pct}%`, background: i === 0 ? "#16a34a" : i === 1 ? "#2563eb" : "var(--brand)" }}
+                        />
+                      </div>
+                      <span className="staff-lb-pct">{pct}%</span>
+                    </div>
+                  </div>
+                  <div className="staff-lb-stats">
+                    <div className="staff-lb-sale">{nairaFull(m.sales)}</div>
+                    <div className="staff-lb-meta">
+                      {m.transactions} tx · avg {nairaFull(avg)}
+                    </div>
+                    {m.staff_salary > 0 && totalSales > 0 && (
+                      <div className="staff-lb-salary">
+                        Salary: {nairaFull(m.staff_salary)}/mo
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Invite result ── */}
       {invResult && (

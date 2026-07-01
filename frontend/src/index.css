@@ -3155,6 +3155,99 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   .debtors-reminder-bar { flex-direction: column; align-items: flex-start; }
 }
 
+/* ── Staff leaderboard ───────────────────────────────────────────────────── */
+.staff-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 4px;
+}
+.staff-lb-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.staff-lb-row:last-child { border-bottom: none; }
+.staff-lb-rank {
+  width: 32px;
+  text-align: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.staff-lb-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.staff-lb-info {
+  flex: 1;
+  min-width: 0;
+}
+.staff-lb-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.staff-lb-pos {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  background: var(--surface, #f3f4f6);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.staff-lb-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.staff-lb-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.staff-lb-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+.staff-lb-pct {
+  font-size: 11px;
+  color: var(--muted);
+  width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.staff-lb-stats {
+  text-align: right;
+  flex-shrink: 0;
+}
+.staff-lb-sale {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.staff-lb-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.staff-lb-salary {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 /* ── Upgrade page ────────────────────────────────────────────────────────── */
 .upgrade-shell {
   max-width: 860px;

@@ -1212,30 +1212,21 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             from datetime import datetime, timezone
-            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC to match DB
             owner_phone = _session_owner_phone(db, session)
             query = _owner_filter(db.query(Customer), Customer, owner_phone)
             rows = query.order_by(Customer.created_at.desc()).limit(200).all()
 
             def _customer_due(customer_id):
-                unpaid_tx = (
-                    db.query(Transaction)
-                    .filter(
+                due_dates = [
+                    tx.due_date
+                    for tx in db.query(Transaction).filter(
                         Transaction.customer_id == customer_id,
                         Transaction.type == "BUY",
                         Transaction.due_date.isnot(None),
                         Transaction.is_voided.isnot(True),
-                    )
-                    .all()
-                )
-                paid_ids = set(
-                    tx.id for tx in db.query(Transaction)
-                    .filter(Transaction.customer_id == customer_id, Transaction.type == "PAY")
-                    .all()
-                )
-                due_dates = [
-                    tx.due_date for tx in unpaid_tx
-                    if tx.id not in paid_ids and tx.due_date
+                    ).all()
+                    if tx.due_date
                 ]
                 if not due_dates:
                     return None, False
@@ -1589,7 +1580,6 @@ def register_web_routes(app):
                         owner_phone=owner_phone,
                         name=name_clean,
                         is_available=True,
-                        is_service=False,
                     ))
                     saved += 1
             if saved:

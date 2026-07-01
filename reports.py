@@ -533,7 +533,12 @@ def get_staff_performance(db, owner_phone, period=None):
         ).with_entities(Transaction.customer_id).distinct().count()
         top_products = _get_staff_top_products(db, owner_phone, staff.id, period)
         results.append({
+            "id": staff.id,
             "name": staff.name,
+            "phone": staff.phone,
+            "role": staff.role,
+            "staff_position": staff.staff_position,
+            "staff_salary": staff.staff_salary,
             "sales": sales,
             "payments": payments,
             "transactions": tx_count,

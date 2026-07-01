@@ -642,49 +642,47 @@ export default function Customers() {
       <StaleDataBanner isStale={isStale} />
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
       <div className="card">
-        {/* Tab bar + header */}
-        <div className="card-header" style={{ flexDirection: "column", gap: 0, padding: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px 0" }}>
-            <span className="card-title" style={{ flex: 1 }}>
-              {activeTab === "all"
-                ? <>{L.customers} <span className="text-subtle text-sm">({filtered.length})</span></>
-                : <>Debtors <span className="text-subtle text-sm">({debtorCount})</span></>
-              }
-            </span>
-            {activeTab === "all" && (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 1, minWidth: 0 }}>
-                <input
-                  placeholder="Search name or phone…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  style={{ flex: 1, minWidth: 0 }}
-                />
-                <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
-                  <Plus size={14} /> {L.addCustomer}
-                </button>
-              </div>
-            )}
-          </div>
+        {/* Header — wraps on mobile so title stays on its own line */}
+        <div className="card-header" style={{ flexWrap: "wrap", rowGap: 8, borderBottom: "none", paddingBottom: 8 }}>
+          <span className="card-title" style={{ flex: "1 1 auto", whiteSpace: "nowrap" }}>
+            {activeTab === "all"
+              ? <>{L.customers} <span className="text-subtle text-sm">({filtered.length})</span></>
+              : <>Debtors <span className="text-subtle text-sm">({debtorCount})</span></>
+            }
+          </span>
+          {activeTab === "all" && (
+            <div style={{ display: "flex", gap: 8, flex: "1 1 200px", minWidth: 0 }}>
+              <input
+                placeholder="Search name or phone…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)} style={{ flexShrink: 0 }}>
+                <Plus size={14} /> {L.addCustomer}
+              </button>
+            </div>
+          )}
+        </div>
 
-          {/* Tabs */}
-          <div className="page-tabs" style={{ marginTop: 10 }}>
-            <button
-              className={`page-tab${activeTab === "all" ? " active" : ""}`}
-              onClick={() => setActiveTab("all")}
-            >
-              All Customers
-            </button>
-            <button
-              className={`page-tab${activeTab === "debtors" ? " active" : ""}`}
-              onClick={() => setActiveTab("debtors")}
-            >
-              <TrendingDown size={13} style={{ marginRight: 4 }} />
-              Debtors
-              {debtorCount > 0 && (
-                <span className="tab-badge">{debtorCount}</span>
-              )}
-            </button>
-          </div>
+        {/* Tabs */}
+        <div className="page-tabs">
+          <button
+            className={`page-tab${activeTab === "all" ? " active" : ""}`}
+            onClick={() => setActiveTab("all")}
+          >
+            All Customers
+          </button>
+          <button
+            className={`page-tab${activeTab === "debtors" ? " active" : ""}`}
+            onClick={() => setActiveTab("debtors")}
+          >
+            <TrendingDown size={13} style={{ marginRight: 4 }} />
+            Debtors
+            {debtorCount > 0 && (
+              <span className="tab-badge">{debtorCount}</span>
+            )}
+          </button>
         </div>
 
         {/* Tab content */}
