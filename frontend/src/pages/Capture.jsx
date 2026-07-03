@@ -444,6 +444,11 @@ function QuickFormPanel({ ownerPhone }) {
 function TextVoicePanel({ ownerPhone }) {
   const { user }  = useAuth();
   const L         = getBizLabels(user?.menu_group);
+  // Prefer the user's business-type-specific prompts (from the server, mirroring
+  // WhatsApp); fall back to the menu-group examples when none are provided.
+  const exampleItems = (user?.examples?.length
+    ? user.examples.map(t => ({ text: t, label: t.length > 26 ? t.slice(0, 24) + "…" : t }))
+    : L.examples);
   const toast     = useToast();
 
   const [phone, setPhone]         = useState(ownerPhone || "");
@@ -586,12 +591,12 @@ function TextVoicePanel({ ownerPhone }) {
           </div>
           <div className="form-group">
             <label className="form-label">Transaction text</label>
-            <textarea rows={5} className="form-full" placeholder={L.examples[0].text}
+            <textarea rows={5} className="form-full" placeholder={exampleItems[0]?.text || ""}
               value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div className="example-chips">
-            {L.examples.map((ex) => (
-              <button key={ex.label} type="button" className="example-chip" onClick={() => setText(ex.text)}>
+            {exampleItems.map((ex, i) => (
+              <button key={(ex.label || ex.text) + i} type="button" className="example-chip" onClick={() => setText(ex.text)}>
                 {ex.label}
               </button>
             ))}

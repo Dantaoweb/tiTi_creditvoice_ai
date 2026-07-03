@@ -457,6 +457,13 @@ def _build_auth_response(user: User, db=None) -> dict:
         plan = sub["plan"]
         expires_at = sub["expires_at"]
 
+    # Per-business-type example prompts (mirror WhatsApp's industry examples)
+    try:
+        from business_templates import template_examples_for_user
+        examples = [str(e) for e in (template_examples_for_user(user) or [])][:4]
+    except Exception:
+        examples = []
+
     return {
         "_token": token,  # used internally to set the cookie — not returned to client
         "user": {
@@ -474,6 +481,7 @@ def _build_auth_response(user: User, db=None) -> dict:
             "newsletter_consent": bool(user.newsletter_consent),
             "subscription_plan": plan,
             "subscription_expires_at": expires_at.isoformat() if expires_at else None,
+            "examples": examples,
             "session_expires_at": session_expires_at,
         },
     }

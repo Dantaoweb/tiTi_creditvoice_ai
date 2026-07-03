@@ -267,9 +267,17 @@ class AdjustStockRequest(BaseModel):
     note: Optional[str] = Field(default=None, max_length=500)
 
 
+class BulkCatalogItem(BaseModel):
+    name: str = Field(max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
+    selling_price: Optional[int] = None
+    is_service: bool = False
+
+
 class BulkAddInventoryRequest(BaseModel):
     owner_phone: str = Field(max_length=20)
-    names: list[str] = Field(max_length=100)  # max 100 items; each str validated below
+    names: list[str] = Field(default_factory=list, max_length=100)   # plain product names
+    items: list[BulkCatalogItem] = Field(default_factory=list, max_length=100)  # priced/service items
 
 
 class AddCustomerRequest(BaseModel):
@@ -768,7 +776,11 @@ def register_web_routes(app):
             # upgrades made on WhatsApp, and lets staff inherit the owner's plan.
             sub = get_business_subscription(db, user)
 
-            from business_templates import menu_group_for_user
+            from business_templates import menu_group_for_user, template_examples_for_user
+            try:
+                examples = [str(e) for e in (template_examples_for_user(user) or [])][:4]
+            except Exception:
+                examples = []
             return {
                 "id": user.id,
                 "name": user.name,
@@ -778,6 +790,7 @@ def register_web_routes(app):
                 "plan": sub["plan"],
                 "subscription_plan": sub["plan"],
                 "subscription_expires_at": sub["expires_at"].isoformat() if sub["expires_at"] else None,
+                "examples": examples,
                 "business_category": user.business_category,
                 "business_type": user.business_type,
                 "business_type_label": user.business_type_label,
@@ -1537,10 +1550,30 @@ def register_web_routes(app):
 
     @app.get("/app/api/inventory/catalog")
     def web_inventory_catalog(session: dict = Depends(require_web_auth)):
-        from business_templates import INDUSTRY_PRODUCT_CATALOG, template_key_for_user
+        from business_templates import (
+            INDUSTRY_PRODUCT_CATALOG, template_key_for_user,
+            has_service_price_catalog, service_price_catalog_for_user,
+        )
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
+
+            # Service businesses (laundry, barber, car wash, tailor, mechanic…)
+            # get their own industry price list — never the retail/provisions
+            # fallback. Entries carry the suggested price and variant.
+            if user and has_service_price_catalog(user):
+                services = []
+                for name, variant, price in service_price_catalog_for_user(user):
+                    label = f"{name} ({variant})" if variant else name
+                    services.append({
+                        "name": label,        # unique display/name incl. variant
+                        "variant": variant,
+                        "price": price,
+                    })
+                return {"kind": "service", "services": services}
+
+            # Product businesses → category → names (retail fallback only applies
+            # to businesses that actually sell goods).
             key = template_key_for_user(user) if user else None
             btype = getattr(user, "business_type", None) if user else None
             entries = (
@@ -1551,7 +1584,7 @@ def register_web_routes(app):
             categories = {}
             for name, cat in entries:
                 categories.setdefault(cat, []).append(name)
-            return {"catalog": categories}
+            return {"kind": "product", "catalog": categories}
         finally:
             db.close()
 
@@ -1564,8 +1597,17 @@ def register_web_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             saved, skipped = 0, 0
-            for raw in payload.names:
-                name_clean = str(raw).strip().lower()
+
+            # Normalize plain names and priced/service catalog items into one list
+            rows = [{"name": n} for n in payload.names]
+            rows += [
+                {"name": it.name, "unit": it.unit,
+                 "selling_price": it.selling_price, "is_service": it.is_service}
+                for it in payload.items
+            ]
+
+            for row in rows:
+                name_clean = str(row.get("name", "")).strip().lower()
                 if not name_clean:
                     continue
                 existing = db.query(InventoryItem).filter(
@@ -1574,13 +1616,21 @@ def register_web_routes(app):
                 ).first()
                 if existing:
                     skipped += 1
-                else:
-                    db.add(InventoryItem(
-                        owner_phone=owner_phone,
-                        name=name_clean,
-                        is_available=True,
-                    ))
-                    saved += 1
+                    continue
+                item = InventoryItem(
+                    owner_phone=owner_phone,
+                    name=name_clean,
+                    is_available=True,
+                )
+                if row.get("selling_price"):
+                    item.selling_price = int(row["selling_price"])
+                if row.get("unit"):
+                    item.unit = row["unit"]
+                if row.get("is_service"):
+                    item.category = "service"
+                    item.quantity = None   # services have no stock
+                db.add(item)
+                saved += 1
             if saved:
                 db.commit()
             return {"saved": saved, "already_existed": skipped}

@@ -29,6 +29,8 @@ function Modal({ title, onClose, children }) {
 // ── Catalog picker modal ─────────────────────────────────────────────────────
 function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
   const [catalog, setCatalog] = useState({});
+  const [services, setServices] = useState([]);
+  const [kind, setKind] = useState("product");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
   const [saving, setSaving] = useState(false);
@@ -37,7 +39,11 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
 
   useEffect(() => {
     apiFetch("inventory/catalog")
-      .then(d => setCatalog(d.catalog || {}))
+      .then(d => {
+        setKind(d.kind || "product");
+        setCatalog(d.catalog || {});
+        setServices(d.services || []);
+      })
       .catch(() => setErr("Could not load catalog."))
       .finally(() => setLoading(false));
   }, []);
@@ -60,34 +66,48 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
   }
 
   async function save() {
-    if (selected.size === 0) { setErr("Select at least one product."); return; }
+    if (selected.size === 0) { setErr("Select at least one item."); return; }
     setSaving(true); setErr("");
     try {
-      const res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names: [...selected] });
+      let res;
+      if (kind === "service") {
+        const items = services
+          .filter(s => selected.has(s.name))
+          .map(s => ({ name: s.name, selling_price: s.price, is_service: true }));
+        res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, items });
+      } else {
+        res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names: [...selected] });
+      }
       setResult(res);
       onSaved();
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   }
 
-  const allNames = Object.values(catalog).flat();
+  const allNames = kind === "service"
+    ? services.map(s => s.name)
+    : Object.values(catalog).flat();
 
   return (
-    <Modal title="Add from Product Catalog" onClose={onClose}>
+    <Modal title={kind === "service" ? "Add from Price List" : "Add from Product Catalog"} onClose={onClose}>
       <div className="modal-body" style={{ maxHeight: "60vh", overflowY: "auto" }}>
         {loading ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>Loading catalog…</div>
         ) : result ? (
           <div>
             <div style={{ color: "var(--brand)", fontWeight: 600, marginBottom: 8 }}>
-              ✓ {result.saved} product{result.saved !== 1 ? "s" : ""} added as drafts
+              ✓ {result.saved} {kind === "service" ? "service" : "product"}{result.saved !== 1 ? "s" : ""} added{kind === "service" ? " with suggested prices" : " as drafts"}
             </div>
             {result.already_existed > 0 && (
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 {result.already_existed} already existed and were skipped.
               </div>
             )}
-            <p style={{ fontSize: 13, marginTop: 10 }}>Set prices from the inventory table.</p>
+            <p style={{ fontSize: 13, marginTop: 10 }}>
+              {kind === "service"
+                ? "Adjust any prices from the list below."
+                : "Set prices from the inventory table."}
+            </p>
           </div>
         ) : (
           <>
@@ -98,27 +118,40 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
                 {selected.size === allNames.length ? "Deselect all" : "Select all"}
               </button>
             </div>
-            {Object.entries(catalog).map(([cat, names]) => (
-              <div key={cat} style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: 1 }}>{cat}</span>
-                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 6px" }}
-                    onClick={() => toggleAll(names)}>
-                    {names.every(n => selected.has(n)) ? "Deselect" : "Select all"}
+            {kind === "service" ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {services.map(s => (
+                  <button key={s.name}
+                    className={`btn ${selected.has(s.name) ? "btn-primary" : "btn-secondary"}`}
+                    style={{ fontSize: 12, padding: "4px 10px" }}
+                    onClick={() => toggle(s.name)}>
+                    {s.name.charAt(0).toUpperCase() + s.name.slice(1)} · ₦{s.price.toLocaleString()}
                   </button>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {names.map(name => (
-                    <button key={name}
-                      className={`btn ${selected.has(name) ? "btn-primary" : "btn-secondary"}`}
-                      style={{ fontSize: 12, padding: "4px 10px" }}
-                      onClick={() => toggle(name)}>
-                      {name.charAt(0).toUpperCase() + name.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                ))}
               </div>
-            ))}
+            ) : (
+              Object.entries(catalog).map(([cat, names]) => (
+                <div key={cat} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: 1 }}>{cat}</span>
+                    <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 6px" }}
+                      onClick={() => toggleAll(names)}>
+                      {names.every(n => selected.has(n)) ? "Deselect" : "Select all"}
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {names.map(name => (
+                      <button key={name}
+                        className={`btn ${selected.has(name) ? "btn-primary" : "btn-secondary"}`}
+                        style={{ fontSize: 12, padding: "4px 10px" }}
+                        onClick={() => toggle(name)}>
+                        {name.charAt(0).toUpperCase() + name.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
             {err && <div className="modal-error">{err}</div>}
           </>
         )}
