@@ -96,15 +96,15 @@ def build_upgrade_message(user=None):
     if is_thrift:
         basic_desc = "10 participants. No reminders or history."
         go_desc = "Unlimited participants, contribution reminders, history, reports."
-        pro_desc = "GO + collectors or staff can record contributions."
+        pro_desc = "Everything in Go, plus collectors or staff can record contributions."
     elif is_school:
         basic_desc = "50 students, 100 transactions/month."
         go_desc = "Unlimited students, fee reminders, payment reports, notes."
-        pro_desc = "GO + bursar or admin staff can record fee payments."
+        pro_desc = "Everything in Go, plus bursar or admin staff can record fee payments."
     else:
         basic_desc = "50 customers, 100 transactions/month."
         go_desc = "Unlimited customers, transactions, inventory, suppliers, reminders, reports."
-        pro_desc = "GO + staff management."
+        pro_desc = "Everything in Go, plus staff management (add staff, permissions, admin sees staff records)."
 
     industry_value = ""
     if user:

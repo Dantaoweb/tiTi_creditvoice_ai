@@ -1074,6 +1074,15 @@ def register_web_routes(app):
             raise HTTPException(status_code=429, detail="AI request limit reached. Try again in an hour.")
         db = SessionLocal()
         try:
+            # Voice notes are a Go-plan feature — same gate as WhatsApp
+            from subscriptions import ensure_feature_allowed
+            _voice_user = db.query(User).filter(User.id == session["user_id"]).first()
+            _allowed, _ = ensure_feature_allowed(db, _voice_user, "VOICE_TEXT", "Voice notes")
+            if not _allowed:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Voice notes are a Go plan feature. Upgrade to Go to record by voice.",
+                )
             phone = session["phone"]
             if not payload.audio_base64:
                 return {"status": "error", "message": "Record voice and enter the registered phone number."}

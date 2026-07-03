@@ -230,7 +230,7 @@ export default function Upgrade() {
       key: "PRO",
       label: "Pro",
       price: prices.PRO,
-      desc: "Full team & multi-branch",
+      desc: "Everything in Go, plus team & branches",
       color: "#d97706",
       bg: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
     },
