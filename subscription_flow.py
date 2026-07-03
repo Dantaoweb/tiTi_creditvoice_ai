@@ -111,6 +111,33 @@ def handle_upgrade_plan_selected(
         send_message(phone, "Upgrade request closed.")
         return {"status": "upgrade_plan_cancelled"}
 
+    # Pay online (card / transfer via secure Monnify link) — auto-activates on payment
+    if normalized in ["online", "pay online", "card", "link", "pay by card", "pay with card"]:
+        plan = normalize_plan(pending.customer_name)
+        from subscriptions import create_monnify_subscription_link
+        payment, checkout_url = create_monnify_subscription_link(db, user, plan)
+        if checkout_url:
+            pending.action = "SUBSCRIPTION_PAYMENT_PENDING"
+            pending.customer_name = plan
+            pending.reminder_id = payment.id
+            pending.last_customer = plan
+            db.commit()
+            send_message(
+                phone,
+                f"Pay for your {plan} plan securely (card or bank transfer):\n\n"
+                f"{checkout_url}\n\n"
+                "Your plan activates automatically once payment is confirmed."
+                f"{support_line()}"
+            )
+            return {"status": "subscription_monnify_link_sent"}
+        db.rollback()
+        send_message(
+            phone,
+            "Online payment is temporarily unavailable. Please pay by bank transfer:\n\n"
+            + build_plan_payment_message(plan)
+        )
+        return {"status": "subscription_monnify_unavailable"}
+
     if evidence_text or normalized in ["paid", "done", "i have paid", "i paid"]:
         plan = normalize_plan(pending.customer_name)
         payment = create_subscription_payment_request(db, user, plan)

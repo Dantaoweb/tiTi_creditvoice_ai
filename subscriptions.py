@@ -182,6 +182,35 @@ def create_subscription_payment_request(db, user, plan):
     return payment
 
 
+def create_monnify_subscription_link(db, user, plan):
+    """Create/reuse a pending subscription payment as a Monnify online payment
+    and return (payment, checkout_url). checkout_url is None when Monnify is
+    unavailable, in which case the caller should fall back to bank transfer.
+
+    Uses the same CV-SUB-<id>-<rand> reference scheme as the web Monnify flow,
+    stored on evidence_ref so /app/api/webhooks/monnify/subscription activates
+    the plan automatically on payment."""
+    import uuid as _uuid
+    from wallet_service import create_monnify_checkout
+
+    owner = get_business_owner_user(db, user)
+    payment = create_subscription_payment_request(db, user, plan)
+    payment.payment_method = "MONNIFY"
+    db.flush()
+    ref = f"CV-SUB-{payment.id}-{_uuid.uuid4().hex[:6].upper()}"
+    payment.evidence_ref = ref
+
+    email = getattr(owner, "email", None) or f"{owner.phone}@creditvoice.app"
+    checkout_url = create_monnify_checkout(
+        reference=ref,
+        amount=payment.amount,
+        customer_name=(owner.name or owner.phone),
+        customer_email=email,
+        description=f"CreditVoice {payment.plan} Plan - 1 month",
+    )
+    return payment, checkout_url
+
+
 def get_pending_subscription_payment(db, user):
     owner = get_business_owner_user(db, user)
     if not owner:

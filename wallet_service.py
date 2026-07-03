@@ -267,6 +267,44 @@ def _get_monnify_token() -> str:
     return resp.json()["responseBody"]["accessToken"]
 
 
+def create_monnify_checkout(reference: str, amount: int, customer_name: str,
+                            customer_email: str, description: str,
+                            redirect_url: str | None = None) -> str | None:
+    """Initialize a Monnify transaction and return its hosted checkout URL.
+
+    `reference` must be stored on SubscriptionPayment.evidence_ref so the
+    Monnify webhook (/app/api/webhooks/monnify/subscription) can match the
+    payment and activate the plan. Returns None if Monnify is unconfigured or
+    the call fails (caller should fall back to bank transfer)."""
+    if not (MONNIFY_API_KEY and MONNIFY_SECRET_KEY and MONNIFY_CONTRACT_CODE):
+        return None
+    try:
+        token = _get_monnify_token()
+        body = {
+            "amount": amount,
+            "customerName": customer_name,
+            "customerEmail": customer_email,
+            "paymentReference": reference,
+            "paymentDescription": description,
+            "currencyCode": "NGN",
+            "contractCode": MONNIFY_CONTRACT_CODE,
+            "paymentMethods": ["CARD", "ACCOUNT_TRANSFER"],
+        }
+        if redirect_url:
+            body["redirectUrl"] = redirect_url
+        resp = requests.post(
+            f"{MONNIFY_BASE_URL}/api/v1/merchant/transactions/init-transaction",
+            json=body,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json().get("responseBody", {}).get("checkoutUrl")
+    except Exception as exc:
+        print(f"[monnify] checkout init failed: {exc}", flush=True)
+        return None
+
+
 # ── Virtual account provisioning ───────────────────────────────────────────────
 
 def provision_virtual_account(db, owner_phone: str, business_name: str) -> dict:

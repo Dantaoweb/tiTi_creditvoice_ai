@@ -178,7 +178,8 @@ def build_plan_payment_message(plan):
         "Pay to:\n"
         f"{get_payment_account_message()}\n\n"
         f"After payment, send:\nPAID {plan}\n\n"
-        "Then send your receipt screenshot or payment reference here."
+        "Then send your receipt screenshot or payment reference here.\n\n"
+        "Prefer to pay online by card? Reply: PAY ONLINE"
     )
 
 

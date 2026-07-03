@@ -184,6 +184,20 @@ const DEFAULT_LABELS = {
   ],
 };
 
+// Navigation labels per business type — mirror the WhatsApp home-menu wording
+// so the web nav matches what the same user sees on WhatsApp.
+const NAV_LABELS = {
+  school:  { record: "Record fee payment", pos: "Sell textbooks" },
+  thrift:  { record: "Record contribution", pos: "Select product" },
+  service: { record: "Record job",          pos: "Select service" },
+  clinic:  { record: "Record payment",      pos: "Select service" },
+  food:    { record: "Record sale",         pos: "Select product" },
+  fee:     { record: "Record payment",      pos: "Select product" },
+};
+const DEFAULT_NAV = { record: "Record sale", pos: "Select product" };
+
 export function getBizLabels(menuGroup) {
-  return LABELS[menuGroup] || DEFAULT_LABELS;
+  const base = LABELS[menuGroup] || DEFAULT_LABELS;
+  const nav = NAV_LABELS[menuGroup] || DEFAULT_NAV;
+  return { ...base, ...nav };
 }

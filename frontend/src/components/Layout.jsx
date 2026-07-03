@@ -12,17 +12,22 @@ import { useOfflineSync } from "../lib/useOfflineSync";
 import TitiPanel from "./TitiPanel";
 import NotificationBell from "./NotificationBell";
 
-function buildNav(L) {
+function buildNav(L, group) {
+  // Businesses that don't sell products (savings/ajo, dues collection) get the
+  // product-centric items deprioritized off the primary tab bar — mirroring the
+  // WhatsApp home menu, which omits stock/POS for these groups.
+  const noProducts = group === "thrift" || group === "fee";
+  const isThrift = group === "thrift";
   return [
     { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare,   tab: true  },
-    { to: "/capture",      label: "Quick Record",     icon: PlusCircle,      tab: true  },
-    { to: "/pos",          label: "POS",              icon: ShoppingCart,    tab: true  },
-    { to: "/inventory",    label: L.stock,            icon: Package,         tab: true  },
+    { to: "/capture",      label: L.record,           icon: PlusCircle,      tab: true  },
+    { to: "/pos",          label: L.pos,              icon: ShoppingCart,    tab: !noProducts },
+    { to: "/inventory",    label: L.stock,            icon: Package,         tab: !noProducts },
     { to: "/customers",    label: L.navCustomers,     icon: Users,           tab: true  },
+    { to: "/thrift",       label: "Thrift / Ajo",     icon: Activity,        tab: isThrift },
     { to: "/reminders",    label: L.reminders,        icon: Bell            },
     { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
-    { to: "/thrift",       label: "Thrift / Ajo",     icon: Activity        },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
     { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
@@ -46,7 +51,7 @@ export default function Layout() {
 
   const L = getBizLabels(user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
-  const NAV = buildNav(L).filter(item => !item.adminOnly || isAdmin);
+  const NAV = buildNav(L, user?.menu_group).filter(item => !item.adminOnly || isAdmin);
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {
