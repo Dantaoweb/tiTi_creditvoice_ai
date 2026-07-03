@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../lib/api";
-import { nairaFull } from "../lib/format";
+import { nairaFull, parseAmt } from "../lib/format";
+import MoneyInput from "../components/MoneyInput";
 import { Download, RefreshCw, Search, Ticket } from "lucide-react";
 
 // ── tiny bar chart ──────────────────────────────────────────────────────────
@@ -411,7 +412,7 @@ function ReferralSettingsTab() {
 
   async function save(e) {
     e.preventDefault();
-    const n = parseInt(amount);
+    const n = parseAmt(amount);
     if (isNaN(n) || n < 0) { setErr("Enter a valid amount (₦0 or more)."); return; }
     setBusy(true); setErr(""); setMsg("");
     try {
@@ -434,7 +435,7 @@ function ReferralSettingsTab() {
       <form onSubmit={save} style={{ display: "flex", gap: 8 }}>
         <div className="form-group" style={{ flex: 1 }}>
           <label className="form-label">Cashback amount (₦)</label>
-          <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 500" disabled={busy} />
+          <MoneyInput value={amount} onChange={v => setAmount(v)} placeholder="e.g. 500" disabled={busy} />
         </div>
         <div className="form-group" style={{ display: "flex", alignItems: "flex-end" }}>
           <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button>

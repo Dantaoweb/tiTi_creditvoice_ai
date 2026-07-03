@@ -4,7 +4,8 @@ import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
-import { nairaFull, dateStr } from "../lib/format";
+import { nairaFull, dateStr, parseAmt } from "../lib/format";
+import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import { StockBadge } from "../components/Badge";
 import StaleDataBanner from "../components/StaleDataBanner";
@@ -243,7 +244,7 @@ function BulkAddModal({ ownerPhone, onClose, onSaved }) {
 function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
   const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
   const [form, setForm] = useState({
-    name: "", unit: "", quantity: 0,
+    name: "", unit: "", quantity: "",
     cost_price: "", selling_price: "", low_stock_alert: "",
     retail_unit: "", retail_per_base: "", retail_price: "",
   });
@@ -263,14 +264,14 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
         owner_phone: ownerPhone,
         name: form.name.trim(),
         unit: form.unit.trim() || null,
-        quantity: isService ? null : (parseInt(form.quantity) || 0),
-        cost_price: isService ? null : (form.cost_price ? parseInt(form.cost_price) : null),
-        selling_price: form.selling_price ? parseInt(form.selling_price) : null,
-        low_stock_alert: isService ? null : (form.low_stock_alert ? parseInt(form.low_stock_alert) : null),
+        quantity: isService ? null : (parseAmt(form.quantity) || 0),
+        cost_price: isService ? null : (form.cost_price ? parseAmt(form.cost_price) : null),
+        selling_price: form.selling_price ? parseAmt(form.selling_price) : null,
+        low_stock_alert: isService ? null : (form.low_stock_alert ? parseAmt(form.low_stock_alert) : null),
         is_service: isService,
         retail_unit: !isService ? (form.retail_unit.trim() || null) : null,
-        retail_per_base: (!isService && form.retail_per_base !== "") ? parseInt(form.retail_per_base) : null,
-        retail_price: (!isService && form.retail_price !== "") ? parseInt(form.retail_price) : null,
+        retail_per_base: (!isService && form.retail_per_base !== "") ? parseAmt(form.retail_per_base) : null,
+        retail_price: (!isService && form.retail_price !== "") ? parseAmt(form.retail_price) : null,
       });
       onSaved(item);
       onClose();
@@ -318,17 +319,16 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">{isService ? "Price (₦) *" : "Selling price (₦) *"}</label>
-            <input
-              type="number" min={0}
+            <MoneyInput
               value={form.selling_price}
-              onChange={e => set("selling_price", e.target.value)}
+              onChange={v => set("selling_price", v)}
               placeholder="0"
             />
           </div>
           {!isService && (
             <div className="form-group">
               <label className="form-label">Cost price (₦)</label>
-              <input type="number" min={0} value={form.cost_price} onChange={e => set("cost_price", e.target.value)} placeholder="0" />
+              <MoneyInput value={form.cost_price} onChange={v => set("cost_price", v)} placeholder="0" />
             </div>
           )}
         </div>
@@ -337,11 +337,11 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Opening stock</label>
-              <input type="number" min={0} value={form.quantity} onChange={e => set("quantity", e.target.value)} />
+              <MoneyInput value={form.quantity} onChange={v => set("quantity", v)} placeholder="0" />
             </div>
             <div className="form-group">
               <label className="form-label">Low-stock alert</label>
-              <input type="number" min={0} value={form.low_stock_alert} onChange={e => set("low_stock_alert", e.target.value)} placeholder="optional" />
+              <MoneyInput value={form.low_stock_alert} onChange={v => set("low_stock_alert", v)} placeholder="optional" />
             </div>
           </div>
         )}
@@ -359,13 +359,13 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
               </div>
               <div className="form-group" style={{ width: 110 }}>
                 <label className="form-label">Per {form.unit || "unit"}</label>
-                <input type="number" min={1} value={form.retail_per_base}
-                  onChange={e => set("retail_per_base", e.target.value)} placeholder="e.g. 15" />
+                <MoneyInput value={form.retail_per_base}
+                  onChange={v => set("retail_per_base", v)} placeholder="e.g. 15" />
               </div>
               <div className="form-group">
                 <label className="form-label">Sub-unit price (₦)</label>
-                <input type="number" min={0} value={form.retail_price}
-                  onChange={e => set("retail_price", e.target.value)} placeholder="e.g. 34" />
+                <MoneyInput value={form.retail_price}
+                  onChange={v => set("retail_price", v)} placeholder="e.g. 34" />
               </div>
             </div>
           </div>
@@ -408,13 +408,13 @@ function EditItemModal({ item, onClose, onSaved }) {
       await apiPut(`inventory/${item.id}`, {
         name: form.name.trim() || null,
         unit: form.unit.trim() || null,
-        cost_price: (!isService && form.cost_price !== "") ? parseInt(form.cost_price) : null,
-        selling_price: form.selling_price !== "" ? parseInt(form.selling_price) : null,
-        low_stock_alert: (!isService && form.low_stock_alert !== "") ? parseInt(form.low_stock_alert) : null,
+        cost_price: (!isService && form.cost_price !== "") ? parseAmt(form.cost_price) : null,
+        selling_price: form.selling_price !== "" ? parseAmt(form.selling_price) : null,
+        low_stock_alert: (!isService && form.low_stock_alert !== "") ? parseAmt(form.low_stock_alert) : null,
         is_available: form.is_available,
         retail_unit: form.retail_unit.trim() || null,
-        retail_per_base: form.retail_per_base !== "" ? parseInt(form.retail_per_base) : null,
-        retail_price: form.retail_price !== "" ? parseInt(form.retail_price) : null,
+        retail_per_base: form.retail_per_base !== "" ? parseAmt(form.retail_per_base) : null,
+        retail_price: form.retail_price !== "" ? parseAmt(form.retail_price) : null,
       });
       onSaved();
       onClose();
@@ -438,12 +438,12 @@ function EditItemModal({ item, onClose, onSaved }) {
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">{isService ? "Price (₦)" : "Selling price (₦)"}</label>
-            <input type="number" min={0} value={form.selling_price} onChange={e => set("selling_price", e.target.value)} />
+            <MoneyInput value={form.selling_price} onChange={v => set("selling_price", v)} />
           </div>
           {!isService && (
             <div className="form-group">
               <label className="form-label">Cost price (₦)</label>
-              <input type="number" min={0} value={form.cost_price} onChange={e => set("cost_price", e.target.value)} />
+              <MoneyInput value={form.cost_price} onChange={v => set("cost_price", v)} />
             </div>
           )}
         </div>
@@ -451,7 +451,7 @@ function EditItemModal({ item, onClose, onSaved }) {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Low-stock alert</label>
-              <input type="number" min={0} value={form.low_stock_alert} onChange={e => set("low_stock_alert", e.target.value)} />
+              <MoneyInput value={form.low_stock_alert} onChange={v => set("low_stock_alert", v)} />
             </div>
             <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 20 }}>
               <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
@@ -478,13 +478,13 @@ function EditItemModal({ item, onClose, onSaved }) {
               </div>
               <div className="form-group" style={{ width: 110 }}>
                 <label className="form-label">Per {form.unit || "unit"}</label>
-                <input type="number" min={1} value={form.retail_per_base}
-                  onChange={e => set("retail_per_base", e.target.value)} placeholder="e.g. 15" />
+                <MoneyInput value={form.retail_per_base}
+                  onChange={v => set("retail_per_base", v)} placeholder="e.g. 15" />
               </div>
               <div className="form-group">
                 <label className="form-label">Sub-unit price (₦)</label>
-                <input type="number" min={0} value={form.retail_price}
-                  onChange={e => set("retail_price", e.target.value)} placeholder="e.g. 34" />
+                <MoneyInput value={form.retail_price}
+                  onChange={v => set("retail_price", v)} placeholder="e.g. 34" />
               </div>
             </div>
           </div>
@@ -509,7 +509,7 @@ function AdjustModal({ item, onClose, onSaved }) {
   const [err, setErr] = useState("");
 
   async function save(direction) {
-    const qty = parseInt(delta);
+    const qty = parseAmt(delta);
     if (!qty || qty <= 0) { setErr("Enter a quantity greater than 0."); return; }
     setSaving(true); setErr("");
     try {
@@ -531,10 +531,9 @@ function AdjustModal({ item, onClose, onSaved }) {
         </div>
         <div className="form-group">
           <label className="form-label">Quantity</label>
-          <input
-            type="number" min={1}
+          <MoneyInput
             value={delta}
-            onChange={e => setDelta(e.target.value)}
+            onChange={v => setDelta(v)}
             placeholder="How many?"
           />
         </div>

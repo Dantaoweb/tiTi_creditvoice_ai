@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { nairaFull } from "../lib/format";
+import MoneyInput from "../components/MoneyInput";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
 
@@ -184,7 +185,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
     if (!product.trim() || !amount) return;
     setLoading(true); setError(null);
     try {
-      const qtyNum = Math.max(1, Number(qty) || 1);
+      const qtyNum = Math.max(1, parseAmt(qty) || 1);
       const total  = parseAmt(amount);
       const body   = {
         owner_phone:    ownerPhone,
@@ -198,7 +199,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
       setProduct(""); setQty("1"); setUnit(""); setAmount(""); setCustomer(null);
     } catch (e) {
       if (isNetworkError(e)) {
-        const qtyNum = Math.max(1, Number(qty) || 1);
+        const qtyNum = Math.max(1, parseAmt(qty) || 1);
         const total  = parseAmt(amount);
         enqueue("pos/save", {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
@@ -225,7 +226,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
         </div>
         <div className="form-group">
           <label className="form-label">Qty</label>
-          <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} />
+          <MoneyInput value={qty} onChange={v => setQty(v)} placeholder="1" />
         </div>
       </div>
       <div className="qf-row qf-row--sm-lg">
@@ -337,7 +338,7 @@ function StockForm({ ownerPhone, onSuccess }) {
     setLoading(true); setError(null);
     try {
       const body = {
-        qty_delta: Number(qty),
+        qty_delta: parseAmt(qty),
         note:      note || (cost ? `Received @ N${parseAmt(cost)}/unit` : "Stock received"),
       };
       await apiPost(`inventory/${item.id}/adjust`, body);
@@ -347,7 +348,7 @@ function StockForm({ ownerPhone, onSuccess }) {
       if (isNetworkError(e)) {
         enqueue(
           `inventory/${item.id}/adjust`,
-          { qty_delta: Number(qty), note: note || (cost ? `Received @ N${cost}/unit` : "Stock received") },
+          { qty_delta: parseAmt(qty), note: note || (cost ? `Received @ N${cost}/unit` : "Stock received") },
           `Stock +${qty} ${item.unit || "units"} of ${item.name}`,
         );
         onSuccess(`No internet — stock entry saved offline. Will sync automatically when you reconnect.`);
@@ -369,7 +370,7 @@ function StockForm({ ownerPhone, onSuccess }) {
       <div className="qf-row qf-row--sm-lg">
         <div className="form-group">
           <label className="form-label">Qty received *</label>
-          <input type="number" min="0.01" step="any" value={qty} onChange={e => setQty(e.target.value)} placeholder="10" required />
+          <MoneyInput value={qty} onChange={v => setQty(v)} placeholder="10" required />
         </div>
         <div className="form-group">
           <label className="form-label">Cost per unit (₦)</label>

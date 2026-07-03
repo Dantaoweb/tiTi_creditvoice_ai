@@ -3,7 +3,8 @@ import { UserPlus, Trash2, Eye, TrendingUp, Users, Briefcase, Lock } from "lucid
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { usePlan } from "../lib/usePlan";
-import { nairaFull } from "../lib/format";
+import { nairaFull, parseAmt } from "../lib/format";
+import MoneyInput from "../components/MoneyInput";
 import EmptyState from "../components/EmptyState";
 import Skeleton from "../components/Skeleton";
 
@@ -44,7 +45,7 @@ function InviteForm({ onDone, onCancel }) {
         partner_phone: form.partner_phone.trim(),
         role: form.role,
         equity_percent: form.equity_percent ? parseFloat(form.equity_percent) : null,
-        investment_amount: form.investment_amount ? parseInt(form.investment_amount) : null,
+        investment_amount: form.investment_amount ? parseAmt(form.investment_amount) : null,
         notes: form.notes.trim() || null,
       });
       onDone();
@@ -81,9 +82,9 @@ function InviteForm({ onDone, onCancel }) {
           </div>
           <div className="form-group">
             <label className="form-label">Investment Amount (optional)</label>
-            <input type="number" min="0"
-              value={form.investment_amount} onChange={e => set("investment_amount", e.target.value)}
-              placeholder="e.g. 500000" disabled={busy} />
+            <MoneyInput
+              value={form.investment_amount} onChange={v => set("investment_amount", v)}
+              placeholder="e.g. 500,000" disabled={busy} />
           </div>
         </div>
         <div className="form-group">

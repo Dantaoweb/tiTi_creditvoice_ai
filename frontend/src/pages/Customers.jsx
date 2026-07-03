@@ -3,7 +3,8 @@ import { Plus, Wallet, History, X, Pencil, Check, Bell, Send, AlertTriangle, Tre
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
-import { nairaFull, dateStr, dateTimeStr } from "../lib/format";
+import { nairaFull, dateStr, dateTimeStr, parseAmt } from "../lib/format";
+import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
@@ -77,7 +78,7 @@ function PaymentModal({ customer, onClose, onSaved }) {
   const [err, setErr] = useState("");
 
   async function save() {
-    const amt = parseInt(amount);
+    const amt = parseAmt(amount);
     if (!amt || amt <= 0) { setErr("Enter a valid amount."); return; }
     setSaving(true); setErr("");
     try {
@@ -99,10 +100,9 @@ function PaymentModal({ customer, onClose, onSaved }) {
         </div>
         <div className="form-group">
           <label className="form-label">Payment amount (₦) *</label>
-          <input
-            type="number" min={1}
+          <MoneyInput
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={v => setAmount(v)}
             placeholder="0"
             autoFocus
           />

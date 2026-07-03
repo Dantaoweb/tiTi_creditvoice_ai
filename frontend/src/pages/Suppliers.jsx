@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
-import { nairaFull, dateStr } from "../lib/format";
+import { nairaFull, dateStr, parseAmt } from "../lib/format";
+import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
 import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, Star } from "lucide-react";
@@ -454,7 +455,7 @@ function ProductRow({ p, onChange, onRemove, index }) {
         </div>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label className="form-label">Min. order qty</label>
-          <input type="number" value={p.min_order_qty} onChange={e => onChange(index, { ...p, min_order_qty: e.target.value })} placeholder="e.g. 50" />
+          <MoneyInput value={p.min_order_qty} onChange={v => onChange(index, { ...p, min_order_qty: v })} placeholder="e.g. 50" />
         </div>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label className="form-label">Unit</label>
@@ -564,7 +565,7 @@ function SupplierProfileTab({ userPlan }) {
         can_deliver: canDeliver, delivery_notes: deliveryNotes, cac_number: cac,
         products: products.filter(p => p.product_name.trim()).map(p => ({
           ...p,
-          min_order_qty: p.min_order_qty ? parseFloat(p.min_order_qty) : null,
+          min_order_qty: p.min_order_qty ? parseAmt(p.min_order_qty) : null,
           available_sizes: p.available_sizes || [],
         })),
       };

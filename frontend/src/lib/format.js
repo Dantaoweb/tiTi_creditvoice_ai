@@ -1,3 +1,24 @@
+// Format a user-typed amount/quantity with thousands separators as they type.
+// Keeps an optional single decimal point (for fractional quantities). Returns a
+// display string; use parseAmt() to get the number for submission.
+export function fmtAmt(value) {
+  let s = String(value ?? "").replace(/,/g, "").replace(/[^\d.]/g, "");
+  const dot = s.indexOf(".");
+  if (dot !== -1) {
+    s = s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "");
+  }
+  if (s === "") return "";
+  const [intPart, decPart] = s.split(".");
+  const intFmt = intPart ? Number(intPart).toLocaleString("en-US") : "0";
+  return decPart !== undefined ? `${intFmt}.${decPart}` : intFmt;
+}
+
+// Strip separators and return a Number (0 when empty/invalid).
+export function parseAmt(value) {
+  const n = Number(String(value ?? "").replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function naira(value) {
   const n = Number(value || 0);
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;

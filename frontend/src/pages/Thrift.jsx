@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Activity, Users, TrendingUp, Plus, Info, Landmark, ChevronDown, ChevronUp, UserPlus } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
-import { nairaFull, dateTimeStr } from "../lib/format";
+import { nairaFull, dateTimeStr, parseAmt } from "../lib/format";
+import MoneyInput from "../components/MoneyInput";
 import MetricCard from "../components/MetricCard";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -122,7 +123,7 @@ function RecordSavingForm({ onSaved, onCancel }) {
   const [err, setErr]       = useState("");
 
   async function save() {
-    const amt = parseInt(amount);
+    const amt = parseAmt(amount);
     if (!amt || amt <= 0) { setErr("Enter a valid amount."); return; }
     setBusy(true); setErr("");
     try {
@@ -138,8 +139,8 @@ function RecordSavingForm({ onSaved, onCancel }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div className="form-group">
           <label className="form-label">Amount (₦) *</label>
-          <input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)}
-            placeholder="e.g. 5000" autoFocus disabled={busy} />
+          <MoneyInput value={amount} onChange={v => setAmount(v)}
+            placeholder="e.g. 5,000" autoFocus disabled={busy} />
         </div>
         <div className="form-group">
           <label className="form-label">Note (optional)</label>
