@@ -124,14 +124,28 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
 
   if (customer) {
     return (
-      <div className="pos-customer-pill">
-        <User size={13} />
-        <span>{customer.name}</span>
-        {customer.balance > 0 && (
-          <span className="pos-customer-debt">owes {nairaFull(customer.balance)}</span>
+      <>
+        <div className="pos-customer-pill">
+          <User size={13} />
+          <span>{customer.name}{customer.isNew ? " · new" : ""}</span>
+          {customer.balance > 0 && (
+            <span className="pos-customer-debt">owes {nairaFull(customer.balance)}</span>
+          )}
+          <button onClick={onClear}><X size={13} /></button>
+        </div>
+        {customer.isNew && (
+          <div className="pos-search-row" style={{ marginTop: 6 }}>
+            <User size={15} className="pos-search-icon" />
+            <input
+              className="pos-search-input"
+              value={customer.phone || ""}
+              onChange={e => onSelect({ ...customer, phone: e.target.value })}
+              placeholder="Phone (optional)…"
+              inputMode="tel"
+            />
+          </div>
         )}
-        <button onClick={onClear}><X size={13} /></button>
-      </div>
+      </>
     );
   }
 
@@ -146,7 +160,7 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
           placeholder="Search customer (optional)…"
         />
       </div>
-      {open && results.length > 0 && (
+      {open && q.trim() && (
         <div className="pos-search-results">
           {results.map(c => (
             <button key={c.id} className="pos-product-row"
@@ -158,6 +172,16 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
               </span>
             </button>
           ))}
+          {!results.some(c => c.name.toLowerCase() === q.trim().toLowerCase()) && (
+            <button
+              className="pos-product-row"
+              onClick={() => {
+                onSelect({ id: null, name: q.trim(), phone: null, isNew: true });
+                setQ(""); setOpen(false);
+              }}>
+              <span className="pos-product-name">➕ Add "{q.trim()}" as new customer</span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -247,6 +271,8 @@ export default function POS() {
     const payload = {
       owner_phone:    ownerPhone,
       customer_id:    customer?.id || null,
+      customer_name:  (customer && !customer.id) ? customer.name : null,
+      customer_phone: (customer && !customer.id) ? (customer.phone?.trim() || null) : null,
       items: cart.map(it => ({
         inventory_item_id: it.inventory_item_id || null,
         name:       it.name,

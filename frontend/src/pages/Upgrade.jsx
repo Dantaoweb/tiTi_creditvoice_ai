@@ -82,7 +82,12 @@ function BankTransferModal({ plan, status, onClose, onDone }) {
           {step === "details" && info && (
             <>
               <button className="btn btn-ghost" onClick={onClose}>Close</button>
-              <button className="btn btn-primary" onClick={() => { setStep("done"); onDone && onDone(); }}>
+              <button className="btn btn-primary" onClick={async () => {
+                // Alert admins (WhatsApp + email) that this user reports paying.
+                // Non-blocking: still advance the UI even if the ping fails.
+                try { await apiPost("subscription/confirm-payment", { plan }); } catch { /* ignore */ }
+                setStep("done"); onDone && onDone();
+              }}>
                 I've made the transfer
               </button>
             </>

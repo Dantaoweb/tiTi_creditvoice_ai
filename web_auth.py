@@ -445,6 +445,18 @@ def _build_auth_response(user: User, db=None) -> dict:
     session_expires_at = datetime.fromtimestamp(
         int(time.time()) + ttl, tz=timezone.utc
     ).isoformat()
+
+    # Resolve the plan from the business owner (follows parent_id) so staff /
+    # sub-accounts inherit the owner's plan, and expiry is applied — the same
+    # source of truth the WhatsApp side and /subscription/status use.
+    plan = user.subscription_plan
+    expires_at = user.subscription_expires_at
+    if db is not None:
+        from subscriptions import get_business_subscription
+        sub = get_business_subscription(db, user)
+        plan = sub["plan"]
+        expires_at = sub["expires_at"]
+
     return {
         "_token": token,  # used internally to set the cookie — not returned to client
         "user": {
@@ -453,15 +465,15 @@ def _build_auth_response(user: User, db=None) -> dict:
             "phone": user.phone,
             "email": user.email,
             "role": user.role,
-            "plan": user.subscription_plan,
+            "plan": plan,
             "business_category": user.business_category,
             "business_type": user.business_type,
             "business_type_label": user.business_type_label,
             "menu_group": menu_group_for_user(user),
             "whatsapp_linked": bool(user.whatsapp_linked),
             "newsletter_consent": bool(user.newsletter_consent),
-            "subscription_plan": user.subscription_plan,
-            "subscription_expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
+            "subscription_plan": plan,
+            "subscription_expires_at": expires_at.isoformat() if expires_at else None,
             "session_expires_at": session_expires_at,
         },
     }

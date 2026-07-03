@@ -228,6 +228,8 @@ class PosCartItem(BaseModel):
 class PosSaveRequest(BaseModel):
     owner_phone: str = Field(max_length=20)
     customer_id: Optional[int] = None
+    customer_name: Optional[str] = Field(default=None, max_length=120)   # inline new/unlisted customer
+    customer_phone: Optional[str] = Field(default=None, max_length=20)   # optional, not required
     items: list[PosCartItem] = Field(max_length=200)  # max 200 line items per sale
     payment_amount: int = 0
     branch_id: Optional[int] = None
@@ -760,16 +762,11 @@ def register_web_routes(app):
                 from fastapi import HTTPException
                 raise HTTPException(status_code=401, detail="User not found.")
 
-            # Enforce expiry: downgrade to BASIC if subscription has lapsed
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
-            if (
-                user.subscription_plan not in (None, "BASIC")
-                and user.subscription_expires_at
-                and user.subscription_expires_at < now
-            ):
-                user.subscription_plan = "BASIC"
-                user.subscription_status = "EXPIRED"
-                db.commit()
+            # Resolve the plan from the business owner (follows parent_id) and
+            # apply expiry — the same source of truth as the WhatsApp side and
+            # /subscription/status. This keeps web feature-gating in sync with
+            # upgrades made on WhatsApp, and lets staff inherit the owner's plan.
+            sub = get_business_subscription(db, user)
 
             from business_templates import menu_group_for_user
             return {
@@ -778,9 +775,9 @@ def register_web_routes(app):
                 "phone": user.phone,
                 "email": user.email,
                 "role": user.role,
-                "plan": user.subscription_plan,
-                "subscription_plan": user.subscription_plan,
-                "subscription_expires_at": user.subscription_expires_at.isoformat() if user.subscription_expires_at else None,
+                "plan": sub["plan"],
+                "subscription_plan": sub["plan"],
+                "subscription_expires_at": sub["expires_at"].isoformat() if sub["expires_at"] else None,
                 "business_category": user.business_category,
                 "business_type": user.business_type,
                 "business_type_label": user.business_type_label,
@@ -1171,6 +1168,8 @@ def register_web_routes(app):
                 payload.payment_amount,
                 branch_id=payload.branch_id,
                 due_date=payload.due_date,
+                customer_name=payload.customer_name,
+                customer_phone=payload.customer_phone,
             )
             return result
         except HTTPException:
@@ -2879,6 +2878,47 @@ def register_web_routes(app):
                 "bank_details": get_payment_account_message(),
                 "reference": user.phone,
             }
+        finally:
+            db.close()
+
+    @app.post("/app/api/subscription/confirm-payment")
+    def web_subscription_confirm_payment(
+        payload: SubscriptionRequestBody,
+        session: dict = Depends(require_web_auth),
+    ):
+        """User reports they've completed the bank transfer — alert admins
+        (WhatsApp + email). This is the web equivalent of replying PAID on
+        WhatsApp; it does NOT activate the plan (an admin still approves)."""
+        from subscriptions import (
+            create_subscription_payment_request,
+            get_pending_subscription_payment,
+            get_business_owner_user,
+        )
+        from admin_commands import notify_subscription_admins
+        from whatsapp_client import send_whatsapp_message
+        from plans import normalize_plan, PLAN_BASIC
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found.")
+
+            payment = get_pending_subscription_payment(db, user)
+            if not payment:
+                # Modal reopened / request expired — recreate so admins are still alerted
+                plan = normalize_plan(payload.plan)
+                if plan == PLAN_BASIC:
+                    raise HTTPException(status_code=400, detail="Invalid plan.")
+                payment = create_subscription_payment_request(db, user, plan)
+                payment.payment_method = "BANK_TRANSFER"
+                db.commit()
+
+            owner = get_business_owner_user(db, user)
+            try:
+                notify_subscription_admins(db, payment, owner, send_whatsapp_message, evidence_received=False)
+            except Exception:
+                import traceback; traceback.print_exc()
+            return {"ok": True}
         finally:
             db.close()
 

@@ -4,7 +4,8 @@ import uuid
 from models import Customer, InventoryItem, InventoryMovement, Transaction, TransactionItem, User, utcnow
 
 
-def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, branch_id=None, due_date=None):
+def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
+                  branch_id=None, due_date=None, customer_name=None, customer_phone=None):
     """
     Save a POS sale and deduct inventory.
 
@@ -14,8 +15,35 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount, 
     - Customer + partial payment → BUY (total) + PAY (paid amount)
     - Customer + zero payment → BUY (full debt)
 
+    A customer not yet on the list can be added inline: pass `customer_name`
+    (and optionally `customer_phone`) with no `customer_id`. An existing
+    customer with that name is reused; otherwise a new one is created. This
+    lets part payments be recorded for walk-ins who aren't on the list yet.
+
     Returns receipt dict.
     """
+    # Resolve an inline (unlisted) customer by name when no id was selected.
+    if not customer_id and customer_name and customer_name.strip():
+        cname = customer_name.strip()
+        cphone = (customer_phone or "").strip() or None
+        existing = db.query(Customer).filter(
+            Customer.owner_phone == owner_phone,
+            Customer.name == cname,
+        ).first()
+        if existing:
+            customer_id = existing.id
+            if cphone and not existing.customer_phone:
+                existing.customer_phone = cphone
+        else:
+            new_customer = Customer(
+                owner_phone=owner_phone,
+                name=cname,
+                customer_phone=cphone,
+            )
+            db.add(new_customer)
+            db.flush()
+            customer_id = new_customer.id
+
     total = sum(float(it.get("qty", 1)) * int(it.get("unit_price", 0)) for it in items)
     paid = min(int(payment_amount or 0), total)
 

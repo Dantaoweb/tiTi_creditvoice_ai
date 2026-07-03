@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { apiPost, apiFetch } from "../lib/api";
 
 const AuthContext = createContext(null);
@@ -62,6 +62,14 @@ export function AuthProvider({ children }) {
       _persist({ ...user, ...data });
     } catch { /* silent — stale data is fine */ }
   }
+
+  // On app load, refresh from the server so plan changes made elsewhere
+  // (WhatsApp upgrade, admin / bank-transfer approval) are reflected without
+  // requiring a manual logout/login.
+  useEffect(() => {
+    if (user && !_isSessionExpired(user)) refreshUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isAuthed = !!user && !_isSessionExpired(user);
 

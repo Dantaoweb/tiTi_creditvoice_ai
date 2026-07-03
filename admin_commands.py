@@ -29,23 +29,43 @@ from subscriptions import (
 )
 
 
+def _email_subscription_admins(payment, owner_name, body_text):
+    """Email the pending-payment alert to configured admin emails (best effort)."""
+    from admin import subscription_admin_emails
+    from email_service import send_email
+
+    emails = subscription_admin_emails()
+    if not emails:
+        return
+
+    subject = f"[CreditVoice] Payment pending — {owner_name} ({payment.plan})"
+    safe = (
+        body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    )
+    html = f"<pre style=\"font-family:inherit;font-size:14px\">{safe}</pre>"
+    for addr in emails:
+        try:
+            send_email(addr, subject, html, body_text)
+        except Exception:
+            pass
+
+
 def notify_subscription_admins(db, payment, owner, send_message, evidence_received=False):
     admin_phones = []
     for admin_phone in subscription_admin_phones() + app_admin_phones():
         if admin_phone and admin_phone not in admin_phones:
             admin_phones.append(admin_phone)
 
-    if not admin_phones:
-        return
-
     owner_name = owner.name.title() if owner and owner.name else payment.phone
     evidence_line = "Evidence received: yes" if evidence_received else "Evidence received: no"
+    method = (getattr(payment, "payment_method", None) or "BANK_TRANSFER").replace("_", " ").title()
     message = (
         "Subscription Payment Pending\n\n"
         f"Business: {owner_name}\n"
         f"Phone: {payment.phone}\n"
         f"Plan: {payment.plan}\n"
         f"Amount: N{payment.amount:,}\n"
+        f"Method: {method}\n"
         f"{evidence_line}\n\n"
         f"Approve: approve {payment.phone}\n"
         f"Reject: reject {payment.phone}"
@@ -53,6 +73,9 @@ def notify_subscription_admins(db, payment, owner, send_message, evidence_receiv
 
     for admin_phone in admin_phones:
         send_message(admin_phone, message)
+
+    # Also email admins (no-op when SUBSCRIPTION_ADMIN_EMAILS / SMTP is unset)
+    _email_subscription_admins(payment, owner_name, message)
 
 
 def handle_admin_subscription_command(db, phone, parsed, user, send_message, notify_admins):

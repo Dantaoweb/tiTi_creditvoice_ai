@@ -66,6 +66,18 @@ def app_admin_phones():
     return phone_list_from_env("APP_ADMIN_PHONES")
 
 
+def email_list_from_env(name):
+    return [
+        value.strip()
+        for value in os.getenv(name, "").split(",")
+        if value.strip()
+    ]
+
+
+def subscription_admin_emails():
+    return email_list_from_env("SUBSCRIPTION_ADMIN_EMAILS")
+
+
 def get_admin_role_override(db, phone, role):
     return db.query(AppAdminRole).filter(
         AppAdminRole.phone == normalize_phone(phone),
