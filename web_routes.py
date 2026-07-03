@@ -1202,6 +1202,36 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/pos/receipts")
+    def web_pos_receipts(session: dict = Depends(require_web_auth)):
+        """List past receipts (SALE / credit BUY) for this business, newest first."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            q = get_owner_transaction_query(db, owner_phone, None, include_voided=False)
+            rows = q.filter(Transaction.type.in_(["SALE", "BUY"])).order_by(
+                Transaction.created_at.desc()
+            ).limit(100).all()
+            cust_ids = [r.customer_id for r in rows if r.customer_id]
+            customers = {}
+            if cust_ids:
+                customers = {c.id: c for c in db.query(Customer).filter(Customer.id.in_(cust_ids)).all()}
+            return {
+                "receipts": [
+                    {
+                        "id": r.id,
+                        "created_at": _iso(r.created_at),
+                        "customer": customers[r.customer_id].name if customers.get(r.customer_id) else None,
+                        "total": _money(r.amount),
+                        "type": r.type,
+                        "due_date": _iso(r.due_date),
+                    }
+                    for r in rows
+                ]
+            }
+        finally:
+            db.close()
+
     @app.get("/app/api/pos/receipt/{tx_id}")
     def web_pos_receipt(tx_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()

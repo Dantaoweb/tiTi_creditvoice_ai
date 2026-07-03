@@ -21,6 +21,7 @@ import Branches     from "./pages/Branches";
 import Capture      from "./pages/Capture";
 import POS          from "./pages/POS";
 import Receipt      from "./pages/Receipt";
+import Receipts     from "./pages/Receipts";
 import Wallet       from "./pages/Wallet";
 import Thrift        from "./pages/Thrift";
 import Opportunities from "./pages/Opportunities";
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="capture"      element={<Capture />}      />
           <Route path="pos"          element={<POS />}          />
           <Route path="pos/receipt/:id" element={<Receipt />}   />
+          <Route path="receipts"     element={<Receipts />}     />
           <Route path="customers"    element={<Customers />}    />
           <Route path="transactions" element={<Transactions />} />
           <Route path="inventory"    element={<Inventory />}    />

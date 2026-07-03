@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
-  Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle,
+  Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -27,6 +27,7 @@ function buildNav(L, group) {
     { to: "/thrift",       label: "Thrift / Ajo",     icon: Activity,        tab: isThrift },
     { to: "/reminders",    label: L.reminders,        icon: Bell            },
     { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
+    { to: "/receipts",     label: "Receipts",         icon: Receipt },
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
@@ -58,6 +59,7 @@ export default function Layout() {
     "/home":         "Chat with tiTi",
     "/capture":      "Quick Record",
     "/pos":          "Select product",
+    "/receipts":     "Receipts",
     "/inventory":    L.stock,
     "/customers":    L.navCustomers,
     "/reminders":    L.reminders,

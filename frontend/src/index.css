@@ -1543,6 +1543,9 @@ tr.low-stock td { background: #fffbeb; }
 
 @media print {
   .no-print { display: none !important; }
+  /* Hide the app chrome so only the receipt prints (no CreditVoice header/nav) */
+  .topbar, .sidebar, .sidebar-overlay, .bottom-tab-bar,
+  .titi-fab, .titi-panel, .titi-overlay { display: none !important; }
   .receipt-paper { box-shadow: none; border: none; padding: 0; }
   body { background: #fff; }
   .titi-fab, .titi-panel, .titi-overlay { display: none !important; }

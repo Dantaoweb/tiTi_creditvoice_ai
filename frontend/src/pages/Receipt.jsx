@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Printer, ArrowLeft } from "lucide-react";
 import { apiFetch } from "../lib/api";
-import { nairaFull, dateTimeStr } from "../lib/format";
+import { nairaFull, dateTimeStr, fmtAmt } from "../lib/format";
 
 export default function Receipt() {
   const { id } = useParams();
@@ -65,8 +65,8 @@ export default function Receipt() {
             <tr>
               <th>Item</th>
               <th className="receipt-right">Qty</th>
-              <th className="receipt-right">Price</th>
-              <th className="receipt-right">Total</th>
+              <th className="receipt-right">Price (₦)</th>
+              <th className="receipt-right">Total (₦)</th>
             </tr>
           </thead>
           <tbody>
@@ -74,8 +74,8 @@ export default function Receipt() {
               <tr key={i}>
                 <td>{it.product}{it.unit ? ` (${it.unit})` : ""}</td>
                 <td className="receipt-right">{it.qty}</td>
-                <td className="receipt-right">{nairaFull(it.unit_price)}</td>
-                <td className="receipt-right">{nairaFull(it.total)}</td>
+                <td className="receipt-right">{fmtAmt(it.unit_price)}</td>
+                <td className="receipt-right">{fmtAmt(it.total)}</td>
               </tr>
             ))}
           </tbody>
