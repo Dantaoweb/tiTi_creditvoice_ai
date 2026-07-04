@@ -45,6 +45,7 @@ INVENTORY & STOCK:
 - Cost price tracks your margin. Selling below cost triggers a warning.
 - Retail breakdown (e.g. selling eggs from a crate) helps POS track piece-by-piece sales.
 - Supplier tracks who you bought from and what you owe them.
+- Fast setup (web app): Inventory → Catalog picks products/services from a ready-made list matched to your business type (service businesses see a price list with suggested prices; shops see the right products, e.g. a phone shop sees chargers/cases). Bulk add adds many names at once. Then set prices in the Inventory table.
 
 THRIFT / AJO / ESUSU:
 - All businesses can track group thrift contributions: "Amina contributed 5000"

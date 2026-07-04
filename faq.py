@@ -54,6 +54,14 @@ def detect_faq(text):
     ]):
         return "delivery_date"
 
+    # ── Catalog / price list (fast product/service setup) ────────────────────
+    if any(k in q for k in [
+        "catalog", "catalogue", "product catalog", "price list", "pricelist",
+        "add my products", "add products fast", "bulk add", "add many products",
+        "ready made list", "suggested price", "add services fast", "service list",
+    ]):
+        return "catalog"
+
     # ── Overdue / unpaid debtors ──────────────────────────────────────────────
     if any(k in q for k in [
         "overdue", "who owes me", "who owe me", "who are owing me",
@@ -458,6 +466,17 @@ def detect_faq(text):
 # ── Answers ───────────────────────────────────────────────────────────────────
 
 FAQ_ANSWERS = {
+    "catalog": (
+        "To add your products/services fast from the ready-made list:\n\n"
+        "Open the web app → *Inventory* (Stock) → tap *Catalog*.\n\n"
+        "tiTi shows items matched to your business type:\n"
+        "• Shops → products by category (phone shop sees chargers/cases, not garri, etc.)\n"
+        "• Services (laundry, barber, mechanic…) → a *price list* with suggested prices\n\n"
+        "Tick what you sell and tap *Add*. For services the suggested price is added for you; "
+        "for products you set the price after in the Inventory table.\n\n"
+        "To add many names at once, tap *Bulk add*. On WhatsApp, add one at a time:\n"
+        "add stock rice cost 3000 sell 4000"
+    ),
     "customer_profile": (
         "To save a customer's measurements/details:\n\n"
         "Open the web app → *Customers* → tap the pencil (Details) button next to the customer.\n\n"
