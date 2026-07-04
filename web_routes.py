@@ -1540,6 +1540,79 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    # ── Deliveries (jobs/orders with a promised ready date) ───────────────
+    @app.get("/app/api/deliveries")
+    def web_deliveries(session: dict = Depends(require_web_auth)):
+        from datetime import datetime as _dt, timedelta as _td
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            customers = {
+                c.id: c for c in _owner_filter(db.query(Customer), Customer, owner_phone).all()
+            }
+            if not customers:
+                return {"deliveries": []}
+            cutoff = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0) - _td(days=14)
+            rows = db.query(Transaction).filter(
+                Transaction.customer_id.in_(list(customers.keys())),
+                Transaction.service_date.isnot(None),
+                Transaction.is_voided.isnot(True),
+                Transaction.service_date >= cutoff,
+            ).order_by(Transaction.service_date.asc()).limit(100).all()
+            return {
+                "deliveries": [
+                    {
+                        "id": tx.id,
+                        "service_date": _iso(tx.service_date),
+                        "customer": customers[tx.customer_id].name if customers.get(tx.customer_id) else None,
+                        "customer_phone": customers[tx.customer_id].customer_phone if customers.get(tx.customer_id) else None,
+                        "product": tx.product,
+                        "created_at": _iso(tx.created_at),
+                    }
+                    for tx in rows
+                ]
+            }
+        finally:
+            db.close()
+
+    class DeliveryNotifyRequest(BaseModel):
+        message: str = Field(max_length=1000)
+
+    @app.post("/app/api/deliveries/{tx_id}/notify")
+    def web_notify_delivery(
+        tx_id: int,
+        payload: DeliveryNotifyRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Send the owner-composed message to the customer's WhatsApp."""
+        from whatsapp_client import send_whatsapp_message
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if not tx or not tx.customer_id:
+                raise HTTPException(status_code=404, detail="Delivery not found.")
+            customer = db.query(Customer).filter(
+                Customer.id == tx.customer_id,
+                Customer.owner_phone == owner_phone,
+            ).first()
+            if not customer:
+                raise HTTPException(status_code=403, detail="Not authorized.")
+            if not customer.customer_phone:
+                raise HTTPException(status_code=400, detail="This customer has no phone number saved.")
+            msg = (payload.message or "").strip()
+            if not msg:
+                raise HTTPException(status_code=400, detail="Enter a message to send.")
+            try:
+                send_whatsapp_message(customer.customer_phone, msg)
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Could not send message: {exc}")
+            return {"ok": True}
+        except HTTPException:
+            raise
+        finally:
+            db.close()
+
     # ── Transactions ──────────────────────────────────────────────────────
     @app.get("/app/api/transactions")
     def web_transactions(

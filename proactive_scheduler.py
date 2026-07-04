@@ -271,6 +271,71 @@ def _purge_old_logs(db) -> None:
         )
 
 
+# ── Delivery / ready-by reminders (owner-facing) ────────────────────────────────
+
+def _check_delivery_due(db):
+    """Remind the owner 2 days before, 1 day before, and on the day a job/order
+    is promised for delivery (Transaction.service_date). Owner-facing only —
+    the customer is messaged separately when the owner chooses."""
+    from models import Transaction, Customer, ProactiveLog, User
+
+    today = _utcnow().date()
+
+    owners = db.query(User).filter(
+        User.role == "user",
+        User.parent_id == None,
+        User.phone != None,
+    ).all()
+
+    for owner in owners:
+        customers = {
+            c.id: c for c in db.query(Customer).filter(
+                Customer.owner_phone == owner.phone
+            ).all()
+        }
+        if not customers:
+            continue
+
+        rows = db.query(Transaction).filter(
+            Transaction.customer_id.in_(list(customers.keys())),
+            Transaction.service_date != None,
+            Transaction.is_voided != True,
+        ).all()
+
+        for tx in rows:
+            if not tx.service_date:
+                continue
+            days_out = (tx.service_date.date() - today).days
+            if days_out not in (0, 1, 2):
+                continue
+            event_type = f"delivery_{tx.id}_{days_out}"
+            already = db.query(ProactiveLog).filter(
+                ProactiveLog.owner_phone == owner.phone,
+                ProactiveLog.event_type == event_type,
+            ).first()
+            if already:
+                continue
+
+            cust = customers.get(tx.customer_id)
+            cname = cust.name.title() if cust and cust.name else "A customer"
+            when = "today" if days_out == 0 else ("tomorrow" if days_out == 1 else f"in {days_out} days")
+            date_str = tx.service_date.strftime("%d %b %Y")
+            body = (
+                f"{cname}'s job/order (Receipt #{tx.id}) is due for delivery {when} ({date_str}).\n\n"
+                "Open Deliveries to update the date or message the customer."
+            )
+            try:
+                _notify(db, owner.phone, event_type, "📦 Delivery Reminder", body)
+                db.add(ProactiveLog(
+                    owner_phone=owner.phone,
+                    event_type=event_type,
+                    sent_at=_utcnow(),
+                ))
+                db.commit()
+            except Exception as e:
+                print(f"[proactive] delivery reminder error for {owner.phone}: {e}", flush=True)
+
+
 async def run_proactive_scheduler():
     from database import SessionLocal
 
@@ -284,6 +349,7 @@ async def run_proactive_scheduler():
             _check_overdue_debt(db)
             _check_inactivity(db)
             _check_reminder_automation(db)
+            _check_delivery_due(db)
             _purge_old_logs(db)
             global last_run_at
             last_run_at = datetime.now(timezone.utc)
