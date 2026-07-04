@@ -29,9 +29,10 @@ export default function Receipt() {
 
   const isCash    = receipt.type === "SALE";
   const isCredit  = receipt.type === "BUY";
+  const isPayment = receipt.type === "PAY";
   const paid      = receipt.paid ?? receipt.total;
   const owed      = receipt.balance_owed ?? 0;
-  const typeLabel = isCredit ? "Credit Sale" : "Cash Sale";
+  const typeLabel = isPayment ? "Payment" : (isCredit ? "Credit Sale" : "Cash Sale");
 
   return (
     <div className="receipt-shell">
@@ -47,7 +48,7 @@ export default function Receipt() {
       <div className="receipt-paper">
         <div className="receipt-header">
           <div className="receipt-brand">{bizName}</div>
-          <div className="receipt-sub">{title}</div>
+          <div className="receipt-sub">{isPayment ? "Payment Receipt" : title}</div>
           <div className="receipt-date">{dateTimeStr(receipt.created_at)}</div>
           <div className="receipt-ref">Receipt #{receipt.id}</div>
         </div>
@@ -60,6 +61,21 @@ export default function Receipt() {
           </div>
         )}
 
+        {isPayment ? (
+          <div style={{ margin: "16px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "1.05rem" }}>
+              <span>Amount Paid</span>
+              <span>{nairaFull(receipt.paid)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontWeight: 700, color: owed > 0 ? "#b91c1c" : "#166534" }}>
+              <span>Balance</span>
+              <span>{nairaFull(owed)}</span>
+            </div>
+            {receipt.note && receipt.note !== "Payment" && (
+              <div className="receipt-muted" style={{ marginTop: 10, fontSize: 12 }}>Note: {receipt.note}</div>
+            )}
+          </div>
+        ) : (
         <table className="receipt-table">
           <thead>
             <tr>
@@ -98,6 +114,7 @@ export default function Receipt() {
             )}
           </tfoot>
         </table>
+        )}
 
         <div className="receipt-footer">
           <div className="receipt-type-badge">{typeLabel}</div>

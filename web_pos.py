@@ -150,6 +150,32 @@ def get_pos_receipt(db, tx_id, user=None):
     customer = db.query(Customer).filter(Customer.id == tx.customer_id).first() if tx.customer_id else None
     recorder = db.query(User).filter(User.id == tx.recorded_by_id).first() if tx.recorded_by_id else None
 
+    # Payment receipt (standalone PAY transaction) — amount paid + current balance
+    if tx.type == "PAY":
+        from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG
+        from reports import get_balance
+        cfg = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
+        bname = (getattr(user, "business_name", None) or getattr(user, "name", None)) if user else None
+        bal = get_balance(db, tx.customer_id) if tx.customer_id else 0
+        return {
+            "id": tx.id,
+            "type": "PAY",
+            "total": tx.amount,
+            "paid": tx.amount,
+            "balance_owed": max(0, bal),
+            "due_date": None,
+            "service_date": None,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+            "customer": {
+                "id": customer.id, "name": customer.name, "phone": customer.customer_phone,
+            } if customer else None,
+            "recorded_by": recorder.name if recorder else None,
+            "biz_name": bname,
+            "config": cfg,
+            "items": [],
+            "note": tx.product,
+        }
+
     # Find the linked PAY transaction to get actual paid amount for credit sales
     paid_amount = tx.amount  # default: fully paid
     if tx.type == "BUY":

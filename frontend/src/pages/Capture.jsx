@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import { Mic, MicOff, Play, Send, X, CheckCircle, ShoppingCart, CreditCard, Package } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -175,6 +176,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
   const [qty, setQty]           = useState("1");
   const [unit, setUnit]         = useState("");
   const [amount, setAmount]     = useState("");
+  const [paid, setPaid]         = useState("");
   const [customer, setCustomer] = useState(null);
   const [branchId, setBranchId] = useState(null);
   const [loading, setLoading]   = useState(false);
@@ -187,28 +189,36 @@ function SaleForm({ ownerPhone, onSuccess }) {
     try {
       const qtyNum = Math.max(1, parseAmt(qty) || 1);
       const total  = parseAmt(amount);
+      const paidNum = customer ? Math.min(parseAmt(paid) || 0, total) : total;
       const body   = {
         owner_phone:    ownerPhone,
         customer_id:    customer?.id || null,
         items:          [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
-        payment_amount: customer ? 0 : total,
+        payment_amount: paidNum,
         branch_id:      branchId || null,
       };
-      await apiPost("pos/save", body);
-      onSuccess(`Sale of ${nairaFull(total)} recorded${customer ? ` — credit to ${customer.name}` : " (cash)"}.`);
-      setProduct(""); setQty("1"); setUnit(""); setAmount(""); setCustomer(null);
+      const result = await apiPost("pos/save", body);
+      const bal = total - paidNum;
+      onSuccess(
+        customer
+          ? `Sale of ${nairaFull(total)} to ${customer.name} — paid ${nairaFull(paidNum)}${bal > 0 ? `, balance ${nairaFull(bal)}` : " (fully paid)"}.`
+          : `Cash sale of ${nairaFull(total)} recorded.`,
+        result?.receipt_id ? `/pos/receipt/${result.receipt_id}` : null,
+      );
+      setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null);
     } catch (e) {
       if (isNetworkError(e)) {
-        const qtyNum = Math.max(1, parseAmt(qty) || 1);
-        const total  = parseAmt(amount);
+        const qtyNum2 = Math.max(1, parseAmt(qty) || 1);
+        const total2  = parseAmt(amount);
+        const paidNum2 = customer ? Math.min(parseAmt(paid) || 0, total2) : total2;
         enqueue("pos/save", {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
-          items: [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
-          payment_amount: customer ? 0 : total,
+          items: [{ name: product.trim(), qty: qtyNum2, unit: unit || null, unit_price: Math.round(total2 / qtyNum2) }],
+          payment_amount: paidNum2,
           branch_id: branchId || null,
-        }, `Sale ${nairaFull(total)}${customer ? ` — ${customer.name}` : " (cash)"}`);
+        }, `Sale ${nairaFull(total2)}${customer ? ` — ${customer.name}` : " (cash)"}`);
         onSuccess(`No internet — sale saved offline. Will sync automatically when you reconnect.`);
-        setProduct(""); setQty("1"); setUnit(""); setAmount(""); setCustomer(null);
+        setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null);
       } else {
         setError(e.message);
       }
@@ -243,10 +253,21 @@ function SaleForm({ ownerPhone, onSuccess }) {
         <label className="form-label">{L.customer} <span className="text-subtle">— leave blank for cash sale</span></label>
         <CustomerSearch ownerPhone={ownerPhone} placeholder={`Search ${L.customerName.toLowerCase()}…`} onSelect={setCustomer} value={customer} />
       </div>
+      {customer && (
+        <div className="form-group">
+          <label className="form-label">Amount paid (₦) <span className="text-subtle">— leave blank for full credit</span></label>
+          <MoneyInput value={paid} onChange={v => setPaid(v)} placeholder="0" />
+        </div>
+      )}
       <BranchSelector ownerPhone={ownerPhone} value={branchId} onChange={setBranchId} />
       <div className="qf-type-hint">
         {customer
-          ? `Credit sale → will increase ${customer.name}'s balance`
+          ? (() => {
+              const t = parseAmt(amount), p = Math.min(parseAmt(paid) || 0, t), b = t - p;
+              return b > 0
+                ? `${p > 0 ? "Part-paid" : "Credit"} sale → ${customer.name} will owe ${nairaFull(b)}`
+                : `Paid in full → no debt for ${customer.name}`;
+            })()
           : "Cash sale → no customer debt"}
       </div>
       {error && <div className="modal-error">{error}</div>}
@@ -272,8 +293,11 @@ function PaymentForm({ ownerPhone, onSuccess }) {
     if (!customer || !amount) return;
     setLoading(true); setError(null);
     try {
-      await apiPost(`customers/${customer.id}/pay`, { amount: parseAmt(amount), note: note || null, branch_id: branchId || null });
-      onSuccess(`Payment of ${nairaFull(parseAmt(amount))} from ${customer.name} recorded.`);
+      const result = await apiPost(`customers/${customer.id}/pay`, { amount: parseAmt(amount), note: note || null, branch_id: branchId || null });
+      onSuccess(
+        `Payment of ${nairaFull(parseAmt(amount))} from ${customer.name} recorded.`,
+        result?.id ? `/pos/receipt/${result.id}` : null,
+      );
       setCustomer(null); setAmount(""); setNote("");
     } catch (e) {
       if (isNetworkError(e)) {
@@ -399,11 +423,11 @@ const FORM_TABS = [
 
 function QuickFormPanel({ ownerPhone }) {
   const [formTab, setFormTab] = useState("sale");
-  const [success, setSuccess] = useState(null);
+  const [success, setSuccess] = useState(null);  // { msg, link }
 
-  function handleSuccess(msg) {
-    setSuccess(msg);
-    setTimeout(() => setSuccess(null), 5000);
+  function handleSuccess(msg, link = null) {
+    setSuccess({ msg, link });
+    setTimeout(() => setSuccess(null), 8000);
   }
 
   return (
@@ -428,7 +452,12 @@ function QuickFormPanel({ ownerPhone }) {
       {success && (
         <div className="qf-success">
           <CheckCircle size={15} />
-          {success}
+          <span>{success.msg}</span>
+          {success.link && (
+            <Link to={success.link} style={{ marginLeft: 8, fontWeight: 600, textDecoration: "underline" }}>
+              View receipt →
+            </Link>
+          )}
         </div>
       )}
       <div style={{ padding: "4px 20px 20px" }}>
