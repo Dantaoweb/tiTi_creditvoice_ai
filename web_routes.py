@@ -1413,6 +1413,66 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/customers/{customer_id}/profile")
+    def web_customer_profile(customer_id: int, session: dict = Depends(require_web_auth)):
+        """Return the structured profile field definitions (per business type)
+        and the customer's saved values."""
+        import json as _json
+        from business_templates import customer_profile_fields_for_user
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            customer = db.query(Customer).filter(
+                Customer.id == customer_id,
+                Customer.owner_phone == owner_phone,
+            ).first()
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found.")
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
+            fields = customer_profile_fields_for_user(owner_user)
+            try:
+                values = _json.loads(customer.profile_json) if customer.profile_json else {}
+            except (ValueError, TypeError):
+                values = {}
+            return {"customer_id": customer.id, "name": customer.name, "fields": fields, "values": values}
+        finally:
+            db.close()
+
+    class CustomerProfileRequest(BaseModel):
+        values: dict = Field(default_factory=dict)
+
+    @app.post("/app/api/customers/{customer_id}/profile")
+    def web_save_customer_profile(
+        customer_id: int,
+        payload: CustomerProfileRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Save the customer's structured profile values (validated against the
+        business-type field set; unknown keys are dropped)."""
+        import json as _json
+        from business_templates import customer_profile_fields_for_user
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            customer = db.query(Customer).filter(
+                Customer.id == customer_id,
+                Customer.owner_phone == owner_phone,
+            ).first()
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found.")
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
+            allowed = {f["key"] for f in customer_profile_fields_for_user(owner_user)}
+            clean = {
+                k: str(v).strip()
+                for k, v in (payload.values or {}).items()
+                if k in allowed and str(v).strip()
+            }
+            customer.profile_json = _json.dumps(clean) if clean else None
+            db.commit()
+            return {"customer_id": customer.id, "values": clean}
+        finally:
+            db.close()
+
     @app.put("/app/api/transactions/{tx_id}/due-date")
     def web_set_transaction_due_date(
         tx_id: int,

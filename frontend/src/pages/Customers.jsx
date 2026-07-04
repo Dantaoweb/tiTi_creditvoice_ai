@@ -123,6 +123,76 @@ function PaymentModal({ customer, onClose, onSaved }) {
   );
 }
 
+// ── Customer profile / measurements modal ────────────────────────────────────
+const _LONG_KEYS = new Set(["notes", "style_notes", "fault"]);
+
+function ProfileModal({ customer, onClose }) {
+  const [fields, setFields] = useState([]);
+  const [values, setValues] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    apiFetch(`customers/${customer.id}/profile`)
+      .then(d => { setFields(d.fields || []); setValues(d.values || {}); })
+      .catch(e => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, [customer.id]);
+
+  function set(k, v) { setValues(prev => ({ ...prev, [k]: v })); setSaved(false); }
+
+  async function save() {
+    setSaving(true); setErr("");
+    try {
+      await apiPost(`customers/${customer.id}/profile`, { values });
+      setSaved(true);
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal title={`Details — ${customer.name}`} onClose={onClose}>
+      <div className="modal-body" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+        {loading ? (
+          <div className="td-muted">Loading…</div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {fields.map(f => {
+              const long = _LONG_KEYS.has(f.key);
+              return (
+                <div className="form-group" key={f.key}
+                  style={{ flex: long ? "1 1 100%" : "1 1 45%", minWidth: 0 }}>
+                  <label className="form-label">{f.label}</label>
+                  {long ? (
+                    <textarea rows={2} value={values[f.key] || ""}
+                      onChange={e => set(f.key, e.target.value)} />
+                  ) : (
+                    <input
+                      inputMode={f.type === "number" ? "decimal" : "text"}
+                      value={values[f.key] || ""}
+                      onChange={e => set(f.key, e.target.value)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {err && <div className="modal-error">{err}</div>}
+        {saved && <div style={{ color: "var(--brand)", fontSize: 13, marginTop: 8 }}>✓ Saved</div>}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>Close</button>
+        <button className="btn btn-primary" onClick={save} disabled={saving || loading}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── History modal ────────────────────────────────────────────────────────────
 function DueDateCell({ tx, onUpdated }) {
   const [editing, setEditing] = useState(false);
@@ -609,6 +679,7 @@ export default function Customers() {
   const [showAdd, setShowAdd] = useState(false);
   const [payCustomer, setPayCustomer] = useState(null);
   const [histCustomer, setHistCustomer] = useState(null);
+  const [profileCustomer, setProfileCustomer] = useState(null);
 
   function load() {
     setLoading(true);
@@ -711,6 +782,13 @@ export default function Customers() {
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
                       className="btn btn-ghost btn-xs"
+                      title="Details / measurements"
+                      onClick={() => setProfileCustomer(r)}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-xs"
                       title="View history"
                       onClick={() => setHistCustomer(r)}
                     >
@@ -763,6 +841,13 @@ export default function Customers() {
         <HistoryModal
           customer={histCustomer}
           onClose={() => setHistCustomer(null)}
+        />
+      )}
+
+      {profileCustomer && (
+        <ProfileModal
+          customer={profileCustomer}
+          onClose={() => setProfileCustomer(null)}
         />
       )}
     </>

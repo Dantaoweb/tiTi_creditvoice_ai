@@ -3520,6 +3520,59 @@ def has_service_price_catalog(user):
     return btype in SERVICE_CATALOG_KEYS
 
 
+# ── Structured customer profile fields, per business type ─────────────────────
+# Stored on Customer.profile_json as {field_key: value}. Types with no entry get
+# a single generic "Notes" field so any business can jot info against a customer.
+CUSTOMER_PROFILE_FIELDS = {
+    "tailor": [
+        {"key": "gender",         "label": "Gender",           "type": "text"},
+        {"key": "neck",           "label": "Neck",             "type": "number"},
+        {"key": "shoulder",       "label": "Shoulder",         "type": "number"},
+        {"key": "chest",          "label": "Chest / Bust",     "type": "number"},
+        {"key": "waist",          "label": "Waist",            "type": "number"},
+        {"key": "hip",            "label": "Hip",              "type": "number"},
+        {"key": "top_length",     "label": "Top length",       "type": "number"},
+        {"key": "sleeve_length",  "label": "Sleeve length",    "type": "number"},
+        {"key": "round_sleeve",   "label": "Round sleeve",     "type": "number"},
+        {"key": "trouser_length", "label": "Trouser length",   "type": "number"},
+        {"key": "thigh",          "label": "Thigh",            "type": "number"},
+        {"key": "ankle",          "label": "Ankle / Base",     "type": "number"},
+        {"key": "style_notes",    "label": "Style notes",      "type": "text"},
+    ],
+    "mechanic": [
+        {"key": "vehicle_make",  "label": "Vehicle make",       "type": "text"},
+        {"key": "model",         "label": "Model",              "type": "text"},
+        {"key": "year",          "label": "Year",               "type": "text"},
+        {"key": "plate_number",  "label": "Plate number",       "type": "text"},
+        {"key": "color",         "label": "Colour",             "type": "text"},
+        {"key": "engine_no",     "label": "Engine / Chassis no", "type": "text"},
+        {"key": "notes",         "label": "Notes",              "type": "text"},
+    ],
+    "phone_repair": [
+        {"key": "device",  "label": "Device / Brand",       "type": "text"},
+        {"key": "model",   "label": "Model",                "type": "text"},
+        {"key": "imei",    "label": "IMEI / Serial",        "type": "text"},
+        {"key": "color",   "label": "Colour",               "type": "text"},
+        {"key": "fault",   "label": "Reported fault",       "type": "text"},
+        {"key": "unlock",  "label": "Unlock code / pattern", "type": "text"},
+        {"key": "notes",   "label": "Notes",                "type": "text"},
+    ],
+}
+
+_GENERIC_PROFILE_FIELDS = [{"key": "notes", "label": "Notes", "type": "text"}]
+
+
+def customer_profile_fields_for_user(user):
+    """Return the structured profile field definitions for the user's business
+    type, or a single generic Notes field when the type has no specific set."""
+    key = template_key_for_user(user)
+    fields = CUSTOMER_PROFILE_FIELDS.get(key)
+    if fields is None:
+        btype = getattr(user, "business_type", None)
+        fields = CUSTOMER_PROFILE_FIELDS.get(btype)
+    return fields if fields is not None else _GENERIC_PROFILE_FIELDS
+
+
 _SERVICE_MENU_TEMPLATE_KEYS = frozenset({
     "laundry", "car_wash", "barber", "tailor", "mechanic",
     "artisan_services", "salon_beauty",

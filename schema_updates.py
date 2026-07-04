@@ -117,6 +117,7 @@ def ensure_schema_updates(engine):
         "category": "VARCHAR",
         "secondary_phone": "VARCHAR",
         "is_truck": f"BOOLEAN DEFAULT {boolean_false_c}",
+        "profile_json": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in customer_updates.items():

@@ -32,6 +32,10 @@ class Customer(Base):
     # True when this customer record represents a registered truck/vehicle
     is_truck = Column(Boolean, nullable=True, default=False)
 
+    # Structured per-business-type profile (JSON): tailor measurements,
+    # mechanic vehicle details, phone-repair device info, or a generic note.
+    profile_json = Column(String, nullable=True)
+
     created_at = Column(
         DateTime,
         default=utcnow
