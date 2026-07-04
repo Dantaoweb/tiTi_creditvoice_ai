@@ -5,7 +5,8 @@ from models import Customer, InventoryItem, InventoryMovement, Transaction, Tran
 
 
 def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
-                  branch_id=None, due_date=None, customer_name=None, customer_phone=None):
+                  branch_id=None, due_date=None, customer_name=None, customer_phone=None,
+                  service_date=None):
     """
     Save a POS sale and deduct inventory.
 
@@ -61,6 +62,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         message_id=f"web-pos-{uuid.uuid4()}",
         branch_id=branch_id,
         due_date=due_date if is_credit else None,
+        service_date=service_date,
     )
     db.add(main_tx)
     db.flush()
@@ -175,6 +177,7 @@ def get_pos_receipt(db, tx_id, user=None):
         "paid": paid_amount,
         "balance_owed": balance_owed,
         "due_date": tx.due_date.isoformat() if tx.due_date else None,
+        "service_date": tx.service_date.isoformat() if tx.service_date else None,
         "created_at": tx.created_at.isoformat() if tx.created_at else None,
         "customer": {
             "id": customer.id,

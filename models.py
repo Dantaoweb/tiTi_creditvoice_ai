@@ -166,6 +166,13 @@ class Transaction(Base):
         nullable=True
     )
 
+    # Promised delivery / collection ("ready by") date for a job or order —
+    # distinct from due_date (payment). Drives owner deliver-by reminders.
+    service_date = Column(
+        DateTime,
+        nullable=True
+    )
+
     message_id = Column(
         String,
         unique=True

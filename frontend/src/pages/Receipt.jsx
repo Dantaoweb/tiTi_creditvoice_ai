@@ -106,6 +106,11 @@ export default function Receipt() {
               Payment due: {new Date(receipt.due_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
             </div>
           )}
+          {receipt.service_date && (
+            <div className="receipt-muted" style={{ marginTop: 4 }}>
+              Deliver / ready by: {new Date(receipt.service_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+            </div>
+          )}
           {receipt.recorded_by && (
             <div className="receipt-muted">Served by: {receipt.recorded_by}</div>
           )}

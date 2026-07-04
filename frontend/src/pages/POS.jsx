@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, User, X } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, nairaInWords } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
@@ -198,7 +199,10 @@ function parseAmt(s) { return Number(String(s || "").replace(/,/g, "")); }
 
 export default function POS() {
   const { ownerPhone } = useApp();
+  const { user } = useAuth();
   const { plan, limit: planLimit } = usePlan();
+  // Delivery/ready-by date: shown by default for service businesses, available to all
+  const serviceDefault = !!user?.menu_group && user.menu_group !== "stock";
   const inventoryLim = planLimit("active_inventory_items");
   const navigate = useNavigate();
 
@@ -206,6 +210,8 @@ export default function POS() {
   const [customer, setCustomer] = useState(null);
   const [payment, setPayment] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [serviceDate, setServiceDate] = useState("");
+  const [showDelivery, setShowDelivery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const creditRef = useRef(null);
@@ -284,6 +290,7 @@ export default function POS() {
       })),
       payment_amount: paid,
       due_date: (customer && owed > 0 && dueDate) ? dueDate : null,
+      service_date: serviceDate || null,
     };
     try {
       const result = await apiPost("pos/save", payload);
@@ -292,7 +299,7 @@ export default function POS() {
       if (isNetworkError(e)) {
         const label = `POS sale — ${cart.length} item(s), ${nairaFull(paid)}`;
         enqueue("pos/save", payload, label);
-        setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setSaveErr("");
+        setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
         setSaving(false);
         navigate("/capture", {
           state: { offlineMsg: "No internet — POS sale saved offline. It will sync when you reconnect." },
@@ -488,6 +495,31 @@ export default function POS() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Delivery / ready-by date — shown by default for service businesses */}
+          {(serviceDefault || showDelivery) ? (
+            <div className="pos-summary-section">
+              <label className="pos-summary-label">
+                Deliver / ready by <span style={{ opacity: 0.55, fontWeight: 400 }}>(optional)</span>
+              </label>
+              <input
+                type="date"
+                value={serviceDate}
+                onChange={e => setServiceDate(e.target.value)}
+                min={new Date().toISOString().slice(0, 10)}
+                style={{ width: "100%", marginTop: 6 }}
+              />
+              <span className="form-hint">When the job/order will be ready — you'll be reminded before the date.</span>
+            </div>
+          ) : (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowDelivery(true)}
+              style={{ margin: "0 16px 4px", alignSelf: "flex-start" }}
+            >
+              + Add delivery / ready date
+            </button>
           )}
 
           {saveErr && <div className="pos-error">{saveErr}</div>}

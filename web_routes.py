@@ -234,6 +234,7 @@ class PosSaveRequest(BaseModel):
     payment_amount: int = 0
     branch_id: Optional[int] = None
     due_date: Optional[datetime] = None
+    service_date: Optional[datetime] = None   # promised delivery / ready-by date
 
 
 class AddInventoryRequest(BaseModel):
@@ -1192,6 +1193,7 @@ def register_web_routes(app):
                 due_date=payload.due_date,
                 customer_name=payload.customer_name,
                 customer_phone=payload.customer_phone,
+                service_date=payload.service_date,
             )
             return result
         except HTTPException:
@@ -1500,6 +1502,41 @@ def register_web_routes(app):
         except Exception as exc:
             import traceback; traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Could not update due date: {exc}")
+        finally:
+            db.close()
+
+    class SetServiceDateRequest(BaseModel):
+        service_date: Optional[str] = None
+
+    @app.put("/app/api/transactions/{tx_id}/service-date")
+    def web_set_transaction_service_date(
+        tx_id: int,
+        payload: SetServiceDateRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Edit the promised delivery / ready-by date on a sale."""
+        from datetime import datetime as _dt
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if not tx:
+                raise HTTPException(status_code=404, detail="Transaction not found.")
+            recorder = db.query(User).filter(User.id == tx.recorded_by_id).first() if tx.recorded_by_id else None
+            recorder_phone = recorder.phone if recorder else None
+            if recorder and recorder.parent_id:
+                parent = db.query(User).filter(User.id == recorder.parent_id).first()
+                recorder_phone = parent.phone if parent else recorder_phone
+            if recorder_phone != owner_phone:
+                raise HTTPException(status_code=403, detail="Not authorized.")
+            tx.service_date = _dt.fromisoformat(payload.service_date) if payload.service_date else None
+            db.commit()
+            return {"id": tx.id, "service_date": _iso(tx.service_date)}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Could not update delivery date: {exc}")
         finally:
             db.close()
 
