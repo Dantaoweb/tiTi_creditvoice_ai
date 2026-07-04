@@ -237,6 +237,11 @@ PARTIAL_SUPPORT_TYPES = {
 }
 
 INDUSTRY_EXAMPLES = {
+    "phone_accessories": [
+        "Musa bought iPhone charger 3500",
+        "I sold 2 power banks at 8000 each",
+        "Ada bought phone case and screen protector 2500",
+    ],
     "pharmacy": [
         "Mary bought paracetamol 1500",
         "I sold 2 packs amoxicillin at 2500",
