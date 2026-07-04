@@ -224,3 +224,46 @@ def get_pos_receipt(db, tx_id, user=None):
             for it in items
         ],
     }
+
+
+def format_receipt_text(receipt):
+    """Build a WhatsApp text receipt from a get_pos_receipt() dict — used to
+    send the customer their receipt after a web sale or payment."""
+    from business_templates import DEFAULT_RECEIPT_CONFIG
+    cfg = receipt.get("config") or DEFAULT_RECEIPT_CONFIG
+    is_payment = receipt.get("type") == "PAY"
+    cust = receipt.get("customer") or {}
+    total = int(receipt.get("total") or 0)
+    paid = int(receipt.get("paid") or 0)
+    bal = int(receipt.get("balance_owed") or 0)
+
+    lines = []
+    lines.append("PAYMENT RECEIPT" if is_payment else (cfg.get("title") or "RECEIPT").upper())
+    if receipt.get("biz_name"):
+        lines.append(receipt["biz_name"])
+    lines.append("--------------------")
+    if cust.get("name"):
+        lines.append(f"{cfg.get('customer_label', 'Customer')}: {cust['name'].title()}")
+        lines.append("--------------------")
+
+    if is_payment:
+        lines.append(f"Amount Paid: N{paid:,}")
+        if bal > 0:
+            lines.append(f"Balance:     N{bal:,}")
+    else:
+        for it in receipt.get("items", []):
+            lines.append(f"{(it.get('product') or '').title()}")
+            lines.append(f"  x{it.get('qty', 1)} @ N{int(it.get('unit_price', 0)):,} = N{int(it.get('total', 0)):,}")
+        lines.append("--------------------")
+        lines.append(f"{cfg.get('amount_label', 'Total')}: N{total:,}")
+        lines.append(f"Paid:  N{paid:,}")
+        if bal > 0:
+            lines.append(f"Balance: N{bal:,}")
+        if receipt.get("service_date"):
+            lines.append(f"Ready by: {receipt['service_date'][:10]}")
+
+    lines.append("--------------------")
+    lines.append(f"Ref: TXN-{receipt.get('id')}")
+    if cfg.get("footer"):
+        lines.append(cfg["footer"])
+    return "\n".join(lines)

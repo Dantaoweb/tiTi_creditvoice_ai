@@ -319,6 +319,26 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
+def _send_web_receipt(db, owner_phone, tx_id):
+    """Best-effort: send the customer their receipt on WhatsApp after a web sale
+    or payment (mirrors the WhatsApp flow). No-op if the customer has no phone."""
+    if not tx_id:
+        return
+    try:
+        from web_pos import get_pos_receipt, format_receipt_text
+        from whatsapp_client import send_whatsapp_message
+        owner_user = db.query(User).filter(User.phone == owner_phone).first()
+        receipt = get_pos_receipt(db, tx_id, user=owner_user)
+        if not receipt:
+            return
+        phone = (receipt.get("customer") or {}).get("phone")
+        if not phone:
+            return
+        send_whatsapp_message(phone, format_receipt_text(receipt))
+    except Exception:
+        import traceback; traceback.print_exc()
+
+
 def _safe_filename(name: str) -> str:
     """Strip characters that could break a Content-Disposition filename= field."""
     import re
@@ -1195,6 +1215,8 @@ def register_web_routes(app):
                 customer_phone=payload.customer_phone,
                 service_date=payload.service_date,
             )
+            # Send the customer their receipt on WhatsApp (like the WhatsApp flow)
+            _send_web_receipt(db, owner_phone, result.get("receipt_id"))
             return result
         except HTTPException:
             raise
@@ -1406,6 +1428,8 @@ def register_web_routes(app):
             db.add(tx)
             db.commit()
             new_balance = _money(get_balance(db, customer_id))
+            # Send the customer their payment receipt on WhatsApp
+            _send_web_receipt(db, owner_phone, tx.id)
             return {"id": tx.id, "amount": payload.amount, "new_balance": new_balance}
         except HTTPException:
             raise
