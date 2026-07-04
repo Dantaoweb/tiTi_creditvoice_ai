@@ -2164,6 +2164,33 @@ def industry_plan_matrix():
 # ─────────────────────────────────────────────────────────────────────────────
 
 INDUSTRY_PRODUCT_CATALOG = {
+    "phone_accessories": [
+        ("phone case", "case & protection"),
+        ("tempered glass", "case & protection"),
+        ("screen protector", "case & protection"),
+        ("phone pouch", "case & protection"),
+        ("charger", "charging"),
+        ("fast charger", "charging"),
+        ("usb cable", "charging"),
+        ("type-c cable", "charging"),
+        ("power bank", "charging"),
+        ("car charger", "charging"),
+        ("wireless charger", "charging"),
+        ("earpiece", "audio"),
+        ("earphones", "audio"),
+        ("bluetooth earbuds", "audio"),
+        ("bluetooth speaker", "audio"),
+        ("aux cable", "audio"),
+        ("headphone", "audio"),
+        ("memory card", "storage"),
+        ("otg adapter", "storage"),
+        ("phone battery", "accessory"),
+        ("sim tray ejector", "accessory"),
+        ("phone holder", "accessory"),
+        ("ring light", "accessory"),
+        ("selfie stick", "accessory"),
+        ("power adapter", "accessory"),
+    ],
     "clinic": [
         ("glove", "consumable"),
         ("syringe", "consumable"),
