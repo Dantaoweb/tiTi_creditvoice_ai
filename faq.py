@@ -37,6 +37,23 @@ def detect_faq(text):
     if any(k in q for k in ["receipt", "print receipt", "send receipt"]):
         return "receipt"
 
+    # ── Customer profile / measurements / vehicle / device details ───────────
+    if any(k in q for k in [
+        "measurement", "measurements", "write measurement", "save measurement",
+        "add measurement", "record measurement", "tailor measurement",
+        "customer profile", "customer details", "customer measurement",
+        "vehicle details", "device details", "customer note about", "save details",
+    ]):
+        return "customer_profile"
+
+    # ── Delivery / ready-by date & deliveries ────────────────────────────────
+    if any(k in q for k in [
+        "delivery date", "deliver by", "ready by", "ready date", "collection date",
+        "pickup date", "when to deliver", "deliveries", "delivery reminder",
+        "job ready", "remind me to deliver", "promise date", "when will it be ready",
+    ]):
+        return "delivery_date"
+
     # ── Overdue / unpaid debtors ──────────────────────────────────────────────
     if any(k in q for k in [
         "overdue", "who owes me", "who owe me", "who are owing me",
@@ -441,6 +458,26 @@ def detect_faq(text):
 # ── Answers ───────────────────────────────────────────────────────────────────
 
 FAQ_ANSWERS = {
+    "customer_profile": (
+        "To save a customer's measurements/details:\n\n"
+        "Open the web app → *Customers* → tap the pencil (Details) button next to the customer.\n\n"
+        "The form shows the right fields for your business:\n"
+        "• Tailor → neck, shoulder, chest, waist, hip, lengths, etc.\n"
+        "• Mechanic → vehicle make, model, plate number, colour\n"
+        "• Phone repair → device, model, IMEI, fault, unlock\n"
+        "• Others → a Notes box\n\n"
+        "Fill them in and tap *Save*. The details stay on the customer for next time.\n\n"
+        "(This is on the web app dashboard, not a WhatsApp command yet.)"
+    ),
+    "delivery_date": (
+        "To set when a job/order will be ready and be reminded:\n\n"
+        "1. Record the sale on the web app POS (*Select product*).\n"
+        "2. Set the *Deliver / ready by* date before saving.\n\n"
+        "tiTi reminds you *2 days before, 1 day before, and on the day*.\n\n"
+        "Open *Deliveries* in the app to change the date, or to send the customer a "
+        "'your order is ready' message (you type it and tap send — never automatic).\n\n"
+        "(This is on the web app dashboard.)"
+    ),
     "overdue_debtors": (
         "To see who owes you:\n\n"
         "Send: due\n"
