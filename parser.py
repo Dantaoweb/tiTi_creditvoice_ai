@@ -510,12 +510,32 @@ def extract_item_details(text):
             clean
         )
 
-    active_match = match or compact_unit_match or no_of_match
+    # No quantity given: "NAME bought PRODUCT AMOUNT" / "PRODUCT AMOUNT".
+    # Strip up to the buy/sell verb so the customer name isn't taken as product,
+    # and the paid/balance tail so only "product amount" remains. Quantity = 1.
+    no_qty_match = None
+    if not match and not compact_unit_match and not no_of_match:
+        _body = re.sub(
+            r"^.*?\b(?:bought|buy|buys|purchased|purchase|sold|sell|sells|"
+            r"supplied|supply|took|take|collected|collect|got)\b\s*",
+            "", clean, count=1,
+        )
+        _body = re.sub(r"\b(?:paid|pay|settled|gave|balance)\b.*$", "", _body).strip()
+        no_qty_match = re.match(
+            r"^(?P<product>[a-z][a-z/]*(?:\s+[a-z/]+){0,3}?)\s+"
+            r"(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?\s*$",
+            _body,
+        )
+
+    active_match = match or compact_unit_match or no_of_match or no_qty_match
     if not active_match:
         return None
 
     # Parse quantity and unit price safely, supporting k/m suffixes for the price
-    quantity = parse_amount_token(active_match.group("quantity")) or 0
+    if "quantity" in active_match.groupdict() and active_match.group("quantity"):
+        quantity = parse_amount_token(active_match.group("quantity")) or 0
+    else:
+        quantity = 1
     unit = match.group("container") if match else None
     if compact_unit_match:
         unit = compact_unit_match.group("unit")
