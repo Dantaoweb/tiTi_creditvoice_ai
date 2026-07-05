@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MessageSquare, X, Send, Mic, MicOff } from "lucide-react";
+import { MessageSquare, X, Send, Mic, Square } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useApp } from "../context/AppContext";
 import { apiPost } from "../lib/api";
@@ -185,13 +185,13 @@ export default function TitiPanel() {
           } else {
             setVoiceStatus("No speech detected.");
           }
-        } catch {
-          setVoiceStatus("Transcription failed.");
+        } catch (err) {
+          setVoiceStatus(/go plan/i.test(err?.message || "") ? err.message : "Transcription failed.");
         }
       });
       recorderRef.current.start();
       setRecording(true);
-      setVoiceStatus("Recording…");
+      setVoiceStatus("🔴 Recording… tap the stop button to finish");
     } catch {
       setVoiceStatus("Microphone not available.");
     }
@@ -299,9 +299,10 @@ export default function TitiPanel() {
             className={`titi-mic-btn${recording ? " recording" : ""}`}
             onClick={recording ? stopRecording : startRecording}
             disabled={busy}
-            title={recording ? "Stop recording" : "Voice input"}
+            title={recording ? "Tap to stop recording" : "Voice input"}
+            aria-label={recording ? "Stop recording" : "Start voice input"}
           >
-            {recording ? <MicOff size={16} /> : <Mic size={16} />}
+            {recording ? <Square size={15} fill="currentColor" /> : <Mic size={16} />}
           </button>
           <button className="titi-send-btn" onClick={() => send()} disabled={busy || !input.trim()}>
             <Send size={16} />

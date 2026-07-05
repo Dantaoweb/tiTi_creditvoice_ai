@@ -571,7 +571,9 @@ function TextVoicePanel({ ownerPhone }) {
       if (data.transcript) setText(data.transcript);
       setPreview(data); setPS("ready"); setVS("Transcription done");
     } catch (err) {
-      toast(err.message, "error"); setVS("Transcription failed");
+      const isUpgrade = /go plan/i.test(err.message || "");
+      toast(err.message, isUpgrade ? "info" : "error", isUpgrade ? { persist: true } : undefined);
+      setVS(isUpgrade ? "" : "Transcription failed");
     }
   }
 

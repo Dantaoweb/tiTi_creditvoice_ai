@@ -125,8 +125,8 @@ export default function Chat() {
           } else {
             setVoiceStatus("No speech detected. Try again.");
           }
-        } catch {
-          setVoiceStatus("Transcription failed. Try typing instead.");
+        } catch (err) {
+          setVoiceStatus(/go plan/i.test(err?.message || "") ? err.message : "Transcription failed. Try typing instead.");
         }
         audioBlobRef.current = null;
       });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
@@ -8,6 +8,7 @@ import {
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
+import { apiFetch } from "../lib/api";
 import { useOfflineSync } from "../lib/useOfflineSync";
 import TitiPanel from "./TitiPanel";
 import NotificationBell from "./NotificationBell";
@@ -50,6 +51,11 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [titiNumber, setTitiNumber] = useState("");
+
+  useEffect(() => {
+    apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
+  }, []);
 
   const L = getBizLabels(user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
@@ -139,6 +145,23 @@ export default function Layout() {
             )
           )}
         </nav>
+
+        {titiNumber && (
+          <a
+            href={`https://wa.me/${titiNumber}?text=${encodeURIComponent("Hello")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-link"
+            style={{ margin: "6px 8px 2px", background: "rgba(37,211,102,0.14)", color: "#25D366", fontWeight: 600 }}
+            onClick={closeDrawer}
+            title="Open tiTi on WhatsApp"
+          >
+            <MessageSquare size={16} />
+            <span className="nav-label">
+              {user?.whatsapp_linked ? "Chat on WhatsApp" : "Connect WhatsApp"}
+            </span>
+          </a>
+        )}
 
         {user && (
           <div className="sidebar-user">

@@ -1713,7 +1713,15 @@ body:has(.modal-overlay) .titi-fab { display: none !important; }
   transition: background 0.15s;
 }
 .titi-mic-btn { background: var(--surface-2); color: var(--text-muted); }
-.titi-mic-btn.recording { background: var(--rose); color: #fff; }
+.titi-mic-btn.recording {
+  background: var(--rose);
+  color: #fff;
+  animation: titi-mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes titi-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.55); }
+  50%      { box-shadow: 0 0 0 7px rgba(244, 63, 94, 0); }
+}
 .titi-mic-btn:hover:not(:disabled) { background: var(--border); }
 .titi-send-btn { background: var(--brand); color: #fff; }
 .titi-send-btn:hover:not(:disabled) { background: var(--brand-mid); }
