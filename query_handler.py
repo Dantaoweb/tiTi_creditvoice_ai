@@ -65,6 +65,8 @@ _DROP_WORDS = {
     # Business nouns that trail into captured name groups
     "debt", "balance", "payment", "amount", "money", "credit",
     "due", "date", "fee", "fees", "loan", "owing",
+    # Query filler that trails into product/name groups
+    "list", "look", "up", "lookup", "price", "cost", "stock",
 }
 
 
@@ -141,13 +143,46 @@ def _recent_txs(db, customer_id: int, recorded_by_id, limit=7):
     return q.order_by(Transaction.created_at.desc()).limit(limit).all()
 
 
-def _find_product(db, owner_phone: str, name: str):
+def _find_products_multi(db, owner_phone: str, name: str):
+    """Find products by the cleaned phrase; if none, fall back to the individual
+    significant words (longest first) — so 'basket of mango' still finds 'mango'."""
     if not name or len(name) < 2:
-        return None
-    return db.query(InventoryItem).filter(
+        return []
+    items = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
         InventoryItem.name.ilike(f"%{name}%"),
-    ).first()
+    ).all()
+    if items:
+        return items
+    for w in sorted([w for w in name.split() if len(w) >= 3], key=len, reverse=True):
+        items = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            InventoryItem.name.ilike(f"%{w}%"),
+        ).all()
+        if items:
+            return items
+    return []
+
+
+def _find_product(db, owner_phone: str, name: str):
+    items = _find_products_multi(db, owner_phone, name)
+    return items[0] if items else None
+
+
+def _inventory_available(db, owner_phone: str):
+    return db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.is_available == True,
+    )
+
+
+def _customer_query(db, owner_phone: str, recorded_by_id):
+    q = db.query(Customer).filter(Customer.owner_phone == owner_phone)
+    if recorded_by_id:
+        q = q.join(Transaction, Transaction.customer_id == Customer.id).filter(
+            Transaction.recorded_by_id == recorded_by_id
+        ).distinct(Customer.id)
+    return q
 
 
 # ── Response formatters ───────────────────────────────────────────────────────
@@ -376,6 +411,8 @@ _HISTORY_PATTERNS = [
 
 # ---- Product price patterns ----
 _PRODUCT_PRICE_PATTERNS = [
+    # "look up my basket of mango price list" / "rice price list"
+    r"^(?:look\s*up|check|find|show|see|give\s+me)?\s*(?:for\s+)?(?:my\s+)?(.+?)\s+price(?:\s+list)?[?!.]*$",
     # "how much is/are rice?" (NO debt word — already screened above)
     r"^how\s+much\s+(?:is|are|does|for|of)?\s+(.+?)[?!.]*$",
     # "price of/for rice"
@@ -408,6 +445,114 @@ def _first_match(patterns, text):
     return None
 
 
+# ── Aggregate / list / meta queries (about ALL data, not one name) ────────────
+
+_STOCK_NOUN = r"(?:products?|items?|stocks?|goods?|inventory)"
+
+
+def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Optional[str]:
+    tl = text.strip().lower()
+    if len(tl) < 4:
+        return None
+
+    has_howmany = bool(re.search(r"\bhow\s+many\b", tl))
+    has_which   = bool(re.search(r"\b(which|who|list|show|see|any|all)\b", tl))
+    debt        = bool(re.search(r"\b(owe|owes|owing|owning|owed|debt|debtors?|unpaid)\b", tl))
+    not_paid    = bool(re.search(r"(has\s*n['o]?t|hasn'?t|have\s*n['o]?t|haven'?t|never|not)\s+pa(?:y|id)", tl))
+
+    # 1) Business meta (app knowledge)
+    if re.search(r"business\s+categor", tl) or (has_howmany and "categor" in tl):
+        from business_templates import BUSINESS_CATEGORIES
+        cats = ", ".join(c["label"] for c in BUSINESS_CATEGORIES)
+        return f"CreditVoice has *{len(BUSINESS_CATEGORIES)} business categories*:\n{cats}"
+    if re.search(r"business\s+(?:type|types|kind)", tl) or (has_howmany and "business" in tl and "type" in tl):
+        from business_templates import BUSINESS_CATEGORIES
+        total = sum(len(c["businesses"]) for c in BUSINESS_CATEGORIES)
+        return (f"CreditVoice supports *{total} business types* across "
+                f"{len(BUSINESS_CATEGORIES)} categories.")
+
+    # 2) Debtors — who owes / which customer owes / not paid / how many owe
+    if (debt and (has_which or has_howmany)) or (not_paid and ("customer" in tl or has_which)):
+        from reports import get_unpaid_debtors
+        debtors, total = get_unpaid_debtors(db, owner_phone, recorded_by_id)
+        if not debtors:
+            return "No customer owes you right now — everyone is settled ✓"
+        if has_howmany:
+            return f"*{len(debtors)} customer(s)* owe you a total of {_fmt(total)}."
+        ds = sorted(debtors, key=lambda d: d["balance"], reverse=True)
+        lines = [f"*{len(debtors)} customer(s)* owe you {_fmt(total)}:\n"]
+        for d in ds[:15]:
+            od = f"  ⚠️ overdue {d['overdue_days']}d" if d.get("overdue") else ""
+            lines.append(f"• {d['name'].title()} — {_fmt(d['balance'])}{od}")
+        if len(ds) > 15:
+            lines.append(f"…and {len(ds) - 15} more")
+        return "\n".join(lines)
+
+    # 3) Voided transactions count
+    if has_howmany and "void" in tl:
+        from reports import get_owner_transaction_query
+        n = get_owner_transaction_query(
+            db, owner_phone, None, recorded_by_id, include_voided=True
+        ).filter(Transaction.is_voided == True).count()
+        return f"You have *{n} voided transaction(s)*."
+
+    # 4) Product / stock counts and "how many X types"
+    if has_howmany and re.search(_STOCK_NOUN, tl):
+        m = re.search(rf"how\s+many\s+(.+?)\s+{_STOCK_NOUN}(?:\s+types?)?\b", tl)
+        term = _clean_entity(m.group(1)) if m else ""
+        if term in ("", "different", "total", "many", "my", "type", "types"):
+            term = ""
+        if term:
+            items = _find_products_multi(db, owner_phone, term)
+            if not items:
+                return f"You have no products matching '{term}'."
+            listing = "\n".join(f"• {i.name.title()}" for i in items[:10])
+            more = f"\n…and {len(items) - 10} more" if len(items) > 10 else ""
+            return f"You have *{len(items)}* product(s) matching '{term}':\n{listing}{more}"
+        n = _inventory_available(db, owner_phone).count()
+        return f"You have *{n} product(s)* in your inventory."
+
+    # 5) Customer count (plain, non-debt)
+    if has_howmany and re.search(r"\b(customers?|clients?|buyers?|people)\b", tl) and not debt:
+        n = _customer_query(db, owner_phone, recorded_by_id).count()
+        return f"You have *{n} customer(s)* on record."
+
+    # 6) Last / recent sale
+    if re.search(r"(when.*(?:last|recent).*(?:sale|sold|sell))|(last\s+sale)|"
+                 r"(when\s+did\s+i.*(?:sale|sell|sold))|(recent\s+sales?)|"
+                 r"(my\s+last\s+(?:sale|transaction))", tl):
+        from reports import get_owner_transaction_query
+        tx = get_owner_transaction_query(
+            db, owner_phone, None, recorded_by_id, include_voided=False
+        ).filter(Transaction.type.in_(["SALE", "BUY"])).order_by(
+            Transaction.created_at.desc()
+        ).first()
+        if not tx:
+            return "You have no recorded sales yet."
+        prod = f" — {tx.product}" if tx.product else ""
+        return f"Your last sale was on *{_date_str(tx.created_at)}*: {_fmt(tx.amount)}{prod}."
+
+    # 7) Low / out of stock
+    if re.search(r"(low\s+stock|running\s+low|almost\s+finish|out\s+of\s+stock|"
+                 r"finished\s+product|what.*low\s+(?:on\s+)?stock)", tl):
+        items = _inventory_available(db, owner_phone).all()
+        low = [
+            i for i in items
+            if i.quantity is not None and (
+                (i.low_stock_alert is not None and i.quantity <= i.low_stock_alert)
+                or i.quantity <= 0
+            )
+        ]
+        if not low:
+            return "No products are low on stock right now ✓"
+        lines = [f"*{len(low)} product(s)* need restocking:\n"]
+        for i in low[:15]:
+            lines.append(f"• {i.name.title()}: {i.quantity:g}{(' ' + i.unit) if i.unit else ''} left")
+        return "\n".join(lines)
+
+    return None
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def handle_natural_language_query(
@@ -425,6 +570,11 @@ def handle_natural_language_query(
     t = text.strip()
     if not t:
         return None
+
+    # ── 0. Aggregate / list / meta queries (counts, debtors, stock, sales) ─────
+    agg = _answer_aggregate(db, owner_phone, t, recorded_by_id)
+    if agg:
+        return agg
 
     # Fast-reject: if text is 1–2 words it's almost certainly a command or
     # transaction shorthand, not a conversational query.
