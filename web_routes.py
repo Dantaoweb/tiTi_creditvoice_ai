@@ -1571,29 +1571,31 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
-            customers = {
-                c.id: c for c in _owner_filter(db.query(Customer), Customer, owner_phone).all()
-            }
-            if not customers:
-                return {"deliveries": []}
             cutoff = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0) - _td(days=14)
-            rows = db.query(Transaction).filter(
-                Transaction.customer_id.in_(list(customers.keys())),
-                Transaction.service_date.isnot(None),
-                Transaction.is_voided.isnot(True),
-                Transaction.service_date >= cutoff,
-            ).order_by(Transaction.service_date.asc()).limit(100).all()
+            rows = (
+                db.query(Transaction, Customer)
+                .join(Customer, Transaction.customer_id == Customer.id)
+                .filter(
+                    Customer.owner_phone == owner_phone,
+                    Transaction.service_date.isnot(None),
+                    Transaction.is_voided.isnot(True),
+                    Transaction.service_date >= cutoff,
+                )
+                .order_by(Transaction.service_date.asc())
+                .limit(100)
+                .all()
+            )
             return {
                 "deliveries": [
                     {
                         "id": tx.id,
                         "service_date": _iso(tx.service_date),
-                        "customer": customers[tx.customer_id].name if customers.get(tx.customer_id) else None,
-                        "customer_phone": customers[tx.customer_id].customer_phone if customers.get(tx.customer_id) else None,
+                        "customer": cust.name,
+                        "customer_phone": cust.customer_phone,
                         "product": tx.product,
                         "created_at": _iso(tx.created_at),
                     }
-                    for tx in rows
+                    for tx, cust in rows
                 ]
             }
         finally:
