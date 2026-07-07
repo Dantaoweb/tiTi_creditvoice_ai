@@ -176,13 +176,23 @@ def get_pos_receipt(db, tx_id, user=None):
             "note": tx.product,
         }
 
-    # Find the linked PAY transaction to get actual paid amount for credit sales
+    # Find the linked PAY transaction to get the actual paid amount for credit
+    # sales. Sales are created two ways, each linking the payment differently:
+    #   • Web POS    → PAY tagged product "Part payment — POS #<id>"
+    #   • WhatsApp   → BUY message_id "<base>_buy", PAY message_id "<base>_pay"
     paid_amount = tx.amount  # default: fully paid
     if tx.type == "BUY":
         pay_tx = db.query(Transaction).filter(
             Transaction.product == f"Part payment — POS #{tx_id}",
             Transaction.customer_id == tx.customer_id,
         ).first()
+        if not pay_tx and tx.message_id and tx.message_id.endswith("_buy"):
+            _base = tx.message_id[:-4]
+            pay_tx = db.query(Transaction).filter(
+                Transaction.message_id == f"{_base}_pay",
+                Transaction.customer_id == tx.customer_id,
+                Transaction.type == "PAY",
+            ).first()
         paid_amount = pay_tx.amount if pay_tx else 0
 
     balance_owed = max(0, tx.amount - paid_amount) if customer else 0
