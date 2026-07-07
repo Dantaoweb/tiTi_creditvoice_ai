@@ -1,6 +1,6 @@
 import json
 
-from constants import ACTION_AWAITING_STOCK_PRICE
+from constants import ACTION_AWAITING_STOCK_PRICE, ACTION_SELECT_TX_UNIT
 from messages import apply_voice_confirmation_options
 from models import Customer, CustomerMemory, InventoryItem, ParseLog, PendingAction, Transaction
 from parser import format_invoice_items
@@ -41,6 +41,23 @@ def update_parse_log_outcome(db, phone, was_confirmed, correction_input=None):
             db.flush()
     except Exception:
         pass
+
+
+def _stock_variants(db, owner_phone, product):
+    """Inventory rows matching a product name (case-insensitive, available).
+    Two or more rows — e.g. rice sold by bag / congo / cup — mean the trader
+    should pick which one they mean before we confirm."""
+    if not product:
+        return []
+    try:
+        from sqlalchemy import func
+        return db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            func.lower(InventoryItem.name) == product.lower().strip(),
+            InventoryItem.is_available == True,
+        ).order_by(InventoryItem.unit.asc()).all()
+    except Exception:
+        return []
 
 
 def _resolve_stock_price(db, owner_phone, product, unit, quantity):
@@ -431,6 +448,45 @@ def handle_transaction_setup(
     if not transaction_allowed:
         send_message(phone, transaction_limit_msg)
         return {"status": "transaction_limit_reached"}
+
+    # If the product has several stock variants (e.g. rice by bag / congo / cup)
+    # and the trader didn't say which, ask which one. A single match is accepted
+    # as-is. The typed amount is kept regardless of the variant's price.
+    if parsed.get("product") and not parsed.get("unit") and not (parsed.get("invoice_items") or []):
+        variants = _stock_variants(db, business_owner_phone, parsed["product"])
+        if len(variants) > 1:
+            lines = "\n".join(
+                f"{i}. {v.name.title()} ({v.unit or 'unit'})"
+                + (f" - N{v.selling_price:,}" if v.selling_price else "")
+                for i, v in enumerate(variants, 1)
+            )
+            db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+            db.add(PendingAction(
+                phone=phone,
+                customer_name=customer.name,
+                last_customer=customer.name,
+                action=ACTION_SELECT_TX_UNIT,
+                buy_amount=parsed["buy_amount"],
+                paid_amount=parsed["paid_amount"],
+                product=parsed.get("product"),
+                quantity=parsed.get("quantity"),
+                unit=None,
+                unit_price=parsed.get("unit_price"),
+                items_json=json.dumps([
+                    {"unit": v.unit, "price": v.selling_price, "name": v.name}
+                    for v in variants
+                ]),
+                payload_json=json.dumps({"tx_action": parsed["action"]}),
+                source_text=voice_transcript_text,
+                due_date=parsed["due_date"],
+            ))
+            db.commit()
+            send_message(
+                phone,
+                f"Which {parsed['product'].title()}?\n\n{lines}\n\n"
+                "Reply with the number."
+            )
+            return {"status": "awaiting_unit_choice"}
 
     db.query(PendingAction).filter(PendingAction.phone == phone).delete()
     db.add(

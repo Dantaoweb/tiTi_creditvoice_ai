@@ -12,6 +12,7 @@ from constants import (
     ACTION_AWAITING_CLARIFICATION,
     ACTION_SLOT_FILL,
     ACTION_AWAITING_STOCK_PRICE,
+    ACTION_SELECT_TX_UNIT,
     ACTION_CHANGE_DUE_DATE,
     ACTION_DASHBOARD_MENU,
     ACTION_DEBTOR_MANAGE_MENU,
@@ -856,6 +857,69 @@ def handle_pending_actions(
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
         return PendingRouteResult(response={"status": "stock_price_resolved_confirm"})
+
+    # ── Pick which stock variant (rice by bag / congo / cup) ────────────────
+    if pending and pending.action == ACTION_SELECT_TX_UNIT and not is_command:
+        variants = json.loads(pending.items_json or "[]")
+        choice = text.strip()
+        if not choice.isdigit() or not (1 <= int(choice) <= len(variants)):
+            lines = "\n".join(
+                f"{i}. {(v.get('name') or pending.product or '').title()} ({v.get('unit') or 'unit'})"
+                + (f" - N{v['price']:,}" if v.get("price") else "")
+                for i, v in enumerate(variants, 1)
+            )
+            send_message(
+                phone,
+                f"Reply with a number (1-{len(variants)}):\n\n{lines}",
+            )
+            return PendingRouteResult(response={"status": "select_tx_unit_retry"})
+
+        chosen = variants[int(choice) - 1]
+        payload = json.loads(pending.payload_json or "{}")
+        tx_action = payload.get("tx_action") or "BUY"
+
+        # Keep the trader's typed amount; just attach the chosen variant.
+        pending.unit = chosen.get("unit")
+        pending.action = tx_action
+        pending.items_json = json.dumps([])
+        pending.payload_json = None
+        db.commit()
+
+        from transaction_setup import (
+            build_customer_confirm_message, build_projected_balance_line,
+            _price_deviation_alert,
+        )
+        customer = db.query(Customer).filter(
+            Customer.name == pending.customer_name,
+            Customer.owner_phone == business_owner_phone,
+        ).first()
+        if not customer:
+            customer = Customer(name=pending.customer_name, owner_phone=business_owner_phone)
+            db.add(customer)
+            db.commit()
+
+        parsed_like = {
+            "action": tx_action,
+            "name": pending.customer_name,
+            "buy_amount": pending.buy_amount,
+            "paid_amount": pending.paid_amount or 0,
+            "product": pending.product,
+            "quantity": pending.quantity,
+            "unit": pending.unit,
+            "unit_price": pending.unit_price,
+            "due_date": pending.due_date,
+            "invoice_items": [],
+        }
+        confirm_msg = build_customer_confirm_message(customer, parsed_like, user)
+        balance_line = build_projected_balance_line(
+            db, customer.id, parsed_like, visible_recorded_by_id,
+        )
+        price_alert = _price_deviation_alert(
+            db, business_owner_phone, pending.product, pending.unit_price,
+        )
+        # build_customer_confirm_message already ends with "Reply YES…"
+        send_message(phone, f"{confirm_msg}\n{balance_line}{price_alert}")
+        return PendingRouteResult(response={"status": "tx_unit_selected_confirm"})
 
     # ── Slot-fill conversation (DB-driven, no LLM) ──────────────────────────
     if pending and pending.action == ACTION_SLOT_FILL and not is_command:

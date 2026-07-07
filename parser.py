@@ -486,6 +486,10 @@ def extract_item_details(text):
 
     clean = _normalize_text_for_parsing(text)
 
+    # The paid/balance tail is never part of an item — drop it so a bare product
+    # like "bought rice 3000 paid 1000" isn't misread ("paid" taken as product).
+    clean = re.sub(r"\b(?:paid|pay|balance|settled)\b.*$", "", clean).strip()
+
     _qty_pat = r"\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?"
     match = re.search(
         r"(?P<quantity>" + _qty_pat + r")\s*"
