@@ -32,6 +32,15 @@ def _ensure_schema_versions_table(engine) -> None:
         """))
 
 
+def _migration_applied(engine, name: str) -> bool:
+    """True if a named one-time migration has already been recorded."""
+    with engine.begin() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM schema_versions WHERE migration = :m"), {"m": name}
+        ).first()
+    return bool(row)
+
+
 def _mark_migration(engine, name: str) -> None:
     """Record that a named migration has been applied (idempotent)."""
     with engine.begin() as conn:
@@ -118,6 +127,8 @@ def ensure_schema_updates(engine):
         "secondary_phone": "VARCHAR",
         "is_truck": f"BOOLEAN DEFAULT {boolean_false_c}",
         "profile_json": "VARCHAR",
+        "balance": "INTEGER DEFAULT 0",
+        "last_transaction_at": "TIMESTAMP",
     }
     with engine.begin() as connection:
         for column_name, column_type in customer_updates.items():
@@ -280,6 +291,36 @@ def ensure_schema_updates(engine):
                 )
         except Exception as exc:
             print(f"[schema] index {idx_name} skipped: {exc}", flush=True)
+
+    # ── One-time backfill of denormalized customer balance ───────────────────
+    # Populates customers.balance (BUY − PAY, voided excluded) and
+    # customers.last_transaction_at from history. From then on the Transaction
+    # event listeners in models.py keep both columns current, and the
+    # proactive scheduler reconciles any drift.
+    _BALANCE_BACKFILL = "customer_balance_backfill_2026_07"
+    if not _migration_applied(engine, _BALANCE_BACKFILL):
+        not_voided = (
+            "NOT COALESCE(t.is_voided, FALSE)"
+            if engine.dialect.name == "postgresql"
+            else "COALESCE(t.is_voided, 0) = 0"
+        )
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                UPDATE customers SET
+                    balance = COALESCE((
+                        SELECT SUM(CASE WHEN t.type = 'BUY' THEN t.amount
+                                        WHEN t.type = 'PAY' THEN -t.amount
+                                        ELSE 0 END)
+                        FROM transactions t
+                        WHERE t.customer_id = customers.id AND {not_voided}
+                    ), 0),
+                    last_transaction_at = (
+                        SELECT MAX(t.created_at) FROM transactions t
+                        WHERE t.customer_id = customers.id
+                    )
+            """))
+        _mark_migration(engine, _BALANCE_BACKFILL)
+        print("[schema] customer balance backfill applied", flush=True)
 
     # ── Training data capture ────────────────────────────────────────────────
     existing_tables = inspector.get_table_names()

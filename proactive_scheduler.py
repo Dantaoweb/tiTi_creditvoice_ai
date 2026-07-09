@@ -328,6 +328,50 @@ def _check_delivery_due(db):
             print(f"[proactive] delivery reminder error for {owner_phone}: {e}", flush=True)
 
 
+# ── Balance reconciliation ──────────────────────────────────────────────────────
+
+def _reconcile_balances(db):
+    """Safety net for the denormalized Customer.balance: recompute the true
+    BUY − PAY sum per customer in one grouped query and repair any drift
+    (including NULLs on rows that predate the backfill). The Transaction event
+    listeners in models.py keep the column correct in normal operation, so a
+    non-zero repair count indicates a bug worth investigating — hence the log."""
+    from sqlalchemy import case, func
+    from models import Customer, Transaction
+
+    sums = dict(
+        db.query(
+            Transaction.customer_id,
+            func.sum(
+                case(
+                    (Transaction.type == "BUY", Transaction.amount),
+                    (Transaction.type == "PAY", -Transaction.amount),
+                    else_=0,
+                )
+            ),
+        )
+        .filter(
+            Transaction.customer_id.isnot(None),
+            Transaction.is_voided.isnot(True),
+        )
+        .group_by(Transaction.customer_id)
+        .all()
+    )
+
+    fixed = 0
+    for cid, stored in db.query(Customer.id, Customer.balance).all():
+        expected = int(sums.get(cid) or 0)
+        if stored is None or int(stored) != expected:
+            db.query(Customer).filter(Customer.id == cid).update(
+                {"balance": expected}, synchronize_session=False
+            )
+            fixed += 1
+    if fixed:
+        db.commit()
+        print(f"[proactive] balance reconciliation repaired {fixed} customer(s) — "
+              "investigate if this recurs", flush=True)
+
+
 async def run_proactive_scheduler():
     from database import SessionLocal
 
@@ -342,6 +386,7 @@ async def run_proactive_scheduler():
             _check_inactivity(db)
             _check_reminder_automation(db)
             _check_delivery_due(db)
+            _reconcile_balances(db)
             _purge_old_logs(db)
             global last_run_at
             last_run_at = datetime.now(timezone.utc)

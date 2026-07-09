@@ -1335,7 +1335,8 @@ def register_web_routes(app):
 
             result = []
             for c in rows:
-                bal = _money(get_balance(db, c.id))
+                # Denormalized column — already on the row; NULL falls back to the sum
+                bal = _money(c.balance if c.balance is not None else get_balance(db, c.id))
                 next_due, has_overdue = _customer_due(c.id) if bal > 0 else (None, False)
                 result.append({
                     "id": c.id,

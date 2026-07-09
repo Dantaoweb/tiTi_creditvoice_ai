@@ -36,6 +36,15 @@ class Customer(Base):
     # mechanic vehicle details, phone-repair device info, or a generic note.
     profile_json = Column(String, nullable=True)
 
+    # Denormalized outstanding balance (BUY − PAY, voided excluded), maintained
+    # automatically by the Transaction event listeners at the bottom of this
+    # file and reconciled by the proactive scheduler. Read this instead of
+    # summing transactions when no staff-visibility filter is needed.
+    balance = Column(Integer, nullable=True, default=0)
+
+    # When this customer last had any transaction recorded (denormalized).
+    last_transaction_at = Column(DateTime, nullable=True)
+
     created_at = Column(
         DateTime,
         default=utcnow
@@ -1168,3 +1177,86 @@ class AuditLog(Base):
     ip         = Column(String,  nullable=True)
     created_at = Column(DateTime, default=utcnow, index=True)
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Denormalized Customer.balance maintenance
+#
+# Every code path that creates, voids, edits, or deletes a Transaction goes
+# through the ORM (verified: no bulk query(...).update()/delete() on
+# Transaction exists), so these listeners are the single authority that keeps
+# Customer.balance and Customer.last_transaction_at correct. The UPDATE runs
+# on the same connection as the flush, so it commits/rolls back atomically
+# with the transaction row itself. A periodic reconciler in
+# proactive_scheduler.py guards against any residual drift.
+# ═══════════════════════════════════════════════════════════════════════════
+
+from sqlalchemy import event, func as _sa_func, select as _sa_select
+
+
+def _tx_balance_effect(tx_type, amount, is_voided, customer_id):
+    """Signed effect of one transaction row on its customer's balance."""
+    if not customer_id or is_voided:
+        return 0
+    if tx_type == "BUY":
+        return int(amount or 0)
+    if tx_type == "PAY":
+        return -int(amount or 0)
+    return 0
+
+
+def _apply_customer_delta(connection, customer_id, delta, touch_last_tx=False):
+    if not customer_id or (not delta and not touch_last_tx):
+        return
+    tbl = Customer.__table__
+    values = {}
+    if delta:
+        values["balance"] = _sa_func.coalesce(tbl.c.balance, 0) + delta
+    if touch_last_tx:
+        values["last_transaction_at"] = utcnow()
+    connection.execute(tbl.update().where(tbl.c.id == customer_id).values(**values))
+
+
+@event.listens_for(Transaction, "after_insert")
+def _tx_after_insert(mapper, connection, target):
+    if not target.customer_id:
+        return
+    delta = _tx_balance_effect(target.type, target.amount, target.is_voided, target.customer_id)
+    _apply_customer_delta(connection, target.customer_id, delta, touch_last_tx=True)
+
+
+def _tx_db_row(connection, tx_id):
+    """The row as it currently stands in the DB — i.e. the pre-update /
+    pre-delete values. Reading from the connection (not Python attribute
+    history) sidesteps the expired-instance trap where the old value of an
+    attribute assigned after a commit() is unrecorded."""
+    tbl = Transaction.__table__
+    return connection.execute(
+        _sa_select(tbl.c.type, tbl.c.amount, tbl.c.is_voided, tbl.c.customer_id)
+        .where(tbl.c.id == tx_id)
+    ).first()
+
+
+@event.listens_for(Transaction, "before_update")
+def _tx_before_update(mapper, connection, target):
+    old = _tx_db_row(connection, target.id)
+    if old is None:
+        return
+    old_effect = _tx_balance_effect(old.type, old.amount, old.is_voided, old.customer_id)
+    new_effect = _tx_balance_effect(target.type, target.amount, target.is_voided, target.customer_id)
+
+    if old.customer_id == target.customer_id:
+        _apply_customer_delta(connection, target.customer_id, new_effect - old_effect)
+    else:
+        # Transaction moved between customers: reverse on the old, apply on the new
+        _apply_customer_delta(connection, old.customer_id, -old_effect)
+        _apply_customer_delta(connection, target.customer_id, new_effect)
+
+
+@event.listens_for(Transaction, "before_delete")
+def _tx_before_delete(mapper, connection, target):
+    old = _tx_db_row(connection, target.id)
+    if old is None:
+        return
+    delta = _tx_balance_effect(old.type, old.amount, old.is_voided, old.customer_id)
+    _apply_customer_delta(connection, old.customer_id, -delta)

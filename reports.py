@@ -62,6 +62,14 @@ def get_balance(db, customer_id, recorded_by_id=None):
 
     from sqlalchemy import func
 
+    # Fast path: the denormalized column (maintained by the Transaction event
+    # listeners in models.py). A per-staff view can't be served by it, and a
+    # NULL column (pre-backfill row) falls through to the authoritative sum.
+    if not recorded_by_id:
+        stored = db.query(Customer.balance).filter(Customer.id == customer_id).scalar()
+        if stored is not None:
+            return stored
+
     buy_query = db.query(
         func.coalesce(
             func.sum(Transaction.amount),
@@ -756,6 +764,10 @@ def get_unpaid_debtors(db, owner_phone=None, recorded_by_id=None):
         customers = customers.join(Transaction, Transaction.customer_id == Customer.id).filter(
             Transaction.recorded_by_id == recorded_by_id
         ).distinct(Customer.id)
+    else:
+        # Fast path: filter debtors in SQL via the denormalized balance instead
+        # of summing every customer's transactions one by one (was N+1).
+        customers = customers.filter(Customer.balance > 0)
     if owner_phone:
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
@@ -765,7 +777,7 @@ def get_unpaid_debtors(db, owner_phone=None, recorded_by_id=None):
     today = _utcnow().date()
 
     for customer in customers:
-        balance = get_balance(db, customer.id, recorded_by_id)
+        balance = customer.balance if not recorded_by_id else get_balance(db, customer.id, recorded_by_id)
 
         if balance > 0:
             latest_tx = db.query(Transaction).filter(
