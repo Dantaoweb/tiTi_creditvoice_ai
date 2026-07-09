@@ -377,19 +377,43 @@ def _check_inventory_limit(db, owner_phone: str, subscription) -> str | None:
     return None
 
 
+def _session_user(db, session: dict):
+    """The logged-in User, fetched at most once per request (cached on the
+    SQLAlchemy session's request-scoped `.info` dict)."""
+    cache = db.info.setdefault("_req", {})
+    if "user" not in cache:
+        cache["user"] = db.query(User).filter(User.id == session["user_id"]).first()
+    return cache["user"]
+
+
 def _session_owner_phone(db, session: dict) -> str:
     """Resolve the business owner phone from a web session.
     Staff members' sessions resolve to their owner's phone automatically.
-    Raises 401 if the user is not found.
+    Raises 401 if the user is not found. Cached per request.
     """
     from fastapi import HTTPException
-    user = db.query(User).filter(User.id == session["user_id"]).first()
+    cache = db.info.setdefault("_req", {})
+    if "owner_phone" in cache:
+        return cache["owner_phone"]
+    user = _session_user(db, session)
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
     if user.parent_id:
         owner = db.query(User).filter(User.id == user.parent_id).first()
-        return owner.phone if owner else user.phone
-    return user.phone
+        phone = owner.phone if owner else user.phone
+    else:
+        phone = user.phone
+    cache["owner_phone"] = phone
+    return phone
+
+
+def _session_subscription(db, session: dict):
+    """The business subscription, resolved at most once per request."""
+    cache = db.info.setdefault("_req", {})
+    if "sub" not in cache:
+        user = _session_user(db, session)
+        cache["sub"] = get_business_subscription(db, user) if user else None
+    return cache["sub"]
 
 
 def _pending_payload(pending):
@@ -786,7 +810,7 @@ def register_web_routes(app):
     def web_auth_me(session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == session["user_id"]).first()
+            user = _session_user(db, session)
             if not user:
                 from fastapi import HTTPException
                 raise HTTPException(status_code=401, detail="User not found.")
@@ -795,7 +819,7 @@ def register_web_routes(app):
             # apply expiry — the same source of truth as the WhatsApp side and
             # /subscription/status. This keeps web feature-gating in sync with
             # upgrades made on WhatsApp, and lets staff inherit the owner's plan.
-            sub = get_business_subscription(db, user)
+            sub = _session_subscription(db, session)
 
             from business_templates import menu_group_for_user, template_examples_for_user
             try:

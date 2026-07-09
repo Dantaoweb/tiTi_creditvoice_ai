@@ -265,6 +265,22 @@ def ensure_schema_updates(engine):
                     )
                 )
 
+    # ── Indexes for hot query paths (idempotent, both Postgres and SQLite) ───
+    # get_balance() sums BUY/PAY per customer; deliveries/reminders filter by
+    # service_date. Without these, those queries scan the transactions table.
+    _indexes = [
+        ("ix_transactions_customer_type", "transactions", "customer_id, type"),
+        ("ix_transactions_service_date",  "transactions", "service_date"),
+    ]
+    for idx_name, table, cols in _indexes:
+        try:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({cols})")
+                )
+        except Exception as exc:
+            print(f"[schema] index {idx_name} skipped: {exc}", flush=True)
+
     # ── Training data capture ────────────────────────────────────────────────
     existing_tables = inspector.get_table_names()
 
