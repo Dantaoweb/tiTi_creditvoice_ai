@@ -440,7 +440,8 @@ def web_register(db: Session, name: str, phone: str, pin: str,
 def _build_auth_response(user: User, db=None) -> dict:
     from business_templates import menu_group_for_user
     from admin import is_app_admin
-    ttl = _ADMIN_TTL if (db is not None and is_app_admin(user.phone, db)) else _TTL
+    user_is_admin = bool(db is not None and is_app_admin(user.phone, db))
+    ttl = _ADMIN_TTL if user_is_admin else _TTL
     token = create_web_token(user.id, user.phone, ttl=ttl)
     session_expires_at = datetime.fromtimestamp(
         int(time.time()) + ttl, tz=timezone.utc
@@ -472,6 +473,9 @@ def _build_auth_response(user: User, db=None) -> dict:
             "phone": user.phone,
             "email": user.email,
             "role": user.role,
+            # Admin-ness lives in APP_ADMIN_PHONES / AppAdminRole, not user.role —
+            # the frontend gates the Admin menu on this flag.
+            "is_app_admin": user_is_admin,
             "plan": plan,
             "business_category": user.business_category,
             "business_type": user.business_type,

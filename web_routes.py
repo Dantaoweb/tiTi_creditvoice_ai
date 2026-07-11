@@ -822,6 +822,7 @@ def register_web_routes(app):
             sub = _session_subscription(db, session)
 
             from business_templates import menu_group_for_user, template_examples_for_user
+            from admin import is_app_admin
             try:
                 examples = [str(e) for e in (template_examples_for_user(user) or [])][:4]
             except Exception:
@@ -832,6 +833,9 @@ def register_web_routes(app):
                 "phone": user.phone,
                 "email": user.email,
                 "role": user.role,
+                # Admin-ness lives in APP_ADMIN_PHONES / AppAdminRole, not user.role —
+                # the frontend gates the Admin menu on this flag.
+                "is_app_admin": bool(is_app_admin(user.phone, db)),
                 "plan": sub["plan"],
                 "subscription_plan": sub["plan"],
                 "subscription_expires_at": sub["expires_at"].isoformat() if sub["expires_at"] else None,
