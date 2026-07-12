@@ -165,7 +165,10 @@ def handle_parsed_command(
         return {"status": "update_business_type"}
 
     if parsed["type"] == "SELECT_PRODUCT":
-        return start_select_product(db, phone, business_owner_phone, send_whatsapp_message)
+        return start_select_product(
+            db, phone, business_owner_phone, send_whatsapp_message,
+            product_query=parsed.get("product"),
+        )
 
     if parsed["type"].startswith("CONVO_"):
         analytics_result = handle_analytics_command(

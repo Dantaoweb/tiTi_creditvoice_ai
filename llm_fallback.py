@@ -36,6 +36,9 @@ TRANSACTIONS & RECORDING:
 - Record sales: "Amina bought rice 5000" or "Tunde paid 3000"
 - Record a payment on debt: "Ade paid 2000"
 - Direct/service income (no debt): "I received 10000 for plumbing work"
+- Guided sale from the price list: send "select product" to pick from all
+  products, or "sell sugar" / "select sugar" to jump straight to one product
+  (if sugar has several variants — bag, cup — tiTi lists just those to pick).
 - Voice messages work too — speak your transaction naturally
 
 INVENTORY & STOCK:

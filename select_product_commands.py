@@ -211,7 +211,7 @@ def build_customer_receipt(
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-def start_select_product(db, phone, business_owner_phone, send_message):
+def start_select_product(db, phone, business_owner_phone, send_message, product_query=None):
     items = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == business_owner_phone,
         InventoryItem.selling_price.isnot(None),
@@ -228,6 +228,55 @@ def start_select_product(db, phone, business_owner_phone, send_message):
             "add stock paracetamol 500mg cost 150 sell 200"
         )
         return {"status": "select_product_empty"}
+
+    # "sell sugar" — scope the flow to one product and its variants. Containment
+    # (not exact) matching on purpose: with "sugar" and "sugar cube" in stock,
+    # "sell sugar" must offer both, not silently pick the exact-name row.
+    if product_query:
+        term = product_query.strip().lower()
+        matches = [i for i in items if term in i.name.lower() or i.name.lower() in term]
+        if not matches:
+            send_message(
+                phone,
+                f"No product matching '{product_query}' in your price list.\n\n"
+                "Send *select product* to see all products, or add it first:\n"
+                f"add stock {product_query} cost 500 sell 600"
+            )
+            return {"status": "select_product_no_match"}
+
+        if len(matches) == 1:
+            # Single match — skip the list, go straight to quantity
+            item = matches[0]
+            db.query(PendingAction).filter(PendingAction.phone == phone).delete()
+            pending = PendingAction(
+                phone=phone,
+                action=ACTION_SELECT_PRODUCT_QTY,
+                customer_name="",
+                last_customer="",
+                buy_amount=0,
+                paid_amount=0,
+                items_json=json.dumps([]),
+                payload_json=json.dumps({
+                    "item_ids": [i.id for i in items],   # full list for "add another"
+                    "selected_id": item.id,
+                    "selected_name": item.name,
+                    "selected_price": item.selling_price,
+                    "selected_cost_price": item.cost_price,
+                    "selected_unit": item.unit,
+                }),
+            )
+            db.add(pending)
+            db.commit()
+            unit_label = f" {item.unit}" if item.unit else ""
+            send_message(
+                phone,
+                f"Quantity for {item.name.title()}?\n"
+                f"Price: N{item.selling_price:,}{unit_label} each"
+            )
+            return {"status": "select_product_qty_asked"}
+
+        # Multiple variants — show just those
+        items = matches
 
     item_ids = [item.id for item in items]
     db.query(PendingAction).filter(PendingAction.phone == phone).delete()

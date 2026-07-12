@@ -1627,6 +1627,18 @@ def parse_message(text):
     if clean_text in SELECT_PRODUCT_COMMANDS:
         return {"type": "SELECT_PRODUCT"}
 
+    # "sell sugar" / "select sugar" / "i want to sell sugar" — jump into the
+    # select-product flow scoped to one product (and its variants). Only when
+    # no amount is present: "sell sugar 500" stays a normal direct sale.
+    if not re.search(r"\d", clean_text):
+        _sp_m = re.match(
+            r"^(?:i\s+(?:want|wan|wanna)\s+(?:to\s+)?)?(?:select|sell)\s+"
+            r"(?!products?$|services?$)(?P<prod>[a-z][a-z' ]{1,40})$",
+            clean_text,
+        )
+        if _sp_m:
+            return {"type": "SELECT_PRODUCT", "product": _sp_m.group("prod").strip()}
+
     if clean_text in ["formats", "format", "f"]:
         return {"type": "FORMATS"}
 
