@@ -475,18 +475,74 @@ def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Option
     if (debt and (has_which or has_howmany)) or (not_paid and ("customer" in tl or has_which)):
         from reports import get_unpaid_debtors
         debtors, total = get_unpaid_debtors(db, owner_phone, recorded_by_id)
+
+        # "has not paid anything" means zero payments — not merely owing.
+        # Drop debtors who have made at least one (non-voided) part payment.
+        if not_paid and debtors:
+            ids = [d["customer_id"] for d in debtors]
+            paid_ids = {
+                row[0] for row in db.query(Transaction.customer_id).filter(
+                    Transaction.customer_id.in_(ids),
+                    Transaction.type == "PAY",
+                    Transaction.is_voided.isnot(True),
+                ).distinct().all()
+            }
+            debtors = [d for d in debtors if d["customer_id"] not in paid_ids]
+            total = sum(d["balance"] for d in debtors)
+            if not debtors:
+                return "Every customer who owes you has made at least a part payment ✓"
+
         if not debtors:
             return "No customer owes you right now — everyone is settled ✓"
+        header = "have not paid anything" if not_paid else "owe you"
         if has_howmany:
-            return f"*{len(debtors)} customer(s)* owe you a total of {_fmt(total)}."
+            return f"*{len(debtors)} customer(s)* {header} — total {_fmt(total)}."
         ds = sorted(debtors, key=lambda d: d["balance"], reverse=True)
-        lines = [f"*{len(debtors)} customer(s)* owe you {_fmt(total)}:\n"]
+        lines = [f"*{len(debtors)} customer(s)* {header} {_fmt(total)}:\n" if not not_paid
+                 else f"*{len(debtors)} customer(s)* have not paid anything — {_fmt(total)} outstanding:\n"]
         for d in ds[:15]:
             od = f"  ⚠️ overdue {d['overdue_days']}d" if d.get("overdue") else ""
             lines.append(f"• {d['name'].title()} — {_fmt(d['balance'])}{od}")
         if len(ds) > 15:
             lines.append(f"…and {len(ds) - 15} more")
         return "\n".join(lines)
+
+    # 2b) Total outstanding — "how much am I owed", "total debt" (no name given)
+    if re.search(
+        r"how\s+much\s+(?:am\s+i\s+owed|is\s+owed\s+to\s+me|"
+        r"(?:do|are)\s+(?:customers|clients|people|they|everybody|everyone)\s+ow(?:e|ing))"
+        r"|total\s+(?:debt|outstanding|owed|money\s+owed|balance\s+owed)"
+        r"|outstanding\s+(?:debt|balance)s?\s*(?:\?|$)", tl,
+    ):
+        from reports import get_unpaid_debtors
+        debtors, total = get_unpaid_debtors(db, owner_phone, recorded_by_id)
+        if not debtors:
+            return "No customer owes you right now — everyone is settled ✓"
+        top = max(debtors, key=lambda d: d["balance"])
+        return (f"You are owed *{_fmt(total)}* by {len(debtors)} customer(s).\n"
+                f"Largest: {top['name'].title()} — {_fmt(top['balance'])}.\n"
+                f"Ask *who owes me* for the full list.")
+
+    # 2c) Sales totals by period — "how much did I sell today / this week / this month"
+    _period_m = re.search(
+        r"(?:how\s+much|what|total).*(?:sale|sales|sell|sold|made|earn(?:ed)?|income|revenue)"
+        r".*\b(today|this\s+week|this\s+month)\b"
+        r"|\b(today|this\s+week|this\s+month)(?:'s)?\s+(?:sales?|income|revenue)\b", tl,
+    )
+    if _period_m:
+        word = (_period_m.group(1) or _period_m.group(2) or "").replace(" ", "_")
+        period = {"today": "TODAY", "this_week": "WEEK", "this_month": "MONTH"}.get(word)
+        if period:
+            from reports import get_transaction_stats
+            stats = get_transaction_stats(db, owner_phone, period, recorded_by_id)
+            label = {"TODAY": "today", "WEEK": "this week", "MONTH": "this month"}[period]
+            if not stats["transaction_count"]:
+                return f"No transactions recorded {label} yet."
+            return (f"Sales {label}: *{_fmt(stats['total_sales'])}*\n"
+                    f"• Cash/direct: {_fmt(stats['direct_sales'])}\n"
+                    f"• Credit sales: {_fmt(stats['credit_sales'])}\n"
+                    f"• Payments received: {_fmt(stats['total_pay'])}\n"
+                    f"• Transactions: {stats['transaction_count']}")
 
     # 3) Voided transactions count
     if has_howmany and "void" in tl:
