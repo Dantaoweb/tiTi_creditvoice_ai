@@ -102,8 +102,9 @@ function ProductGrid({ ownerPhone, onAdd }) {
 
 // ── Customer search ─────────────────────────────────────────────────────────
 
-function CustomerSearch({ ownerPhone, customer, onSelect, onClear }) {
-  const [q, setQ] = useState("");
+function CustomerSearch({ ownerPhone, customer, onSelect, onClear, onQueryChange }) {
+  const [q, _setQ] = useState("");
+  const setQ = (v) => { _setQ(v); onQueryChange && onQueryChange(v); };
   const [results, setResults] = useState([]);
   const timeout = useRef(null);
   const [open, setOpen] = useState(false);
@@ -208,6 +209,7 @@ export default function POS() {
 
   const [cart, setCart] = useState([]);
   const [customer, setCustomer] = useState(null);
+  const [custQuery, setCustQuery] = useState("");   // typed-but-unselected search text
   const [payment, setPayment] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [serviceDate, setServiceDate] = useState("");
@@ -272,6 +274,15 @@ export default function POS() {
     if (cart.length === 0)               { setSaveErr("Add at least one item to the order."); return; }
     if (cart.some(it => !it.name.trim())) { setSaveErr("All items need a name."); return; }
     if (cart.some(it => it.unit_price <= 0)) { setSaveErr("All items need a price greater than zero."); return; }
+    // Typed a name but never tapped a result — without this the sale silently
+    // saves as cash and any part payment / balance is not tracked.
+    if (!customer && custQuery.trim()) {
+      setSaveErr(
+        `"${custQuery.trim()}" is not attached — tap them in the list, or tap ` +
+        `"Add as new customer". To record a cash sale instead, clear the customer box.`
+      );
+      return;
+    }
     setSaveErr("");
     setSaving(true);
     const payload = {
@@ -430,6 +441,7 @@ export default function POS() {
               customer={customer}
               onSelect={setCustomer}
               onClear={() => setCustomer(null)}
+              onQueryChange={setCustQuery}
             />
             {!customer && (
               <span className="form-hint">Leave blank for walk-in / cash sale</span>

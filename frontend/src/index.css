@@ -1522,9 +1522,12 @@ tr.low-stock td { background: #fffbeb; }
 .receipt-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
 
 .receipt-table { min-width: unset; }
-.receipt-table th, .receipt-table td { padding: 8px 0; }
+/* Horizontal padding is load-bearing: with 0, the right-aligned Qty cell sits
+   flush against Price and "1 | 1,500,000" reads as "11,500,000". */
+.receipt-table th, .receipt-table td { padding: 8px 0 8px 12px; }
+.receipt-table th:first-child, .receipt-table td:first-child { padding-left: 0; }
 .receipt-table thead th { background: none; font-size: 10.5px; padding-bottom: 6px; }
-.receipt-right { text-align: right; }
+.receipt-right { text-align: right; white-space: nowrap; }
 
 .receipt-total-row td { border-top: 1px solid var(--line); padding-top: 10px; font-weight: 700; font-size: 15px; }
 

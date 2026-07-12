@@ -25,7 +25,7 @@ async function blobToBase64(blob) {
 
 // ── Shared search inputs ─────────────────────────────────────────────────────
 
-function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, onSelect, value }) {
+function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, allowNew = false, onSelect, value, onQueryChange }) {
   const [customers, setCustomers] = useState([]);
   const [search, setSearch]       = useState("");
   const [open, setOpen]           = useState(false);
@@ -41,19 +41,38 @@ function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, onSele
       .catch(() => {});
   }, [ownerPhone, filterDebtors]);
 
+  function setQuery(q) {
+    setSearch(q);
+    onQueryChange && onQueryChange(q);
+  }
+
   const filtered = search.trim()
     ? customers.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
     : filterDebtors ? customers.slice(0, 8) : [];
 
+  const exactMatch = filtered.some(c => c.name.toLowerCase() === search.trim().toLowerCase());
+  const showAddNew = allowNew && search.trim().length >= 2 && !exactMatch;
+
   if (value) {
     return (
-      <div className="qf-pill">
-        <span>
-          {value.name}
-          {value.balance > 0 && <span className="text-rose"> — owes {nairaFull(value.balance)}</span>}
-        </span>
-        <button type="button" onClick={() => onSelect(null)}>×</button>
-      </div>
+      <>
+        <div className="qf-pill">
+          <span>
+            {value.name}{value.isNew ? " · new" : ""}
+            {value.balance > 0 && <span className="text-rose"> — owes {nairaFull(value.balance)}</span>}
+          </span>
+          <button type="button" onClick={() => onSelect(null)}>×</button>
+        </div>
+        {value.isNew && (
+          <input
+            style={{ marginTop: 6 }}
+            value={value.phone || ""}
+            onChange={e => onSelect({ ...value, phone: e.target.value })}
+            placeholder="Phone (optional)…"
+            inputMode="tel"
+          />
+        )}
+      </>
     );
   }
 
@@ -61,19 +80,27 @@ function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, onSele
     <div className="qf-search-wrap">
       <input
         value={search}
-        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
       />
-      {open && filtered.length > 0 && (
+      {open && (filtered.length > 0 || showAddNew) && (
         <div className="qf-dropdown">
           {filtered.map(c => (
-            <button key={c.id} type="button" onMouseDown={() => { onSelect(c); setSearch(""); setOpen(false); }}>
+            <button key={c.id} type="button" onMouseDown={() => { onSelect(c); setQuery(""); setOpen(false); }}>
               <span>{c.name}</span>
               {c.balance > 0 && <span className="text-rose text-sm">{nairaFull(c.balance)}</span>}
             </button>
           ))}
+          {showAddNew && (
+            <button type="button" onMouseDown={() => {
+              onSelect({ id: null, name: search.trim(), phone: null, isNew: true });
+              setQuery(""); setOpen(false);
+            }}>
+              <span>➕ Add "{search.trim()}" as new customer</span>
+            </button>
+          )}
         </div>
       )}
       {open && filterDebtors && customers.length === 0 && (
@@ -178,6 +205,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
   const [amount, setAmount]     = useState("");
   const [paid, setPaid]         = useState("");
   const [customer, setCustomer] = useState(null);
+  const [custQuery, setCustQuery] = useState("");   // typed-but-unselected search text
   const [branchId, setBranchId] = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
@@ -186,6 +214,16 @@ function SaleForm({ ownerPhone, onSuccess }) {
     e.preventDefault();
     if (!product.trim() || !amount) return;
     setLoading(true); setError(null);
+    // Typed a name but never tapped a result: without this guard the sale
+    // silently saves as cash and any part payment is lost (no debt tracked).
+    if (!customer && custQuery.trim()) {
+      setError(
+        `"${custQuery.trim()}" is not attached — tap them in the list, or tap ` +
+        `"Add as new customer". To record a cash sale instead, clear the customer box.`
+      );
+      setLoading(false);
+      return;
+    }
     try {
       const qtyNum = Math.max(1, parseAmt(qty) || 1);
       const total  = parseAmt(amount);
@@ -193,6 +231,8 @@ function SaleForm({ ownerPhone, onSuccess }) {
       const body   = {
         owner_phone:    ownerPhone,
         customer_id:    customer?.id || null,
+        customer_name:  (customer && !customer.id) ? customer.name : null,
+        customer_phone: (customer && !customer.id) ? (customer.phone?.trim() || null) : null,
         items:          [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
         payment_amount: paidNum,
         branch_id:      branchId || null,
@@ -205,7 +245,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
           : `Cash sale of ${nairaFull(total)} recorded.`,
         result?.receipt_id ? `/pos/receipt/${result.receipt_id}` : null,
       );
-      setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null);
+      setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null); setCustQuery("");
     } catch (e) {
       if (isNetworkError(e)) {
         const qtyNum2 = Math.max(1, parseAmt(qty) || 1);
@@ -213,12 +253,14 @@ function SaleForm({ ownerPhone, onSuccess }) {
         const paidNum2 = customer ? Math.min(parseAmt(paid) || 0, total2) : total2;
         enqueue("pos/save", {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
+          customer_name: (customer && !customer.id) ? customer.name : null,
+          customer_phone: (customer && !customer.id) ? (customer.phone?.trim() || null) : null,
           items: [{ name: product.trim(), qty: qtyNum2, unit: unit || null, unit_price: Math.round(total2 / qtyNum2) }],
           payment_amount: paidNum2,
           branch_id: branchId || null,
         }, `Sale ${nairaFull(total2)}${customer ? ` — ${customer.name}` : " (cash)"}`);
         onSuccess(`No internet — sale saved offline. Will sync automatically when you reconnect.`);
-        setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null);
+        setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null); setCustQuery("");
       } else {
         setError(e.message);
       }
@@ -251,7 +293,14 @@ function SaleForm({ ownerPhone, onSuccess }) {
       </div>
       <div className="form-group">
         <label className="form-label">{L.customer} <span className="text-subtle">— leave blank for cash sale</span></label>
-        <CustomerSearch ownerPhone={ownerPhone} placeholder={`Search ${L.customerName.toLowerCase()}…`} onSelect={setCustomer} value={customer} />
+        <CustomerSearch
+          ownerPhone={ownerPhone}
+          placeholder={`Search ${L.customerName.toLowerCase()}…`}
+          allowNew
+          onSelect={setCustomer}
+          value={customer}
+          onQueryChange={setCustQuery}
+        />
       </div>
       {customer && (
         <div className="form-group">
