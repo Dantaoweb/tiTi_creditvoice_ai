@@ -294,9 +294,10 @@ def _normalize_name(text):
 def _save_job(db, owner_phone, customer_name, items, total, paid, discount):
     """Save a service job: one BUY transaction + optional PAY transaction + line items."""
     customer_name_clean = customer_name.strip().lower()
+    from sqlalchemy import func as _func
     customer = db.query(Customer).filter(
         Customer.owner_phone == owner_phone,
-        Customer.name == customer_name_clean,
+        _func.lower(Customer.name) == customer_name_clean,
     ).first()
     if not customer:
         customer = Customer(owner_phone=owner_phone, name=customer_name_clean)

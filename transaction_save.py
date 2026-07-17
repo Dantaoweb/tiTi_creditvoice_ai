@@ -292,8 +292,9 @@ def save_customer_pending(
     inventory_enabled,
     send_message,
 ):
+    from sqlalchemy import func as _func
     customer = db.query(Customer).filter(
-        Customer.name == pending.customer_name,
+        _func.lower(Customer.name) == _func.lower(pending.customer_name),
         Customer.owner_phone == business_owner_phone,
     ).first()
     if not customer:

@@ -827,8 +827,9 @@ def handle_pending_actions(
         db.commit()
 
         from transaction_setup import build_projected_balance_line
+        from sqlalchemy import func as _func
         customer = db.query(Customer).filter(
-            Customer.name == pending.customer_name,
+            _func.lower(Customer.name) == _func.lower(pending.customer_name),
             Customer.owner_phone == business_owner_phone,
         ).first()
         if not customer:
@@ -889,8 +890,9 @@ def handle_pending_actions(
             build_customer_confirm_message, build_projected_balance_line,
             _price_deviation_alert,
         )
+        from sqlalchemy import func as _func
         customer = db.query(Customer).filter(
-            Customer.name == pending.customer_name,
+            _func.lower(Customer.name) == _func.lower(pending.customer_name),
             Customer.owner_phone == business_owner_phone,
         ).first()
         if not customer:
@@ -1627,8 +1629,9 @@ def _handle_onboard_customer(
     normalized = text.lower().strip()
 
     if normalized in ["yes", "1", "save"]:
+        from sqlalchemy import func as _func
         customer = db.query(Customer).filter(
-            Customer.name == pending.customer_name,
+            _func.lower(Customer.name) == _func.lower(pending.customer_name),
             Customer.owner_phone == business_owner_phone,
         ).first()
 

@@ -663,10 +663,12 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     overall_discount = payload.get("overall_discount", 0)
     sale_note = payload.get("sale_note", "")
 
-    # Customer lookup — pure read, outside try
+    # Customer lookup — pure read, outside try. Case-insensitive so a web-added
+    # "Ade" matches the WhatsApp-lowercased "ade" instead of duplicating.
+    from sqlalchemy import func as _func
     customer = db.query(Customer).filter(
         Customer.owner_phone == business_owner_phone,
-        Customer.name == customer_name,
+        _func.lower(Customer.name) == _func.lower(customer_name),
     ).first()
 
     inventory_enabled = bool(

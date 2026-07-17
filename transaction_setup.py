@@ -417,8 +417,13 @@ def handle_transaction_setup(
             send_message(phone, upgrade_msg)
             return {"status": "invoice_plan_blocked"}
 
+    # Case-insensitive match: the parser lowercases the typed name ("Ade" →
+    # "ade"), but web-added customers are stored mixed-case ("Ade"). A
+    # case-sensitive == never matched, so every payment spawned a duplicate
+    # customer instead of finding the debtor. Lower both sides.
+    from sqlalchemy import func as _func
     customer = db.query(Customer).filter(
-        Customer.name == customer_name,
+        _func.lower(Customer.name) == _func.lower(customer_name),
         Customer.owner_phone == business_owner_phone,
     ).first()
     customer_was_created = False

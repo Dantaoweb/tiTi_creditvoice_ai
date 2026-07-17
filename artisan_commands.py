@@ -37,8 +37,9 @@ def handle_artisan_payment_pending(
         return {"status": "artisan_service_confirm"}
 
     if normalized in ["2", "debt", "debit", "old debt", "existing debt"]:
+        from sqlalchemy import func as _func
         customer = db.query(Customer).filter(
-            Customer.name == pending.customer_name,
+            _func.lower(Customer.name) == _func.lower(pending.customer_name),
             Customer.owner_phone == business_owner_phone
         ).first()
         if not customer:
