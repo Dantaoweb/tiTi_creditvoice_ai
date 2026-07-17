@@ -505,8 +505,31 @@ def extract_item_details(text):
             r"(?P<product>[a-z ]+?)\s+(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?",
             clean
         )
-    no_of_match = None
+    # Verb-stripped, paid-stripped body: drop everything up to the buy/sell verb
+    # so the customer name isn't taken as the product, and drop the paid/balance
+    # tail. Used by the product-first and no-quantity fallbacks below.
+    _body = re.sub(
+        r"^.*?\b(?:bought|buy|buys|purchased|purchase|sold|sell|sells|"
+        r"supplied|supply|took|take|collected|collect|got)\b\s*",
+        "", clean, count=1,
+    )
+    _body = re.sub(r"\b(?:paid|pay|settled|gave|balance)\b.*$", "", _body).strip()
+
+    # Product BEFORE quantity: "egg 3 crates for 15000" / "rice 2 bags 20000".
+    # Requires a known unit word, so it stays precise and takes priority over the
+    # generic qty-first no_of_match (which would read "crates" as the product).
+    product_first_match = None
     if not match and not compact_unit_match:
+        product_first_match = re.match(
+            r"^(?P<product>[a-z][a-z]*(?:\s+[a-z]+){0,2}?)\s+"
+            r"(?P<quantity>" + _qty_pat + r")\s+"
+            r"(?P<unit>" + UNIT_PATTERN + r")\s+"
+            r"(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?\s*$",
+            _body,
+        )
+
+    no_of_match = None
+    if not match and not compact_unit_match and not product_first_match:
         no_of_match = re.search(
             r"(?P<quantity>" + _qty_pat + r")\s*"
             r"(?P<product>[a-z/]+(?:\s+[a-z/]+){0,3})\s+"
@@ -515,23 +538,15 @@ def extract_item_details(text):
         )
 
     # No quantity given: "NAME bought PRODUCT AMOUNT" / "PRODUCT AMOUNT".
-    # Strip up to the buy/sell verb so the customer name isn't taken as product,
-    # and the paid/balance tail so only "product amount" remains. Quantity = 1.
     no_qty_match = None
-    if not match and not compact_unit_match and not no_of_match:
-        _body = re.sub(
-            r"^.*?\b(?:bought|buy|buys|purchased|purchase|sold|sell|sells|"
-            r"supplied|supply|took|take|collected|collect|got)\b\s*",
-            "", clean, count=1,
-        )
-        _body = re.sub(r"\b(?:paid|pay|settled|gave|balance)\b.*$", "", _body).strip()
+    if not match and not compact_unit_match and not product_first_match and not no_of_match:
         no_qty_match = re.match(
             r"^(?P<product>[a-z][a-z/]*(?:\s+[a-z/]+){0,3}?)\s+"
             r"(?:(?P<price_marker>at|for)\s+)?(?P<unit_price>" + amount_pattern + r")(?:\s+each)?\s*$",
             _body,
         )
 
-    active_match = match or compact_unit_match or no_of_match or no_qty_match
+    active_match = match or compact_unit_match or product_first_match or no_of_match or no_qty_match
     if not active_match:
         return None
 
@@ -543,6 +558,8 @@ def extract_item_details(text):
     unit = match.group("container") if match else None
     if compact_unit_match:
         unit = compact_unit_match.group("unit")
+    if product_first_match:
+        unit = product_first_match.group("unit")
     product = active_match.group("product").strip()
     price_marker = active_match.groupdict().get("price_marker")
     trailing_marker = re.search(r"\b(at|for)$", product)
@@ -931,6 +948,20 @@ def parse_invoice_item(item_text):
 
         if unit is None:
             product = rest
+    else:
+        # Product BEFORE quantity: "egg 3 crates", "rice 2 bags", "sugar 5".
+        # The trailing unit is only accepted when it is a known unit word (via
+        # UNIT_PATTERN anchored at the end), so plain products keep qty 1.
+        product_first = re.match(
+            r"^(?P<product>[a-z][a-z ]*?)\s+"
+            r"(?P<quantity>\d[\d,\.]*(?:[kKmM](?![a-zA-Z]))?)"
+            r"(?:\s+(?P<unit>" + UNIT_PATTERN + r"))?$",
+            item_body,
+        )
+        if product_first and product_first.group("product").strip():
+            quantity = parse_quantity_token(product_first.group("quantity")) or 1
+            product = product_first.group("product").strip()
+            unit = product_first.group("unit")
 
     product = product.strip()
     product, unit = normalize_item(product, unit)

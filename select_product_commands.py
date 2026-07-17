@@ -49,9 +49,11 @@ def _cart_total(cart):
 def build_product_list_message(items):
     msg = "Select product:\n\n"
     for i, item in enumerate(items, start=1):
-        unit_label = f" {item.unit}" if item.unit else ""
-        stock_label = f" ({item.quantity:,}{unit_label} in stock)" if item.quantity else ""
-        msg += f"{i}. {item.name.title()} - N{item.selling_price:,}{stock_label}\n"
+        # Show the unit right after the name so same-name variants (sugar by bag
+        # vs cube) are distinguishable, not just separable by price.
+        unit_tag = f" ({item.unit})" if item.unit else ""
+        stock_label = f" ({item.quantity:,g} in stock)" if item.quantity else ""
+        msg += f"{i}. {item.name.title()}{unit_tag} - N{item.selling_price:,}{stock_label}\n"
     return msg.strip()
 
 
