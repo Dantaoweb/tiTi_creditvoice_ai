@@ -342,9 +342,16 @@ def handle_parsed_command(
             return {"status": "redeem_no_user"}
         from models import TokenCode
         from datetime import datetime, timezone, timedelta
-        code = parsed.get("code", "").strip().upper()
+        import re as _re
+        from sqlalchemy import func as _func
+        # Normalise the typed code (drop hyphens/spaces, uppercase) and compare it
+        # against the stored code with its hyphen removed, so "GO-AB12CD34",
+        # "goab12cd34" and "GO AB12CD34" all match the same token.
+        code = _re.sub(r"[^A-Z0-9]", "", parsed.get("code", "").upper())
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        tc = db.query(TokenCode).filter(TokenCode.code == code).first()
+        tc = db.query(TokenCode).filter(
+            _func.upper(_func.replace(TokenCode.code, "-", "")) == code
+        ).first()
         if not tc or tc.redeemed_at or (tc.expires_at and tc.expires_at < now):
             send_whatsapp_message(phone, "❌ That code is invalid, already used, or has expired.\n\nCheck the code and try again.")
             return {"status": "redeem_invalid"}

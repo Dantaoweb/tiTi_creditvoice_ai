@@ -363,7 +363,10 @@ def _active_inventory_count(db, owner_phone: str) -> int:
 def _check_inventory_limit(db, owner_phone: str, subscription) -> str | None:
     """Return an error message if the owner is at their active inventory limit, else None."""
     from plans import plan_limit, normalize_plan
-    plan = normalize_plan(getattr(subscription, "plan", "BASIC") if subscription else "BASIC")
+    # subscription is the dict returned by get_business_subscription — read its
+    # "plan" key. (getattr on a dict never finds "plan", so it silently pinned
+    # every upgraded user to BASIC and capped them at 5 active products.)
+    plan = normalize_plan((subscription or {}).get("plan", "BASIC"))
     limit = plan_limit(plan, "active_inventory_items")
     if limit is None:
         return None
@@ -2467,7 +2470,9 @@ def register_web_routes(app):
             owner_phone = _session_owner_phone(db, session)
             owner = db.query(User).filter(User.phone == owner_phone).first()
             sub = get_business_subscription(db, owner) if owner else None
-            plan = normalize_plan(getattr(sub, "plan", "BASIC") if sub else "BASIC")
+            # sub is a dict — read its "plan" key (getattr never finds it, which
+            # pinned upgraded schools to BASIC and capped them at 3 teachers).
+            plan = normalize_plan((sub or {}).get("plan", "BASIC"))
             limit = plan_limit(plan, "school_teachers")
             if limit is not None:
                 count = db.query(SchoolTeacher).filter(
@@ -4365,7 +4370,15 @@ def register_web_routes(app):
             _INVALID = HTTPException(status_code=400, detail="Invalid or expired code.")
 
             now = datetime.now(timezone.utc).replace(tzinfo=None)
-            tc = db.query(TokenCode).filter(TokenCode.code == payload.code.strip().upper()).first()
+            import re as _re
+            from sqlalchemy import func as _func
+            # Normalise the typed code (drop hyphens/spaces, uppercase) and match it
+            # against the stored code with its hyphen removed, so a code entered
+            # without the hyphen ("GOAB12CD34") still activates.
+            _code_norm = _re.sub(r"[^A-Z0-9]", "", payload.code.upper())
+            tc = db.query(TokenCode).filter(
+                _func.upper(_func.replace(TokenCode.code, "-", "")) == _code_norm
+            ).first()
             # Collapse all failure states into one generic error to prevent enumeration.
             if not tc or tc.redeemed_at or (tc.expires_at and tc.expires_at < now):
                 raise _INVALID

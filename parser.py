@@ -1710,12 +1710,17 @@ def parse_message(text):
 
     # ── Token code redemption ────────────────────────────────────────────────────
     # "redeem ABC123" | "activate code ABC123" | "use code ABC123"
+    # NB: match case-insensitively against clean_text. The old code uppercased
+    # the subject but left the keywords lowercase with no IGNORECASE flag, so the
+    # keyword never matched and WhatsApp redemption never fired. Keep the hyphen —
+    # stored codes look like "GO-AB12CD34"; the router normalises on lookup.
     _redeem_m = re.match(
-        r"^(?:redeem|activate|use|apply)\s+(?:code\s+)?(?P<code>[A-Z0-9\-]{4,20})$",
-        clean_text.upper(),
+        r"^(?:redeem|activate|use|apply)\s+(?:code\s+)?(?P<code>[A-Za-z0-9\-]{4,20})$",
+        clean_text,
+        re.IGNORECASE,
     )
     if _redeem_m:
-        return {"type": "REDEEM_TOKEN", "code": _redeem_m.group("code").replace("-", "")}
+        return {"type": "REDEEM_TOKEN", "code": _redeem_m.group("code").upper()}
 
     # ── Branch management ────────────────────────────────────────────────────────
     # "my branches" | "list branches" | "branches"
