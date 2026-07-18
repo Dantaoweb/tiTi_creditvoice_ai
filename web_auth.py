@@ -483,6 +483,7 @@ def _build_auth_response(user: User, db=None) -> dict:
             "menu_group": menu_group_for_user(user),
             "whatsapp_linked": bool(user.whatsapp_linked),
             "newsletter_consent": bool(user.newsletter_consent),
+            "parent_id": user.parent_id,
             "subscription_plan": plan,
             "subscription_expires_at": expires_at.isoformat() if expires_at else None,
             "examples": examples,

@@ -849,6 +849,9 @@ def register_web_routes(app):
                 "menu_group": menu_group_for_user(user),
                 "whatsapp_linked": bool(user.whatsapp_linked),
                 "newsletter_consent": bool(user.newsletter_consent),
+                # A staff/sub-account has a parent; owners don't. The Staff page
+                # gates the invite UI on this.
+                "parent_id": user.parent_id,
             }
         finally:
             db.close()
@@ -2182,7 +2185,7 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             owner = db.query(User).filter(User.phone == session["phone"]).first()
-            if not owner or owner.role != "user" or owner.parent_id is not None:
+            if not owner or owner.parent_id is not None:   # any top-level owner
                 return {"members": []}
             members = db.query(User).filter(User.parent_id == owner.id).all()
             return {
@@ -2212,7 +2215,10 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             owner = db.query(User).filter(User.phone == session["phone"]).first()
-            if not owner or owner.role != "user" or owner.parent_id is not None:
+            # A business owner is any top-level account (no parent). Staff /
+            # sub-accounts have parent_id set. The previous role == "user" check
+            # wrongly rejected web-registered owners, whose role is "owner".
+            if not owner or owner.parent_id is not None:
                 raise HTTPException(status_code=403, detail="Only business owners can invite staff.")
 
             subscription = get_business_subscription(db, owner)

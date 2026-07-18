@@ -60,7 +60,12 @@ export default function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  const [mode, setMode] = useState(params.get("mode") === "register" ? "register" : "login");
+  // A staff invite link (/app/login?invite=CODE&phone=...) opens the accept
+  // form pre-filled so the staff member just confirms.
+  const inviteFromUrl = params.get("invite") || "";
+  const [mode, setMode] = useState(
+    inviteFromUrl ? "accept_invite" : (params.get("mode") === "register" ? "register" : "login")
+  );
   const [titiNumber, setTitiNumber] = useState("");
   const [categories, setCategories] = useState([]);
 
@@ -88,9 +93,9 @@ export default function Login() {
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
 
-  // Accept invite fields
-  const [invitePhone, setInvitePhone] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  // Accept invite fields (pre-filled from an invite link when present)
+  const [invitePhone, setInvitePhone] = useState(params.get("phone") || "");
+  const [inviteCode, setInviteCode] = useState(inviteFromUrl.toUpperCase());
   const [acceptedName, setAcceptedName] = useState("");
 
   // Referral code (from URL ?ref= or manual entry)

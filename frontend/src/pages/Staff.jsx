@@ -11,7 +11,7 @@ import { usePlan } from "../lib/usePlan";
 import { LimitBar } from "../components/UpgradeGate";
 import { useToast } from "../components/Toast";
 
-function CopyButton({ text }) {
+function CopyButton({ text, label = "Copy code" }) {
   const [copied, setCopied] = useState(false);
   function copy() {
     navigator.clipboard.writeText(text).then(() => {
@@ -21,7 +21,7 @@ function CopyButton({ text }) {
   }
   return (
     <button onClick={copy} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }}>
-      {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy code</>}
+      {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> {label}</>}
     </button>
   );
 }
@@ -246,7 +246,9 @@ export default function Staff() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
   const { plan, allows, limit: planLimit, withinLimit } = usePlan();
-  const isOwner = user?.role === "user" && !user?.parent_id;
+  // A business owner is any top-level account (no parent). Staff/sub-accounts
+  // have parent_id set. (Web owners have role "owner", not "user".)
+  const isOwner = !user?.parent_id && user?.role !== "delegate" && user?.role !== "delegate_pending";
   const isSchool = user?.menu_group === "school";
   const canUseAppStaff = isSchool ? allows("SCHOOL_APP_STAFF") : allows("STAFF");
   const teacherLimit = planLimit("school_teachers");
@@ -309,7 +311,7 @@ export default function Staff() {
         phone: invPhone.trim(),
         email: invEmail.trim() || null,
       });
-      setInvResult(res);
+      setInvResult({ ...res, phone: invPhone.trim(), name: invName.trim() });
       setInvName(""); setInvPhone(""); setInvEmail("");
       setShowInvite(false);
     } catch (e) { setInvErr(e.message); }
@@ -477,8 +479,33 @@ export default function Staff() {
             </div>
             <CopyButton text={invResult.invite_code} />
           </div>
-          <p className="login-hint-muted" style={{ margin: "8px 0 0" }}>
-            Staff member goes to <strong>CreditVoice → Accept staff invitation</strong> on the login page and enters this code. Expires in 24 hours.
+          {(() => {
+            const link = `${window.location.origin}/app/login?invite=${encodeURIComponent(invResult.invite_code)}`
+              + (invResult.phone ? `&phone=${encodeURIComponent(invResult.phone)}` : "");
+            const msg = `You've been invited to join as staff on CreditVoice. Tap to accept (expires in 24h):\n${link}`;
+            const waDigits = (invResult.phone || "").replace(/\D/g, "");
+            const waUrl = waDigits
+              ? `https://wa.me/${waDigits}?text=${encodeURIComponent(msg)}`
+              : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+            return (
+              <div style={{ marginTop: 12 }}>
+                <div className="login-hint-muted" style={{ marginBottom: 6 }}>
+                  Or send them this invite link — it opens the accept form ready to confirm:
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input readOnly value={link} onFocus={e => e.target.select()}
+                    style={{ flex: 1, minWidth: 200, fontSize: 12, fontFamily: "monospace" }} />
+                  <CopyButton text={link} label="Copy link" />
+                  <a className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
+                    href={waUrl} target="_blank" rel="noopener noreferrer">
+                    Send on WhatsApp
+                  </a>
+                </div>
+              </div>
+            );
+          })()}
+          <p className="login-hint-muted" style={{ margin: "10px 0 0" }}>
+            The link takes them straight to <strong>Accept staff invitation</strong> with the code filled in. Or they can enter the code manually. Expires in 24 hours.
           </p>
         </div>
       )}
