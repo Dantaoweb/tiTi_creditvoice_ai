@@ -403,11 +403,17 @@ function ReferralSettingsTab() {
   const [busy, setBusy]     = useState(false);
   const [msg, setMsg]       = useState("");
   const [err, setErr]       = useState("");
+  const [refData, setRefData] = useState(null);   // { referrers, total_bonus, total_referrals }
+  const [refLoading, setRefLoading] = useState(true);
 
   useEffect(() => {
     apiFetch("admin/referral-settings")
       .then(d => { setCurrent(d.cashback_amount); setAmount(String(d.cashback_amount)); })
       .catch(() => {});
+    apiFetch("admin/referrals")
+      .then(setRefData)
+      .catch(() => {})
+      .finally(() => setRefLoading(false));
   }, []);
 
   async function save(e) {
@@ -423,26 +429,75 @@ function ReferralSettingsTab() {
     finally { setBusy(false); }
   }
 
+  const referrers = refData?.referrers || [];
+
   return (
-    <div className="card" style={{ maxWidth: 480 }}>
-      <div className="card-header">
-        <span className="card-title">Referral Cashback Rate</span>
+    <div style={{ display: "grid", gap: 20 }}>
+      <div className="card" style={{ maxWidth: 480 }}>
+        <div className="card-header">
+          <span className="card-title">Referral Cashback Rate</span>
+        </div>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, marginTop: 8 }}>
+          Amount credited to a GO/PRO referrer's wallet when their invited user upgrades to GO plan.
+          {current !== null && <><br /><strong style={{ color: "var(--ink)" }}>Current: {nairaFull(current)}</strong></>}
+        </p>
+        <form onSubmit={save} style={{ display: "flex", gap: 8 }}>
+          <div className="form-group" style={{ flex: 1 }}>
+            <label className="form-label">Cashback amount (₦)</label>
+            <MoneyInput value={amount} onChange={v => setAmount(v)} placeholder="e.g. 500" disabled={busy} />
+          </div>
+          <div className="form-group" style={{ display: "flex", alignItems: "flex-end" }}>
+            <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+        {msg && <div style={{ color: "#16a34a", fontSize: 13, marginTop: 8 }}>{msg}</div>}
+        {err && <div className="login-error" style={{ marginTop: 8 }}>{err}</div>}
       </div>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, marginTop: 8 }}>
-        Amount credited to a GO/PRO referrer's wallet when their invited user upgrades to GO plan.
-        {current !== null && <><br /><strong style={{ color: "var(--ink)" }}>Current: {nairaFull(current)}</strong></>}
-      </p>
-      <form onSubmit={save} style={{ display: "flex", gap: 8 }}>
-        <div className="form-group" style={{ flex: 1 }}>
-          <label className="form-label">Cashback amount (₦)</label>
-          <MoneyInput value={amount} onChange={v => setAmount(v)} placeholder="e.g. 500" disabled={busy} />
+
+      <div className="card">
+        <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="card-title">Referrers & Bonuses</span>
+          {refData && (
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {refData.total_referrals} referral(s) · total bonus <strong style={{ color: "#16a34a" }}>{nairaFull(refData.total_bonus)}</strong>
+            </span>
+          )}
         </div>
-        <div className="form-group" style={{ display: "flex", alignItems: "flex-end" }}>
-          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-        </div>
-      </form>
-      {msg && <div style={{ color: "#16a34a", fontSize: 13, marginTop: 8 }}>{msg}</div>}
-      {err && <div className="login-error" style={{ marginTop: 8 }}>{err}</div>}
+        {refLoading ? (
+          <div className="td-muted" style={{ padding: 12 }}>Loading…</div>
+        ) : referrers.length === 0 ? (
+          <div className="td-muted" style={{ padding: 12 }}>No referrals yet.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
+                  {["Referrer", "Code", "Plan", "Invited", "Active GO/PRO", "Bonus"].map(h => (
+                    <th key={h} style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {referrers.map(r => (
+                  <tr key={r.referral_code} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "8px 10px" }}>
+                      <div style={{ fontWeight: 600 }}>{r.referrer_name || "—"}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.referrer_phone || ""}</div>
+                    </td>
+                    <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{r.referral_code}</td>
+                    <td style={{ padding: "8px 10px" }}>{r.referrer_plan}</td>
+                    <td style={{ padding: "8px 10px" }}>{r.total_invited}</td>
+                    <td style={{ padding: "8px 10px" }}>{r.active_go}</td>
+                    <td style={{ padding: "8px 10px", fontWeight: 700, color: r.bonus > 0 ? "#16a34a" : "var(--text-muted)" }}>
+                      {nairaFull(r.bonus)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -4371,6 +4371,52 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/admin/referrals")
+    def web_admin_referrals(session: dict = Depends(require_web_auth)):
+        """Per-referrer summary for the admin dashboard: who referred how many,
+        how many are active GO/PRO, and the bonus each has earned."""
+        from admin import is_app_admin
+        from collections import defaultdict
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(user.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+
+            rate = _get_cashback_amount(db)
+            by_code = defaultdict(list)
+            for r in db.query(Referral).all():
+                by_code[r.referral_code].append(r)
+
+            rows = []
+            for code, rs in by_code.items():
+                referrer = db.query(User).filter(User.referral_code == code).first()
+                referrer_plan = (referrer.subscription_plan or "BASIC").upper() if referrer else "—"
+                active_go = _count_active_go_invitees(db, code)
+                # Bonus mirrors the user-facing credit: active GO/PRO invitees ×
+                # rate, credited only while the referrer is on GO/PRO.
+                bonus = active_go * rate if referrer_plan in ("GO", "PRO") else 0
+                rows.append({
+                    "referral_code": code,
+                    "referrer_phone": referrer.phone if referrer else (rs[0].referrer_phone if rs else None),
+                    "referrer_name": referrer.name if referrer else None,
+                    "referrer_plan": referrer_plan,
+                    "total_invited": len(rs),
+                    "active_go": active_go,
+                    "bonus": bonus,
+                })
+            rows.sort(key=lambda x: (x["bonus"], x["total_invited"]), reverse=True)
+            return {
+                "referrers": rows,
+                "cashback_per_referral": rate,
+                "total_bonus": sum(r["bonus"] for r in rows),
+                "total_referrals": sum(r["total_invited"] for r in rows),
+            }
+        finally:
+            db.close()
+
     # ── Token codes ──────────────────────────────────────────────────────────
 
     class TokenGenerateRequest(BaseModel):
