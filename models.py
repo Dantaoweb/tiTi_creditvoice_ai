@@ -197,6 +197,12 @@ class Transaction(Base):
 
     voided_at = Column(DateTime, nullable=True)
 
+    # Formal invoice: per-business sequential number (INV-0001), assigned the
+    # first time an invoice document is issued for this sale. Null until then.
+    invoice_number = Column(Integer, nullable=True)
+
+    invoiced_at = Column(DateTime, nullable=True)
+
 
 class TransactionItem(Base):
 

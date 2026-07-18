@@ -174,6 +174,7 @@ def get_pos_receipt(db, tx_id, user=None):
             "config": cfg,
             "items": [],
             "note": tx.product,
+            "invoice_number": tx.invoice_number,
         }
 
     # Find the linked PAY transaction to get the actual paid amount for credit
@@ -223,6 +224,7 @@ def get_pos_receipt(db, tx_id, user=None):
         "recorded_by": recorder.name if recorder else None,
         "biz_name": biz_name,
         "config": config,
+        "invoice_number": tx.invoice_number,
         "items": [
             {
                 "product": it.product,

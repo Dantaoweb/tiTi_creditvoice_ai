@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { Printer, ArrowLeft } from "lucide-react";
-import { apiFetch } from "../lib/api";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { Printer, ArrowLeft, FileText } from "lucide-react";
+import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateTimeStr, fmtAmt } from "../lib/format";
 
 export default function Receipt() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [issuing, setIssuing] = useState(false);
 
   useEffect(() => {
     apiFetch(`pos/receipt/${id}`)
@@ -34,12 +36,48 @@ export default function Receipt() {
   const owed      = receipt.balance_owed ?? 0;
   const typeLabel = isPayment ? "Payment" : (isCredit ? "Credit Sale" : "Cash Sale");
 
+  // ── Invoice mode ────────────────────────────────────────────────────────────
+  // The same document can be shown as an invoice ("amount due") for a credit
+  // sale. A sale is invoiceable when the customer owes on it.
+  const isInvoice   = searchParams.get("doc") === "invoice";
+  const invoiceable = isCredit && owed > 0;
+  const invoiceNo   = receipt.invoice_number ? `INV-${String(receipt.invoice_number).padStart(4, "0")}` : null;
+  const dueStr = receipt.due_date
+    ? new Date(receipt.due_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+
+  async function viewAsInvoice() {
+    setIssuing(true);
+    try {
+      // Assign the invoice number if this sale doesn't have one yet.
+      const updated = receipt.invoice_number
+        ? receipt
+        : await apiPost(`invoices/${id}/issue`, {});
+      setReceipt(updated);
+      setSearchParams({ doc: "invoice" });
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setIssuing(false);
+    }
+  }
+
   return (
     <div className="receipt-shell">
       <div className="receipt-actions no-print">
         <button className="btn btn-ghost" onClick={() => navigate("/pos")}>
           <ArrowLeft size={15} /> New Sale
         </button>
+        {invoiceable && !isInvoice && (
+          <button className="btn btn-ghost" onClick={viewAsInvoice} disabled={issuing}>
+            <FileText size={15} /> {issuing ? "Preparing…" : "View as Invoice"}
+          </button>
+        )}
+        {isInvoice && (
+          <button className="btn btn-ghost" onClick={() => setSearchParams({})}>
+            <FileText size={15} /> View as Receipt
+          </button>
+        )}
         <button className="btn btn-primary" onClick={() => window.print()}>
           <Printer size={15} /> Print
         </button>
@@ -48,16 +86,24 @@ export default function Receipt() {
       <div className="receipt-paper">
         <div className="receipt-header">
           <div className="receipt-brand">{bizName}</div>
-          <div className="receipt-sub">{isPayment ? "Payment Receipt" : title}</div>
+          <div className="receipt-sub">{isInvoice ? "INVOICE" : (isPayment ? "Payment Receipt" : title)}</div>
           <div className="receipt-date">{dateTimeStr(receipt.created_at)}</div>
-          <div className="receipt-ref">Receipt #{receipt.id}</div>
+          <div className="receipt-ref">{isInvoice && invoiceNo ? invoiceNo : `Receipt #${receipt.id}`}</div>
         </div>
 
         {receipt.customer && (
           <div className="receipt-customer">
-            <span className="receipt-label">{custLabel}</span>
+            <span className="receipt-label">{isInvoice ? "Bill to" : custLabel}</span>
             <span>{receipt.customer.name}</span>
             {receipt.customer.phone && <span className="receipt-muted">{receipt.customer.phone}</span>}
+          </div>
+        )}
+
+        {isInvoice && (
+          <div className="receipt-customer" style={{ borderTop: "1px dashed var(--border)", marginTop: 8, paddingTop: 8 }}>
+            <span className="receipt-label" style={{ fontWeight: 700 }}>Amount Due</span>
+            <span style={{ fontWeight: 700, color: owed > 0 ? "#b91c1c" : "#166534" }}>{nairaFull(owed)}</span>
+            {dueStr && <span className="receipt-muted">Due by {dueStr}</span>}
           </div>
         )}
 

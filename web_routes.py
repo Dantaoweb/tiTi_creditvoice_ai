@@ -1312,6 +1312,39 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.post("/app/api/invoices/{tx_id}/issue")
+    def web_issue_invoice(tx_id: int, session: dict = Depends(require_web_auth)):
+        """Assign a sale its formal invoice number (once) and return the invoice
+        document. The number is system-generated per business — never typed by a
+        user — so two invoices can never collide."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if not tx:
+                raise HTTPException(status_code=404, detail="Sale not found.")
+            # Verify the sale belongs to this business (mirrors web_pos_receipt)
+            recorder = db.query(User).filter(User.id == tx.recorded_by_id).first() if tx.recorded_by_id else None
+            recorder_phone = recorder.phone if recorder else None
+            if recorder and recorder.parent_id:
+                parent = db.query(User).filter(User.id == recorder.parent_id).first()
+                recorder_phone = parent.phone if parent else recorder_phone
+            if recorder_phone != owner_phone:
+                raise HTTPException(status_code=404, detail="Sale not found.")
+
+            from invoices import issue_invoice_number
+            issue_invoice_number(db, tx, owner_phone)
+            db.commit()
+
+            session_user = db.query(User).filter(User.id == session["user_id"]).first()
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
+            receipt = get_pos_receipt(db, tx_id, user=owner_user or session_user)
+            if not receipt:
+                raise HTTPException(status_code=404, detail="Sale not found.")
+            return receipt
+        finally:
+            db.close()
+
     # ── Customers ────────────────────────────────────────────────────────
     @app.get("/app/api/customers")
     def web_customers(session: dict = Depends(require_web_auth)):
