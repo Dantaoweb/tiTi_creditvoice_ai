@@ -46,17 +46,23 @@ def _utcnow():
 
 
 def _get_owner(db: Session, request):
-    """Resolve owner phone from auth cookie or raise 401."""
-    from web_auth import get_current_user_phone
-    phone = get_current_user_phone(request)
-    if not phone:
+    """Resolve owner phone from the web session cookie or raise 401."""
+    from web_auth import verify_web_token
+    token = request.cookies.get("cv_session") or ""
+    if not token:
+        token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    payload = verify_web_token(token)
+    if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated.")
-    return phone
+    return payload["phone"]
 
 
 def _require_admin(db: Session, phone: str):
-    user = db.query(User).filter(User.phone == phone).first()
-    if not user or user.role != "admin":
+    # Admin-ness is is_app_admin() (APP_ADMIN_PHONES / AppAdminRole) — the same
+    # gate that decides who sees the Admin UI — not user.role, which for app
+    # admins is usually "user"/"app_admin" and would wrongly 403 them here.
+    from admin import is_app_admin
+    if not is_app_admin(phone, db):
         raise HTTPException(status_code=403, detail="Admin only.")
 
 
