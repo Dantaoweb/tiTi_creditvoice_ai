@@ -268,6 +268,7 @@ def ensure_schema_updates(engine):
         "service_date": "TIMESTAMP",
         "invoice_number": "INTEGER",
         "invoiced_at": "TIMESTAMP",
+        "invoice_sent_at": "TIMESTAMP",
     }
     with engine.begin() as connection:
         for column_name, column_type in transaction_updates.items():

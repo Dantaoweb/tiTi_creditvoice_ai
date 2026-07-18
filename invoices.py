@@ -51,6 +51,43 @@ def issue_invoice_number(db, tx, owner_phone):
     return tx.invoice_number
 
 
+def format_invoice_text(receipt):
+    """Build the WhatsApp invoice message from a get_pos_receipt() dict.
+
+    Framed as a request to pay: itemised lines, total, amount due and due date,
+    under the business name and INV-xxxx reference.
+    """
+    cfg = receipt.get("config") or {}
+    cust = receipt.get("customer") or {}
+    total = int(receipt.get("total") or 0)
+    due = int(receipt.get("balance_owed") or 0)
+    ref = format_invoice_number(receipt.get("invoice_number"))
+
+    lines = ["*INVOICE*"]
+    if receipt.get("biz_name"):
+        lines.append(receipt["biz_name"])
+    if ref:
+        lines.append(ref)
+    lines.append("--------------------")
+    if cust.get("name"):
+        lines.append(f"Bill to: {cust['name'].title()}")
+        lines.append("--------------------")
+    for it in receipt.get("items", []):
+        name = (it.get("product") or "").title()
+        qty = it.get("qty", 1)
+        lines.append(f"{name}")
+        lines.append(f"  x{qty} @ N{int(it.get('unit_price', 0)):,} = N{int(it.get('total', 0)):,}")
+    lines.append("--------------------")
+    lines.append(f"Total:       N{total:,}")
+    lines.append(f"*Amount due: N{due:,}*")
+    if receipt.get("due_date"):
+        lines.append(f"Due by: {receipt['due_date'][:10]}")
+    lines.append("--------------------")
+    if cfg.get("footer"):
+        lines.append(cfg["footer"])
+    return "\n".join(lines)
+
+
 def _invoice_status(outstanding, due_date, now):
     """Open / Overdue / Paid from an invoice's outstanding amount and due date."""
     if outstanding <= 0:
@@ -133,6 +170,7 @@ def list_business_invoices(db, owner_phone, status_filter=None):
             "outstanding": outstanding,
             "due_date": tx.due_date.isoformat() if tx.due_date else None,
             "issued_at": (tx.invoiced_at or tx.created_at).isoformat() if (tx.invoiced_at or tx.created_at) else None,
+            "sent_at": tx.invoice_sent_at.isoformat() if tx.invoice_sent_at else None,
             "status": status,
         })
 

@@ -203,6 +203,9 @@ class Transaction(Base):
 
     invoiced_at = Column(DateTime, nullable=True)
 
+    # When the invoice was last sent to the customer (WhatsApp). Null = not sent.
+    invoice_sent_at = Column(DateTime, nullable=True)
+
 
 class TransactionItem(Base):
 

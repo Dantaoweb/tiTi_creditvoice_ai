@@ -91,6 +91,7 @@ export default function Invoices() {
                 <span className="td-muted" style={{ fontSize: 12 }}>
                   {dateStr(inv.issued_at)}
                   {inv.due_date ? ` · due ${dateStr(inv.due_date)}` : ""}
+                  {inv.sent_at ? ` · sent ${dateStr(inv.sent_at)}` : ""}
                 </span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>

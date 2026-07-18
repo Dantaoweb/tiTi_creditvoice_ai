@@ -225,6 +225,7 @@ def get_pos_receipt(db, tx_id, user=None):
         "biz_name": biz_name,
         "config": config,
         "invoice_number": tx.invoice_number,
+        "invoice_sent_at": tx.invoice_sent_at.isoformat() if tx.invoice_sent_at else None,
         "items": [
             {
                 "product": it.product,

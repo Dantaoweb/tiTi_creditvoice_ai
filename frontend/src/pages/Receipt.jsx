@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { Printer, ArrowLeft, FileText } from "lucide-react";
+import { Printer, ArrowLeft, FileText, Send } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
-import { nairaFull, dateTimeStr, fmtAmt } from "../lib/format";
+import { nairaFull, dateTimeStr, dateStr, fmtAmt } from "../lib/format";
 
 export default function Receipt() {
   const { id } = useParams();
@@ -12,6 +12,8 @@ export default function Receipt() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [issuing, setIssuing] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState("");
 
   useEffect(() => {
     apiFetch(`pos/receipt/${id}`)
@@ -78,6 +80,21 @@ export default function Receipt() {
     }
   }
 
+  const hasCustomerPhone = !!(receipt.customer && receipt.customer.phone);
+  const sentAt = receipt.invoice_sent_at;
+
+  async function sendInvoice() {
+    setSending(true); setSendErr("");
+    try {
+      const res = await apiPost(`invoices/${id}/send`, {});
+      setReceipt(r => ({ ...r, invoice_sent_at: res.sent_at, invoice_number: res.invoice_number }));
+    } catch (e) {
+      setSendErr(e.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <div className="receipt-shell">
       <div className="receipt-actions no-print">
@@ -94,10 +111,25 @@ export default function Receipt() {
             <FileText size={15} /> View as Receipt
           </button>
         )}
+        {isInvoice && hasCustomerPhone && (
+          <button className="btn btn-ghost" onClick={sendInvoice} disabled={sending}>
+            <Send size={15} /> {sending ? "Sending…" : (sentAt ? "Resend to customer" : "Send to customer")}
+          </button>
+        )}
         <button className="btn btn-primary" onClick={() => window.print()}>
           <Printer size={15} /> Print
         </button>
       </div>
+
+      {isInvoice && (sentAt || sendErr || !hasCustomerPhone) && (
+        <div className="no-print" style={{ textAlign: "center", margin: "0 0 10px", fontSize: 13 }}>
+          {sendErr
+            ? <span style={{ color: "#b91c1c" }}>{sendErr}</span>
+            : sentAt
+              ? <span style={{ color: "#166534" }}>Sent to customer on {dateStr(sentAt)}.</span>
+              : <span style={{ color: "var(--text-muted)" }}>No phone on file — print or download to share this invoice.</span>}
+        </div>
+      )}
 
       <div className="receipt-paper">
         <div className="receipt-header">

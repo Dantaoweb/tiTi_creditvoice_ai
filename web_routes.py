@@ -1366,6 +1366,54 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.post("/app/api/invoices/{tx_id}/send")
+    def web_send_invoice(tx_id: int, session: dict = Depends(require_web_auth)):
+        """Send the invoice to the customer's WhatsApp and record it as sent.
+        Assigns the invoice number first if needed."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if not tx:
+                raise HTTPException(status_code=404, detail="Sale not found.")
+            recorder = db.query(User).filter(User.id == tx.recorded_by_id).first() if tx.recorded_by_id else None
+            recorder_phone = recorder.phone if recorder else None
+            if recorder and recorder.parent_id:
+                parent = db.query(User).filter(User.id == recorder.parent_id).first()
+                recorder_phone = parent.phone if parent else recorder_phone
+            if recorder_phone != owner_phone:
+                raise HTTPException(status_code=404, detail="Sale not found.")
+
+            customer = db.query(Customer).filter(Customer.id == tx.customer_id).first() if tx.customer_id else None
+            if not customer or not customer.customer_phone:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No phone on file for this customer. You can still print or download the invoice.",
+                )
+
+            from invoices import issue_invoice_number, format_invoice_text
+            issue_invoice_number(db, tx, owner_phone)
+            db.commit()
+
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
+            session_user = db.query(User).filter(User.id == session["user_id"]).first()
+            receipt = get_pos_receipt(db, tx_id, user=owner_user or session_user)
+            if not receipt:
+                raise HTTPException(status_code=404, detail="Sale not found.")
+
+            from whatsapp_client import send_whatsapp_message
+            send_whatsapp_message(customer.customer_phone, format_invoice_text(receipt))
+
+            tx.invoice_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            return {
+                "id": tx.id,
+                "invoice_number": tx.invoice_number,
+                "sent_at": tx.invoice_sent_at.isoformat(),
+            }
+        finally:
+            db.close()
+
     # ── Customers ────────────────────────────────────────────────────────
     @app.get("/app/api/customers")
     def web_customers(session: dict = Depends(require_web_auth)):

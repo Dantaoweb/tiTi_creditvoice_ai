@@ -144,6 +144,44 @@ def test_overdue_when_past_due_and_unpaid():
     assert data["invoices"][0]["status"] == "overdue"
 
 
+def _set_phone(owner_phone, name, phone):
+    db = SessionLocal()
+    c = db.query(Customer).filter(Customer.owner_phone == owner_phone, Customer.name == name).first()
+    c.customer_phone = phone
+    db.commit(); db.close()
+
+
+def test_send_invoice_records_sent(monkeypatch):
+    # The WhatsApp send is stubbed; we assert the invoice is stamped as sent
+    # and the formatted text is a proper invoice.
+    sent_box = {}
+    import whatsapp_client
+    monkeypatch.setattr(whatsapp_client, "send_whatsapp_message",
+                        lambda phone, msg: sent_box.update(phone=phone, msg=msg))
+
+    cookies, uid = _register_login("2777000010")
+    t1 = _credit_sale("2777000010", uid, amount=5000, name="Ada")
+    _set_phone("2777000010", "Ada", "2348123456789")
+
+    r = client.post(f"/app/api/invoices/{t1}/send", cookies=cookies)
+    assert r.status_code == 200, r.text
+    assert r.json()["sent_at"]
+    assert sent_box.get("phone") == "2348123456789"
+    assert "INVOICE" in sent_box.get("msg", "") and "Amount due" in sent_box.get("msg", "")
+
+    # The list now shows it as sent
+    rows = {x["id"]: x for x in client.get("/app/api/invoices", cookies=cookies).json()["invoices"]}
+    assert rows[t1]["sent_at"]
+
+
+def test_send_invoice_without_phone_is_rejected():
+    cookies, uid = _register_login("2777000011")
+    t1 = _credit_sale("2777000011", uid, amount=5000, name="Dele")   # no phone set
+    r = client.post(f"/app/api/invoices/{t1}/send", cookies=cookies)
+    assert r.status_code == 400
+    assert "phone" in r.json()["detail"].lower()
+
+
 def test_fifo_allocation_across_two_invoices():
     # Two invoices for one customer; a partial payment clears the older one first.
     cookies, uid = _register_login("2777000009")
