@@ -817,18 +817,32 @@ def get_product_buyers(db, owner_phone, product_name, recorded_by_id=None):
     Sorted: customers with phone numbers first, then alphabetically.
     """
     from collections import defaultdict
+    from datetime import datetime
 
-    q = db.query(Transaction).join(
+    p = product_name.lower().strip()
+
+    base = db.query(Transaction).join(
         Customer, Customer.id == Transaction.customer_id
     ).filter(
         Customer.owner_phone == owner_phone,
         Transaction.type == "BUY",
         Transaction.is_voided.isnot(True),
-        func.lower(Transaction.product) == product_name.lower().strip(),
     )
     if recorded_by_id:
-        q = q.filter(Transaction.recorded_by_id == recorded_by_id)
-    txs = q.order_by(Transaction.created_at.desc()).all()
+        base = base.filter(Transaction.recorded_by_id == recorded_by_id)
+
+    # Match the product either in the transaction's own product field (simple
+    # single-product sales) or in any line item (itemised / cart sales, which
+    # store Transaction.product as a comma-joined summary like "sugar, rice").
+    direct = base.filter(func.lower(Transaction.product) == p)
+    itemised = base.join(
+        TransactionItem, TransactionItem.transaction_id == Transaction.id
+    ).filter(func.lower(TransactionItem.product) == p)
+
+    # A sale can match both paths, or an itemised sale can carry the product on
+    # more than one line — dedupe by transaction id.
+    txs_by_id = {tx.id: tx for tx in list(direct) + list(itemised)}
+    txs = sorted(txs_by_id.values(), key=lambda t: t.created_at or datetime.min, reverse=True)
 
     customer_data = defaultdict(lambda: {"count": 0, "last": None, "obj": None})
     for tx in txs:
