@@ -20,6 +20,22 @@ export default function Receipt() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Arriving directly in invoice mode (e.g. from a customer's history) for a
+  // credit sale with no number yet: assign it so the document shows INV-xxxx.
+  const invoiceMode = searchParams.get("doc") === "invoice";
+  useEffect(() => {
+    if (!receipt || issuing) return;
+    const owedAmt = receipt.balance_owed ?? 0;
+    const canInvoice = receipt.type === "BUY" && owedAmt > 0;
+    if (invoiceMode && canInvoice && !receipt.invoice_number) {
+      setIssuing(true);
+      apiPost(`invoices/${id}/issue`, {})
+        .then(setReceipt)
+        .catch(() => {})
+        .finally(() => setIssuing(false));
+    }
+  }, [receipt, invoiceMode, id, issuing]);
+
   if (loading) return <div className="page-loading">Loading receipt…</div>;
   if (err || !receipt) return <div className="pos-error" style={{ margin: 24 }}>{err || "Receipt not found."}</div>;
 
@@ -39,7 +55,7 @@ export default function Receipt() {
   // ── Invoice mode ────────────────────────────────────────────────────────────
   // The same document can be shown as an invoice ("amount due") for a credit
   // sale. A sale is invoiceable when the customer owes on it.
-  const isInvoice   = searchParams.get("doc") === "invoice";
+  const isInvoice   = invoiceMode;
   const invoiceable = isCredit && owed > 0;
   const invoiceNo   = receipt.invoice_number ? `INV-${String(receipt.invoice_number).padStart(4, "0")}` : null;
   const dueStr = receipt.due_date

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Wallet, History, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown } from "lucide-react";
+import { Plus, Wallet, History, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
@@ -259,6 +259,7 @@ function DueDateCell({ tx, onUpdated }) {
 }
 
 function HistoryModal({ customer, onClose }) {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -305,6 +306,7 @@ function HistoryModal({ customer, onClose }) {
                     <th>Description</th>
                     <th>Due Date</th>
                     <th>Staff</th>
+                    <th>Invoice</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -320,6 +322,17 @@ function HistoryModal({ customer, onClose }) {
                       <td>{tx.product || "—"}</td>
                       <DueDateCell tx={tx} onUpdated={handleDueDateUpdated} />
                       <td className="td-muted">{tx.recorded_by || "—"}</td>
+                      <td>
+                        {tx.type === "BUY" ? (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            title="View or create invoice"
+                            onClick={() => navigate(`/pos/receipt/${tx.id}?doc=invoice`)}
+                          >
+                            <FileText size={13} /> Invoice
+                          </button>
+                        ) : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
