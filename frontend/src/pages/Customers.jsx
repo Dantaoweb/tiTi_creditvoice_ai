@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, Wallet, History, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -72,6 +73,7 @@ function AddCustomerModal({ ownerPhone, onClose, onSaved, L }) {
 
 // ── Record payment modal ─────────────────────────────────────────────────────
 function PaymentModal({ customer, onClose, onSaved }) {
+  const navigate = useNavigate();
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -88,6 +90,9 @@ function PaymentModal({ customer, onClose, onSaved }) {
       });
       onSaved(result.new_balance);
       onClose();
+      // Show the printable payment receipt as proof — works whether or not the
+      // customer has a saved phone.
+      if (result?.id) navigate(`/pos/receipt/${result.id}`);
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   }

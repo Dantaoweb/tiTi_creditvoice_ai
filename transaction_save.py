@@ -114,6 +114,60 @@ def _notify_customer_receipt(db, customer, tx, balance, user, business_owner_pho
         pass
 
 
+def _notify_customer_payment_receipt(db, customer, pay_tx, balance, user, business_owner_phone, recorder_phone, send_message):
+    """Deliver a payment receipt after a PAY transaction.
+
+    A receipt is always *generated* as proof of payment. It is delivered to the
+    customer's WhatsApp when a phone is on file; otherwise it is sent to the
+    person who recorded it (owner/staff) so evidence still exists — no payment
+    is left without a receipt just because the customer has no saved phone.
+    """
+    if not pay_tx:
+        return
+    try:
+        from business_templates import receipt_config_for_user
+        from models import User as _U
+        owner = db.query(_U).filter(_U.phone == business_owner_phone).first()
+        cfg = receipt_config_for_user(owner) if owner else {}
+        business_name = (owner.name if owner else (user.name if user else "")) or ""
+        customer_label = cfg.get("customer_label", "Customer")
+        footer = cfg.get("footer", "Thank you.")
+        cust_name = (customer.name.title() if customer and customer.name else "Customer")
+        date_str = (pay_tx.created_at or _utcnow()).strftime("%d/%m/%Y  %H:%M")
+
+        lines = [
+            business_name.upper(),
+            date_str,
+            "--------------------",
+            f"{customer_label}: {cust_name}",
+            "--------------------",
+            "PAYMENT RECEIVED",
+            f"Paid:     N{pay_tx.amount:,}",
+        ]
+        if balance > 0:
+            lines.append(f"Balance:  N{balance:,}")
+        elif balance < 0:
+            lines.append(f"Credit:   N{abs(balance):,}")
+        else:
+            lines.append("Settled:  Fully paid")
+        lines.append("--------------------")
+        lines.append(f"Ref: PAY-{pay_tx.id}")
+        lines.append(footer)
+        receipt = "\n".join(lines)
+
+        if customer and customer.customer_phone:
+            send_message(customer.customer_phone, receipt)
+        elif recorder_phone:
+            # No phone on file — hand the receipt to whoever recorded it so the
+            # payment still has documented evidence.
+            send_message(
+                recorder_phone,
+                f"🧾 Payment receipt for {cust_name} (no phone on file — keep for your records):\n\n{receipt}",
+            )
+    except Exception:
+        pass
+
+
 def send_low_stock_alerts(send_message, owner_phone, low_stock_alerts):
     if not low_stock_alerts:
         return
@@ -330,6 +384,7 @@ def save_customer_pending(
     stock_missing = []
     low_stock_alerts = []
     _buy_tx_for_receipt = None
+    _pay_tx_for_receipt = None
 
     try:
         _default_branch_id = _get_default_branch_id(db, business_owner_phone)
@@ -374,6 +429,8 @@ def save_customer_pending(
                 branch_id=_default_branch_id,
             )
             db.add(tx)
+            db.flush()
+            _pay_tx_for_receipt = tx
             if pending.due_date:
                 latest_buy = db.query(Transaction).filter(
                     Transaction.customer_id == customer.id,
@@ -442,10 +499,17 @@ def save_customer_pending(
     msg += build_stock_save_message(stock_updates, stock_missing)
     if customer.customer_phone and _buy_tx_for_receipt and _pending_action in ("BUY", "COMBINED"):
         msg += f"\n\nReceipt sent to {customer.name.title()}."
+    elif _pay_tx_for_receipt and _pending_action == "PAY":
+        # A receipt is always produced; note where it went.
+        msg += (f"\n\nPayment receipt sent to {customer.name.title()}."
+                if customer.customer_phone
+                else "\n\nPayment receipt below (no phone on file for this customer).")
     send_message(phone, msg)
     send_low_stock_alerts(send_message, business_owner_phone, low_stock_alerts)
     if customer.customer_phone and _buy_tx_for_receipt and _pending_action in ("BUY", "COMBINED"):
         _notify_customer_receipt(db, customer, _buy_tx_for_receipt, balance, user, business_owner_phone, send_message)
+    elif _pay_tx_for_receipt and _pending_action == "PAY":
+        _notify_customer_payment_receipt(db, customer, _pay_tx_for_receipt, balance, user, business_owner_phone, phone, send_message)
     return {"status": "saved"}
 
 
