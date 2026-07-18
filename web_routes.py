@@ -2197,6 +2197,7 @@ def register_web_routes(app):
                         "email": m.email,
                         "role": m.role,
                         "pending": m.role == "delegate_pending",
+                        "full_access": bool(m.can_view_all_transactions),
                         "invite_expires_at": m.invite_expires_at.isoformat() if m.invite_expires_at else None,
                     }
                     for m in members
@@ -2535,6 +2536,35 @@ def register_web_routes(app):
                 member.staff_matric = payload.staff_matric.strip().upper() or None
             db.commit()
             return {"ok": True}
+        finally:
+            db.close()
+
+    class StaffAccessRequest(BaseModel):
+        full_access: bool
+
+    @app.post("/app/api/staff/{user_id}/access")
+    def web_set_staff_access(
+        user_id: str,
+        payload: StaffAccessRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Grant or revoke a staff member full access (see all business records,
+        not just their own) — the app's "admin"-level staff permission."""
+        from subscriptions import ensure_feature_allowed
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can change staff access.")
+            allowed, upgrade_msg = ensure_feature_allowed(db, owner, "STAFF_PERMISSION", "Staff permissions")
+            if not allowed:
+                raise HTTPException(status_code=403, detail=upgrade_msg)
+            member = db.query(User).filter(User.id == user_id, User.parent_id == owner.id).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            member.can_view_all_transactions = bool(payload.full_access)
+            db.commit()
+            return {"ok": True, "full_access": bool(member.can_view_all_transactions)}
         finally:
             db.close()
 

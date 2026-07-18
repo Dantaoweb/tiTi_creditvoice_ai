@@ -269,6 +269,7 @@ export default function Staff() {
   const [invBusy, setInvBusy]   = useState(false);
   const [invErr, setInvErr]     = useState("");
   const [invResult, setInvResult] = useState(null); // { invite_code, emailed, email_hint }
+  const [accessBusy, setAccessBusy] = useState({});
 
   useEffect(() => {
     setLoading(true);
@@ -316,6 +317,18 @@ export default function Staff() {
       setShowInvite(false);
     } catch (e) { setInvErr(e.message); }
     finally { setInvBusy(false); }
+  }
+
+  async function toggleAccess(id, next) {
+    setAccessBusy(p => ({ ...p, [id]: true }));
+    try {
+      await apiPost(`staff/${id}/access`, { full_access: next });
+      setMembers(ms => ms.map(m => (m.id === id ? { ...m, full_access: next } : m)));
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setAccessBusy(p => ({ ...p, [id]: false }));
+    }
   }
 
   return (
@@ -613,6 +626,31 @@ export default function Staff() {
                     <strong>{member.customers_served.toLocaleString()}</strong>
                   </div>
                 </div>
+
+                {isOwner && (() => {
+                  const mem = members.find(x => x.id === member.id);
+                  if (!mem || mem.pending) return null;
+                  const full = mem.full_access;
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>
+                          {full ? "Full access (admin)" : "Own records only"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          {full ? "Sees all business records." : "Sees only what they record."}
+                        </div>
+                      </div>
+                      <button
+                        className={`btn btn-sm ${full ? "btn-secondary" : "btn-primary"}`}
+                        disabled={accessBusy[member.id]}
+                        onClick={() => toggleAccess(member.id, !full)}
+                      >
+                        {accessBusy[member.id] ? "Saving…" : (full ? "Revoke access" : "Grant full access")}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {member.top_products?.length > 0 && (
                   <div>

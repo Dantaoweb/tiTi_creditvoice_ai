@@ -67,3 +67,27 @@ def test_accept_rejects_wrong_code():
                 json={"name": "Tunde", "phone": staff_phone})
     bad = client.post("/app/api/staff/accept", json={"phone": staff_phone, "code": "WRONGCODE"})
     assert bad.status_code == 400
+
+
+def test_owner_can_grant_and_revoke_full_access():
+    owner_cookies = _pro_owner("2348055550005")
+    staff_phone = "2348055550006"
+    code = client.post("/app/api/staff/invite", cookies=owner_cookies,
+                       json={"name": "Ada", "phone": staff_phone}).json()["invite_code"]
+    client.post("/app/api/staff/accept", json={"phone": staff_phone, "code": code})
+
+    member = next(m for m in client.get("/app/api/staff/members", cookies=owner_cookies).json()["members"]
+                  if m["phone"] == staff_phone)
+    assert member["full_access"] is False
+
+    grant = client.post(f"/app/api/staff/{member['id']}/access",
+                        cookies=owner_cookies, json={"full_access": True})
+    assert grant.status_code == 200 and grant.json()["full_access"] is True
+
+    member = next(m for m in client.get("/app/api/staff/members", cookies=owner_cookies).json()["members"]
+                  if m["phone"] == staff_phone)
+    assert member["full_access"] is True
+
+    revoke = client.post(f"/app/api/staff/{member['id']}/access",
+                         cookies=owner_cookies, json={"full_access": False})
+    assert revoke.json()["full_access"] is False
