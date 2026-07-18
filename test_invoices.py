@@ -98,3 +98,61 @@ def test_cannot_issue_for_another_business_sale():
     ta = _credit_sale("2777000005", a_uid)
     # Business B may not invoice business A's sale
     assert client.post(f"/app/api/invoices/{ta}/issue", cookies=b_cookies).status_code == 404
+
+
+# ── Stage 2: list + derived status ───────────────────────────────────────────
+
+def _pay(owner_phone, name, amount):
+    db = SessionLocal()
+    c = db.query(Customer).filter(Customer.owner_phone == owner_phone, Customer.name == name).first()
+    db.add(Transaction(customer_id=c.id, type="PAY", amount=amount,
+                       message_id=f"pay-{uuid.uuid4()}"))
+    db.commit(); db.close()
+
+
+def _set_due(tx_id, days_from_now):
+    from datetime import datetime, timezone, timedelta
+    db = SessionLocal()
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    tx.due_date = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=days_from_now)
+    db.commit(); db.close()
+
+
+def test_list_open_and_paid_status():
+    cookies, uid = _register_login("2777000007")
+    t1 = _credit_sale("2777000007", uid, amount=5000, name="Ada")
+    client.post(f"/app/api/invoices/{t1}/issue", cookies=cookies)
+
+    data = client.get("/app/api/invoices", cookies=cookies).json()
+    assert data["summary"]["open"] == 1
+    row = data["invoices"][0]
+    assert row["status"] == "open" and row["outstanding"] == 5000
+
+    _pay("2777000007", "Ada", 5000)              # fully paid
+    data = client.get("/app/api/invoices", cookies=cookies).json()
+    row = data["invoices"][0]
+    assert row["status"] == "paid" and row["outstanding"] == 0
+
+
+def test_overdue_when_past_due_and_unpaid():
+    cookies, uid = _register_login("2777000008")
+    t1 = _credit_sale("2777000008", uid, amount=3000, name="Bola")
+    _set_due(t1, -2)                              # due date 2 days ago
+    client.post(f"/app/api/invoices/{t1}/issue", cookies=cookies)
+    data = client.get("/app/api/invoices?status=overdue", cookies=cookies).json()
+    assert len(data["invoices"]) == 1
+    assert data["invoices"][0]["status"] == "overdue"
+
+
+def test_fifo_allocation_across_two_invoices():
+    # Two invoices for one customer; a partial payment clears the older one first.
+    cookies, uid = _register_login("2777000009")
+    t1 = _credit_sale("2777000009", uid, amount=4000, name="Chika")   # older
+    t2 = _credit_sale("2777000009", uid, amount=6000, name="Chika")   # newer
+    client.post(f"/app/api/invoices/{t1}/issue", cookies=cookies)
+    client.post(f"/app/api/invoices/{t2}/issue", cookies=cookies)
+    _pay("2777000009", "Chika", 4000)            # exactly clears the first
+
+    rows = {r["id"]: r for r in client.get("/app/api/invoices", cookies=cookies).json()["invoices"]}
+    assert rows[t1]["status"] == "paid" and rows[t1]["outstanding"] == 0
+    assert rows[t2]["status"] == "open" and rows[t2]["outstanding"] == 6000

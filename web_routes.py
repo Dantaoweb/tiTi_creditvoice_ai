@@ -1312,6 +1312,27 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/invoices")
+    def web_list_invoices(status: str = None, session: dict = Depends(require_web_auth)):
+        """List this business's issued invoices with a derived status.
+        Optional ?status=open|overdue|paid filter."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            from invoices import list_business_invoices
+            status_filter = status.lower() if status else None
+            if status_filter and status_filter not in ("open", "overdue", "paid"):
+                status_filter = None
+            invoices = list_business_invoices(db, owner_phone, status_filter)
+            summary = {"open": 0, "overdue": 0, "paid": 0, "total_due": 0}
+            # Summary is computed over all invoices, independent of the filter.
+            for row in (list_business_invoices(db, owner_phone) if status_filter else invoices):
+                summary[row["status"]] += 1
+                summary["total_due"] += row["outstanding"]
+            return {"invoices": invoices, "summary": summary}
+        finally:
+            db.close()
+
     @app.post("/app/api/invoices/{tx_id}/issue")
     def web_issue_invoice(tx_id: int, session: dict = Depends(require_web_auth)):
         """Assign a sale its formal invoice number (once) and return the invoice

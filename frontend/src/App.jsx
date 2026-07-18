@@ -22,6 +22,7 @@ import Capture      from "./pages/Capture";
 import POS          from "./pages/POS";
 import Receipt      from "./pages/Receipt";
 import Receipts     from "./pages/Receipts";
+import Invoices     from "./pages/Invoices";
 import Deliveries   from "./pages/Deliveries";
 import Wallet       from "./pages/Wallet";
 import Thrift        from "./pages/Thrift";
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="pos"          element={<POS />}          />
           <Route path="pos/receipt/:id" element={<Receipt />}   />
           <Route path="receipts"     element={<Receipts />}     />
+          <Route path="invoices"     element={<Invoices />}     />
           <Route path="deliveries"   element={<Deliveries />}   />
           <Route path="customers"    element={<Customers />}    />
           <Route path="transactions" element={<Transactions />} />
