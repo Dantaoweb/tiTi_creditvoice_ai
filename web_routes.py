@@ -1830,6 +1830,67 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    class VoidTxRequest(BaseModel):
+        reason: str = Field(default="", max_length=300)
+
+    @app.post("/app/api/transactions/{tx_id}/void")
+    def web_void_transaction(
+        tx_id: int,
+        payload: VoidTxRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Void a transaction from the web (mirrors the WhatsApp 'void' command):
+        marks it voided so it drops out of balances/reports, records who/why, and
+        alerts the owner when a staff member does it."""
+        from reports import get_owner_transaction_query
+        from models import TransactionNote
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            owner_phone = _session_owner_phone(db, session)
+            if not user:
+                raise HTTPException(status_code=401, detail="Not authenticated.")
+            is_owner = user.phone == owner_phone
+            # Staff may only see/void their own records unless granted full view.
+            staff_filter = None if (is_owner or user.can_view_all_transactions) else user.id
+            base = get_owner_transaction_query(db, owner_phone, recorded_by_id=staff_filter)
+            tx = base.filter(Transaction.id == tx_id).first()
+            if not tx:
+                raise HTTPException(status_code=404, detail="Transaction not found or already voided.")
+            # Full-view staff can see all, but may still only void what they recorded.
+            if not is_owner and tx.recorded_by_id != user.id:
+                raise HTTPException(status_code=403, detail="You can only void transactions you recorded yourself.")
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            reason = payload.reason.strip() or "No reason given"
+            tx.is_voided = True
+            tx.void_reason = reason
+            tx.voided_by_id = user.id
+            tx.voided_at = now
+            db.add(TransactionNote(
+                transaction_id=tx.id,
+                author_user_id=user.id,
+                note=f"VOIDED by {(user.name or '').title()} on {now.strftime('%d/%m/%Y %H:%M')}. Reason: {reason}",
+            ))
+            db.commit()
+
+            if not is_owner:
+                try:
+                    from whatsapp_client import send_whatsapp_message
+                    send_whatsapp_message(
+                        owner_phone,
+                        f"*VOID ALERT* - Staff action\n\n"
+                        f"*{(user.name or '').title()}* voided transaction #{tx.id} "
+                        f"(N{tx.amount:,}).\nReason: {reason}\n\n"
+                        "Check your dashboard if this looks suspicious."
+                    )
+                except Exception:
+                    pass
+
+            return {"ok": True, "id": tx.id, "is_voided": True, "void_reason": reason}
+        finally:
+            db.close()
+
     # ── Inventory ─────────────────────────────────────────────────────────
     @app.get("/app/api/inventory")
     def web_inventory(session: dict = Depends(require_web_auth)):

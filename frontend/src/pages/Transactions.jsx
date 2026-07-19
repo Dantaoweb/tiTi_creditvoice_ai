@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, MapPin, Lock } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiDownload } from "../lib/api";
+import { apiFetch, apiDownload, apiPost } from "../lib/api";
 import { nairaFull, dateTimeStr, qty } from "../lib/format";
 import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
@@ -51,6 +51,24 @@ export default function Transactions() {
       .catch((e) => { setError(e.message); setIsStale(true); })
       .finally(() => setLoading(false));
   }, [ownerPhone, period, branchFilter]);
+
+  async function voidTx(row) {
+    const reason = window.prompt(
+      `Void transaction #${row.id} (${nairaFull(row.amount)})?\n\n` +
+      "It will stop counting in balances and reports. Enter a reason:",
+      ""
+    );
+    if (reason === null) return;   // cancelled
+    try {
+      await apiPost(`transactions/${row.id}/void`, { reason });
+      setRows(rs => rs.map(r =>
+        r.id === row.id ? { ...r, is_voided: true, void_reason: reason.trim() || "No reason given" } : r
+      ));
+      toast("Transaction voided.", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
 
   const types = ["all", ...Array.from(new Set(rows.map((r) => r.type))).sort()];
   const filtered = filter === "all" ? rows : rows.filter((r) => r.type === filter);
@@ -130,6 +148,9 @@ export default function Transactions() {
                 ? <span className="text-rose text-sm">{r.void_reason}</span>
                 : <span className="text-subtle">—</span> },
             { key: "created_at", label: "Date",      render: (r) => <span className="td-muted">{dateTimeStr(r.created_at)}</span>, sortKey: "created_at" },
+            { key: "actions",    label: "",          render: (r) => r.is_voided
+                ? <span className="text-subtle text-sm">Voided</span>
+                : <button className="btn btn-ghost btn-xs text-rose" onClick={() => voidTx(r)}>Void</button> },
           ]}
         />
       </div>
