@@ -108,7 +108,8 @@ function InviteForm({ onDone, onCancel }) {
 export default function Partners() {
   const { user } = useAuth();
   const { allows } = usePlan();
-  const isOwner = user?.role === "user" && !user?.parent_id;
+  // Any top-level account is a business owner (web owners have role "owner").
+  const isOwner = !user?.parent_id && user?.role !== "delegate" && user?.role !== "delegate_pending";
   const canUsePartners = allows("PARTNERS");
 
   const [data, setData] = useState(null);

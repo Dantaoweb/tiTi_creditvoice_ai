@@ -1,0 +1,58 @@
+"""
+#4: partner/investor invite works end-to-end and stores equity/investment.
+"""
+import os
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("ENVIRONMENT", "development")
+os.environ.setdefault("WEB_SECRET_KEY", "test-secret-key-for-partners-tests-0000000000")
+
+import pytest
+from fastapi.testclient import TestClient
+
+from main import app
+import web_auth
+from database import SessionLocal
+from models import User
+
+client = TestClient(app, raise_server_exceptions=True)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    with web_auth._auth_lock:
+        web_auth._auth_attempts.clear()
+    yield
+    with web_auth._auth_lock:
+        web_auth._auth_attempts.clear()
+
+
+def _pro_owner(phone):
+    client.post("/app/api/auth/register", json={"name": "Owner", "phone": phone, "pin": "5678"})
+    db = SessionLocal()
+    u = db.query(User).filter(User.phone == phone).first()
+    u.subscription_plan = "PRO"
+    u.subscription_status = "ACTIVE"
+    db.commit(); db.close()
+    return client.post("/app/api/auth/login", json={"phone": phone, "pin": "5678"}).cookies
+
+
+def test_owner_invites_investor_with_details():
+    cookies = _pro_owner("2348066660001")
+    r = client.post("/app/api/partners/invite", cookies=cookies, json={
+        "partner_phone": "2348066660002",
+        "role": "investor",
+        "equity_percent": 25.0,
+        "investment_amount": 500000,
+        "notes": "Seed investor",
+    })
+    assert r.status_code == 200, r.text
+
+    data = client.get("/app/api/partners", cookies=cookies).json()
+    partners = data["partners"]
+    assert len(partners) == 1
+    p = partners[0]
+    assert p["partner_phone"] == "2348066660002"
+    assert p["role"] == "investor"
+    assert p["equity_percent"] == 25.0
+    assert p["investment_amount"] == 500000
