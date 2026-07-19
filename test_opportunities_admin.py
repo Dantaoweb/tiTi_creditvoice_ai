@@ -25,6 +25,9 @@ client = TestClient(app, raise_server_exceptions=True)
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limiters():
+    # Set here (not just at import) so a sibling admin test module that also sets
+    # APP_ADMIN_PHONES can't clobber ours — app_admin_phones() reads env live.
+    os.environ["APP_ADMIN_PHONES"] = ADMIN_PHONE
     with web_auth._auth_lock:
         web_auth._auth_attempts.clear()
     yield
