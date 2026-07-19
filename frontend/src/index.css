@@ -184,6 +184,16 @@ input, select, textarea {
 
 input:focus, select:focus, textarea:focus { border-color: var(--brand); }
 
+/* Amber highlight once a field holds data, so entered values read clearly
+   instead of blending into the grey empty state. Applies while typing too.
+   Scoped to [placeholder] inputs: without a placeholder :placeholder-shown is
+   never true, which would wrongly amber an empty field. */
+input[placeholder]:not(:placeholder-shown):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea[placeholder]:not(:placeholder-shown) {
+  border-color: var(--amber);
+  background: #fffaf0;
+}
+
 textarea { height: auto; padding: 10px; resize: vertical; line-height: 1.5; }
 
 input::placeholder { color: var(--subtle); }
