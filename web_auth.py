@@ -148,11 +148,27 @@ def require_web_auth(
     return payload
 
 
+def user_by_phone(db: Session, phone: str):
+    """Find a user by phone, tolerant of local vs international format so a number
+    entered either way (0803… or 234803…) resolves to the same account. Additive:
+    it only widens matching, so users stored in either format keep working."""
+    from parser import normalize_phone
+    raw = (phone or "").strip()
+    candidates = {raw}
+    norm = normalize_phone(raw)
+    if norm:
+        candidates.add(norm)
+    candidates.discard("")
+    if not candidates:
+        return None
+    return db.query(User).filter(User.phone.in_(candidates)).first()
+
+
 def web_login(db: Session, phone: str, pin: str, ip: str = None) -> dict:
     from audit import audit
     if not _auth_rate_check(phone):
         raise HTTPException(status_code=429, detail="Too many login attempts. Please wait 15 minutes.")
-    user = db.query(User).filter(User.phone == phone).first()
+    user = user_by_phone(db, phone)
     if not user:
         raise HTTPException(status_code=401, detail="Phone number not registered. Create an account first.")
 
@@ -185,7 +201,7 @@ def web_login(db: Session, phone: str, pin: str, ip: str = None) -> dict:
 def get_otp_channels(db: Session, phone: str) -> dict:
     """Return what OTP delivery channels are available for this phone."""
     from email_service import mask_email
-    user = db.query(User).filter(User.phone == phone).first()
+    user = user_by_phone(db, phone)
     if not user:
         raise HTTPException(
             status_code=404,
@@ -210,7 +226,7 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto", email: str =
     from email_service import send_otp_email
     from whatsapp_client import send_whatsapp_message
 
-    user = db.query(User).filter(User.phone == phone).first()
+    user = user_by_phone(db, phone)
     if not user:
         raise HTTPException(
             status_code=404,
@@ -338,7 +354,7 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
         db.commit()
         raise HTTPException(status_code=400, detail="Incorrect code. Try again.")
 
-    user = db.query(User).filter(User.phone == phone).first()
+    user = user_by_phone(db, phone)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 

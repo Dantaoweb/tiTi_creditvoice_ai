@@ -2295,11 +2295,15 @@ def register_web_routes(app):
             if not staff_allowed:
                 raise HTTPException(status_code=403, detail=staff_limit_msg)
 
-            staff_phone = payload.phone.strip()
+            from parser import normalize_phone
+            from web_auth import user_by_phone
+            # Store the staff phone canonically so the number the owner typed and
+            # the number the staff types on accept/login resolve to one account.
+            staff_phone = normalize_phone(payload.phone) or payload.phone.strip()
             staff_name = payload.name.strip()
             staff_email = (payload.email or "").strip() or None
 
-            staff_user = db.query(User).filter(User.phone == staff_phone).first()
+            staff_user = user_by_phone(db, payload.phone)
             if staff_user:
                 staff_user.role = "delegate_pending"
                 staff_user.parent_id = owner.id
@@ -2351,10 +2355,13 @@ def register_web_routes(app):
 
         db = SessionLocal()
         try:
+            from web_auth import user_by_phone
             phone = payload.phone.strip()
             code = payload.code.strip()
 
-            staff_user = db.query(User).filter(User.phone == phone).first()
+            # Tolerant of local vs international format — the owner may have typed
+            # the number differently from how the staff enters it here.
+            staff_user = user_by_phone(db, phone)
             if not staff_user or staff_user.role != "delegate_pending":
                 raise HTTPException(status_code=404, detail="No pending invitation found for this phone number.")
 

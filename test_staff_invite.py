@@ -60,6 +60,26 @@ def test_invite_then_accept():
     assert any(m["phone"] == staff_phone and not m["pending"] for m in members)
 
 
+def test_accept_works_when_phone_format_differs():
+    # Owner invites using local format; staff accepts using international format.
+    owner_cookies = _pro_owner("2348055550007")
+    inv = client.post("/app/api/staff/invite", cookies=owner_cookies,
+                      json={"name": "Bisi", "phone": "08055550008"})
+    assert inv.status_code == 200, inv.text
+    code = inv.json()["invite_code"]
+
+    # Accept with international format
+    acc = client.post("/app/api/staff/accept", json={"phone": "2348055550008", "code": code})
+    assert acc.status_code == 200, acc.text
+
+    # And the reverse: owner invites international, staff accepts local.
+    inv2 = client.post("/app/api/staff/invite", cookies=owner_cookies,
+                       json={"name": "Kola", "phone": "2348055550009"})
+    acc2 = client.post("/app/api/staff/accept",
+                       json={"phone": "08055550009", "code": inv2.json()["invite_code"]})
+    assert acc2.status_code == 200, acc2.text
+
+
 def test_accept_rejects_wrong_code():
     owner_cookies = _pro_owner("2348055550003")
     staff_phone = "2348055550004"
