@@ -457,7 +457,7 @@ export default function Staff() {
                   <div className="staff-lb-stats">
                     <div className="staff-lb-sale">{nairaFull(m.sales)}</div>
                     <div className="staff-lb-meta">
-                      {m.transactions} tx · avg {nairaFull(avg)}
+                      {m.transactions.toLocaleString()} tx · avg {nairaFull(avg)}
                     </div>
                     {m.staff_salary > 0 && totalSales > 0 && (
                       <div className="staff-lb-salary">

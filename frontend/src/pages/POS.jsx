@@ -4,7 +4,7 @@ import { Search, Plus, Minus, Trash2, ShoppingCart, User, X } from "lucide-react
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
-import { nairaFull, nairaInWords } from "../lib/format";
+import { nairaFull, nairaInWords, qty } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
 
@@ -87,8 +87,8 @@ function ProductGrid({ ownerPhone, onAdd }) {
                       : oos
                         ? "Out of stock"
                         : p.unit
-                          ? `${p.quantity} ${p.unit}`
-                          : `${p.quantity} in stock`}
+                          ? qty(p.quantity, p.unit)
+                          : `${qty(p.quantity)} in stock`}
                   </span>
                 </button>
               );

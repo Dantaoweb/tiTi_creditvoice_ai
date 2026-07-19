@@ -5,7 +5,7 @@ import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
-import { nairaFull } from "../lib/format";
+import { nairaFull, qty } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
@@ -131,7 +131,7 @@ function InventorySearch({ ownerPhone, onSelect, value }) {
   if (value) {
     return (
       <div className="qf-pill">
-        <span>{value.name} <span className="text-subtle">— {value.quantity} {value.unit || "units"} in stock</span></span>
+        <span>{value.name} <span className="text-subtle">— {qty(value.quantity, value.unit || "units")} in stock</span></span>
         <button type="button" onClick={() => onSelect(null)}>×</button>
       </div>
     );
@@ -151,7 +151,7 @@ function InventorySearch({ ownerPhone, onSelect, value }) {
           {filtered.map(i => (
             <button key={i.id} type="button" onMouseDown={() => { onSelect(i); setSearch(""); setOpen(false); }}>
               <span>{i.name}</span>
-              <span className="text-subtle text-sm">{i.quantity} {i.unit || "units"}</span>
+              <span className="text-subtle text-sm">{qty(i.quantity, i.unit || "units")}</span>
             </button>
           ))}
         </div>
@@ -632,7 +632,7 @@ function TextVoicePanel({ ownerPhone }) {
     ["Action",      pending?.action],
     [L.customer,    pending?.customer_name || L.directSale],
     ["Product",     pending?.product],
-    ["Quantity",    pending?.quantity ? `${pending.quantity} ${pending.unit || ""}`.trim() : null],
+    ["Quantity",    pending?.quantity ? qty(pending.quantity, pending.unit) : null],
     ["Sale amount", pending?.buy_amount  ? nairaFull(pending.buy_amount)  : null],
     ["Payment",     pending?.paid_amount ? nairaFull(pending.paid_amount) : null],
     ["Due date",    pending?.due_date    ? new Date(pending.due_date).toLocaleDateString("en-NG") : null],

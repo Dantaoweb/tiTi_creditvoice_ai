@@ -527,7 +527,7 @@ function AdjustModal({ item, onClose, onSaved }) {
     <Modal title={`Adjust Stock: ${item.name}`} onClose={onClose}>
       <div className="modal-body">
         <div className="adjust-current">
-          Current stock: <strong>{item.quantity ?? 0}{item.unit ? ` ${item.unit}` : ""}</strong>
+          Current stock: <strong>{(item.quantity ?? 0).toLocaleString()}{item.unit ? ` ${item.unit}` : ""}</strong>
         </div>
         <div className="form-group">
           <label className="form-label">Quantity</label>
@@ -687,7 +687,7 @@ export default function Inventory() {
               key: "alert", label: "Alert at",
               render: r => r.is_service
                 ? <span className="text-subtle">—</span>
-                : (r.low_stock_alert !== null ? r.low_stock_alert : <span className="text-subtle">—</span>),
+                : (r.low_stock_alert !== null ? r.low_stock_alert.toLocaleString() : <span className="text-subtle">—</span>),
             },
             {
               key: "status", label: "Status",

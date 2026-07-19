@@ -38,9 +38,11 @@ function BarChart({ data, valueKey, color = "var(--brand)" }) {
 // ── stat card ───────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, sub, color }) {
+  // Numbers get thousands separators; strings (already formatted) pass through.
+  const display = typeof value === "number" ? value.toLocaleString() : (value ?? "—");
   return (
     <div className="metric-card" style={{ borderTop: `3px solid ${color || "var(--brand)"}` }}>
-      <div className="metric-value" style={{ color: color || "var(--brand)" }}>{value ?? "—"}</div>
+      <div className="metric-value" style={{ color: color || "var(--brand)" }}>{display}</div>
       <div className="metric-label">{label}</div>
       {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
     </div>
@@ -155,7 +157,7 @@ function UsersTab() {
       ) : !data ? null : (
         <>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
-            Showing {data.users.length} of {data.total} businesses
+            Showing {data.users.length.toLocaleString()} of {(data.total ?? 0).toLocaleString()} businesses
           </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
