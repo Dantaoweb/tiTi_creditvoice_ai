@@ -67,6 +67,9 @@ class User(Base):
 
     can_view_all_transactions = Column(Boolean, default=False)
 
+    # Staff assigned to a branch record their transactions into it.
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+
     business_category = Column(String, nullable=True)
 
     business_type = Column(String, nullable=True)

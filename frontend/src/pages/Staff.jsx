@@ -270,6 +270,8 @@ export default function Staff() {
   const [invErr, setInvErr]     = useState("");
   const [invResult, setInvResult] = useState(null); // { invite_code, emailed, email_hint }
   const [accessBusy, setAccessBusy] = useState({});
+  const [branches, setBranches] = useState([]);
+  const [branchBusy, setBranchBusy] = useState({});
 
   useEffect(() => {
     setLoading(true);
@@ -284,7 +286,23 @@ export default function Staff() {
     apiFetch("staff/members")
       .then(d => setMembers(d.members || []))
       .catch(() => {});
+    apiFetch("branches")
+      .then(d => setBranches(d.branches || []))
+      .catch(() => {});
   }, [isOwner, invResult]);
+
+  async function setBranch(id, branchId) {
+    setBranchBusy(p => ({ ...p, [id]: true }));
+    try {
+      await apiPost(`staff/${id}/branch`, { branch_id: branchId });
+      const name = branches.find(b => b.id === branchId)?.name || null;
+      setMembers(ms => ms.map(m => (m.id === id ? { ...m, branch_id: branchId, branch_name: name } : m)));
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBranchBusy(p => ({ ...p, [id]: false }));
+    }
+  }
 
   function loadProfiles() {
     if (!isOwner) return;
@@ -648,6 +666,32 @@ export default function Staff() {
                       >
                         {accessBusy[member.id] ? "Saving…" : (full ? "Revoke access" : "Grant full access")}
                       </button>
+                    </div>
+                  );
+                })()}
+
+                {isOwner && branches.length > 0 && (() => {
+                  const mem = members.find(x => x.id === member.id);
+                  if (!mem || mem.pending) return null;
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>Branch</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          Their sales are tagged to this branch.
+                        </div>
+                      </div>
+                      <select
+                        value={mem.branch_id ?? ""}
+                        disabled={branchBusy[member.id]}
+                        onChange={e => setBranch(member.id, e.target.value ? Number(e.target.value) : null)}
+                        style={{ maxWidth: 160 }}
+                      >
+                        <option value="">No branch</option>
+                        {branches.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
                     </div>
                   );
                 })()}

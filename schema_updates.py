@@ -107,6 +107,7 @@ def ensure_schema_updates(engine):
         "referral_code": "VARCHAR",
         "referred_by_code": "VARCHAR",
         "wallet_balance": "INTEGER DEFAULT 0",
+        "branch_id": "INTEGER",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():

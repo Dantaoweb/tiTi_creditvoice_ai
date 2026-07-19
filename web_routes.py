@@ -2249,6 +2249,7 @@ def register_web_routes(app):
             if not owner or owner.parent_id is not None:   # any top-level owner
                 return {"members": []}
             members = db.query(User).filter(User.parent_id == owner.id).all()
+            branch_names = {b.id: b.name for b in db.query(Branch).filter(Branch.owner_phone == owner.phone).all()}
             return {
                 "members": [
                     {
@@ -2259,6 +2260,8 @@ def register_web_routes(app):
                         "role": m.role,
                         "pending": m.role == "delegate_pending",
                         "full_access": bool(m.can_view_all_transactions),
+                        "branch_id": m.branch_id,
+                        "branch_name": branch_names.get(m.branch_id),
                         "invite_expires_at": m.invite_expires_at.isoformat() if m.invite_expires_at else None,
                     }
                     for m in members
@@ -2626,6 +2629,37 @@ def register_web_routes(app):
             member.can_view_all_transactions = bool(payload.full_access)
             db.commit()
             return {"ok": True, "full_access": bool(member.can_view_all_transactions)}
+        finally:
+            db.close()
+
+    class StaffBranchRequest(BaseModel):
+        branch_id: Optional[int] = None
+
+    @app.post("/app/api/staff/{user_id}/branch")
+    def web_set_staff_branch(
+        user_id: str,
+        payload: StaffBranchRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Assign a staff member to a branch (or clear it with null). Their
+        recorded transactions are then tagged to that branch."""
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can assign staff to branches.")
+            member = db.query(User).filter(User.id == user_id, User.parent_id == owner.id).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            if payload.branch_id is not None:
+                branch = db.query(Branch).filter(
+                    Branch.id == payload.branch_id, Branch.owner_phone == owner.phone
+                ).first()
+                if not branch:
+                    raise HTTPException(status_code=404, detail="Branch not found.")
+            member.branch_id = payload.branch_id
+            db.commit()
+            return {"ok": True, "branch_id": member.branch_id}
         finally:
             db.close()
 

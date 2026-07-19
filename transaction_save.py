@@ -31,6 +31,14 @@ def _get_default_branch_id(db, owner_phone):
     return branch.id if branch else None
 
 
+def _get_recording_branch_id(db, owner_phone, user):
+    """Tag the transaction to the recorder's assigned branch when they have one
+    (so a branch's staff record into their branch), else the business default."""
+    if user and getattr(user, "branch_id", None):
+        return user.branch_id
+    return _get_default_branch_id(db, owner_phone)
+
+
 def _add_price_deviation_note(db, owner_phone, tx_id, product, unit_price, recorder_name):
     """
     If unit_price deviates from the inventory selling_price, write a TransactionNote
@@ -221,7 +229,7 @@ def save_direct_sale(
             recorded_by_id=user.id,
             message_id=message_id,
             created_at=_utcnow(),
-            branch_id=_get_default_branch_id(db, business_owner_phone),
+            branch_id=_get_recording_branch_id(db, business_owner_phone, user),
         )
         db.add(tx)
         db.flush()
@@ -387,7 +395,7 @@ def save_customer_pending(
     _pay_tx_for_receipt = None
 
     try:
-        _default_branch_id = _get_default_branch_id(db, business_owner_phone)
+        _default_branch_id = _get_recording_branch_id(db, business_owner_phone, user)
 
         if pending.action == "BUY":
             _pending_items_count = len(pending_items) if pending_items else 0
