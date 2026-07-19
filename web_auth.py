@@ -148,10 +148,9 @@ def require_web_auth(
     return payload
 
 
-def user_by_phone(db: Session, phone: str):
-    """Find a user by phone, tolerant of local vs international format so a number
-    entered either way (0803… or 234803…) resolves to the same account. Additive:
-    it only widens matching, so users stored in either format keep working."""
+def phone_candidates(phone: str) -> list:
+    """Both the raw and normalized (0803… ⇄ 234803…) forms of a phone, for
+    matching a stored phone regardless of which format was used to write it."""
     from parser import normalize_phone
     raw = (phone or "").strip()
     candidates = {raw}
@@ -159,6 +158,14 @@ def user_by_phone(db: Session, phone: str):
     if norm:
         candidates.add(norm)
     candidates.discard("")
+    return list(candidates)
+
+
+def user_by_phone(db: Session, phone: str):
+    """Find a user by phone, tolerant of local vs international format so a number
+    entered either way (0803… or 234803…) resolves to the same account. Additive:
+    it only widens matching, so users stored in either format keep working."""
+    candidates = phone_candidates(phone)
     if not candidates:
         return None
     return db.query(User).filter(User.phone.in_(candidates)).first()

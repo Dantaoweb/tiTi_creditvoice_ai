@@ -2812,9 +2812,12 @@ def register_web_routes(app):
             my_partners = db.query(BusinessPartner).filter(
                 BusinessPartner.owner_phone == owner.phone
             ).all()
-            # Businesses I am a partner in (active + pending so they can accept)
+            # Businesses I am a partner in (active + pending so they can accept).
+            # Match both phone formats — the inviter may have stored my number in
+            # a different format from the one on my account.
+            from web_auth import phone_candidates
             my_roles = db.query(BusinessPartner).filter(
-                BusinessPartner.partner_phone == owner.phone,
+                BusinessPartner.partner_phone.in_(phone_candidates(owner.phone)),
                 BusinessPartner.status.in_(["active", "pending"]),
             ).all()
             def _bp(p):
@@ -2867,7 +2870,7 @@ def register_web_routes(app):
             partner_phone = normalize_phone(payload.partner_phone)
             if not partner_phone:
                 raise HTTPException(status_code=400, detail="Invalid phone number.")
-            if partner_phone == owner.phone:
+            if partner_phone == normalize_phone(owner.phone):
                 raise HTTPException(status_code=400, detail="You cannot invite yourself.")
 
             role = payload.role if payload.role in ROLE_ACCESS else "partner"
@@ -2926,12 +2929,13 @@ def register_web_routes(app):
         try:
             from models import BusinessPartner
             from partner_commands import _utcnow
+            from web_auth import phone_candidates
             me = db.query(User).filter(User.phone == session["phone"]).first()
             if not me:
                 raise HTTPException(status_code=403, detail="Not found.")
             bp = db.query(BusinessPartner).filter(
                 BusinessPartner.id == partner_id,
-                BusinessPartner.partner_phone == me.phone,
+                BusinessPartner.partner_phone.in_(phone_candidates(me.phone)),
                 BusinessPartner.status == "pending",
             ).first()
             if not bp:
@@ -2949,12 +2953,13 @@ def register_web_routes(app):
         db = SessionLocal()
         try:
             from models import BusinessPartner
+            from web_auth import phone_candidates
             me = db.query(User).filter(User.phone == session["phone"]).first()
             if not me:
                 raise HTTPException(status_code=403, detail="Not found.")
             bp = db.query(BusinessPartner).filter(
                 BusinessPartner.id == partner_id,
-                BusinessPartner.partner_phone == me.phone,
+                BusinessPartner.partner_phone.in_(phone_candidates(me.phone)),
                 BusinessPartner.status == "pending",
             ).first()
             if not bp:

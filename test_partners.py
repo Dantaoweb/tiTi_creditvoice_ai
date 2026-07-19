@@ -37,6 +37,29 @@ def _pro_owner(phone):
     return client.post("/app/api/auth/login", json={"phone": phone, "pin": "5678"}).cookies
 
 
+def test_partner_sees_and_accepts_invite_despite_phone_format():
+    # Owner invites the partner in international format; the partner's own
+    # account is registered in local format. They must still see and accept it.
+    owner_cookies = _pro_owner("2348066660020")
+    # Partner registers with the LOCAL format of the same number.
+    client.post("/app/api/auth/register", json={"name": "Ade", "phone": "08066660021", "pin": "5678"})
+    partner_cookies = client.post("/app/api/auth/login",
+                                  json={"phone": "08066660021", "pin": "5678"}).cookies
+
+    inv = client.post("/app/api/partners/invite", cookies=owner_cookies, json={
+        "partner_phone": "2348066660021", "role": "investor", "investment_amount": 100000,
+    })
+    assert inv.status_code == 200, inv.text
+
+    # The invite shows up in the partner's "Businesses I'm In"
+    roles = client.get("/app/api/partners", cookies=partner_cookies).json()["as_partner"]
+    assert len(roles) == 1 and roles[0]["status"] == "pending", roles
+
+    # And they can accept it
+    acc = client.post(f"/app/api/partners/{roles[0]['id']}/accept", cookies=partner_cookies)
+    assert acc.status_code == 200 and acc.json()["status"] == "active", acc.text
+
+
 def test_owner_invites_investor_with_details():
     cookies = _pro_owner("2348066660001")
     r = client.post("/app/api/partners/invite", cookies=cookies, json={
