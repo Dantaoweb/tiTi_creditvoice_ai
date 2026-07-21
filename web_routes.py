@@ -413,10 +413,27 @@ def _session_owner_phone(db, session: dict) -> str:
 def _session_branch_scope(db, session: dict):
     """(branch_id, limited) the current user's data access is confined to.
     Owner/admin → (None, False) sees all branches; a branch staff → (their
-    branch_id, True). See branch_scope_for_user. Wiring into reads/writes is
-    Phase 2 — this is the shared resolver."""
+    branch_id, True). See branch_scope_for_user."""
     from webhook_context import branch_scope_for_user
     return branch_scope_for_user(_session_user(db, session))
+
+
+def _scoped_read(db, session: dict, requested_branch_id=None):
+    """Effective (branch_id, recorded_by_id) for a read, enforcing branch
+    isolation:
+      - owner/full-access: (requested_branch_id, None) — sees all, may filter
+        by a branch they picked in the UI
+      - branch staff: (their branch_id, None) — locked to their branch
+      - staff with no branch: (None, their id) — locked to their own records
+    Pass the pair straight to the report/query helpers."""
+    from webhook_context import branch_scope_for_user
+    user = _session_user(db, session)
+    branch_id, limited = branch_scope_for_user(user)
+    if not limited:
+        return requested_branch_id, None
+    if branch_id is not None:
+        return branch_id, None
+    return None, user.id
 
 
 def _session_subscription(db, session: dict):
@@ -876,16 +893,23 @@ def register_web_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
-            summary = get_dashboard_summary(db, owner_phone, period_key, branch_id=branch_id)
-            debtors, _ = get_unpaid_debtors(db, owner_phone)
-            low_stock_count = db.query(InventoryItem).filter(
+            # Enforce branch isolation: a branch staff is locked to their branch,
+            # an unassigned staff to their own records; an owner may filter by the
+            # branch they picked. eff_branch/rec flow into every figure below.
+            eff_branch, rec = _scoped_read(db, session, branch_id)
+            summary = get_dashboard_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
+            debtors, _ = get_unpaid_debtors(db, owner_phone, recorded_by_id=rec, branch_id=eff_branch)
+            low_stock_q = db.query(InventoryItem).filter(
                 InventoryItem.owner_phone == owner_phone,
                 InventoryItem.is_available == True,
                 InventoryItem.low_stock_alert != None,
                 InventoryItem.quantity <= InventoryItem.low_stock_alert,
-            ).count()
-            top_products_raw = get_product_sales_by_period(db, owner_phone, period_key)[:8]
-            margin = get_margin_summary(db, owner_phone, period_key)
+            )
+            if eff_branch is not None:
+                low_stock_q = low_stock_q.filter(InventoryItem.branch_id == eff_branch)
+            low_stock_count = low_stock_q.count()
+            top_products_raw = get_product_sales_by_period(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)[:8]
+            margin = get_margin_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
             return {
                 "period": period_key,
                 "period_label": dashboard_period_label(period_key),
@@ -1435,6 +1459,15 @@ def register_web_routes(app):
             now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC to match DB
             owner_phone = _session_owner_phone(db, session)
             query = _owner_filter(db.query(Customer), Customer, owner_phone)
+            # Branch isolation: a branch staff sees their branch's customers; an
+            # unassigned staff sees only customers they've recorded a sale for.
+            eff_branch, rec = _scoped_read(db, session)
+            if eff_branch is not None:
+                query = query.filter(Customer.branch_id == eff_branch)
+            elif rec is not None:
+                query = query.filter(Customer.id.in_(
+                    db.query(Transaction.customer_id).filter(Transaction.recorded_by_id == rec)
+                ))
             rows = query.order_by(Customer.created_at.desc()).limit(200).all()
 
             def _customer_due(customer_id):
@@ -1796,9 +1829,12 @@ def register_web_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
-            query = get_owner_transaction_query(db, owner_phone, period_key, include_voided=True)
-            if branch_id is not None:
-                query = query.filter(Transaction.branch_id == branch_id)
+            # Branch isolation: staff are scoped to their branch (or own records);
+            # an owner may filter by the branch they picked.
+            eff_branch, rec = _scoped_read(db, session, branch_id)
+            query = get_owner_transaction_query(
+                db, owner_phone, period_key, recorded_by_id=rec, include_voided=True, branch_id=eff_branch,
+            )
             rows = query.order_by(Transaction.created_at.desc()).limit(200).all()
             customer_ids = [r.customer_id for r in rows if r.customer_id]
             customers = {}
@@ -1907,6 +1943,11 @@ def register_web_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             query = _owner_filter(db.query(InventoryItem), InventoryItem, owner_phone)
+            # Branch staff see only their branch's stock. (Unassigned staff and
+            # owners see the full catalogue so they can still sell/manage.)
+            eff_branch, _rec = _scoped_read(db, session)
+            if eff_branch is not None:
+                query = query.filter(InventoryItem.branch_id == eff_branch)
             rows = query.order_by(InventoryItem.updated_at.desc()).limit(200).all()
             return {
                 "items": [

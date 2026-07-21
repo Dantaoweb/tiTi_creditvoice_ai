@@ -245,7 +245,7 @@ def build_dashboard_summary_message(summary, period=None, user=None):
     )
 
 
-def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None):
+def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None, branch_id=None):
     """
     Compare expected revenue (at selling price) vs actual revenue recorded.
     Returns a dict with: expected, actual, discount_gap, below_cost_products.
@@ -260,6 +260,8 @@ def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None):
 
     if recorded_by_id:
         tx_query = tx_query.filter(Transaction.recorded_by_id == recorded_by_id)
+    if branch_id is not None:
+        tx_query = tx_query.filter(Transaction.branch_id == branch_id)
     if start:
         tx_query = tx_query.filter(Transaction.created_at >= start, Transaction.created_at < end)
 
@@ -690,8 +692,8 @@ def build_product_sales_rows(transactions, item_rows):
     )
 
 
-def get_product_sales_by_period(db, owner_phone=None, period=None, recorded_by_id=None):
-    query = get_owner_transaction_query(db, owner_phone, period, recorded_by_id).filter(
+def get_product_sales_by_period(db, owner_phone=None, period=None, recorded_by_id=None, branch_id=None):
+    query = get_owner_transaction_query(db, owner_phone, period, recorded_by_id, branch_id=branch_id).filter(
         Transaction.type.in_(["BUY", "SALE"])
     )
     transactions = query.all()
@@ -757,7 +759,7 @@ def get_outstanding_balance(db, owner_phone=None, recorded_by_id=None):
 # 📋 UNPAID DEBTORS
 # =========================
 
-def get_unpaid_debtors(db, owner_phone=None, recorded_by_id=None):
+def get_unpaid_debtors(db, owner_phone=None, recorded_by_id=None, branch_id=None):
 
     customers = db.query(Customer)
     if recorded_by_id:
@@ -768,6 +770,8 @@ def get_unpaid_debtors(db, owner_phone=None, recorded_by_id=None):
         # Fast path: filter debtors in SQL via the denormalized balance instead
         # of summing every customer's transactions one by one (was N+1).
         customers = customers.filter(Customer.balance > 0)
+    if branch_id is not None:
+        customers = customers.filter(Customer.branch_id == branch_id)
     if owner_phone:
         customers = customers.filter(Customer.owner_phone == owner_phone)
     customers = customers.all()
