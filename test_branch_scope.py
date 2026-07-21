@@ -65,8 +65,17 @@ def test_branch_scope_for_user():
     owner = User(id="o", phone="1", role="owner", parent_id=None)
     assert branch_scope_for_user(owner) == (None, False)          # all branches
 
-    staff_in_branch = User(id="s", phone="2", role="delegate", parent_id="o", branch_id=5)
-    assert branch_scope_for_user(staff_in_branch) == (5, True)    # that branch only
+    # Branch admin: full-access staff assigned to a branch → sees that branch
+    branch_admin = User(id="ba", phone="2", role="delegate", parent_id="o",
+                        branch_id=5, can_view_all_transactions=True)
+    assert branch_scope_for_user(branch_admin) == (5, True)
 
-    staff_no_branch = User(id="s2", phone="3", role="delegate", parent_id="o", branch_id=None)
-    assert branch_scope_for_user(staff_no_branch) == (None, True) # limited, fall back to own
+    # Regular staff (even with a branch) → own records only
+    regular = User(id="s", phone="3", role="delegate", parent_id="o",
+                   branch_id=5, can_view_all_transactions=False)
+    assert branch_scope_for_user(regular) == (None, True)
+
+    # Full-access staff not yet assigned a branch → own records
+    unassigned = User(id="s2", phone="4", role="delegate", parent_id="o",
+                      branch_id=None, can_view_all_transactions=True)
+    assert branch_scope_for_user(unassigned) == (None, True)

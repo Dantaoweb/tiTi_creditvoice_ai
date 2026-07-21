@@ -1521,10 +1521,14 @@ def register_web_routes(app):
             if existing:
                 from fastapi import HTTPException
                 raise HTTPException(status_code=409, detail="A customer with this name already exists.")
+            from transaction_save import _get_recording_branch_id
             c = Customer(
                 owner_phone=owner_phone,
                 name=payload.name.strip(),
                 customer_phone=(payload.phone or "").strip() or None,
+                # Tag to the creator's branch (or the business default) so it
+                # lands in the right branch under isolation.
+                branch_id=_get_recording_branch_id(db, owner_phone, _session_user(db, session)),
             )
             db.add(c)
             db.commit()
@@ -1992,6 +1996,7 @@ def register_web_routes(app):
                     raise HTTPException(status_code=403, detail=err)
 
             _qty = None if payload.is_service else (payload.quantity or 0.0)
+            from transaction_save import _get_recording_branch_id
             item = InventoryItem(
                 owner_phone=owner_phone,
                 name=payload.name.strip().lower(),
@@ -2001,6 +2006,7 @@ def register_web_routes(app):
                 selling_price=payload.selling_price,
                 low_stock_alert=None if payload.is_service else payload.low_stock_alert,
                 is_available=True,
+                branch_id=_get_recording_branch_id(db, owner_phone, _session_user(db, session)),
                 category="service" if payload.is_service else None,
                 retail_unit=payload.retail_unit.strip().lower() if payload.retail_unit else None,
                 retail_per_base=payload.retail_per_base,
@@ -2080,6 +2086,8 @@ def register_web_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             saved, skipped = 0, 0
+            from transaction_save import _get_recording_branch_id
+            _import_branch_id = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
 
             # Normalize plain names and priced/service catalog items into one list
             rows = [{"name": n} for n in payload.names]
@@ -2104,6 +2112,7 @@ def register_web_routes(app):
                     owner_phone=owner_phone,
                     name=name_clean,
                     is_available=True,
+                    branch_id=_import_branch_id,
                 )
                 if row.get("selling_price"):
                     item.selling_price = int(row["selling_price"])

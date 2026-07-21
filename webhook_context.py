@@ -32,17 +32,24 @@ def visibility_recorded_by_id(user):
 
 
 def branch_scope_for_user(user):
-    """The branch a user's data access is confined to (multi-branch isolation).
+    """The data-access scope for multi-branch isolation.
 
     Returns (branch_id, limited):
-      - top-level owner/admin: (None, False)  — sees all branches
-      - staff assigned to a branch: (branch_id, True) — that branch only
-      - staff with no branch: (None, True) — caller should fall back to the
-        staff's own records (recorded_by_id) since there is no branch to scope to
+      - owner/admin (top-level account): (None, False) — sees all branches
+      - branch admin (authorized staff assigned to a branch): (branch_id, True)
+        — sees that whole branch (all staff in it)
+      - regular staff (incl. a branch admin not yet assigned a branch):
+        (None, True) — caller scopes to the staff's own records (recorded_by_id)
+
+    "Branch admin" is a staff with can_view_all_transactions set — the "see all
+    branch records" authorization — but their view is still confined to their
+    own branch, not the whole business.
     """
     if not user or getattr(user, "parent_id", None) is None:
         return None, False
-    return getattr(user, "branch_id", None), True
+    if getattr(user, "can_view_all_transactions", False) and getattr(user, "branch_id", None):
+        return user.branch_id, True
+    return None, True
 
 
 def load_webhook_user_context(db, phone: str, message_type: str) -> WebhookUserContext:

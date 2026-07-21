@@ -653,10 +653,12 @@ export default function Staff() {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>
-                          {full ? "Full access (admin)" : "Own records only"}
+                          {full ? "Branch admin" : "Own records only"}
                         </div>
                         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                          {full ? "Sees all business records." : "Sees only what they record."}
+                          {full
+                            ? (mem.branch_id ? "Sees all records in their branch." : "Assign a branch below to scope this.")
+                            : "Sees only what they record."}
                         </div>
                       </div>
                       <button
@@ -664,7 +666,7 @@ export default function Staff() {
                         disabled={accessBusy[member.id]}
                         onClick={() => toggleAccess(member.id, !full)}
                       >
-                        {accessBusy[member.id] ? "Saving…" : (full ? "Revoke access" : "Grant full access")}
+                        {accessBusy[member.id] ? "Saving…" : (full ? "Remove branch admin" : "Make branch admin")}
                       </button>
                     </div>
                   );
