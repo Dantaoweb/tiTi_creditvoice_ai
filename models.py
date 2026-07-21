@@ -21,6 +21,9 @@ class Customer(Base):
 
     owner_phone = Column(String, index=True)
 
+    # Branch this customer belongs to (multi-branch isolation). NULL = business-wide.
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+
     customer_phone = Column(String, nullable=True)
 
     # General-purpose tag: student class/grade, driver name, or other category
@@ -320,6 +323,9 @@ class InventoryItem(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     owner_phone = Column(String, index=True)
+
+    # Branch this item belongs to (multi-branch isolation). NULL = business-wide.
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
 
     name = Column(String)
 

@@ -31,6 +31,20 @@ def visibility_recorded_by_id(user):
     return None
 
 
+def branch_scope_for_user(user):
+    """The branch a user's data access is confined to (multi-branch isolation).
+
+    Returns (branch_id, limited):
+      - top-level owner/admin: (None, False)  — sees all branches
+      - staff assigned to a branch: (branch_id, True) — that branch only
+      - staff with no branch: (None, True) — caller should fall back to the
+        staff's own records (recorded_by_id) since there is no branch to scope to
+    """
+    if not user or getattr(user, "parent_id", None) is None:
+        return None, False
+    return getattr(user, "branch_id", None), True
+
+
 def load_webhook_user_context(db, phone: str, message_type: str) -> WebhookUserContext:
     user = db.query(User).filter(User.phone == phone).first()
     business_owner_phone = phone

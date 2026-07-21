@@ -410,6 +410,15 @@ def _session_owner_phone(db, session: dict) -> str:
     return phone
 
 
+def _session_branch_scope(db, session: dict):
+    """(branch_id, limited) the current user's data access is confined to.
+    Owner/admin → (None, False) sees all branches; a branch staff → (their
+    branch_id, True). See branch_scope_for_user. Wiring into reads/writes is
+    Phase 2 — this is the shared resolver."""
+    from webhook_context import branch_scope_for_user
+    return branch_scope_for_user(_session_user(db, session))
+
+
 def _session_subscription(db, session: dict):
     """The business subscription, resolved at most once per request."""
     cache = db.info.setdefault("_req", {})

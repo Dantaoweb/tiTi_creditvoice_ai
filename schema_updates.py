@@ -130,6 +130,7 @@ def ensure_schema_updates(engine):
         "profile_json": "VARCHAR",
         "balance": "INTEGER DEFAULT 0",
         "last_transaction_at": "TIMESTAMP",
+        "branch_id": "INTEGER",
     }
     with engine.begin() as connection:
         for column_name, column_type in customer_updates.items():
@@ -181,6 +182,7 @@ def ensure_schema_updates(engine):
         "retail_unit": "VARCHAR",
         "retail_per_base": "INTEGER",
         "retail_price": "INTEGER",
+        "branch_id": "INTEGER",
     }
     with engine.begin() as connection:
         for column_name, column_type in inventory_updates.items():
@@ -325,6 +327,33 @@ def ensure_schema_updates(engine):
             """))
         _mark_migration(engine, _BALANCE_BACKFILL)
         print("[schema] customer balance backfill applied", flush=True)
+
+    # ── One-time backfill: attach existing customers & stock to the owner's
+    # default branch, so multi-branch owners' legacy data lives in their main
+    # branch. Single-location owners have no default branch → rows stay NULL
+    # (business-wide), which is correct. New records are branch-stamped later.
+    _BRANCH_BACKFILL = "customer_inventory_branch_backfill_2026_07"
+    if not _migration_applied(engine, _BRANCH_BACKFILL):
+        is_default_true = (
+            "b.is_default = TRUE"
+            if engine.dialect.name == "postgresql"
+            else "COALESCE(b.is_default, 0) = 1"
+        )
+        with engine.begin() as connection:
+            for tbl in ("customers", "inventory_items"):
+                connection.execute(text(f"""
+                    UPDATE {tbl} SET branch_id = (
+                        SELECT b.id FROM branches b
+                        WHERE b.owner_phone = {tbl}.owner_phone AND {is_default_true}
+                        ORDER BY b.id LIMIT 1
+                    )
+                    WHERE branch_id IS NULL AND EXISTS (
+                        SELECT 1 FROM branches b
+                        WHERE b.owner_phone = {tbl}.owner_phone AND {is_default_true}
+                    )
+                """))
+        _mark_migration(engine, _BRANCH_BACKFILL)
+        print("[schema] customer/inventory branch backfill applied", flush=True)
 
     # ── Training data capture ────────────────────────────────────────────────
     existing_tables = inspector.get_table_names()
