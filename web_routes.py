@@ -2488,11 +2488,12 @@ def register_web_routes(app):
     def web_create_branch(payload: CreateBranchRequest, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == session["user_id"]).first()
-            owner_phone = session["phone"]
-            if user and user.parent_id:
-                owner = db.query(User).filter(User.id == user.parent_id).first()
-                owner_phone = owner.phone if owner else owner_phone
+            # Branch management is owner-only: branches drive data isolation, so
+            # staff must not be able to create/remove/re-default them.
+            user = _session_user(db, session)
+            if not user or user.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can manage branches.")
+            owner_phone = user.phone
             name = payload.name.strip()
             if not name:
                 raise HTTPException(status_code=400, detail="Branch name is required.")
@@ -2514,26 +2515,47 @@ def register_web_routes(app):
     def web_delete_branch(branch_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == session["user_id"]).first()
-            owner_phone = session["phone"]
-            if user and user.parent_id:
-                owner = db.query(User).filter(User.id == user.parent_id).first()
-                owner_phone = owner.phone if owner else owner_phone
+            user = _session_user(db, session)
+            if not user or user.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can manage branches.")
+            owner_phone = user.phone
             branch = db.query(Branch).filter(Branch.id == branch_id, Branch.owner_phone == owner_phone).first()
             if not branch:
                 raise HTTPException(status_code=404, detail="Branch not found.")
             was_default = branch.is_default
+
+            # Which branch should everything fall back to (excluding this one)?
+            remaining = db.query(Branch).filter(
+                Branch.owner_phone == owner_phone, Branch.id != branch_id
+            )
+            target = (
+                remaining.order_by(Branch.created_at).first()
+                if was_default
+                else remaining.filter(Branch.is_default == True).first()
+            )
+            new_default = target.id if target else None
+
+            # Re-home first, so nothing is left pointing at a branch that no
+            # longer exists (that data would become invisible under isolation,
+            # and the dangling FK would block the delete). Branch ids are unique
+            # across owners, so filtering on branch_id alone is safe.
+            for _model in (Customer, InventoryItem, Transaction):
+                db.query(_model).filter(_model.branch_id == branch_id).update(
+                    {"branch_id": new_default}, synchronize_session=False
+                )
+            db.query(User).filter(User.branch_id == branch_id).update(
+                {"branch_id": new_default}, synchronize_session=False
+            )
+            db.commit()
+
             from audit import audit
             audit(db, action="DELETE_BRANCH", actor_id=session["user_id"],
                   actor_phone=session["phone"], resource=f"branch:{branch_id}:{branch.name}")
             db.delete(branch)
+            if was_default and target:
+                target.is_default = True
             db.commit()
-            if was_default:
-                first = db.query(Branch).filter(Branch.owner_phone == owner_phone).order_by(Branch.created_at).first()
-                if first:
-                    first.is_default = True
-                    db.commit()
-            return {"ok": True}
+            return {"ok": True, "reassigned_to_branch_id": new_default}
         finally:
             db.close()
 
@@ -2541,11 +2563,10 @@ def register_web_routes(app):
     def web_set_default_branch(branch_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            user = db.query(User).filter(User.id == session["user_id"]).first()
-            owner_phone = session["phone"]
-            if user and user.parent_id:
-                owner = db.query(User).filter(User.id == user.parent_id).first()
-                owner_phone = owner.phone if owner else owner_phone
+            user = _session_user(db, session)
+            if not user or user.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can manage branches.")
+            owner_phone = user.phone
             db.query(Branch).filter(Branch.owner_phone == owner_phone).update({"is_default": False})
             branch = db.query(Branch).filter(Branch.id == branch_id, Branch.owner_phone == owner_phone).first()
             if not branch:
