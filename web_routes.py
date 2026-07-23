@@ -2406,6 +2406,41 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    @app.post("/app/api/staff/{user_id}/resend-invite")
+    def web_resend_staff_invite(user_id: str, session: dict = Depends(require_web_auth)):
+        """Reissue the invite code for a pending staff member (owner-only), so an
+        expired or lost code can be regenerated without re-entering their details."""
+        from staff_commands import _generate_invite_code
+        db = SessionLocal()
+        try:
+            owner = _session_user(db, session)
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can resend invitations.")
+            member = db.query(User).filter(
+                User.id == user_id, User.parent_id == owner.id, User.role == "delegate_pending",
+            ).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="No pending invitation for this staff member.")
+            from datetime import timezone as _tz
+            code = _generate_invite_code()
+            member.invite_code = code
+            member.invite_code_attempts = 0
+            member.invite_expires_at = datetime.now(_tz.utc).replace(tzinfo=None) + timedelta(hours=24)
+            db.commit()
+
+            emailed, email_hint = False, None
+            if member.email:
+                from email_service import send_staff_invite_email, is_email_configured, mask_email
+                if is_email_configured():
+                    business_name = owner.business_type_label or owner.name
+                    emailed = send_staff_invite_email(member.email, member.name, owner.name, business_name)
+                    if emailed:
+                        email_hint = mask_email(member.email)
+            return {"ok": True, "invite_code": code, "phone": member.phone, "name": member.name,
+                    "emailed": emailed, "email_hint": email_hint}
+        finally:
+            db.close()
+
     @app.post("/app/api/staff/accept")
     def web_staff_accept(payload: StaffAcceptRequest):
         """Staff member accepts an invitation using their phone + the code the owner shared."""
@@ -2424,26 +2459,22 @@ def register_web_routes(app):
             if not staff_user or staff_user.role != "delegate_pending":
                 raise HTTPException(status_code=404, detail="No pending invitation found for this phone number.")
 
-            # Expired
+            # Expired — invalidate the old code but keep them pending in the
+            # owner's roster (do NOT wipe parent_id/role) so the owner can just
+            # hit "Resend invite" instead of the staff vanishing entirely.
             if staff_user.invite_expires_at and staff_user.invite_expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
-                staff_user.role = "user"
-                staff_user.parent_id = None
                 staff_user.invite_code = None
-                staff_user.invite_code_attempts = 0
-                staff_user.invite_expires_at = None
                 db.commit()
-                raise HTTPException(status_code=410, detail="This invitation has expired. Ask the owner to send a new one.")
+                raise HTTPException(status_code=410, detail="This invitation has expired. Ask the owner to resend it.")
 
-            # Too many attempts
+            # Too many attempts — burn the code but stay pending so the owner can
+            # resend a fresh one (which resets the attempt count).
             attempts = staff_user.invite_code_attempts or 0
             if attempts >= MAX_ATTEMPTS:
-                staff_user.role = "user"
-                staff_user.parent_id = None
                 staff_user.invite_code = None
                 staff_user.invite_code_attempts = 0
-                staff_user.invite_expires_at = None
                 db.commit()
-                raise HTTPException(status_code=429, detail="Too many wrong attempts. Ask the owner to send a new invitation.")
+                raise HTTPException(status_code=429, detail="Too many wrong attempts. Ask the owner to resend the invitation.")
 
             # Wrong code
             if not staff_user.invite_code or code != staff_user.invite_code:

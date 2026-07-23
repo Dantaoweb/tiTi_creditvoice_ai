@@ -80,6 +80,34 @@ def test_accept_works_when_phone_format_differs():
     assert acc2.status_code == 200, acc2.text
 
 
+def test_expired_invite_keeps_pending_and_resend_works():
+    from datetime import datetime, timezone, timedelta
+    owner_cookies = _pro_owner("2348055550010")
+    staff_phone = "2348055550011"
+    orig = client.post("/app/api/staff/invite", cookies=owner_cookies,
+                       json={"name": "Femi", "phone": staff_phone}).json()["invite_code"]
+
+    # Expire the invite
+    db = SessionLocal()
+    u = db.query(User).filter(User.phone == staff_phone).first()
+    u.invite_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+    db.commit(); mid = u.id; db.close()
+
+    # Accepting the expired code fails...
+    assert client.post("/app/api/staff/accept", json={"phone": staff_phone, "code": orig}).status_code == 410
+
+    # ...but the staff is STILL pending in the roster (not de-provisioned)
+    members = client.get("/app/api/staff/members", cookies=owner_cookies).json()["members"]
+    assert any(m["phone"] == staff_phone and m["pending"] for m in members)
+
+    # Owner resends a fresh code, staff accepts with it
+    res = client.post(f"/app/api/staff/{mid}/resend-invite", cookies=owner_cookies)
+    assert res.status_code == 200
+    new_code = res.json()["invite_code"]
+    assert new_code and new_code != orig
+    assert client.post("/app/api/staff/accept", json={"phone": staff_phone, "code": new_code}).status_code == 200
+
+
 def test_accept_rejects_wrong_code():
     owner_cookies = _pro_owner("2348055550003")
     staff_phone = "2348055550004"

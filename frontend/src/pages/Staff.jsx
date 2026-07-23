@@ -26,6 +26,32 @@ function CopyButton({ text, label = "Copy code" }) {
   );
 }
 
+// Renders an invite code with copy + a shareable link + WhatsApp share.
+function InviteShare({ code, phone }) {
+  const link = `${window.location.origin}/app/login?invite=${encodeURIComponent(code)}`
+    + (phone ? `&phone=${encodeURIComponent(phone)}` : "");
+  const msg = `You've been invited to join as staff on CreditVoice. Tap to accept (expires in 24h):\n${link}`;
+  const waDigits = (phone || "").replace(/\D/g, "");
+  const waUrl = waDigits
+    ? `https://wa.me/${waDigits}?text=${encodeURIComponent(msg)}`
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0" }}>
+        <div style={{ letterSpacing: 4, fontSize: 22, fontWeight: 800, fontFamily: "monospace" }}>{code}</div>
+        <CopyButton text={code} />
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+        <input readOnly value={link} onFocus={e => e.target.select()}
+          style={{ flex: 1, minWidth: 200, fontSize: 12, fontFamily: "monospace" }} />
+        <CopyButton text={link} label="Copy link" />
+        <a className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }}
+          href={waUrl} target="_blank" rel="noopener noreferrer">Send on WhatsApp</a>
+      </div>
+    </div>
+  );
+}
+
 function ProfileEditRow({ member, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
@@ -270,6 +296,8 @@ export default function Staff() {
   const [invErr, setInvErr]     = useState("");
   const [invResult, setInvResult] = useState(null); // { invite_code, emailed, email_hint }
   const [accessBusy, setAccessBusy] = useState({});
+  const [resendResult, setResendResult] = useState({}); // { [id]: { invite_code, phone } }
+  const [resendBusy, setResendBusy] = useState({});
   const [branches, setBranches] = useState([]);
   const [branchBusy, setBranchBusy] = useState({});
 
@@ -301,6 +329,18 @@ export default function Staff() {
       alert(e.message);
     } finally {
       setBranchBusy(p => ({ ...p, [id]: false }));
+    }
+  }
+
+  async function resendInvite(m) {
+    setResendBusy(p => ({ ...p, [m.id]: true }));
+    try {
+      const res = await apiPost(`staff/${m.id}/resend-invite`, {});
+      setResendResult(p => ({ ...p, [m.id]: res }));
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setResendBusy(p => ({ ...p, [m.id]: false }));
     }
   }
 
@@ -590,18 +630,27 @@ export default function Staff() {
           <div className="card-title" style={{ marginBottom: 12 }}>Pending Invitations</div>
           <div style={{ display: "grid", gap: 10 }}>
             {pending.map(m => (
-              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-                <Clock size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{m.phone}{m.email ? ` · ${m.email}` : ""}</div>
+              <div key={m.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <Clock size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{m.phone}{m.email ? ` · ${m.email}` : ""}</div>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" disabled={resendBusy[m.id]}
+                    onClick={() => resendInvite(m)}>
+                    {resendBusy[m.id] ? "Sending…" : "Resend invite"}
+                  </button>
+                  <span className="badge badge-amber">Pending</span>
                 </div>
-                <span className="badge badge-amber">Pending</span>
+                {resendResult[m.id] && (
+                  <InviteShare code={resendResult[m.id].invite_code} phone={resendResult[m.id].phone || m.phone} />
+                )}
               </div>
             ))}
           </div>
           <p className="login-hint-muted" style={{ marginTop: 10 }}>
-            Share the accept code with your staff. They can accept at <strong>CreditVoice → Accept staff invitation</strong>.
+            If a code expired or was lost, tap <strong>Resend invite</strong> for a fresh 24-hour code and link. They accept at <strong>CreditVoice → Accept staff invitation</strong>.
           </p>
         </div>
       )}
