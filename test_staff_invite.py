@@ -152,6 +152,36 @@ def test_invite_rejects_branch_from_another_owner():
     assert r.status_code == 404
 
 
+def test_first_time_staff_sets_pin_at_accept_and_can_log_in():
+    """A brand-new staff must not need an OTP: WhatsApp's 24h window is closed
+    for someone who never messaged tiTi, and the invite code is consumed by
+    accept — so without this they could never set a PIN."""
+    owner_cookies = _pro_owner("2348055550030")
+    staff_phone = "2348055550031"
+    code = client.post("/app/api/staff/invite", cookies=owner_cookies,
+                       json={"name": "Ngozi", "phone": staff_phone}).json()["invite_code"]
+
+    acc = client.post("/app/api/staff/accept",
+                      json={"phone": staff_phone, "code": code, "new_pin": "4321"})
+    assert acc.status_code == 200, acc.text
+    body = acc.json()
+    assert body["signed_in"] is True and body["has_pin"] is True
+
+    # They can now sign in with their OWN phone + PIN (never the owner's)
+    login = client.post("/app/api/auth/login", json={"phone": staff_phone, "pin": "4321"})
+    assert login.status_code == 200, login.text
+
+
+def test_accept_rejects_short_pin():
+    owner_cookies = _pro_owner("2348055550032")
+    staff_phone = "2348055550033"
+    code = client.post("/app/api/staff/invite", cookies=owner_cookies,
+                       json={"name": "Tobi", "phone": staff_phone}).json()["invite_code"]
+    r = client.post("/app/api/staff/accept",
+                    json={"phone": staff_phone, "code": code, "new_pin": "12"})
+    assert r.status_code == 400
+
+
 def test_accept_rejects_wrong_code():
     owner_cookies = _pro_owner("2348055550003")
     staff_phone = "2348055550004"

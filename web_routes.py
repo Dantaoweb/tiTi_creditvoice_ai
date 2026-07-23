@@ -196,6 +196,7 @@ class StaffInviteRequest(BaseModel):
 class StaffAcceptRequest(BaseModel):
     phone: str = Field(max_length=20)
     code: str = Field(max_length=10)
+    new_pin: Optional[str] = Field(default=None, max_length=12)  # first-time staff set their PIN here
 
 class FastModeToggleRequest(BaseModel):
     enabled: bool
@@ -2457,8 +2458,9 @@ def register_web_routes(app):
             db.close()
 
     @app.post("/app/api/staff/accept")
-    def web_staff_accept(payload: StaffAcceptRequest):
-        """Staff member accepts an invitation using their phone + the code the owner shared."""
+    def web_staff_accept(payload: StaffAcceptRequest, response: Response):
+        """Staff member accepts an invitation using their phone + the code the owner shared.
+        They may set their PIN in the same step (see below)."""
         from datetime import timezone as _tz
         MAX_ATTEMPTS = 3
 
@@ -2499,14 +2501,35 @@ def register_web_routes(app):
                 raise HTTPException(status_code=400, detail=f"Wrong code. {remaining} attempt(s) remaining.")
 
             # Accept
+            had_pin = bool(staff_user.recovery_pin_hash)
             staff_user.role = "delegate"
             staff_user.invite_code = None
             staff_user.invite_code_attempts = 0
             staff_user.invite_expires_at = None
-            db.commit()
 
-            has_pin = bool(staff_user.recovery_pin_hash)
-            return {"ok": True, "name": staff_user.name, "has_pin": has_pin}
+            # Let a first-time staff set their PIN right here, proven by the
+            # invite code (single-use, 24h, attempt-limited — already a strong
+            # secret from the owner). Otherwise they can be stranded: the OTP
+            # fallback needs WhatsApp's 24-hour window, which a brand-new staff
+            # has never opened, or an email on file — and the invite code has
+            # just been consumed, so there is no second route in.
+            if payload.new_pin and not had_pin:
+                pin = payload.new_pin.strip()
+                if len(pin) < 4 or not pin.isdigit():
+                    raise HTTPException(status_code=400, detail="PIN must be at least 4 digits.")
+                from web_auth import _hash_pin
+                staff_user.recovery_pin_hash = _hash_pin(pin)
+                staff_user.pin_attempts = 0
+                staff_user.pin_locked_until = None
+                db.commit()
+                # Sign them straight in — no OTP round trip needed.
+                from web_auth import _build_auth_response
+                result = _build_auth_response(staff_user, db=db)
+                set_auth_cookie(response, result.pop("_token"))
+                return {**result, "ok": True, "has_pin": True, "signed_in": True}
+
+            db.commit()
+            return {"ok": True, "name": staff_user.name, "has_pin": had_pin, "signed_in": False}
         finally:
             db.close()
 

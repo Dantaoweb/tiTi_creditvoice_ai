@@ -96,6 +96,8 @@ export default function Login() {
   // Accept invite fields (pre-filled from an invite link when present)
   const [invitePhone, setInvitePhone] = useState(params.get("phone") || "");
   const [inviteCode, setInviteCode] = useState(inviteFromUrl.toUpperCase());
+  const [invitePin, setInvitePin] = useState("");
+  const [inviteConfirmPin, setInviteConfirmPin] = useState("");
   const [acceptedName, setAcceptedName] = useState("");
 
   // Referral code (from URL ?ref= or manual entry)
@@ -226,9 +228,23 @@ export default function Login() {
     if (!inviteCode.trim())  { setErr("Enter the accept code from your employer."); return; }
     setBusy(true);
     try {
-      const data = await apiPost("staff/accept", { phone: invitePhone.trim(), code: inviteCode.trim() });
+      if (invitePin && invitePin.trim().length < 4) {
+        setErr("PIN must be at least 4 digits."); setBusy(false); return;
+      }
+      if (invitePin && invitePin.trim() !== inviteConfirmPin.trim()) {
+        setErr("The two PINs do not match."); setBusy(false); return;
+      }
+      const data = await apiPost("staff/accept", {
+        phone: invitePhone.trim(),
+        code: inviteCode.trim(),
+        new_pin: invitePin.trim() || null,
+      });
       setAcceptedName(data.name || "");
-      if (data.has_pin) {
+      if (data.signed_in) {
+        // PIN set + signed in during accept — no OTP round trip.
+        persistSession(data.user);
+        navigate("/home", { replace: true });
+      } else if (data.has_pin) {
         setInfo(`Welcome, ${(data.name || "").split(" ")[0] || "there"}! You can now sign in with your phone and PIN.`);
         goMode("login");
         setPhone(invitePhone.trim());
@@ -580,6 +596,38 @@ export default function Login() {
                 disabled={busy}
               />
             </div>
+
+            <div className="form-group">
+              <label className="form-label">Create your PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                value={invitePin}
+                onChange={e => setInvitePin(e.target.value.replace(/\D/g, ""))}
+                placeholder="At least 4 digits"
+                maxLength={12}
+                disabled={busy}
+              />
+              <span className="login-hint-muted">
+                This is the PIN you'll sign in with from now on, using your own phone number.
+                Leave blank if you already have a PIN.
+              </span>
+            </div>
+
+            {invitePin && (
+              <div className="form-group">
+                <label className="form-label">Confirm PIN</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={inviteConfirmPin}
+                  onChange={e => setInviteConfirmPin(e.target.value.replace(/\D/g, ""))}
+                  placeholder="Re-enter your PIN"
+                  maxLength={12}
+                  disabled={busy}
+                />
+              </div>
+            )}
 
             {err && <div className="login-error">{err}</div>}
 
