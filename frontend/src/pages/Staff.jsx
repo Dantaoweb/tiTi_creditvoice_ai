@@ -292,6 +292,8 @@ export default function Staff() {
   const [invName, setInvName]   = useState("");
   const [invPhone, setInvPhone] = useState("");
   const [invEmail, setInvEmail] = useState("");
+  const [invBranch, setInvBranch] = useState("");     // branch to pre-assign on accept
+  const [invAsAdmin, setInvAsAdmin] = useState(false); // grant branch-admin access
   const [invBusy, setInvBusy]   = useState(false);
   const [invErr, setInvErr]     = useState("");
   const [invResult, setInvResult] = useState(null); // { invite_code, emailed, email_hint }
@@ -369,9 +371,11 @@ export default function Staff() {
         name: invName.trim(),
         phone: invPhone.trim(),
         email: invEmail.trim() || null,
+        branch_id: invBranch ? Number(invBranch) : null,
+        as_branch_admin: !!invBranch && invAsAdmin,
       });
       setInvResult({ ...res, phone: invPhone.trim(), name: invName.trim() });
-      setInvName(""); setInvPhone(""); setInvEmail("");
+      setInvName(""); setInvPhone(""); setInvEmail(""); setInvBranch(""); setInvAsAdmin(false);
       setShowInvite(false);
     } catch (e) { setInvErr(e.message); }
     finally { setInvBusy(false); }
@@ -608,6 +612,25 @@ export default function Staff() {
                 <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)} placeholder="chidi@email.com" disabled={invBusy} />
                 <span className="form-hint">If provided, staff will receive an email notification</span>
               </div>
+
+              {branches.length > 0 && (
+                <div className="form-group">
+                  <label className="form-label">Branch (optional)</label>
+                  <select value={invBranch} disabled={invBusy}
+                    onChange={e => { setInvBranch(e.target.value); if (!e.target.value) setInvAsAdmin(false); }}>
+                    <option value="">No branch (assign later)</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                  <span className="form-hint">They'll be attached to this branch on accept — no extra step.</span>
+                  {invBranch && (
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 13 }}>
+                      <input type="checkbox" checked={invAsAdmin} disabled={invBusy}
+                        onChange={e => setInvAsAdmin(e.target.checked)} style={{ width: "auto" }} />
+                      Join as branch admin (sees all records in this branch)
+                    </label>
+                  )}
+                </div>
+              )}
 
               {invErr && <div className="login-error">{invErr}</div>}
 

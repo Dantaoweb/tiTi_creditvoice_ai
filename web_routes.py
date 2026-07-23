@@ -190,6 +190,8 @@ class StaffInviteRequest(BaseModel):
     name: str = Field(max_length=120)
     phone: str = Field(max_length=20)
     email: Optional[str] = Field(default=None, max_length=254)
+    branch_id: Optional[int] = None          # pre-assign to this branch on accept
+    as_branch_admin: bool = False            # grant "see all branch records" (needs a branch)
 
 class StaffAcceptRequest(BaseModel):
     phone: str = Field(max_length=20)
@@ -2362,6 +2364,17 @@ def register_web_routes(app):
             staff_name = payload.name.strip()
             staff_email = (payload.email or "").strip() or None
 
+            # Optional: pre-assign a branch (and, if asked, branch-admin access).
+            # Branch admin only takes effect with a branch, so require one.
+            branch_id = payload.branch_id
+            if branch_id is not None:
+                branch = db.query(Branch).filter(
+                    Branch.id == branch_id, Branch.owner_phone == owner.phone
+                ).first()
+                if not branch:
+                    raise HTTPException(status_code=404, detail="Branch not found.")
+            as_admin = bool(payload.as_branch_admin and branch_id is not None)
+
             staff_user = user_by_phone(db, payload.phone)
             if staff_user:
                 staff_user.role = "delegate_pending"
@@ -2369,7 +2382,8 @@ def register_web_routes(app):
                 staff_user.name = staff_name
                 if staff_email:
                     staff_user.email = staff_email
-                staff_user.can_view_all_transactions = False
+                staff_user.branch_id = branch_id
+                staff_user.can_view_all_transactions = as_admin
             else:
                 staff_user = User(
                     phone=staff_phone,
@@ -2377,7 +2391,8 @@ def register_web_routes(app):
                     email=staff_email,
                     role="delegate_pending",
                     parent_id=owner.id,
-                    can_view_all_transactions=False,
+                    branch_id=branch_id,
+                    can_view_all_transactions=as_admin,
                 )
                 db.add(staff_user)
 

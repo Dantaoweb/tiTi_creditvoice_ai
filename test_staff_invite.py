@@ -108,6 +108,50 @@ def test_expired_invite_keeps_pending_and_resend_works():
     assert client.post("/app/api/staff/accept", json={"phone": staff_phone, "code": new_code}).status_code == 200
 
 
+def test_branch_aware_invite_preassigns_branch_and_admin():
+    from models import Branch
+    owner_cookies = _pro_owner("2348055550020")
+    staff_phone = "2348055550021"
+
+    db = SessionLocal()
+    owner = db.query(User).filter(User.phone == "2348055550020").first()
+    br = Branch(owner_phone=owner.phone, name="Ikeja", is_default=True)
+    db.add(br); db.commit(); br_id = br.id; db.close()
+
+    inv = client.post("/app/api/staff/invite", cookies=owner_cookies,
+                      json={"name": "Uche", "phone": staff_phone,
+                            "branch_id": br_id, "as_branch_admin": True})
+    assert inv.status_code == 200, inv.text
+    code = inv.json()["invite_code"]
+
+    # Pre-assigned before they even accept
+    db = SessionLocal()
+    u = db.query(User).filter(User.phone == staff_phone).first()
+    assert u.branch_id == br_id and u.can_view_all_transactions is True
+    db.close()
+
+    assert client.post("/app/api/staff/accept", json={"phone": staff_phone, "code": code}).status_code == 200
+
+    members = {m["phone"]: m for m in client.get("/app/api/staff/members", cookies=owner_cookies).json()["members"]}
+    assert members[staff_phone]["branch_id"] == br_id
+    assert members[staff_phone]["full_access"] is True
+
+
+def test_invite_rejects_branch_from_another_owner():
+    from models import Branch
+    a_cookies = _pro_owner("2348055550022")
+    _b_cookies = _pro_owner("2348055550023")
+    db = SessionLocal()
+    b_owner = db.query(User).filter(User.phone == "2348055550023").first()
+    b_branch = Branch(owner_phone=b_owner.phone, name="NotYours", is_default=True)
+    db.add(b_branch); db.commit(); b_branch_id = b_branch.id; db.close()
+
+    # Owner A cannot invite into owner B's branch
+    r = client.post("/app/api/staff/invite", cookies=a_cookies,
+                    json={"name": "X", "phone": "2348055550024", "branch_id": b_branch_id})
+    assert r.status_code == 404
+
+
 def test_accept_rejects_wrong_code():
     owner_cookies = _pro_owner("2348055550003")
     staff_phone = "2348055550004"
