@@ -1942,6 +1942,17 @@ def receipt_config_for_user(user):
     return RECEIPT_CONFIG.get(btype, DEFAULT_RECEIPT_CONFIG)
 
 
+# An invoice is a request for payment, not proof of one, so the receipt footers
+# ("Keep this receipt for reference.") read wrong on it.
+DEFAULT_INVOICE_FOOTER = "Please settle this invoice by the due date. Thank you."
+
+
+def invoice_footer_for(config):
+    """Footer to print on an invoice: a per-niche invoice_footer when set,
+    otherwise the generic invoice wording (never the receipt footer)."""
+    return (config or {}).get("invoice_footer") or DEFAULT_INVOICE_FOOTER
+
+
 def business_category_by_key(key):
     for category in BUSINESS_CATEGORIES:
         if category["key"] == key:

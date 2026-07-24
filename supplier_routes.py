@@ -100,6 +100,9 @@ class OpportunityIn(BaseModel):
     description:  str  = Field(max_length=2000)
     link_url:     str  = Field(default="", max_length=500)
     is_active:    bool = True
+    # JSON array of intake questions the admin sets, e.g.
+    # [{"label": "Years in business", "type": "text", "required": true}]
+    application_fields: str = Field(default="[]", max_length=4000)
 
 
 class RejectIn(BaseModel):
@@ -485,6 +488,9 @@ def register_supplier_routes(app, get_db=None):
                         "category": o.category or "general",
                         "description": o.description,
                         "link_url": o.link_url or "",
+                        # The admin's intake questions — the apply form renders
+                        # these, so they must reach the user before they apply.
+                        "application_fields": o.application_fields or "[]",
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
                     for o in opps
@@ -560,6 +566,7 @@ def register_supplier_routes(app, get_db=None):
                         "category": o.category or "general",
                         "description": o.description,
                         "link_url": o.link_url or "",
+                        "application_fields": o.application_fields or "[]",
                         "is_active": bool(o.is_active),
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
@@ -583,6 +590,7 @@ def register_supplier_routes(app, get_db=None):
                 description  = payload.description,
                 link_url     = payload.link_url or None,
                 is_active    = payload.is_active,
+                application_fields = payload.application_fields or "[]",
             )
             db.add(opp)
             db.commit()
@@ -605,6 +613,7 @@ def register_supplier_routes(app, get_db=None):
             opp.description  = payload.description
             opp.link_url     = payload.link_url or None
             opp.is_active    = payload.is_active
+            opp.application_fields = payload.application_fields or "[]"
             db.commit()
             return {"ok": True}
         finally:

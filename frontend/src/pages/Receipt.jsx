@@ -44,7 +44,10 @@ export default function Receipt() {
   const config = receipt.config || {};
   const title       = config.title        || "Receipt";
   const custLabel   = config.customer_label || "Customer";
-  const footer      = config.footer       || "Thank you for your business.";
+  // An invoice requests payment, so the receipt footer ("Keep this receipt for
+  // reference.") reads wrong on it — use the invoice wording instead.
+  const receiptFooter = config.footer || "Thank you for your business.";
+  const invoiceFooter = config.invoice_footer || "Please settle this invoice by the due date. Thank you.";
   const bizName     = receipt.biz_name    || "CreditVoice";
 
   const isCash    = receipt.type === "SALE";
@@ -226,7 +229,7 @@ export default function Receipt() {
             <div className="receipt-muted">Served by: {receipt.recorded_by}</div>
           )}
           <div className="receipt-muted" style={{ marginTop: 12 }}>
-            {footer}
+            {isInvoice ? invoiceFooter : receiptFooter}
           </div>
         </div>
       </div>

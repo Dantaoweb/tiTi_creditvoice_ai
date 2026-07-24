@@ -144,6 +144,22 @@ def test_overdue_when_past_due_and_unpaid():
     assert data["invoices"][0]["status"] == "overdue"
 
 
+def test_invoice_uses_invoice_footer_not_receipt_wording():
+    """An invoice requests payment, so the receipt footer reads wrong on it."""
+    from invoices import format_invoice_text
+    msg = format_invoice_text({
+        "config": {"footer": "Keep this receipt for reference.", "customer_label": "Customer"},
+        "customer": {"name": "Ada"},
+        "biz_name": "Shop",
+        "total": 5000,
+        "balance_owed": 5000,
+        "invoice_number": 1,
+        "items": [],
+    })
+    assert "Keep this receipt" not in msg
+    assert "settle this invoice" in msg.lower()
+
+
 def _set_phone(owner_phone, name, phone):
     db = SessionLocal()
     c = db.query(Customer).filter(Customer.owner_phone == owner_phone, Customer.name == name).first()

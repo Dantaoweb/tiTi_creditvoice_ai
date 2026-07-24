@@ -59,3 +59,24 @@ def test_app_admin_can_create_and_see_opportunities():
 def test_non_admin_is_forbidden():
     cookies = _login("2348099990002")   # not in APP_ADMIN_PHONES
     assert client.get("/app/api/admin/opportunities", cookies=cookies).status_code == 403
+
+
+def test_application_questions_reach_users():
+    import json
+    cookies = _login(ADMIN_PHONE)
+    fields = json.dumps([{"label": "Years in business", "type": "text", "required": True}])
+    created = client.post("/app/api/admin/opportunities", cookies=cookies,
+                          json={"title": "Loan Offer", "description": "d", "category": "finance",
+                                "application_fields": fields})
+    assert created.status_code == 200, created.text
+
+    # The questions must reach an ordinary user's apply form
+    pub = client.get("/app/api/opportunities").json()["opportunities"]
+    offer = next(o for o in pub if o["title"] == "Loan Offer")
+    parsed = json.loads(offer["application_fields"])
+    assert parsed and parsed[0]["label"] == "Years in business"
+
+    # And the admin list round-trips them for editing
+    adm = client.get("/app/api/admin/opportunities", cookies=cookies).json()["opportunities"]
+    offer_a = next(o for o in adm if o["title"] == "Loan Offer")
+    assert json.loads(offer_a["application_fields"])[0]["required"] is True

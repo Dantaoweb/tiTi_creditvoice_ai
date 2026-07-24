@@ -120,6 +120,15 @@ body {
   border-radius: 20px;
 }
 
+/* Unread/attention badge (e.g. new opportunities) — stays until checked. */
+.nav-badge-alert {
+  background: #dc2626;
+  color: #fff;
+  min-width: 16px;
+  text-align: center;
+  font-size: 10px;
+}
+
 .nav-section {
   font-size: 10px;
   font-weight: 700;

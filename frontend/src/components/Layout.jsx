@@ -53,10 +53,32 @@ export default function Layout() {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [titiNumber, setTitiNumber] = useState("");
+  const [oppsUnread, setOppsUnread] = useState(0);
 
   useEffect(() => {
     apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
   }, []);
+
+  // Persistent "new opportunities" badge: count opportunities created after the
+  // last time this user opened the Opportunities page. Stays until they check
+  // it (the marker is only advanced by visiting /opportunities), and re-checks
+  // whenever they navigate so a freshly-posted opportunity lights up.
+  useEffect(() => {
+    apiFetch("opportunities").then(d => {
+      const opps = d.opportunities || [];
+      const seenAt = localStorage.getItem("cv_opps_seen_at") || "";
+      const unseen = opps.filter(o => (o.created_at || "") > seenAt).length;
+      setOppsUnread(unseen);
+    }).catch(() => {});
+  }, [location.pathname]);
+
+  // Clear the badge the moment they're on the Opportunities page.
+  useEffect(() => {
+    if (location.pathname === "/opportunities") {
+      localStorage.setItem("cv_opps_seen_at", new Date().toISOString());
+      setOppsUnread(0);
+    }
+  }, [location.pathname]);
 
   const L = getBizLabels(user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
@@ -143,6 +165,9 @@ export default function Layout() {
               >
                 <item.icon size={16} />
                 <span className="nav-label">{item.label}</span>
+                {item.to === "/opportunities" && oppsUnread > 0 && (
+                  <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
+                )}
               </NavLink>
             )
           )}

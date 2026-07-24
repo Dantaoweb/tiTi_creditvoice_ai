@@ -83,8 +83,8 @@ def format_invoice_text(receipt):
     if receipt.get("due_date"):
         lines.append(f"Due by: {receipt['due_date'][:10]}")
     lines.append("--------------------")
-    if cfg.get("footer"):
-        lines.append(cfg["footer"])
+    from business_templates import invoice_footer_for
+    lines.append(invoice_footer_for(cfg))
     return "\n".join(lines)
 
 
