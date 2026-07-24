@@ -4,6 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText,
+  MoreHorizontal, ChevronDown,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -54,6 +55,14 @@ export default function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [titiNumber, setTitiNumber] = useState("");
   const [oppsUnread, setOppsUnread] = useState(0);
+  // Remember whether "More" was expanded, per device.
+  const [moreOpen, setMoreOpen] = useState(() => localStorage.getItem("cv_more_open") === "1");
+  function toggleMore() {
+    setMoreOpen(o => { const n = !o; localStorage.setItem("cv_more_open", n ? "1" : "0"); return n; });
+  }
+  // Dashboard joins the always-visible primary set (checked daily), on top of
+  // the mobile tab-bar items — without adding it to the bottom bar itself.
+  const isPrimary = (item) => item.tab || item.to === "/dashboard";
 
   useEffect(() => {
     apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
@@ -122,6 +131,33 @@ export default function Layout() {
 
   function closeDrawer() { setDrawerOpen(false); }
 
+  function renderNavItem(item) {
+    if (item.disabled) {
+      return (
+        <div key={item.label} className="nav-link nav-link-disabled">
+          <item.icon size={16} />
+          <span className="nav-label">{item.label}</span>
+          {item.badge && <span className="nav-badge">{item.badge}</span>}
+        </div>
+      );
+    }
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+        onClick={closeDrawer}
+      >
+        <item.icon size={16} />
+        <span className="nav-label">{item.label}</span>
+        {item.badge && <span className="nav-badge">{item.badge}</span>}
+        {item.to === "/opportunities" && oppsUnread > 0 && (
+          <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
+        )}
+      </NavLink>
+    );
+  }
+
   return (
     <div className="shell">
       {/* Drawer overlay (mobile) */}
@@ -147,30 +183,32 @@ export default function Layout() {
         </div>
 
         <nav className="sidebar-nav">
-          {NAV.map((item, i) =>
-            item.section !== undefined ? (
-              <div key={i} className="nav-section">{item.section}</div>
-            ) : item.disabled ? (
-              <div key={item.label} className="nav-link nav-link-disabled">
-                <item.icon size={16} />
-                <span className="nav-label">{item.label}</span>
-                {item.badge && <span className="nav-badge">{item.badge}</span>}
-              </div>
-            ) : (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
-                onClick={closeDrawer}
-              >
-                <item.icon size={16} />
-                <span className="nav-label">{item.label}</span>
-                {item.to === "/opportunities" && oppsUnread > 0 && (
-                  <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
-                )}
-              </NavLink>
-            )
+          {/* Primary items first (the same set pinned to the mobile tab bar).
+              Secondary features live behind "More" — two taps to reach, so the
+              sidebar stays short and the essentials are always in view. */}
+          {NAV.filter(i => i.to && isPrimary(i)).map(renderNavItem)}
+
+          {NAV.some(i => i.to && !isPrimary(i)) && (
+            <button
+              type="button"
+              className={`nav-link nav-more-btn${moreOpen ? " active" : ""}`}
+              onClick={toggleMore}
+            >
+              <MoreHorizontal size={16} />
+              <span className="nav-label">{moreOpen ? "Less" : "More"}</span>
+              {/* When collapsed, surface the opportunities alert on More itself */}
+              {!moreOpen && oppsUnread > 0 && (
+                <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
+              )}
+              <ChevronDown
+                size={15}
+                style={{ marginLeft: !moreOpen && oppsUnread > 0 ? 6 : "auto",
+                         transform: moreOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+              />
+            </button>
           )}
+
+          {moreOpen && NAV.filter(i => i.to && !isPrimary(i)).map(renderNavItem)}
         </nav>
 
         {titiNumber && (

@@ -8,12 +8,16 @@ import { nairaFull, nairaInWords, qty } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
 
-// ── Product grid (browse + search) ─────────────────────────────────────────
+// ── Product picker (paged list, qty stepper beside each row) ────────────────
 
-function ProductGrid({ ownerPhone, onAdd }) {
+const PAGE_SIZE = 20;   // products shown at once; slide/arrow to reveal more
+
+function ProductGrid({ ownerPhone, qtyFor, onSetQty }) {
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const touchX = useRef(null);
 
   useEffect(() => {
     if (!ownerPhone) return;
@@ -27,21 +31,22 @@ function ProductGrid({ ownerPhone, onAdd }) {
     ? products.filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
     : products;
 
-  function pick(p) {
-    onAdd({
-      inventory_item_id: p.id,
-      name: p.name,
-      unit: p.unit,
-      unit_price: p.selling_price,
-      qty: 1,
-      stock: p.quantity,
-      is_service: p.is_service,
-      retail_unit: p.retail_unit || null,
-      retail_per_base: p.retail_per_base || null,
-      retail_price: p.retail_price || null,
-      sold_unit: null,
-      fraction: 1.0,
-    });
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pages - 1);
+  const pageItems = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+  // Reset to first page whenever the search changes.
+  useEffect(() => { setPage(0); }, [q]);
+
+  const go = (d) => setPage(p => Math.min(pages - 1, Math.max(0, p + d)));
+
+  // Swipe left/right on the list to move between pages of 20.
+  function onTouchStart(e) { touchX.current = e.touches[0].clientX; }
+  function onTouchEnd(e) {
+    if (touchX.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchX.current;
+    if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+    touchX.current = null;
   }
 
   return (
@@ -61,7 +66,7 @@ function ProductGrid({ ownerPhone, onAdd }) {
         )}
       </div>
 
-      <div className="pos-grid-scroll">
+      <div className="pos-grid-scroll" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {loading ? (
           <div className="pos-grid-msg">Loading products…</div>
         ) : filtered.length === 0 ? (
@@ -69,33 +74,51 @@ function ProductGrid({ ownerPhone, onAdd }) {
             {q ? "No products match your search." : "Add products in Inventory to see them here."}
           </div>
         ) : (
-          <div className="pos-product-grid">
-            {filtered.map(p => {
+          <div className="pos-pick-list">
+            {pageItems.map(p => {
               const oos = !p.is_service && p.quantity <= 0;
+              const n = qtyFor(p);
+              const stockLabel = p.is_service
+                ? "Service"
+                : oos ? "Out of stock"
+                : p.unit ? qty(p.quantity, p.unit) : `${qty(p.quantity)} in stock`;
               return (
-                <button
-                  key={p.id}
-                  className={`pos-pgrid-card${oos ? " pos-pgrid-card--oos" : ""}`}
-                  onClick={() => pick(p)}
-                  title={oos ? `${p.name} — out of stock` : p.name}
-                >
-                  <span className="pos-pgrid-name">{p.name}</span>
-                  <span className="pos-pgrid-price">{nairaFull(p.selling_price)}</span>
-                  <span className="pos-pgrid-stock">
-                    {p.is_service
-                      ? "Service"
-                      : oos
-                        ? "Out of stock"
-                        : p.unit
-                          ? qty(p.quantity, p.unit)
-                          : `${qty(p.quantity)} in stock`}
-                  </span>
-                </button>
+                <div key={p.id} className={`pos-pick-row${n > 0 ? " pos-pick-row--active" : ""}`}>
+                  <div className="pos-pick-info">
+                    <span className="pos-pick-name">{p.name}</span>
+                    <span className="pos-pick-meta">
+                      {nairaFull(p.selling_price)}<span className="pos-pick-dot">·</span>
+                      <span className={oos ? "pos-pick-oos" : ""}>{stockLabel}</span>
+                    </span>
+                  </div>
+                  {/* Qty stepper sits BESIDE the product, always reachable */}
+                  <div className="pos-qty pos-pick-qty">
+                    <button onClick={() => onSetQty(p, n - 1)} disabled={n <= 0} aria-label="decrease">
+                      <Minus size={13} />
+                    </button>
+                    <input
+                      type="number" min={0} inputMode="numeric"
+                      value={n}
+                      onChange={e => onSetQty(p, Math.max(0, parseInt(e.target.value) || 0))}
+                    />
+                    <button onClick={() => onSetQty(p, n + 1)} disabled={oos} aria-label="increase">
+                      <Plus size={13} />
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {pages > 1 && (
+        <div className="pos-pager">
+          <button onClick={() => go(-1)} disabled={safePage === 0} aria-label="previous">‹</button>
+          <span>{safePage + 1} / {pages} · 20 per page</span>
+          <button onClick={() => go(1)} disabled={safePage >= pages - 1} aria-label="next">›</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -234,17 +257,34 @@ export default function POS() {
     if (!showCredit) creditVisible.current = false;
   }, [showCredit]);
 
-  function addToCart(product) {
+  // Current cart qty for a picker product (matched by inventory item id).
+  function qtyFor(p) {
+    const it = cart.find(c => c.inventory_item_id === p.id);
+    return it ? it.qty : 0;
+  }
+
+  // Set the qty straight from the picker's stepper: add / update / remove.
+  function setProductQty(p, newQty) {
     setCart(prev => {
-      const idx = prev.findIndex(it =>
-        it.inventory_item_id === product.inventory_item_id && it.name === product.name
-      );
+      const idx = prev.findIndex(it => it.inventory_item_id === p.id && it.name === p.name);
+      if (newQty <= 0) return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
       if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = { ...updated[idx], qty: updated[idx].qty + 1 };
-        return updated;
+        const u = [...prev]; u[idx] = { ...u[idx], qty: newQty }; return u;
       }
-      return [...prev, { ...product }];
+      return [...prev, {
+        inventory_item_id: p.id,
+        name: p.name,
+        unit: p.unit,
+        unit_price: p.selling_price,
+        qty: newQty,
+        stock: p.quantity,
+        is_service: p.is_service,
+        retail_unit: p.retail_unit || null,
+        retail_per_base: p.retail_per_base || null,
+        retail_price: p.retail_price || null,
+        sold_unit: null,
+        fraction: 1.0,
+      }];
     });
   }
 
@@ -334,7 +374,7 @@ export default function POS() {
             <span onClick={() => window.location.href = "/app/upgrade"}>Upgrade to Go →</span>
           </div>
         )}
-        <ProductGrid ownerPhone={ownerPhone} onAdd={addToCart} />
+        <ProductGrid ownerPhone={ownerPhone} qtyFor={qtyFor} onSetQty={setProductQty} />
       </div>
 
       {/* ── Right: Order (cart + payment) ───────────────────────────── */}
