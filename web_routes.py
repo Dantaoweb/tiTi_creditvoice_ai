@@ -1286,6 +1286,19 @@ def register_web_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             items = [it.model_dump() for it in payload.items]
+            # Don't trust a client-supplied branch: a branch staff records into
+            # THEIR branch; an owner may pick a branch but only one of their own.
+            scope_branch, _rec = _scoped_read(db, session)
+            if scope_branch is not None:
+                eff_branch = scope_branch
+            elif payload.branch_id is not None:
+                _b = db.query(Branch).filter(
+                    Branch.id == payload.branch_id, Branch.owner_phone == owner_phone
+                ).first()
+                eff_branch = _b.id if _b else None
+            else:
+                from transaction_save import _get_recording_branch_id
+                eff_branch = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
             result = save_pos_sale(
                 db,
                 owner_phone,
@@ -1293,7 +1306,7 @@ def register_web_routes(app):
                 payload.customer_id,
                 items,
                 payload.payment_amount,
-                branch_id=payload.branch_id,
+                branch_id=eff_branch,
                 due_date=payload.due_date,
                 customer_name=payload.customer_name,
                 customer_phone=payload.customer_phone,
@@ -1304,9 +1317,10 @@ def register_web_routes(app):
             return result
         except HTTPException:
             raise
-        except Exception as exc:
+        except Exception:
+            # Log the detail server-side; don't leak internals to the client.
             import traceback; traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Could not save sale: {exc}")
+            raise HTTPException(status_code=400, detail="Could not save the sale. Please check the items and try again.")
         finally:
             db.close()
 

@@ -23,6 +23,16 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
 
     Returns receipt dict.
     """
+    # A supplied customer_id MUST belong to this business — otherwise a caller
+    # could attach a sale/debt to another business's customer (cross-tenant IDOR).
+    if customer_id:
+        owned = db.query(Customer).filter(
+            Customer.id == customer_id,
+            Customer.owner_phone == owner_phone,
+        ).first()
+        if not owned:
+            raise ValueError("Customer not found for this business.")
+
     # Resolve an inline (unlisted) customer by name when no id was selected.
     if not customer_id and customer_name and customer_name.strip():
         cname = customer_name.strip()
