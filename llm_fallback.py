@@ -104,7 +104,7 @@ BRANCHES / MULTIPLE LOCATIONS (web app ONLY — not WhatsApp):
 
 STAFF & ACCESS (web app, PRO plan):
 - Invite staff from the Staff page — share the invite link or accept code. You can attach them to a branch, and optionally make them a branch admin, right in the invite.
-- Staff sign in with their own phone + PIN and record sales for you while you keep full oversight. "Make branch admin" lets a staff see all records in their branch; otherwise they see only their own.
+- Staff sign in with their own phone + PIN and record sales for you while you keep full oversight. A regular staff only records sales and sees their own records — they cannot add or edit stock. "Make branch admin" lets a staff see all records in their branch AND manage that branch's stock; only the owner or a branch admin can add/edit/adjust inventory.
 
 OPPORTUNITIES:
 - The Opportunities page shows offers (loans, grants, equipment, trade deals) posted by the CreditVoice team. Some ask a few questions when you apply — you answer them before submitting. A red badge appears on the menu when there's a new opportunity you haven't opened, and stays until you check it.

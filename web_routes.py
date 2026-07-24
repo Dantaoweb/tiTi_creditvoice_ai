@@ -439,6 +439,18 @@ def _scoped_read(db, session: dict, requested_branch_id=None):
     return None, user.id
 
 
+def _require_stock_manager(db, session: dict):
+    """Only the owner or a branch admin (a staff granted see-all-branch access)
+    may manage stock. Regular staff record sales but cannot add / edit / adjust
+    inventory. Returns the acting user."""
+    user = _session_user(db, session)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found.")
+    if user.parent_id is None or user.can_view_all_transactions:
+        return user
+    raise HTTPException(status_code=403, detail="Only the owner or a branch admin can manage stock.")
+
+
 def _session_subscription(db, session: dict):
     """The business subscription, resolved at most once per request."""
     cache = db.info.setdefault("_req", {})
@@ -881,6 +893,8 @@ def register_web_routes(app):
                 # A staff/sub-account has a parent; owners don't. The Staff page
                 # gates the invite UI on this.
                 "parent_id": user.parent_id,
+                # Owner or branch admin — may manage stock, branches, etc.
+                "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
             }
         finally:
             db.close()
@@ -1986,6 +2000,7 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            _require_stock_manager(db, session)
             owner_phone = _session_owner_phone(db, session)
 
             # Enforce active-inventory limit for Basic plan when a price is being set
@@ -2087,6 +2102,7 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            _require_stock_manager(db, session)
             owner_phone = _session_owner_phone(db, session)
             saved, skipped = 0, 0
             from transaction_save import _get_recording_branch_id
@@ -2140,6 +2156,7 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            _require_stock_manager(db, session)
             owner_phone = _session_owner_phone(db, session)
             item = db.query(InventoryItem).filter(
                 InventoryItem.id == item_id,
@@ -2187,6 +2204,7 @@ def register_web_routes(app):
     ):
         db = SessionLocal()
         try:
+            _require_stock_manager(db, session)
             owner_phone = _session_owner_phone(db, session)
             item = db.query(InventoryItem).filter(
                 InventoryItem.id == item_id,

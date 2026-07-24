@@ -507,6 +507,7 @@ def _build_auth_response(user: User, db=None) -> dict:
             "whatsapp_linked": bool(user.whatsapp_linked),
             "newsletter_consent": bool(user.newsletter_consent),
             "parent_id": user.parent_id,
+            "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
             "subscription_plan": plan,
             "subscription_expires_at": expires_at.isoformat() if expires_at else None,
             "examples": examples,

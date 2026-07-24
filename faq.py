@@ -955,12 +955,13 @@ FAQ_ANSWERS = {
         "What staff cannot do (unless you allow it):\n"
         "- See other people's transactions\n"
         "- Void another person's transactions\n"
+        "- Add, edit or adjust stock (owner or branch admin only)\n"
         "- Manage branches or other staff\n\n"
-        "To let a staff see everything in their branch:\n"
-        "Go to Staff and tap 'Make branch admin' (they must be assigned to a "
-        "branch). A branch admin sees all records in their branch, but not other "
-        "branches. If an invite code expired or was lost, tap 'Resend invite' for a "
-        "fresh one."
+        "Branch admin: go to Staff and tap 'Make branch admin' (they must be "
+        "assigned to a branch). A branch admin sees all records in their branch "
+        "AND can manage that branch's stock — but nothing outside their branch. A "
+        "regular staff just records sales and sees only their own. If an invite "
+        "code expired or was lost, tap 'Resend invite' for a fresh one."
     ),
     "staff_profile": (
         "Staff profiles let you keep HR records for each team member — position, level, salary, and employee ID.\n\n"

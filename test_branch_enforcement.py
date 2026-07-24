@@ -106,23 +106,29 @@ def test_owner_sees_all_branches():
 
 
 def test_new_records_stamped_with_creators_branch():
-    # A staff creating a customer/stock tags it to their branch, so a branch
-    # admin of that branch sees it.
+    # New records are tagged to the creator's branch. A regular staff records a
+    # customer (allowed); a branch admin adds stock (stock is admin-only). Both
+    # land in branch A and stay visible to the branch admin.
     owner_phone, staff_phone, admin_phone = _setup()
     staff = _login(staff_phone, "1234")
+    admin = _login(admin_phone, "1234")
+
     assert client.post("/app/api/customers", cookies=staff,
                        json={"owner_phone": owner_phone, "name": "Fresh"}).status_code == 200
+    # Stock is owner/branch-admin only — a regular staff is blocked
     assert client.post("/app/api/inventory", cookies=staff,
+                       json={"owner_phone": owner_phone, "name": "blocked", "selling_price": 100, "quantity": 3}).status_code == 403
+    # The branch admin can add it, stamped to their branch
+    assert client.post("/app/api/inventory", cookies=admin,
                        json={"owner_phone": owner_phone, "name": "newstock", "selling_price": 100, "quantity": 3}).status_code == 200
 
     db = SessionLocal()
-    staff_branch = db.query(User).filter(User.phone == staff_phone).first().branch_id
+    branch_a = db.query(User).filter(User.phone == staff_phone).first().branch_id
     from models import InventoryItem
-    assert db.query(Customer).filter_by(owner_phone=owner_phone, name="Fresh").first().branch_id == staff_branch
-    assert db.query(InventoryItem).filter_by(owner_phone=owner_phone, name="newstock").first().branch_id == staff_branch
+    assert db.query(Customer).filter_by(owner_phone=owner_phone, name="Fresh").first().branch_id == branch_a
+    assert db.query(InventoryItem).filter_by(owner_phone=owner_phone, name="newstock").first().branch_id == branch_a
     db.close()
 
-    admin = _login(admin_phone, "1234")
     names = {c["name"] for c in client.get("/app/api/customers", cookies=admin).json()["customers"]}
     assert "Fresh" in names
     stock = {i["name"] for i in client.get("/app/api/inventory", cookies=admin).json()["items"]}

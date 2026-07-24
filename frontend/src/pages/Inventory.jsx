@@ -563,6 +563,8 @@ export default function Inventory() {
   const { plan, limit: planLimit, withinLimit } = usePlan();
   const L = getBizLabels(user?.menu_group);
   const isServiceBiz = user?.menu_group === "service";
+  // Only the owner or a branch admin manages stock. Regular staff view only.
+  const canManageStock = user?.full_access ?? !user?.parent_id;
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -622,20 +624,26 @@ export default function Inventory() {
               onChange={e => setSearch(e.target.value)}
               style={{ width: 140, minWidth: 100 }}
             />
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowCatalog(true)} title="Pick from suggested product list">
-              <Plus size={14} /> Catalog
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)} title="Add many product names at once">
-              <Plus size={14} /> Quick Add
-            </button>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => canAddActive ? setShowAdd(true) : null}
-              title={canAddActive ? undefined : `Basic plan: ${inventoryLim} active products. Upgrade to Go for unlimited.`}
-              style={canAddActive ? {} : { opacity: 0.5, cursor: "not-allowed" }}
-            >
-              <Plus size={14} /> {addLabel}
-            </button>
+            {canManageStock && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowCatalog(true)} title="Pick from suggested product list">
+                <Plus size={14} /> Catalog
+              </button>
+            )}
+            {canManageStock && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)} title="Add many product names at once">
+                <Plus size={14} /> Quick Add
+              </button>
+            )}
+            {canManageStock && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => canAddActive ? setShowAdd(true) : null}
+                title={canAddActive ? undefined : `Basic plan: ${inventoryLim} active products. Upgrade to Go for unlimited.`}
+                style={canAddActive ? {} : { opacity: 0.5, cursor: "not-allowed" }}
+              >
+                <Plus size={14} /> {addLabel}
+              </button>
+            )}
           </div>
         </div>
         {inventoryLim !== null && (
@@ -698,7 +706,7 @@ export default function Inventory() {
             { key: "updated_at", label: "Updated", render: r => <span className="td-muted">{dateStr(r.updated_at)}</span> },
             {
               key: "actions", label: "",
-              render: r => (
+              render: r => !canManageStock ? null : (
                 <div style={{ display: "flex", gap: 6 }}>
                   {!r.is_service && (
                     <button className="btn btn-ghost btn-xs" onClick={() => setAdjustItem(r)} title="Adjust stock">±</button>
