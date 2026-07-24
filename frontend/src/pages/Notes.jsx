@@ -71,10 +71,10 @@ function NoteCard({ note, onDelete }) {
   );
 }
 
-function AddNoteForm({ onDone, onCancel }) {
+function AddNoteForm({ onDone, onCancel, defaultCategory = "memo" }) {
   const [form, setForm] = useState({
     body: "",
-    category: "memo",
+    category: defaultCategory,
     amount: "",
     visibility: "owner_only",
   });
@@ -221,9 +221,11 @@ export default function Notes() {
         </div>
       </div>
 
-      {/* Add form */}
+      {/* Add form — pre-fill the type from the headline selection so choosing a
+          category up top carries into the new note (no need to re-pick it). */}
       {showAdd && (
         <AddNoteForm
+          defaultCategory={CATEGORIES.includes(filterCat) ? filterCat : "memo"}
           onDone={() => { setShowAdd(false); load(); }}
           onCancel={() => setShowAdd(false)}
         />
