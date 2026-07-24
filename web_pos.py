@@ -94,12 +94,18 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         db.flush()
         pay_tx_id = pay_tx.id
 
-    # Deduct inventory for items linked to an inventory record (skip service items)
+    # Deduct inventory (skip service items). Harmonised with quick sale and item
+    # customization: prefer the explicitly-linked item, but fall back to matching
+    # by name so a POS line typed by name still deducts from the same stock when
+    # a same-named item exists — the same find_matching_inventory_item the other
+    # sale paths use, so identical names deduct identically everywhere.
+    from inventory_suppliers import find_matching_inventory_item
     for it in items:
         item_id = it.get("inventory_item_id")
-        if not item_id:
-            continue
-        inv = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+        inv = db.query(InventoryItem).filter(InventoryItem.id == item_id).first() if item_id else None
+        if not inv:
+            name = (it.get("name") or "").strip()
+            inv = find_matching_inventory_item(db, owner_phone, name, it.get("unit")) if name else None
         if not inv:
             continue
         if inv.quantity is None or inv.category == "service":
