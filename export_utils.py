@@ -11,6 +11,25 @@ _SECRET = os.getenv("WEB_SECRET_KEY", "cv-web-secret-change-in-production")
 _TTL = 24 * 3600
 
 
+def _csv_safe(value):
+    """Neutralise CSV formula injection: a cell beginning with = + - @ (or a
+    control char) is treated as a formula by Excel/Sheets. User-controlled text
+    (customer/product names, notes) is exported, so prefix such cells with a
+    single quote so they render as literal text, never executed."""
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return value
+    s = str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
+def _sanitize_rows(rows):
+    return [[_csv_safe(cell) for cell in row] for row in rows]
+
+
 def make_export_token(phone: str, period, export_type: str) -> str:
     exp = int(time.time()) + _TTL
     payload = f"{phone}|{period or ''}|{export_type}|{exp}"
@@ -137,6 +156,6 @@ def build_export_csv(db, owner_phone: str, period_key, export_type: str, branch_
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(headers)
-    writer.writerows(rows)
+    writer.writerows(_sanitize_rows(rows))   # neutralise CSV formula injection
     # utf-8-sig = BOM prefix so Excel on Windows opens without garbling
     return filename, buf.getvalue().encode("utf-8-sig")

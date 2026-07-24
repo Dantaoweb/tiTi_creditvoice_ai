@@ -4337,15 +4337,16 @@ def register_web_routes(app):
                   resource="failed_parses.csv")
             db.commit()
             rows = db.query(FailedParse).order_by(FailedParse.created_at.desc()).limit(5000).all()
+            from export_utils import _csv_safe
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["id", "phone", "text", "resolved_by", "llm_reply", "created_at"])
             for r in rows:
-                writer.writerow([
+                writer.writerow([_csv_safe(v) for v in (
                     r.id, r.phone, r.text, r.resolved_by or "",
                     r.llm_reply or "",
                     r.created_at.isoformat() if r.created_at else "",
-                ])
+                )])
             output.seek(0)
             return StreamingResponse(
                 iter([output.getvalue()]),
@@ -4766,9 +4767,10 @@ def register_web_routes(app):
 
             buf = io.StringIO()
             w = _csv.writer(buf)
+            from export_utils import _csv_safe
             w.writerow(["Code", "Plan", "Duration (days)", "Batch", "Expires"])
             for c in codes:
-                w.writerow([c, plan, payload.duration_days, payload.batch_label or "", expires_at or ""])
+                w.writerow([_csv_safe(v) for v in (c, plan, payload.duration_days, payload.batch_label or "", expires_at or "")])
             buf.seek(0)
             filename = f"tokens_{plan}_{payload.batch_label or 'batch'}.csv"
             return StreamingResponse(

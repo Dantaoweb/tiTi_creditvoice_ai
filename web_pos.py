@@ -33,6 +33,19 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         if not owned:
             raise ValueError("Customer not found for this business.")
 
+    # Reject non-positive quantities/prices — a negative line would create a
+    # negative-amount transaction that corrupts reports and can be abused to wipe
+    # a customer's debt or invent credit.
+    for _it in items:
+        try:
+            _q = float(_it.get("qty", 1)); _p = int(_it.get("unit_price", 0))
+        except (TypeError, ValueError):
+            raise ValueError("Invalid item quantity or price.")
+        if _q <= 0 or _p < 0:
+            raise ValueError("Item quantity must be positive and price cannot be negative.")
+    if int(payment_amount or 0) < 0:
+        raise ValueError("Payment cannot be negative.")
+
     # Resolve an inline (unlisted) customer by name when no id was selected.
     if not customer_id and customer_name and customer_name.strip():
         cname = customer_name.strip()
