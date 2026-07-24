@@ -356,7 +356,7 @@ export default function Upgrade() {
           {/* Help note */}
           <div className="upgrade-help-note">
             Questions? Send <strong>UPGRADE</strong> on WhatsApp to tiTi or{" "}
-            <a href="mailto:support@creditvoice.ai">email support</a>.
+            <a href="mailto:support@creditvoiceai.com">email support</a>.
           </div>
         </>
       )}

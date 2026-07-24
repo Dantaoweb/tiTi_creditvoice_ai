@@ -95,7 +95,7 @@ export default function Terms() {
         <section>
           <h2>11. Contact</h2>
           <p>
-            For questions about these terms, contact us at <a href="mailto:support@creditvoice.ng">support@creditvoice.ng</a>.
+            For questions about these terms, contact us at <a href="mailto:support@creditvoiceai.com">support@creditvoiceai.com</a>.
           </p>
         </section>
 

@@ -288,6 +288,13 @@ def detect_faq(text):
     ]):
         return "business_partners"
 
+    # ── Invoices ──────────────────────────────────────────────────────────────
+    if any(k in q for k in [
+        "invoice", "invoices", "send invoice", "create invoice", "make invoice",
+        "bill customer", "invoice number", "unpaid invoice", "invoice status",
+    ]):
+        return "invoices"
+
     # ── Branch / location tagging ─────────────────────────────────────────────
     if any(k in q for k in [
         "branch", "add branch", "create branch", "my branch",
@@ -851,20 +858,38 @@ FAQ_ANSWERS = {
         "- Stock assets and value\n"
         "- Full transaction history"
     ),
+    "invoices": (
+        "Invoices turn a credit sale into a formal bill with its own number "
+        "(INV-0001). They're on the web app.\n\n"
+        "To create one:\n"
+        "1. Open the web dashboard → a customer's history (or the sale's receipt)\n"
+        "2. Tap 'Invoice' / 'View as Invoice' — it gets a number automatically\n\n"
+        "The Invoices page:\n"
+        "- Lists every invoice with status Open, Overdue or Paid\n"
+        "- Shows what's still outstanding\n"
+        "- Lets you send an invoice to the customer's WhatsApp, and print/save as PDF\n\n"
+        "An invoice is a request for payment (not a 'keep this receipt' slip). "
+        "A paid-up customer's invoices show as Paid automatically."
+    ),
     "branch_location": (
-        "Branches let you tag each transaction to a location.\n"
-        "Example: Main Shop, Oshodi Branch, Ikeja Store.\n\n"
-        "To set up your branches:\n"
-        "1. Open the web dashboard\n"
-        "2. Go to Branches in the sidebar\n"
-        "3. Click Add Branch and enter the name\n"
-        "4. Star one as the default\n\n"
-        "Once set up:\n"
-        "- Your default branch is attached to every new WhatsApp transaction automatically\n"
-        "- On the Quick Record web form, pick a branch before saving\n"
-        "- Filter the Transactions page by branch\n"
-        "- Filter your Dashboard by branch\n\n"
-        "Useful for business owners running more than one shop location."
+        "Branches let you run several locations, each with its own staff and its "
+        "own separate records. They are set up and run *on the web app only* — not "
+        "on WhatsApp.\n\n"
+        "To set up branches (web app):\n"
+        "1. Open the web dashboard → Menu → Branches\n"
+        "2. Add a branch and enter its name (star one as default)\n"
+        "3. Go to Staff → invite each staff, attaching them to a branch (you can do "
+        "this right in the invite), or set their branch later with the Branch dropdown\n\n"
+        "How a branch works:\n"
+        "- A branch staff logs in on the web with THEIR OWN phone number and PIN "
+        "(never the owner's), from their own device. They don't pick a branch at "
+        "login — they're automatically scoped to the branch you assigned them.\n"
+        "- A regular staff sees only what they personally recorded. Mark a staff as "
+        "*branch admin* to let them see ALL records in their branch. You (the owner) "
+        "see every branch and can filter the Dashboard/Transactions by branch.\n"
+        "- New sales, customers and stock are tagged to the staff's branch.\n\n"
+        "On WhatsApp you can't create or list branches — just record your sales as "
+        "normal. Everything branch-related is done in the web app."
     ),
     "pwa_install": (
         "CreditVoice works as an app on your phone without downloading from an app store.\n\n"
@@ -914,22 +939,28 @@ FAQ_ANSWERS = {
         "tiTi will send you a download link."
     ),
     "staff_accounts": (
-        "Staff accounts let your assistant or sales team record transactions on your behalf.\n\n"
-        "To invite a staff member:\n"
-        "1. Open the web dashboard\n"
-        "2. Go to Staff in the sidebar\n"
-        "3. Enter their name and phone number\n"
-        "4. Share the join code with them\n"
-        "5. They accept the invite and set a PIN\n\n"
+        "Staff accounts (Pro plan) let your assistant or sales team record "
+        "transactions on your behalf, with you keeping full oversight.\n\n"
+        "To invite a staff member (web app → Staff):\n"
+        "1. Enter their name and phone number\n"
+        "2. Optionally attach them to a branch (and tick 'Join as branch admin')\n"
+        "3. Share the invite link or accept code with them\n"
+        "4. They open the link, enter the code, and create their PIN right there — "
+        "then they're signed in. No extra code needed to log in afterwards.\n\n"
+        "Everyday login: staff sign in with THEIR OWN phone number and PIN — never "
+        "yours.\n\n"
         "What staff can do:\n"
         "- Record sales and payments via WhatsApp or web\n"
         "- View transactions they personally recorded\n\n"
-        "What staff cannot do:\n"
-        "- See all transactions by default\n"
+        "What staff cannot do (unless you allow it):\n"
+        "- See other people's transactions\n"
         "- Void another person's transactions\n"
-        "- Access sensitive owner reports\n\n"
-        "To give a staff member full view access:\n"
-        "Go to Staff and enable  Can view all transactions."
+        "- Manage branches or other staff\n\n"
+        "To let a staff see everything in their branch:\n"
+        "Go to Staff and tap 'Make branch admin' (they must be assigned to a "
+        "branch). A branch admin sees all records in their branch, but not other "
+        "branches. If an invite code expired or was lost, tap 'Resend invite' for a "
+        "fresh one."
     ),
     "staff_profile": (
         "Staff profiles let you keep HR records for each team member — position, level, salary, and employee ID.\n\n"

@@ -377,62 +377,21 @@ def handle_parsed_command(
         )
         return {"status": "redeem_success"}
 
-    # ── Branch management ─────────────────────────────────────────────────────
-    if parsed["type"] == "BRANCH_LIST":
-        if not user:
-            send_whatsapp_message(phone, "Register first to manage branches.")
-            return {"status": "branch_list_no_user"}
-        from models import Branch
-        branches = (
-            db.query(Branch)
-            .filter(Branch.owner_phone == business_owner_phone)
-            .order_by(Branch.created_at)
-            .all()
-        )
-        if not branches:
-            send_whatsapp_message(
-                phone,
-                "📍 *Branches*\n\nNo branches set up yet.\n\n"
-                "Add one:\n→ add branch Main Market\n→ add branch Ajah Shop"
-            )
-        else:
-            lines = "\n".join(
-                f"{i}. {b.name}{' ★' if b.is_default else ''}"
-                for i, b in enumerate(branches, 1)
-            )
-            send_whatsapp_message(
-                phone,
-                f"📍 *Your Branches*\n\n{lines}\n\n"
-                "★ = default branch\n\n"
-                "Add more: _add branch [name]_"
-            )
-        return {"status": "branch_list_sent"}
-
-    if parsed["type"] == "BRANCH_ADD":
-        if not user:
-            send_whatsapp_message(phone, "Register first to add branches.")
-            return {"status": "branch_add_no_user"}
-        from models import Branch
-        name = parsed.get("name", "").strip()
-        existing = (
-            db.query(Branch)
-            .filter(Branch.owner_phone == business_owner_phone, Branch.name.ilike(name))
-            .first()
-        )
-        if existing:
-            send_whatsapp_message(phone, f"📍 *{name.title()}* already exists as a branch.")
-            return {"status": "branch_add_exists"}
-        is_first = not db.query(Branch).filter(Branch.owner_phone == business_owner_phone).first()
-        branch = Branch(owner_phone=business_owner_phone, name=name.lower(), is_default=is_first)
-        db.add(branch)
-        db.commit()
-        default_note = " (set as default since it's your first)" if is_first else ""
+    # ── Branch management — web-only ───────────────────────────────────────────
+    # Branches (multiple locations, per-branch staff and isolated records) are
+    # set up and run from the web app, not WhatsApp. Here we just point the user
+    # there rather than creating/listing branches on this channel.
+    if parsed["type"] in ("BRANCH_LIST", "BRANCH_ADD"):
         send_whatsapp_message(
             phone,
-            f"✅ Branch *{name.title()}* added{default_note}.\n\n"
-            "Send _my branches_ to see all your branches."
+            "📍 *Branches are managed in the web app*\n\n"
+            "Multiple locations, each with its own staff and records, are set up "
+            "on the CreditVoice web app — open *Menu → Branches* there to create a "
+            "branch, add its staff, and choose who can see all of that branch.\n\n"
+            "On WhatsApp just keep recording your sales as normal — nothing else "
+            "changes."
         )
-        return {"status": "branch_add_done"}
+        return {"status": "branch_web_only"}
 
     # ── Staff profile ─────────────────────────────────────────────────────────
     if parsed["type"] == "SET_STAFF_PROFILE":

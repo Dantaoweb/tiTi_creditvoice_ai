@@ -95,7 +95,7 @@ export default function Privacy() {
             <li>Request deletion of your account and data</li>
             <li>Export your business records (available from the dashboard)</li>
           </ul>
-          <p>To exercise these rights, contact us at <a href="mailto:support@creditvoice.ng">support@creditvoice.ng</a>.</p>
+          <p>To exercise these rights, contact us at <a href="mailto:support@creditvoiceai.com">support@creditvoiceai.com</a>.</p>
         </section>
 
         <section>
@@ -115,7 +115,7 @@ export default function Privacy() {
         <section>
           <h2>12. Contact</h2>
           <p>
-            For privacy questions or requests, contact us at <a href="mailto:support@creditvoice.ng">support@creditvoice.ng</a>.
+            For privacy questions or requests, contact us at <a href="mailto:support@creditvoiceai.com">support@creditvoiceai.com</a>.
           </p>
         </section>
 
