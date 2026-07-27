@@ -109,6 +109,7 @@ def ensure_schema_updates(engine):
         "wallet_balance": "INTEGER DEFAULT 0",
         "branch_id": "INTEGER",
         "token_version": "INTEGER DEFAULT 0",
+        "address": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
@@ -193,6 +194,13 @@ def ensure_schema_updates(engine):
                         f"ALTER TABLE inventory_items ADD COLUMN {column_name} {column_type}"
                     )
                 )
+
+    # Branch address (shown on receipts/invoices) — add to existing DBs.
+    if "branches" in inspector.get_table_names():
+        branch_columns = {c["name"] for c in inspector.get_columns("branches")}
+        if "address" not in branch_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE branches ADD COLUMN address VARCHAR"))
 
     # ── Upgrade quantity columns from INTEGER → REAL for fractional stock ───────
     # SQLite uses dynamic typing so floats store correctly without ALTER.

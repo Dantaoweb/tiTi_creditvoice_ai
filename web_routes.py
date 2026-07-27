@@ -302,6 +302,7 @@ class SetTransactionDueDateRequest(BaseModel):
 
 class CreateBranchRequest(BaseModel):
     name: str = Field(max_length=60)
+    address: Optional[str] = Field(default=None, max_length=300)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -773,6 +774,39 @@ def register_web_routes(app):
         finally:
             db.close()
 
+    class ProfileUpdateRequest(BaseModel):
+        name: Optional[str] = Field(default=None, max_length=120)
+        business_type_label: Optional[str] = Field(default=None, max_length=120)
+        address: Optional[str] = Field(default=None, max_length=300)
+
+    @app.put("/app/api/auth/profile")
+    def web_update_profile(payload: ProfileUpdateRequest, session: dict = Depends(require_web_auth)):
+        """Edit the signed-in user's profile. Everyone may change their own
+        display name; the business label/address (which appear on receipts) are
+        the owner's, so only a business owner can change those."""
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found.")
+            if payload.name is not None and payload.name.strip():
+                user.name = payload.name.strip()
+            is_owner = user.parent_id is None
+            if is_owner:
+                if payload.business_type_label is not None:
+                    user.business_type_label = payload.business_type_label.strip() or None
+                if payload.address is not None:
+                    user.address = payload.address.strip() or None
+            db.commit()
+            return {
+                "ok": True,
+                "name": user.name,
+                "business_type_label": user.business_type_label,
+                "address": user.address,
+            }
+        finally:
+            db.close()
+
     # ── NDPR: right to erasure ────────────────────────────────────────────────
     class DeleteAccountRequest(BaseModel):
         pin: str
@@ -913,6 +947,7 @@ def register_web_routes(app):
                 "business_category": user.business_category,
                 "business_type": user.business_type,
                 "business_type_label": user.business_type_label,
+                "address": user.address,
                 "menu_group": menu_group_for_user(user),
                 "whatsapp_linked": bool(user.whatsapp_linked),
                 "newsletter_consent": bool(user.newsletter_consent),
@@ -2608,7 +2643,8 @@ def register_web_routes(app):
             rows = db.query(Branch).filter(Branch.owner_phone == owner_phone).order_by(Branch.created_at).all()
             return {
                 "branches": [
-                    {"id": b.id, "name": b.name, "is_default": bool(b.is_default), "created_at": _iso(b.created_at)}
+                    {"id": b.id, "name": b.name, "address": b.address,
+                     "is_default": bool(b.is_default), "created_at": _iso(b.created_at)}
                     for b in rows
                 ]
             }
@@ -2635,10 +2671,12 @@ def register_web_routes(app):
             if existing:
                 raise HTTPException(status_code=400, detail="A branch with that name already exists.")
             is_first = db.query(Branch).filter(Branch.owner_phone == owner_phone).count() == 0
-            branch = Branch(owner_phone=owner_phone, name=name, is_default=is_first)
+            branch = Branch(owner_phone=owner_phone, name=name,
+                            address=(payload.address or "").strip() or None, is_default=is_first)
             db.add(branch)
             db.commit()
-            return {"id": branch.id, "name": branch.name, "is_default": bool(branch.is_default)}
+            return {"id": branch.id, "name": branch.name, "address": branch.address,
+                    "is_default": bool(branch.is_default)}
         finally:
             db.close()
 
@@ -2705,6 +2743,28 @@ def register_web_routes(app):
             branch.is_default = True
             db.commit()
             return {"ok": True, "default_branch_id": branch_id}
+        finally:
+            db.close()
+
+    @app.put("/app/api/branches/{branch_id}")
+    def web_update_branch(branch_id: int, payload: CreateBranchRequest, session: dict = Depends(require_web_auth)):
+        """Owner edits a branch's name/address (shown on that branch's receipts)."""
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            if not user or user.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can manage branches.")
+            branch = db.query(Branch).filter(
+                Branch.id == branch_id, Branch.owner_phone == user.phone
+            ).first()
+            if not branch:
+                raise HTTPException(status_code=404, detail="Branch not found.")
+            if payload.name and payload.name.strip():
+                branch.name = payload.name.strip()
+            branch.address = (payload.address or "").strip() or None
+            db.commit()
+            return {"id": branch.id, "name": branch.name, "address": branch.address,
+                    "is_default": bool(branch.is_default)}
         finally:
             db.close()
 

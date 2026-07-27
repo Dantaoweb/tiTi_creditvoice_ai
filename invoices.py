@@ -66,6 +66,11 @@ def format_invoice_text(receipt):
     lines = ["*INVOICE*"]
     if receipt.get("biz_name"):
         lines.append(receipt["biz_name"])
+    _addr = receipt.get("branch_address") or receipt.get("biz_address")
+    if _addr:
+        lines.append(_addr)
+    if receipt.get("branch_name"):
+        lines.append(f"{receipt['branch_name']} branch")
     if ref:
         lines.append(ref)
     lines.append("--------------------")

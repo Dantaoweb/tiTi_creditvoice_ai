@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { MapPin, Plus, Star, Trash2, Lock } from "lucide-react";
-import { apiFetch, apiPost } from "../lib/api";
+import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { usePlan } from "../lib/usePlan";
 
@@ -11,7 +11,11 @@ export default function Branches() {
   const [branches, setBranches] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [name, setName]         = useState("");
+  const [addr, setAddr]         = useState("");
   const [saving, setSaving]     = useState(false);
+  const [editId, setEditId]     = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editAddr, setEditAddr] = useState("");
   const toast = useToast();
 
   if (!canUseBranches) {
@@ -51,14 +55,28 @@ export default function Branches() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await apiPost("branches", { name: name.trim() });
-      setName("");
+      await apiPost("branches", { name: name.trim(), address: addr.trim() || null });
+      setName(""); setAddr("");
       await load();
       toast("Branch added.", "success");
     } catch (e) {
       toast(e.message, "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function startEdit(b) { setEditId(b.id); setEditName(b.name); setEditAddr(b.address || ""); }
+
+  async function handleUpdate(id) {
+    if (!editName.trim()) return;
+    try {
+      await apiPut(`branches/${id}`, { name: editName.trim(), address: editAddr.trim() || null });
+      setEditId(null);
+      await load();
+      toast("Branch updated.", "success");
+    } catch (e) {
+      toast(e.message, "error");
     }
   }
 
@@ -98,13 +116,20 @@ export default function Branches() {
           You can change which branch a transaction belongs to when recording it.
         </div>
 
-        <form className="branches-add-row" onSubmit={handleAdd}>
+        <form className="branches-add-row" onSubmit={handleAdd} style={{ flexWrap: "wrap" }}>
           <input
             className="branches-add-input"
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Branch name (e.g. Ikeja Store)"
             maxLength={60}
+          />
+          <input
+            className="branches-add-input"
+            value={addr}
+            onChange={e => setAddr(e.target.value)}
+            placeholder="Branch address (optional) — shown on receipts"
+            maxLength={300}
           />
           <button className="btn btn-primary" type="submit" disabled={saving || !name.trim()}>
             <Plus size={14} />
@@ -119,32 +144,40 @@ export default function Branches() {
         ) : (
           <ul className="branches-list">
             {branches.map(b => (
-              <li key={b.id} className={`branch-item${b.is_default ? " branch-item--default" : ""}`}>
+              <li key={b.id} className={`branch-item${b.is_default ? " branch-item--default" : ""}`}
+                  style={{ flexWrap: "wrap" }}>
                 <MapPin size={15} className="branch-item-icon" />
-                <span className="branch-item-name">{b.name}</span>
-                {b.is_default && (
-                  <span className="branch-default-chip">
-                    <Star size={11} /> Default
-                  </span>
+                {editId === b.id ? (
+                  <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap" }}>
+                    <input value={editName} onChange={e => setEditName(e.target.value)} maxLength={60}
+                      placeholder="Name" style={{ flex: "1 1 120px" }} />
+                    <input value={editAddr} onChange={e => setEditAddr(e.target.value)} maxLength={300}
+                      placeholder="Address" style={{ flex: "2 1 180px" }} />
+                    <button className="btn btn-primary btn-sm" onClick={() => handleUpdate(b.id)}>Save</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                      <span className="branch-item-name">{b.name}</span>
+                      {b.address && <span className="td-muted" style={{ fontSize: 12 }}>{b.address}</span>}
+                    </div>
+                    {b.is_default && (
+                      <span className="branch-default-chip"><Star size={11} /> Default</span>
+                    )}
+                    <div className="branch-item-actions">
+                      {!b.is_default && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleSetDefault(b.id)} title="Set as default">
+                          <Star size={13} /> Set default
+                        </button>
+                      )}
+                      <button className="btn btn-ghost btn-sm" onClick={() => startEdit(b)} title="Edit branch">Edit</button>
+                      <button className="btn btn-ghost btn-sm branch-delete-btn" onClick={() => handleDelete(b.id)} title="Delete branch">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </>
                 )}
-                <div className="branch-item-actions">
-                  {!b.is_default && (
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => handleSetDefault(b.id)}
-                      title="Set as default"
-                    >
-                      <Star size={13} /> Set default
-                    </button>
-                  )}
-                  <button
-                    className="btn btn-ghost btn-sm branch-delete-btn"
-                    onClick={() => handleDelete(b.id)}
-                    title="Delete branch"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
               </li>
             ))}
           </ul>

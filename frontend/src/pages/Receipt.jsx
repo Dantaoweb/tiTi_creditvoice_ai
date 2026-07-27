@@ -137,6 +137,14 @@ export default function Receipt() {
       <div className="receipt-paper">
         <div className="receipt-header">
           <div className="receipt-brand">{bizName}</div>
+          {(receipt.branch_address || receipt.biz_address) && (
+            <div className="receipt-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>
+              {receipt.branch_address || receipt.biz_address}
+            </div>
+          )}
+          {receipt.branch_name && (
+            <div className="receipt-muted" style={{ fontSize: 12 }}>{receipt.branch_name} branch</div>
+          )}
           <div className="receipt-sub">{isInvoice ? "INVOICE" : (isPayment ? "Payment Receipt" : title)}</div>
           <div className="receipt-date">{dateTimeStr(receipt.created_at)}</div>
           <div className="receipt-ref">{isInvoice && invoiceNo ? invoiceNo : `Receipt #${receipt.id}`}</div>

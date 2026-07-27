@@ -84,6 +84,9 @@ class User(Base):
 
     business_type_label = Column(String, nullable=True)
 
+    # Business address — shown on receipts/invoices, editable in Profile.
+    address = Column(String, nullable=True)
+
     subscription_plan = Column(String, default="BASIC")
 
     subscription_status = Column(String, default="ACTIVE")
@@ -141,6 +144,9 @@ class Branch(Base):
     owner_phone = Column(String, index=True)
 
     name = Column(String)
+
+    # Branch location — shown on receipts/invoices for sales in this branch.
+    address = Column(String, nullable=True)
 
     is_default = Column(Boolean, default=False)
 

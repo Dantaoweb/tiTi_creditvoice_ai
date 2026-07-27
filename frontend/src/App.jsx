@@ -30,6 +30,7 @@ import Opportunities from "./pages/Opportunities";
 import Terms        from "./pages/Terms";
 import Privacy      from "./pages/Privacy";
 import Upgrade      from "./pages/Upgrade";
+import Profile      from "./pages/Profile";
 
 function RequireAuth({ children }) {
   const { isAuthed } = useAuth();
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="opportunities" element={<Opportunities />} />
           <Route path="admin"        element={<Admin />}          />
           <Route path="upgrade"      element={<Upgrade />}        />
+          <Route path="profile"      element={<Profile />}        />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText,
-  MoreHorizontal, ChevronDown,
+  MoreHorizontal, ChevronDown, UserCircle,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -43,6 +43,7 @@ function buildNav(L, group) {
     { to: "/automation",    label: "Automation",       icon: Zap               },
     { to: "/opportunities", label: "Opportunities",   icon: Sparkles          },
     { to: "/admin",         label: "Admin",           icon: ShieldCheck, adminOnly: true },
+    { to: "/profile",       label: "My Profile",      icon: UserCircle },
     { to: "/upgrade",       label: "Upgrade Plan ✦",  icon: ArrowUpCircle },
   ];
 }
@@ -116,6 +117,7 @@ export default function Layout() {
     "/automation":    "Automation",
     "/opportunities": "Opportunities",
     "/admin":         "Admin Dashboard",
+    "/profile":       "My Profile",
     "/upgrade":       "Upgrade Plan",
   };
 

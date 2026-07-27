@@ -231,10 +231,21 @@ def get_pos_receipt(db, tx_id, user=None):
     from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG
     config = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
 
-    # Business name from user record
+    # Business name + address from the owner record
     biz_name = None
+    biz_address = None
     if user:
         biz_name = getattr(user, "business_name", None) or getattr(user, "name", None)
+        biz_address = getattr(user, "address", None)
+
+    # Branch this sale belongs to (its own name/address print on the receipt)
+    branch_name = branch_address = None
+    if tx.branch_id:
+        from models import Branch
+        _br = db.query(Branch).filter(Branch.id == tx.branch_id).first()
+        if _br:
+            branch_name = _br.name
+            branch_address = _br.address
 
     return {
         "id": tx.id,
@@ -252,6 +263,9 @@ def get_pos_receipt(db, tx_id, user=None):
         } if customer else None,
         "recorded_by": recorder.name if recorder else None,
         "biz_name": biz_name,
+        "biz_address": biz_address,
+        "branch_name": branch_name,
+        "branch_address": branch_address,
         "config": config,
         "invoice_number": tx.invoice_number,
         "invoice_sent_at": tx.invoice_sent_at.isoformat() if tx.invoice_sent_at else None,
