@@ -954,7 +954,75 @@ function OpportunitiesTab() {
   );
 }
 
-const TABS = ["Overview", "Users", "Suppliers", "Opportunities", "Token Codes", "Referrals", "Failed Messages"];
+// ── notify users tab ─────────────────────────────────────────────────────────
+function NotifyTab() {
+  const [title, setTitle] = useState("");
+  const [body, setBody]   = useState("");
+  const [target, setTarget] = useState("all");
+  const [phone, setPhone] = useState("");
+  const [alsoWa, setAlsoWa] = useState(false);
+  const [busy, setBusy]   = useState(false);
+  const [msg, setMsg]     = useState("");
+  const [err, setErr]     = useState("");
+
+  async function send(e) {
+    e.preventDefault();
+    setErr(""); setMsg("");
+    if (!title.trim() || !body.trim()) { setErr("Enter a title and message."); return; }
+    if (target === "phone" && !phone.trim()) { setErr("Enter the user's phone number."); return; }
+    setBusy(true);
+    try {
+      const res = await apiPost("admin/notifications", {
+        title: title.trim(), body: body.trim(), target,
+        phone: target === "phone" ? phone.trim() : null, also_whatsapp: alsoWa,
+      });
+      setMsg(`Sent to ${res.recipients} user(s)${alsoWa ? ` · WhatsApp: ${res.whatsapp_sent}` : ""}.`);
+      setTitle(""); setBody(""); setPhone("");
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 560 }}>
+      <div className="card-header"><span className="card-title">Send notification to users</span></div>
+      <form onSubmit={send} style={{ display: "grid", gap: 12, marginTop: 12 }}>
+        <div className="form-group">
+          <label className="form-label">Send to</label>
+          <select value={target} onChange={e => setTarget(e.target.value)} disabled={busy}>
+            <option value="all">All business owners</option>
+            <option value="phone">One user (by phone)</option>
+          </select>
+        </div>
+        {target === "phone" && (
+          <div className="form-group">
+            <label className="form-label">User phone</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 2348012345678" disabled={busy} />
+          </div>
+        )}
+        <div className="form-group">
+          <label className="form-label">Title</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="e.g. New feature: Invoices" disabled={busy} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Message</label>
+          <textarea value={body} onChange={e => setBody(e.target.value)} rows={4} maxLength={1000}
+            placeholder="What do you want users to know?" disabled={busy} style={{ resize: "vertical" }} />
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={alsoWa} onChange={e => setAlsoWa(e.target.checked)} style={{ width: "auto" }} disabled={busy} />
+          Also send via WhatsApp
+        </label>
+        {msg && <div style={{ color: "#16a34a", fontSize: 13 }}>{msg}</div>}
+        {err && <div className="login-error">{err}</div>}
+        <div>
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Sending…" : "Send notification"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Users", "Suppliers", "Opportunities", "Token Codes", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -1091,6 +1159,7 @@ export default function Admin() {
       {tab === "Opportunities"  && <OpportunitiesTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}
       {tab === "Referrals"      && <ReferralSettingsTab />}
+      {tab === "Notify"         && <NotifyTab />}
       {tab === "Failed Messages"&& <FailedParsesTab />}
     </div>
   );

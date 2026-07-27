@@ -463,6 +463,16 @@ def _require_stock_manager(db, session: dict):
     raise HTTPException(status_code=403, detail="Only the owner or a branch admin can manage stock.")
 
 
+def _add_notification(db, owner_phone, event_type, title, body):
+    """Insert an in-app notification for the business owner (shown in the bell).
+    The caller is responsible for committing."""
+    from models import AppNotification
+    db.add(AppNotification(
+        owner_phone=owner_phone, event_type=event_type, title=title, body=body,
+        is_read=0, created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    ))
+
+
 def _session_subscription(db, session: dict):
     """The business subscription, resolved at most once per request."""
     cache = db.info.setdefault("_req", {})
@@ -2017,6 +2027,12 @@ def register_web_routes(app):
                 author_user_id=user.id,
                 note=f"VOIDED by {(user.name or '').title()} on {now.strftime('%d/%m/%Y %H:%M')}. Reason: {reason}",
             ))
+            # In-app notification so the owner sees every void (theirs or staff's).
+            _add_notification(
+                db, owner_phone, "void",
+                f"Transaction #{tx.id} voided",
+                f"{(user.name or 'Someone').title()} voided a ₦{tx.amount:,} transaction — reason: {reason}",
+            )
             db.commit()
 
             if not is_owner:
@@ -3327,6 +3343,12 @@ def register_web_routes(app):
                 updated_at=now,
             )
             db.add(note)
+            # In-app notification so notes (theirs or a staff's) show in the feed.
+            _add_notification(
+                db, owner_phone, "note",
+                f"New note ({payload.category})",
+                f"{(owner.name or 'Someone').title()} added a note: {payload.body.strip()[:80]}",
+            )
             db.commit()
             db.refresh(note)
             return {"ok": True, "id": note.id}
@@ -4390,6 +4412,65 @@ def register_web_routes(app):
             ).update({"is_read": 1})
             db.commit()
             return {"ok": True}
+        finally:
+            db.close()
+
+    class AdminNotifyRequest(BaseModel):
+        title: str = Field(max_length=120)
+        body: str = Field(max_length=1000)
+        target: str = "all"                       # "all" business owners, or "phone"
+        phone: Optional[str] = Field(default=None, max_length=20)
+        also_whatsapp: bool = False
+
+    @app.post("/app/api/admin/notifications")
+    def web_admin_send_notification(payload: AdminNotifyRequest, session: dict = Depends(require_web_auth)):
+        """App admin broadcasts an in-app notification to one user or all business
+        owners (optionally also via WhatsApp)."""
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(user.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+            title = payload.title.strip()
+            body = payload.body.strip()
+            if not title or not body:
+                raise HTTPException(status_code=400, detail="Title and message are required.")
+
+            if payload.target == "phone":
+                from parser import normalize_phone
+                target = db.query(User).filter(
+                    User.phone.in_([p for p in {(payload.phone or "").strip(), normalize_phone(payload.phone or "")} if p]),
+                    User.parent_id.is_(None),
+                ).first()
+                if not target:
+                    raise HTTPException(status_code=404, detail="No business owner with that phone.")
+                phones = [target.phone]
+            else:
+                phones = [
+                    r[0] for r in db.query(User.phone).filter(
+                        User.parent_id.is_(None), User.deleted_at.is_(None)
+                    ).all() if r[0]
+                ]
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            for ph in phones:
+                db.add(AppNotification(owner_phone=ph, event_type="admin",
+                                       title=title, body=body, is_read=0, created_at=now))
+            db.commit()
+
+            sent_wa = 0
+            if payload.also_whatsapp:
+                from whatsapp_client import send_whatsapp_message
+                for ph in phones:
+                    try:
+                        if send_whatsapp_message(ph, f"*{title}*\n\n{body}"):
+                            sent_wa += 1
+                    except Exception:
+                        pass
+            return {"ok": True, "recipients": len(phones), "whatsapp_sent": sent_wa}
         finally:
             db.close()
 
