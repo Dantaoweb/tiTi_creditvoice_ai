@@ -9,7 +9,7 @@ import {
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiPost } from "../lib/api";
 import { useOfflineSync } from "../lib/useOfflineSync";
 import TitiPanel from "./TitiPanel";
 import NotificationBell from "./NotificationBell";
@@ -129,6 +129,13 @@ export default function Layout() {
     navigate("/login", { replace: true });
   }
 
+  async function handleLogoutAll() {
+    if (!window.confirm("Sign out of ALL devices? You'll need to log in again everywhere.")) return;
+    try { await apiPost("auth/logout-all", {}); } catch { /* proceed regardless */ }
+    logout();
+    navigate("/login", { replace: true });
+  }
+
   function closeDrawer() { setDrawerOpen(false); }
 
   function renderNavItem(item) {
@@ -236,6 +243,11 @@ export default function Layout() {
             </div>
             <button className="sidebar-logout" onClick={handleLogout} title="Sign out">
               <LogOut size={15} />
+            </button>
+            <button onClick={handleLogoutAll} title="Sign out of all devices"
+              style={{ background: "none", border: "none", color: "var(--text-muted)",
+                       fontSize: 10, cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+              All devices
             </button>
           </div>
         )}

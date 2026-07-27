@@ -758,6 +758,21 @@ def register_web_routes(app):
         clear_auth_cookie(response)
         return {"ok": True}
 
+    @app.post("/app/api/auth/logout-all")
+    def web_auth_logout_all(response: Response, session: dict = Depends(require_web_auth)):
+        """Sign out of every device: bump the user's session epoch so all tokens
+        issued so far stop working immediately."""
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if user:
+                user.token_version = (user.token_version or 0) + 1
+                db.commit()
+            clear_auth_cookie(response)
+            return {"ok": True, "message": "Signed out of all devices."}
+        finally:
+            db.close()
+
     # ── NDPR: right to erasure ────────────────────────────────────────────────
     class DeleteAccountRequest(BaseModel):
         pin: str
@@ -2832,6 +2847,24 @@ def register_web_routes(app):
             member.can_view_all_transactions = bool(payload.full_access)
             db.commit()
             return {"ok": True, "full_access": bool(member.can_view_all_transactions)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/staff/{user_id}/revoke-sessions")
+    def web_revoke_staff_sessions(user_id: str, session: dict = Depends(require_web_auth)):
+        """Owner signs a staff member out of all their devices (e.g. after they
+        leave) by bumping that staff's session epoch."""
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(User.phone == session["phone"]).first()
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can revoke staff access.")
+            member = db.query(User).filter(User.id == user_id, User.parent_id == owner.id).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            member.token_version = (member.token_version or 0) + 1
+            db.commit()
+            return {"ok": True, "message": "Staff signed out of all devices."}
         finally:
             db.close()
 

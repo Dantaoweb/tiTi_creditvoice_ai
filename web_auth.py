@@ -96,9 +96,9 @@ def _sign(payload: str) -> str:
     return hmac.new(_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
 
-def create_web_token(user_id: str, phone: str, ttl: int = _TTL) -> str:
+def create_web_token(user_id: str, phone: str, ttl: int = _TTL, token_version: int = 0) -> str:
     exp = int(time.time()) + ttl
-    payload = f"{user_id}|{phone}|{exp}"
+    payload = f"{user_id}|{phone}|{exp}|{token_version}"
     sig = _sign(payload)
     raw = f"{payload}|{sig}"
     return base64.urlsafe_b64encode(raw.encode()).decode()
@@ -110,10 +110,16 @@ def verify_web_token(token: str) -> dict | None:
         payload, sig = raw.rsplit("|", 1)
         if not hmac.compare_digest(_sign(payload), sig):
             return None
-        user_id, phone, exp = payload.split("|", 2)
+        parts = payload.split("|")
+        # payload = user_id|phone|exp[|ver]. ver was added for revocation; tokens
+        # minted before it default to 0 (they stay valid until their epoch is bumped).
+        if len(parts) < 3:
+            return None
+        user_id, phone, exp = parts[0], parts[1], parts[2]
+        ver = int(parts[3]) if len(parts) > 3 else 0
         if int(time.time()) > int(exp):
             return None
-        return {"user_id": user_id, "phone": phone}
+        return {"user_id": user_id, "phone": phone, "ver": ver}
     except Exception:
         return None
 
@@ -150,6 +156,17 @@ def require_web_auth(
     payload = verify_web_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
+    # Revocation check: the token's session epoch must still match the user's.
+    # Bumping user.token_version (logout-all, PIN reset, owner revoke) kills every
+    # token issued before the bump. One indexed lookup per request.
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == payload["user_id"]).first()
+        if not user or (user.token_version or 0) != payload.get("ver", 0):
+            raise HTTPException(status_code=401, detail="Session ended. Please log in again.")
+    finally:
+        db.close()
     return payload
 
 
@@ -374,6 +391,9 @@ def verify_otp_and_set_pin(db: Session, phone: str, otp: str, new_pin: str) -> d
     user.recovery_pin_hash = _hash_pin(new_pin.strip())
     user.pin_attempts = 0
     user.pin_locked_until = None
+    # Resetting the PIN ends every other session — the point of a reset after a
+    # lost/stolen phone. The fresh token below carries the new epoch.
+    user.token_version = (user.token_version or 0) + 1
     db.delete(pending)
     audit(db, action="PIN_RESET", actor_id=user.id, actor_phone=user.phone)
     db.commit()
@@ -470,7 +490,7 @@ def _build_auth_response(user: User, db=None) -> dict:
     from admin import is_app_admin
     user_is_admin = bool(db is not None and is_app_admin(user.phone, db))
     ttl = _ADMIN_TTL if user_is_admin else _TTL
-    token = create_web_token(user.id, user.phone, ttl=ttl)
+    token = create_web_token(user.id, user.phone, ttl=ttl, token_version=user.token_version or 0)
     session_expires_at = datetime.fromtimestamp(
         int(time.time()) + ttl, tz=timezone.utc
     ).isoformat()

@@ -70,6 +70,11 @@ class User(Base):
 
     can_view_all_transactions = Column(Boolean, default=False)
 
+    # Session epoch for token revocation: every session token carries this
+    # value; bumping it instantly invalidates all of the user's existing tokens
+    # (log-out-everywhere, PIN reset, owner revoking a staff).
+    token_version = Column(Integer, default=0, nullable=False)
+
     # Staff assigned to a branch record their transactions into it.
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
 
