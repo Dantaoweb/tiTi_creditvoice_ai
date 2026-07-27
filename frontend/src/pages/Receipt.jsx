@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { Printer, ArrowLeft, FileText, Send } from "lucide-react";
+import { Printer, ArrowLeft, FileText, Send, Share2 } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateTimeStr, dateStr, fmtAmt } from "../lib/format";
 
@@ -14,6 +14,7 @@ export default function Receipt() {
   const [issuing, setIssuing] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState("");
+  const [shareMsg, setShareMsg] = useState("");
 
   useEffect(() => {
     apiFetch(`pos/receipt/${id}`)
@@ -86,6 +87,47 @@ export default function Receipt() {
   const hasCustomerPhone = !!(receipt.customer && receipt.customer.phone);
   const sentAt = receipt.invoice_sent_at;
 
+  // Plain-text version of this receipt/invoice for sharing (WhatsApp, etc.)
+  function buildShareText() {
+    const L = [];
+    L.push((isInvoice ? "INVOICE — " : "") + bizName);
+    const addr = receipt.branch_address || receipt.biz_address;
+    if (addr) L.push(addr);
+    if (isInvoice && invoiceNo) L.push(invoiceNo);
+    else L.push(`Receipt #${receipt.id}`);
+    L.push(dateTimeStr(receipt.created_at));
+    if (receipt.customer?.name) L.push(`${isInvoice ? "Bill to" : custLabel}: ${receipt.customer.name}`);
+    L.push("--------------------");
+    if (isPayment) {
+      L.push(`Amount paid: ${nairaFull(receipt.paid)}`);
+      L.push(`Balance: ${nairaFull(owed)}`);
+    } else {
+      (receipt.items || []).forEach(it => {
+        L.push(`${it.product}${it.unit ? ` (${it.unit})` : ""}  x${it.qty} = ${nairaFull(it.total)}`);
+      });
+      L.push("--------------------");
+      L.push(`Total: ${nairaFull(receipt.total)}`);
+      if (owed > 0) L.push(`${isInvoice ? "Amount due" : "Balance"}: ${nairaFull(owed)}`);
+    }
+    L.push("--------------------");
+    L.push(isInvoice ? invoiceFooter : receiptFooter);
+    return L.join("\n");
+  }
+
+  async function handleShare() {
+    const text = buildShareText();
+    const title = `${isInvoice ? "Invoice" : "Receipt"} — ${bizName}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setShareMsg("Copied — paste it into WhatsApp or anywhere.");
+        setTimeout(() => setShareMsg(""), 3000);
+      }
+    } catch { /* user cancelled share — ignore */ }
+  }
+
   async function sendInvoice() {
     setSending(true); setSendErr("");
     try {
@@ -119,10 +161,19 @@ export default function Receipt() {
             <Send size={15} /> {sending ? "Sending…" : (sentAt ? "Resend to customer" : "Send to customer")}
           </button>
         )}
+        <button className="btn btn-ghost" onClick={handleShare}>
+          <Share2 size={15} /> Share
+        </button>
         <button className="btn btn-primary" onClick={() => window.print()}>
-          <Printer size={15} /> Print
+          <Printer size={15} /> Download / Print
         </button>
       </div>
+
+      {shareMsg && (
+        <div className="no-print" style={{ textAlign: "center", margin: "0 0 8px", fontSize: 13, color: "#166534" }}>
+          {shareMsg}
+        </div>
+      )}
 
       {isInvoice && (sentAt || sendErr || !hasCustomerPhone) && (
         <div className="no-print" style={{ textAlign: "center", margin: "0 0 10px", fontSize: 13 }}>

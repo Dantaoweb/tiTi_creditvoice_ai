@@ -38,11 +38,13 @@ if _sentry_dsn:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # SCHEDULER_ENABLED guards against duplicate notifications when multiple
-    # workers or instances are running. render.yaml sets it on exactly one
-    # process; unset means disabled (safe default for multi-worker setups).
+    # The proactive scheduler (reminders, delivery-due alerts, reconciliation)
+    # runs inside the web process. It is ON by default — this deployment runs a
+    # single worker/instance (see render.yaml: --workers 1), so there is exactly
+    # one scheduler and no duplicate notifications. If you ever run more than one
+    # instance, set SCHEDULER_ENABLED=false on all but one to avoid duplicates.
     task = None
-    if os.getenv("SCHEDULER_ENABLED", "false").lower() == "true":
+    if os.getenv("SCHEDULER_ENABLED", "true").lower() != "false":
         from proactive_scheduler import run_proactive_scheduler
         task = asyncio.create_task(run_proactive_scheduler())
     yield
