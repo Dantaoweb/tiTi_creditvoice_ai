@@ -306,21 +306,26 @@ export default function Upgrade() {
                     </div>
                   ) : (
                     <div className="upgrade-card-actions">
-                      {/* Bank transfer */}
+                      {/* Bank transfer — the recommended option, on a blue placard */}
                       <button
-                        className="btn btn-ghost upgrade-pay-btn"
+                        className="btn btn-primary upgrade-pay-btn"
+                        style={{ background: "#2563eb", borderColor: "#2563eb", color: "#fff",
+                                 width: "100%", justifyContent: "center", fontWeight: 700 }}
                         onClick={() => setBankModal(p.key)}
                       >
-                        <Banknote size={14} /> Pay by Bank Transfer
+                        <Banknote size={14} /> Pay {nairaFull(p.price)} by Bank Transfer
                       </button>
-                      {/* Monnify */}
-                      <MonnifyButton
-                        plan={p.key}
-                        amount={p.price}
-                        disabled={false}
-                        onSuccess={handleMonnifySuccess}
-                        onError={msg => setMonnifyErr(msg)}
-                      />
+                      {/* Online card/Monnify currently unavailable — steer to transfer */}
+                      <button
+                        className="btn btn-ghost upgrade-pay-btn"
+                        style={{ opacity: 0.6, cursor: "not-allowed", width: "100%", justifyContent: "center" }}
+                        onClick={() => setMonnifyErr("Online card payment is currently unavailable — please pay by bank transfer above.")}
+                      >
+                        <CreditCard size={14} /> Card / Online (currently unavailable)
+                      </button>
+                      <div className="td-muted" style={{ fontSize: 11, textAlign: "center" }}>
+                        Online payment is temporarily unavailable. Please use bank transfer.
+                      </div>
                     </div>
                   )}
                 </div>

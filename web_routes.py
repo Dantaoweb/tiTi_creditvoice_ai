@@ -3793,6 +3793,26 @@ def register_web_routes(app):
                 notify_subscription_admins(db, payment, owner, send_whatsapp_message, evidence_received=False)
             except Exception:
                 import traceback; traceback.print_exc()
+
+            # In-app notification to app admins so it shows on the web dashboard.
+            try:
+                from admin import app_admin_phones
+                from web_auth import phone_candidates
+                cand = set()
+                for p in app_admin_phones():
+                    cand.update(phone_candidates(p))
+                owner_name = (owner.name if owner else user.name) or user.phone
+                admins = db.query(User).filter(User.phone.in_(list(cand))).all() if cand else []
+                for a in admins:
+                    _add_notification(
+                        db, a.phone, "upgrade",
+                        f"Upgrade payment: {payment.plan}",
+                        f"{owner_name} ({user.phone}) reports paying for {payment.plan} by bank transfer — please verify and approve.",
+                    )
+                if admins:
+                    db.commit()
+            except Exception:
+                import traceback; traceback.print_exc()
             return {"ok": True}
         finally:
             db.close()

@@ -70,3 +70,13 @@ def test_non_admin_cannot_broadcast():
     r = client.post("/app/api/admin/notifications", cookies=cook,
                     json={"title": "x", "body": "y", "target": "all"})
     assert r.status_code == 403
+
+
+def test_admin_notified_when_user_confirms_transfer():
+    admin = _login(ADMIN_PHONE)
+    ucook = _login(f"234804000{next(_seq):04d}")
+    client.post("/app/api/subscription/request", json={"plan": "GO"}, cookies=ucook)
+    r = client.post("/app/api/subscription/confirm-payment", json={"plan": "GO"}, cookies=ucook)
+    assert r.status_code == 200, r.text
+    notifs = client.get("/app/api/notifications", cookies=admin).json()["notifications"]
+    assert any(n["event_type"] == "upgrade" and "GO" in n["title"] for n in notifs)
