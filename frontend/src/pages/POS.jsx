@@ -83,9 +83,15 @@ function ProductGrid({ ownerPhone, qtyFor, onSetQty }) {
                 : oos ? "Out of stock"
                 : p.unit ? qty(p.quantity, p.unit) : `${qty(p.quantity)} in stock`;
               return (
-                <div key={p.id} className={`pos-pick-row${n > 0 ? " pos-pick-row--active" : ""}`}>
-                  <div className="pos-pick-info">
-                    <span className="pos-pick-name">{p.name}</span>
+                <div key={p.id} className={`pos-pick-row${n > 0 ? " pos-pick-row--active" : ""}`}
+                  style={n > 0
+                    ? { borderColor: "#2563eb", background: "rgba(37,99,235,0.10)", boxShadow: "inset 0 0 0 1px #2563eb" }
+                    : undefined}>
+                  {/* Tapping anywhere on the placard adds one — not just the +/− */}
+                  <div className="pos-pick-info"
+                    onClick={() => !oos && onSetQty(p, n + 1)}
+                    style={{ cursor: oos ? "default" : "pointer", flex: 1 }}>
+                    <span className="pos-pick-name" style={n > 0 ? { color: "#2563eb" } : undefined}>{p.name}</span>
                     <span className="pos-pick-meta">
                       {nairaFull(p.selling_price)}<span className="pos-pick-dot">·</span>
                       <span className={oos ? "pos-pick-oos" : ""}>{stockLabel}</span>

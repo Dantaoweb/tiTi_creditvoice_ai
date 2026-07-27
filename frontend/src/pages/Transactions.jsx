@@ -136,7 +136,9 @@ export default function Transactions() {
           columns={[
             { key: "id",         label: "#",         render: (r) => <span className="td-mono td-muted">#{r.id}</span> },
             { key: "type",       label: "Type",      render: (r) => <TxTypeBadge type={r.type} voided={r.is_voided} /> },
-            { key: "customer",   label: L.customer,  render: (r) => r.customer || <span className="text-subtle">{L.directSale}</span> },
+            { key: "customer",   label: L.customer,  render: (r) => r.customer
+                ? <span style={{ color: "#2563eb", fontWeight: 600 }}>{r.customer}</span>
+                : <span className="text-subtle">{L.directSale}</span> },
             { key: "product",    label: "Product",   render: (r) => r.product || "—" },
             { key: "qty",        label: "Qty",       render: (r) => qty(r.quantity, r.unit) },
             { key: "amount",     label: "Amount",    render: (r) => <strong>{nairaFull(r.amount)}</strong>, sortKey: "amount" },

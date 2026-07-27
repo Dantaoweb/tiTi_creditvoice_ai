@@ -558,6 +558,12 @@ def register_supplier_routes(app, get_db=None):
             phone = _get_owner(db, request)
             _require_admin(db, phone)
             opps = db.query(Opportunity).order_by(Opportunity.created_at.desc()).all()
+            # Applications per opportunity, so the admin sees submissions at a glance.
+            from sqlalchemy import func as _func
+            counts = dict(
+                db.query(OpportunityApplication.opportunity_id, _func.count(OpportunityApplication.id))
+                .group_by(OpportunityApplication.opportunity_id).all()
+            )
             return {
                 "opportunities": [
                     {
@@ -568,6 +574,7 @@ def register_supplier_routes(app, get_db=None):
                         "link_url": o.link_url or "",
                         "application_fields": o.application_fields or "[]",
                         "is_active": bool(o.is_active),
+                        "application_count": int(counts.get(o.id, 0)),
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
                     for o in opps

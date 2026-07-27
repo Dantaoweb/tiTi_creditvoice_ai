@@ -61,6 +61,23 @@ def test_non_admin_is_forbidden():
     assert client.get("/app/api/admin/opportunities", cookies=cookies).status_code == 403
 
 
+def test_submitted_application_is_visible_to_admin():
+    admin = _login(ADMIN_PHONE)
+    created = client.post("/app/api/admin/opportunities", cookies=admin,
+                          json={"title": "Grant Z", "description": "d", "category": "finance"})
+    opp_id = created.json()["id"]
+
+    applicant = _login("2348099990050")
+    r = client.post(f"/app/api/opportunities/{opp_id}/apply", cookies=applicant,
+                    json={"answers": {"Years in business": "3"}})
+    assert r.status_code == 200, r.text
+
+    apps = client.get(f"/app/api/admin/opportunity-applications?opportunity_id={opp_id}",
+                      cookies=admin).json()["applications"]
+    assert len(apps) == 1
+    assert apps[0]["answers"].get("Years in business") == "3"
+
+
 def test_application_questions_reach_users():
     import json
     cookies = _login(ADMIN_PHONE)

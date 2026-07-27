@@ -936,9 +936,12 @@ function OpportunitiesTab() {
             <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "4px 0 0" }}>{o.description.slice(0, 120)}{o.description.length > 120 ? "…" : ""}</p>
           </div>
           <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
-            <button onClick={() => viewApplications(o)} style={{ background: "none", border: "1px solid var(--brand)",
-              color: "var(--brand)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-              Applications
+            <button onClick={() => viewApplications(o)} style={{
+              background: o.application_count > 0 ? "var(--brand)" : "none",
+              border: "1px solid var(--brand)",
+              color: o.application_count > 0 ? "#fff" : "var(--brand)",
+              borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+              Applications{o.application_count > 0 ? ` (${o.application_count})` : ""}
             </button>
             <button onClick={() => startEdit(o)} style={{ background: "none", border: "1px solid var(--border)",
               borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>Edit</button>
