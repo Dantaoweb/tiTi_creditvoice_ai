@@ -439,6 +439,17 @@ def _scoped_read(db, session: dict, requested_branch_id=None):
     return None, user.id
 
 
+def _require_tx_in_scope(db, session: dict, tx):
+    """A limited staff may only act on a transaction within their scope — their
+    branch (branch admin) or their own records (regular staff). Owner / full
+    access is unrestricted. 404 (not 403) so it doesn't reveal the tx exists."""
+    eff_branch, rec = _scoped_read(db, session)
+    if eff_branch is not None and tx.branch_id != eff_branch:
+        raise HTTPException(status_code=404, detail="Not found.")
+    if rec is not None and tx.recorded_by_id != rec:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+
 def _require_stock_manager(db, session: dict):
     """Only the owner or a branch admin (a staff granted see-all-branch access)
     may manage stock. Regular staff record sales but cannot add / edit / adjust
@@ -1419,6 +1430,8 @@ def register_web_routes(app):
                 recorder_phone = parent.phone if parent else recorder_phone
             if recorder_phone != owner_phone:
                 raise HTTPException(status_code=404, detail="Sale not found.")
+            # A limited staff may only invoice sales within their own scope.
+            _require_tx_in_scope(db, session, tx)
 
             from invoices import issue_invoice_number
             issue_invoice_number(db, tx, owner_phone)
@@ -1450,6 +1463,8 @@ def register_web_routes(app):
                 recorder_phone = parent.phone if parent else recorder_phone
             if recorder_phone != owner_phone:
                 raise HTTPException(status_code=404, detail="Sale not found.")
+            # A limited staff may only send invoices for sales within their scope.
+            _require_tx_in_scope(db, session, tx)
 
             customer = db.query(Customer).filter(Customer.id == tx.customer_id).first() if tx.customer_id else None
             if not customer or not customer.customer_phone:

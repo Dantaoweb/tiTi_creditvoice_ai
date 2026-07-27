@@ -33,13 +33,18 @@ _WEAK_KEYS = {
     "replace_with_64_char_hex_secret",
 }
 if _SECRET in _WEAK_KEYS or len(_SECRET) < 32:
-    import warnings
-    warnings.warn(
-        "WEB_SECRET_KEY is weak or a placeholder. "
-        "Generate a strong value with: python -c \"import secrets; print(secrets.token_hex(32))\" "
-        "and set it in your environment before going to production.",
-        stacklevel=1,
+    _msg = (
+        "WEB_SECRET_KEY is weak or a placeholder — session tokens would be "
+        "forgeable (anyone could mint an admin session). Generate a strong value "
+        "with: python -c \"import secrets; print(secrets.token_hex(32))\" and set "
+        "it in the environment."
     )
+    # Fail closed in production: refuse to start rather than run with a session
+    # secret that lets tokens be forged. Development still only warns.
+    if os.getenv("ENVIRONMENT", "production") != "development":
+        raise RuntimeError(_msg + " Refusing to start in production.")
+    import warnings
+    warnings.warn(_msg, stacklevel=1)
 
 # ── Simple in-memory rate limiter for auth endpoints ─────────────────────────
 import threading

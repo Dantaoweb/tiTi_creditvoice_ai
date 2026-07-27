@@ -96,6 +96,30 @@ def test_branch_admin_sees_whole_branch_not_others():
     assert custs == {"AdaA", "AdaA2"}                        # whole branch, not BolaB
 
 
+def test_invoice_actions_scoped_to_staff():
+    # A regular staff can only invoice their OWN sales; a branch admin any sale
+    # in their branch; the owner any sale.
+    owner_phone, staff_phone, admin_phone = _setup()
+    db = SessionLocal()
+    txs = {t.amount: t.id for t in db.query(Transaction)
+           .join(Customer, Transaction.customer_id == Customer.id)
+           .filter(Customer.owner_phone == owner_phone).all()}
+    db.close()
+    tx_own, tx_colleague_A, tx_branch_B = txs[5000], txs[7000], txs[3000]
+
+    staff = _login(staff_phone, "1234")
+    assert client.post(f"/app/api/invoices/{tx_own}/issue", cookies=staff).status_code == 200
+    assert client.post(f"/app/api/invoices/{tx_colleague_A}/issue", cookies=staff).status_code == 404
+    assert client.post(f"/app/api/invoices/{tx_branch_B}/issue", cookies=staff).status_code == 404
+
+    admin = _login(admin_phone, "1234")
+    assert client.post(f"/app/api/invoices/{tx_colleague_A}/issue", cookies=admin).status_code == 200   # same branch
+    assert client.post(f"/app/api/invoices/{tx_branch_B}/issue", cookies=admin).status_code == 404       # other branch
+
+    owner_c = _login(owner_phone, "5678")
+    assert client.post(f"/app/api/invoices/{tx_branch_B}/issue", cookies=owner_c).status_code == 200
+
+
 def test_owner_sees_all_branches():
     owner_phone, _s, _a = _setup()
     owner = _login(owner_phone, "5678")
