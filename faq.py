@@ -212,15 +212,13 @@ def detect_faq(text):
     if "status" in q and any(k in q for k in ["sell", "order", "customer", "selling", "how"]):
         return "customer_bot"
 
-    # ── Void / undo transaction ───────────────────────────────────────────────
-    if any(k in q for k in [
-        "void transaction", "undo transaction", "cancel transaction",
-        "reverse transaction", "correct transaction", "delete transaction",
-        "remove transaction", "void a sale", "undo a sale", "cancel a sale",
-        "how do i void", "how do i undo", "how to void", "how to undo",
-    ]):
+    # ── Void / undo / remove / correct a transaction ──────────────────────────
+    # Flexible: any remove/undo verb applied to a transaction/sale/entry/payment,
+    # so "how to remove a transaction" and "delete a sale" both match.
+    if re.search(r"\bvoid\b", q) and any(k in q for k in ["how", "what", "transaction", "sale", "last", "entry", "payment"]):
         return "void_transaction"
-    if "void" in q and any(k in q for k in ["how", "what", "transaction", "sale", "last"]):
+    if any(v in q for v in ["undo", "cancel", "reverse", "correct", "delete", "remove", "wrong", "mistake"]) \
+       and any(n in q for n in ["transaction", "sale", "entry", "payment", "record", "last"]):
         return "void_transaction"
 
     # ── Conversational analytics ──────────────────────────────────────────────

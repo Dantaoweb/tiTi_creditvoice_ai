@@ -41,6 +41,12 @@ TRANSACTIONS & RECORDING:
   (if sugar has several variants — bag, cup — tiTi lists just those to pick).
 - Voice messages work too — speak your transaction naturally
 
+VOID / CORRECT / REMOVE A TRANSACTION:
+- To cancel a wrong sale or payment, "void" it. It stops counting in balances and reports but is kept (marked voided) for the record — nothing is truly deleted.
+- WhatsApp: "void last", "void 42" (by number), or "void 42 wrong amount" (with a reason).
+- Web app: Transactions page → find the entry → tap Void (⨯) → type the reason → confirm.
+- Staff can only void what they recorded themselves; the owner can void anything. Every void notifies the owner with the reason. To fix a mistake, void the wrong entry then record the correct one.
+
 INVENTORY & STOCK:
 - Add stock: "add stock rice 50 bags cost 3000 sell 4000"
 - Remove stock: "remove stock 5 bags rice"

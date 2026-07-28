@@ -2658,6 +2658,11 @@ def parse_message(text):
         _guide_topics = {
             "pdf":          ["pdf", "receipt", "download receipt", "print receipt", "export receipt", "download invoice"],
             "record_sale":  ["record a sale", "record sale", "add a sale", "add sale", "how to sell", "how to record", "enter a sale", "input sale"],
+            "void":         ["void transaction", "void a transaction", "void the transaction", "void last", "void sale", "void a sale",
+                             "remove transaction", "remove a transaction", "delete transaction", "delete a transaction",
+                             "cancel transaction", "cancel a transaction", "cancel sale", "cancel a sale",
+                             "correct transaction", "correct a transaction", "reverse transaction", "reverse a transaction",
+                             "undo transaction", "undo a transaction", "undo sale", "undo a sale", "remove a sale", "delete a sale"],
             "inventory":    ["add stock", "add product", "add item", "add goods", "update stock", "add to stock", "add to inventory", "update inventory", "my inventory", "my stock", "inventory", "stock"],
             "customers":    ["add customer", "new customer", "add client", "register customer", "save customer", "customer", "client"],
             "summary":      ["summary", "dashboard", "report", "overview", "check profit", "see profit", "today profit", "check today", "see report"],

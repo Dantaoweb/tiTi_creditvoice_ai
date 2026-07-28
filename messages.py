@@ -850,6 +850,21 @@ def build_app_guide_message(topic):
             "Example: _receipt Ada_\n"
             "tiTi will generate and send the receipt PDF directly."
         ),
+        "void": (
+            "↩️ *How to void / remove a transaction*\n\n"
+            "Voiding cancels a wrong sale or payment — it stops counting in your "
+            "balances and reports, but is kept (marked voided) for your records.\n\n"
+            "*On the web app:*\n"
+            "1. Click *Transactions* in the sidebar\n"
+            "2. Find the wrong entry and tap the *Void* (⨯) action\n"
+            "3. Type the reason and confirm\n\n"
+            "*On WhatsApp:*\n"
+            "• _void last_ — void your most recent one\n"
+            "• _void 42_ — void transaction #42\n"
+            "• _void 42 wrong amount_ — add a reason\n\n"
+            "Notes: staff can only void what they recorded themselves; the owner "
+            "can void anything. Every void notifies the owner, with the reason."
+        ),
         "record_sale": (
             "💰 *How to record a sale*\n\n"
             "*On WhatsApp* — just type naturally:\n"
