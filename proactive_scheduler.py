@@ -53,7 +53,9 @@ def _check_low_stock(db):
     from models import InventoryItem, ProactiveLog, User
 
     owners = db.query(User).filter(
-        User.role == "user",
+        # Any top-level account is an owner. Web-registered owners have role
+        # "owner", WhatsApp ones "user" — gate on parent_id, not role, or web
+        # owners get no proactive reminders/alerts at all.
         User.parent_id == None,
         User.phone != None,
     ).all()
@@ -109,7 +111,9 @@ def _check_overdue_debt(db):
     cutoff = _utcnow() - timedelta(days=7)
 
     owners = db.query(User).filter(
-        User.role == "user",
+        # Any top-level account is an owner. Web-registered owners have role
+        # "owner", WhatsApp ones "user" — gate on parent_id, not role, or web
+        # owners get no proactive reminders/alerts at all.
         User.parent_id == None,
         User.phone != None,
     ).all()
@@ -166,7 +170,9 @@ def _check_inactivity(db):
     cutoff_nudge    = _utcnow() - timedelta(days=7)
 
     owners = db.query(User).filter(
-        User.role == "user",
+        # Any top-level account is an owner. Web-registered owners have role
+        # "owner", WhatsApp ones "user" — gate on parent_id, not role, or web
+        # owners get no proactive reminders/alerts at all.
         User.parent_id == None,
         User.phone != None,
     ).all()
@@ -230,7 +236,9 @@ def _check_reminder_automation(db):
     from whatsapp_client import send_whatsapp_message
 
     owners = db.query(User).filter(
-        User.role == "user",
+        # Any top-level account is an owner. Web-registered owners have role
+        # "owner", WhatsApp ones "user" — gate on parent_id, not role, or web
+        # owners get no proactive reminders/alerts at all.
         User.parent_id == None,
         User.phone != None,
     ).all()
