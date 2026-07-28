@@ -30,8 +30,10 @@ def _reset():
 
 
 def _owner(name):
+    # Unique prefix so users don't collide with other modules in the shared
+    # in-memory DB (234804444 was also used by test_branch_staff/test_due_functions).
     n = next(_seq)
-    phone = f"234804444{n:04d}"
+    phone = f"234866644{n:04d}"
     client.post("/app/api/auth/register", json={"name": name, "phone": phone, "pin": "5678"})
     db = SessionLocal()
     u = db.query(User).filter(User.phone == phone).first()

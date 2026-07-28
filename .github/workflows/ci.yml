@@ -76,9 +76,38 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: npm vulnerability scan
+      - name: npm vulnerability scan (production deps)
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: |
+          # Audit PRODUCTION dependencies only — dev/build tooling (vite, postcss,
+          # eslint, …) never ships to users. Fail on any high/critical, except a
+          # small documented allowlist of advisories that don't apply to this app.
+          #
+          # Allowlist:
+          #   GHSA-qwww-vcr4-c8h2  react-router "RSC Mode CSRF" — this is a
+          #     client-only Vite SPA (no React Server Components / SSR), so the
+          #     RSC-mode attack surface does not exist here. No non-RSC fix exists.
+          ALLOW="GHSA-qwww-vcr4-c8h2"
+          npm audit --omit=dev --json > audit.json || true
+          BAD=$(ALLOW="$ALLOW" node -e '
+            const a = require("./audit.json");
+            const allow = new Set((process.env.ALLOW || "").split(",").filter(Boolean));
+            const out = new Set();
+            for (const [name, v] of Object.entries(a.vulnerabilities || {})) {
+              if (!["high", "critical"].includes(v.severity)) continue;
+              for (const via of (v.via || [])) {
+                if (via && typeof via === "object" && via.url) {
+                  const id = via.url.split("/").pop();
+                  if (!allow.has(id)) out.add(id + "  (" + name + ")");
+                }
+              }
+            }
+            if (out.size) console.log([...out].join("\n"));
+          ')
+          if [ -n "$BAD" ]; then
+            echo "Unexpected high/critical production vulnerabilities:"; echo "$BAD"; exit 1
+          fi
+          echo "OK: no unexpected high/critical production vulnerabilities."
 
   migration-safety:
     runs-on: ubuntu-latest
