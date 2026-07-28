@@ -17,6 +17,7 @@ export default function Reminders() {
   const [running, setRunning]   = useState(false);
   const [runResult, setRunResult] = useState(null);
   const [sending, setSending]   = useState(null); // reminder id being sent
+  const [selfSend, setSelfSend] = useState(null); // { id, name, url } when tiTi couldn't deliver
 
   const load = useCallback(() => {
     setLoading(true);
@@ -42,10 +43,16 @@ export default function Reminders() {
   }
 
   async function handleSend(id) {
-    setSending(id); setError(null);
+    setSending(id); setError(null); setSelfSend(null);
     try {
-      await apiPost(`reminders/${id}/send`, {});
-      setRows(prev => prev.map(r => r.id === id ? { ...r, status: "SENT" } : r));
+      const res = await apiPost(`reminders/${id}/send`, {});
+      if (res && res.delivered === false) {
+        // tiTi couldn't deliver (customer hasn't messaged the tiTi number).
+        // Offer to send it from the owner's own WhatsApp instead.
+        setSelfSend({ id, name: res.customer_name, url: res.self_send_url });
+      } else {
+        setRows(prev => prev.map(r => r.id === id ? { ...r, status: "SENT" } : r));
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -63,6 +70,23 @@ export default function Reminders() {
   return (
     <>
       {error && <div style={{ color: "var(--rose)", marginBottom: 10 }}>{error}</div>}
+
+      {selfSend && (
+        <div className="card" style={{ borderLeft: "3px solid var(--amber)", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, marginBottom: 8 }}>
+            Couldn't deliver to <strong>{selfSend.name || "this customer"}</strong> automatically — they haven't
+            messaged your CreditVoice number, so WhatsApp won't let us message them first.
+            Send it from your own WhatsApp instead:
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <a className="btn btn-primary btn-sm" href={selfSend.url} target="_blank" rel="noopener noreferrer"
+               onClick={() => setRows(prev => prev.map(r => r.id === selfSend.id ? { ...r, status: "SENT" } : r))}>
+              <Send size={13} /> Send on WhatsApp
+            </a>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelfSend(null)}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>

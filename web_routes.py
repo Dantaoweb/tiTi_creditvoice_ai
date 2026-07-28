@@ -4023,12 +4023,30 @@ def register_web_routes(app):
                 raise HTTPException(status_code=400, detail="Reminder already sent.")
             if not item.customer_phone:
                 raise HTTPException(status_code=400, detail="No customer phone on this reminder.")
-            send_whatsapp_message(item.customer_phone, item.message_text)
-            from reminder_automation import create_send_log
-            item.status = "SENT"
-            create_send_log(db, owner_phone, item)
-            db.commit()
-            return {"ok": True, "sent_to": item.customer_name}
+
+            delivered = send_whatsapp_message(item.customer_phone, item.message_text)
+
+            # A WhatsApp link the owner can use to send it from their OWN phone —
+            # the only way to reach a customer who never messaged the tiTi number
+            # (WhatsApp blocks free-form messages outside the 24h window).
+            from parser import normalize_phone
+            from urllib.parse import quote
+            digits = normalize_phone(item.customer_phone) or "".join(ch for ch in item.customer_phone if ch.isdigit())
+            self_send_url = f"https://wa.me/{digits}?text={quote(item.message_text)}"
+
+            if delivered:
+                from reminder_automation import create_send_log
+                item.status = "SENT"
+                create_send_log(db, owner_phone, item)
+                db.commit()
+                return {"ok": True, "delivered": True, "sent_to": item.customer_name}
+
+            # Not delivered (likely a customer who hasn't messaged tiTi). Leave it
+            # pending and let the owner send it themselves.
+            return {
+                "ok": True, "delivered": False, "customer_name": item.customer_name,
+                "message_text": item.message_text, "self_send_url": self_send_url,
+            }
         except HTTPException:
             raise
         except Exception as exc:

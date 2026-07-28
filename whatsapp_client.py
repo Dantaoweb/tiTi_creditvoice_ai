@@ -74,3 +74,36 @@ def send_whatsapp_message(to, message):
 
     print("WhatsApp:", response.status_code, response.text, flush=True)
     return response.ok
+
+
+def send_whatsapp_template(to, template_name, language="en", components=None):
+    """Send a pre-approved WhatsApp *template* message.
+
+    Unlike send_whatsapp_message (free-form, only allowed inside the 24-hour
+    customer-service window), an approved template can be delivered to a customer
+    who has never messaged the business — the only compliant way to send cold
+    reminders. Register utility templates in Meta Business Manager first, then
+    pass the approved template_name and its variable `components`, e.g.:
+        components=[{"type": "body", "parameters": [
+            {"type": "text", "text": "Ada"}, {"type": "text", "text": "5,000"}]}]
+    """
+    _msgs = getattr(_web_ctx, "messages", None)
+    if _msgs is not None:
+        _msgs.append(f"[template:{template_name}]")
+        return True
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        print("WhatsApp template skipped: token/phone id missing", flush=True)
+        return None
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
+    template = {"name": template_name, "language": {"code": language}}
+    if components:
+        template["components"] = components
+    data = {"messaging_product": "whatsapp", "to": to, "type": "template", "template": template}
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=15)
+    except requests.RequestException as exc:
+        print("WhatsApp template send failed:", repr(exc), flush=True)
+        return False
+    print("WhatsApp template:", response.status_code, response.text, flush=True)
+    return response.ok
