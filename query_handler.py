@@ -552,6 +552,34 @@ def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Option
         ).filter(Transaction.is_voided == True).count()
         return f"You have *{n} voided transaction(s)*."
 
+    # 3a) Branch count
+    if has_howmany and re.search(r"\bbranch(?:es)?\b", tl):
+        from models import Branch
+        n = db.query(Branch).filter(Branch.owner_phone == owner_phone).count()
+        if not n:
+            return "You have no branches set up yet. Add them in the web app under *Branches*."
+        return f"You have *{n} branch(es)*. Send *my branches* on the web app to see them."
+
+    # 3b) Staff count
+    if has_howmany and re.search(r"\b(staff|workers?|employees?|team\s*members?|cashiers?|assistants?)\b", tl):
+        from models import User as _U
+        owner = db.query(_U).filter(_U.phone == owner_phone).first()
+        if owner:
+            n = db.query(_U).filter(_U.parent_id == owner.id).count()
+            if not n:
+                return "You have no staff yet. Invite them in the web app under *Staff*."
+            active = db.query(_U).filter(_U.parent_id == owner.id, _U.role != "delegate_pending").count()
+            pending = n - active
+            tail = f" ({pending} still pending)" if pending else ""
+            return f"You have *{active} staff member(s)*{tail}."
+
+    # 3c) Supplier count
+    if has_howmany and re.search(r"\bsuppliers?\b", tl):
+        from models import Supplier
+        n = db.query(Supplier).filter(Supplier.owner_phone == owner_phone).count()
+        return (f"You have *{n} supplier(s)* on record." if n
+                else "You have no suppliers recorded yet.")
+
     # 4) Product / stock counts and "how many X types"
     if has_howmany and re.search(_STOCK_NOUN, tl):
         m = re.search(rf"how\s+many\s+(.+?)\s+{_STOCK_NOUN}(?:\s+types?)?\b", tl)
