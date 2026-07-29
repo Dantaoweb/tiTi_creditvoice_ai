@@ -4057,14 +4057,17 @@ def register_web_routes(app):
 
     @app.post("/app/api/reminders/run")
     def web_run_reminder_automation(session: dict = Depends(require_web_auth)):
-        """Trigger reminder automation for the current owner from the web dashboard."""
+        """Generate reminder drafts for the owner's current unpaid debtors, ready
+        for review/send on the Reminders page."""
         db = SessionLocal()
         try:
-            from whatsapp_client import send_whatsapp_message
-            from reminder_automation import run_reminder_automation
+            from reminder_automation import queue_debtor_reminders
             owner_phone = _session_owner_phone(db, session)
-            result = run_reminder_automation(db, owner_phone, send_whatsapp_message)
-            return result
+            result = queue_debtor_reminders(db, owner_phone)
+            # Keep the shape the page expects, plus friendly extras.
+            return {"queued": result["queued"], "sent": 0,
+                    "skipped": result.get("no_phone", 0),
+                    "debtors": result.get("debtors", 0)}
         except Exception as exc:
             import traceback; traceback.print_exc()
             raise HTTPException(status_code=500, detail=str(exc))

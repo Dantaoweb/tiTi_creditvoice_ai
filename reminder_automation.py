@@ -116,6 +116,66 @@ def create_send_log(db, owner_phone, queue_item):
     )
 
 
+def queue_debtor_reminders(db, owner_phone, recorded_by_id=None):
+    """Generate reminder-queue items from the owner's CURRENT unpaid debtors —
+    the live source of truth — so every debtor with a phone gets a message, not
+    only those that happen to be in ReminderMemory. Deduped per customer per day.
+    Returns {"queued": n, "debtors": total, "no_phone": k}."""
+    from reports import get_unpaid_debtors
+    debtors, _total = get_unpaid_debtors(db, owner_phone, recorded_by_id)
+    queued = 0
+    no_phone = 0
+    for d in debtors:
+        phone = d.get("customer_phone")
+        cid = d.get("customer_id")
+        if (d.get("balance") or 0) <= 0 or cid is None:
+            continue
+        if not phone:
+            no_phone += 1
+            continue
+        # Already pending for this customer, or already sent today → skip.
+        if db.query(ReminderQueue).filter(
+            ReminderQueue.owner_phone == owner_phone,
+            ReminderQueue.source_type == "DEBTOR",
+            ReminderQueue.source_id == cid,
+            ReminderQueue.status.in_(["PENDING_OWNER_CONFIRMATION", "EDITING"]),
+        ).first():
+            continue
+        if db.query(ReminderSendLog).filter(
+            ReminderSendLog.owner_phone == owner_phone,
+            ReminderSendLog.source_type == "DEBTOR",
+            ReminderSendLog.source_id == cid,
+            ReminderSendLog.sent_date == today_key(),
+        ).first():
+            continue
+
+        due = d.get("due_date")
+        name = (d.get("name") or "customer").title()
+        due_str = due.strftime("%d/%m/%Y") if due else None
+        msg = (
+            f"Hello {name},\n\n"
+            f"This is a friendly reminder that your outstanding balance is "
+            f"N{int(d['balance']):,}."
+            + (f"\nDue date: {due_str}" if due_str else "")
+            + "\n\nKindly settle when you can. Thank you."
+        )
+        db.add(ReminderQueue(
+            owner_phone=owner_phone,
+            customer_phone=phone,
+            customer_name=d.get("name"),
+            balance=int(d["balance"]),
+            due_date=due,
+            reminder_type="OVERDUE" if d.get("overdue") else "DUE",
+            source_type="DEBTOR",
+            source_id=cid,
+            message_text=msg,
+            status="PENDING_OWNER_CONFIRMATION",
+        ))
+        queued += 1
+    db.commit()
+    return {"queued": queued, "debtors": len(debtors), "no_phone": no_phone}
+
+
 def run_reminder_automation(db, owner_phone, send_message, dry_run=False):
     settings = get_or_create_reminder_settings(db, owner_phone)
     reminders = db.query(ReminderMemory).filter(

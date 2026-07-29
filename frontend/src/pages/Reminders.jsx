@@ -107,11 +107,14 @@ export default function Reminders() {
         </button>
       </div>
 
-      {runResult && (
-        <div className="card card-body" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", marginBottom: 12, fontSize: 13.5 }}>
-          Automation ran: <strong>{runResult.queued}</strong> queued,{" "}
-          <strong>{runResult.sent}</strong> sent,{" "}
-          <strong>{runResult.skipped}</strong> skipped.
+      {runResult && (runResult.queued > 0 || runResult.debtors !== undefined) && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
+          padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
+          Generated <strong>{runResult.queued}</strong> reminder draft(s) from your{" "}
+          <strong>{runResult.debtors ?? 0}</strong> debtor(s).
+          {runResult.skipped > 0 && <> {runResult.skipped} have no phone saved.</>}
+          {runResult.queued === 0 && runResult.debtors > 0 &&
+            <> They're already drafted or sent today — see the list below.</>}
         </div>
       )}
 
