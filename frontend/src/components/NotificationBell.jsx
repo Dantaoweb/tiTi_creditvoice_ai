@@ -11,6 +11,7 @@ const TYPE_ICONS = {
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);   // tap a notification to read it in full
   const panelRef = useRef(null);
 
   function load() {
@@ -112,15 +113,17 @@ export default function NotificationBell() {
                 No notifications yet
               </div>
             ) : (
-              notifications.map(n => (
+              notifications.map(n => {
+                const isOpen = expandedId === n.id;
+                return (
                 <div
                   key={n.id}
-                  onClick={() => !n.is_read && markRead(n.id)}
+                  onClick={() => { setExpandedId(isOpen ? null : n.id); if (!n.is_read) markRead(n.id); }}
                   style={{
                     padding: "10px 14px",
                     borderBottom: "1px solid var(--border)",
                     background: n.is_read ? "transparent" : "rgba(var(--brand-rgb, 37,99,235),0.04)",
-                    cursor: n.is_read ? "default" : "pointer",
+                    cursor: "pointer",
                     transition: "background 0.15s",
                   }}
                 >
@@ -131,9 +134,11 @@ export default function NotificationBell() {
                         {n.title}
                       </div>
                       <div style={{
-                        fontSize: 12, color: "var(--text-muted)",
-                        overflow: "hidden", textOverflow: "ellipsis",
-                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                        fontSize: 12, color: "var(--text-muted)", whiteSpace: "pre-line",
+                        ...(isOpen ? {} : {
+                          overflow: "hidden", textOverflow: "ellipsis",
+                          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                        }),
                       }}>
                         {n.body}
                       </div>
@@ -143,7 +148,8 @@ export default function NotificationBell() {
                     </span>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

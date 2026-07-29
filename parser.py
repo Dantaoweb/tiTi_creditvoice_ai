@@ -2710,6 +2710,19 @@ def parse_message(text):
     ]:
         return {"type": "REONBOARD"}
 
+    # Imperative "change/update/edit/rename (my) (business/shop/store) name" in
+    # more natural phrasings, e.g. "i want to change my business name",
+    # "update my shop name". Anchored to the change verb at the start, so
+    # questions ("how do i change my business name") don't trigger the wizard —
+    # those are answered by the how-to FAQ instead.
+    if re.match(
+        r"^(?:i\s+(?:want to|wish to|need to|would like to)\s+)?"
+        r"(?:change|update|edit|rename|correct|fix)\s+(?:my\s+)?(?:the\s+)?"
+        r"(?:business|shop|store|company)?\s*name$",
+        clean_text,
+    ):
+        return {"type": "REONBOARD"}
+
     # ── Staff profile ────────────────────────────────────────────────────────
     # "set staff profile Emeka position cashier level junior salary 50000 matric EMP001"
     _staff_set_m = re.match(
