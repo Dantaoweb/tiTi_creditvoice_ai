@@ -48,9 +48,23 @@ def _is_question(text):
 
 
 def detect_faq(text):
+    q = text.lower().strip()
+
+    # ── Business name / profile change — HIGH PRIORITY ────────────────────────
+    # Handled before the question gate (so statements like "my business name is
+    # wrong" are caught) and before generic matchers (so "edit my business name"
+    # isn't grabbed by the stock matcher). Scoped to the business/shop name, not
+    # customer/product names.
+    if (
+        re.search(r"\b(business|shop|store|company)\s+name\b", q)
+        or re.search(r"\b(rename|re-?name)\s+(my\s+|the\s+)?(business|shop|store|company)\b", q)
+        or re.search(r"\b(change|update|edit|correct|fix)\s+(my\s+|the\s+)?(business|shop|store|company)\b(?!\s+(type|category))", q)
+        or ("receipt" in q and "name" in q and "wrong" in q)
+    ):
+        return "change_name"
+
     if not _is_question(text):
         return None
-    q = text.lower()
 
     # ── Receipt (specific — check before customer) ────────────────────────────
     if any(k in q for k in ["receipt", "print receipt", "send receipt"]):

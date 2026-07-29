@@ -51,3 +51,26 @@ def test_varied_questions_are_answered():
 def test_transactions_are_not_treated_as_faq():
     wrong = [t for t in NOT_QUESTIONS if detect_faq(t)]
     assert not wrong, f"transactions misrouted to FAQ: {wrong}"
+
+
+# A request to change the business name — however phrased — must be handled:
+# either the wizard (imperative) or the how-to answer.
+CHANGE_NAME_REQUESTS = [
+    "how do i change my business name",
+    "how do i edit my business name",
+    "my business name is wrong",
+    "the name on my receipt is wrong",
+    "i want to rename my shop",
+    "how can i change my name",
+    "where can i change my business name",
+    "is it possible to change my business name",
+]
+
+
+def test_change_name_requests_are_handled():
+    from parser import parse_message
+    def handled(t):
+        p = parse_message(t)
+        return (p and p.get("type") == "REONBOARD") or detect_faq(t) == "change_name"
+    missed = [t for t in CHANGE_NAME_REQUESTS if not handled(t)]
+    assert not missed, f"unhandled name-change requests: {missed}"
