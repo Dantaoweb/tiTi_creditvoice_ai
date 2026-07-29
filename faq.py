@@ -30,6 +30,7 @@ _HELP_PATTERNS = re.compile(
     r"where (do|can|is|are)|"
     r"i want to (know|learn|understand|see|find)|"
     r"walk me through|guide me|"
+    r"made a mistake|by mistake|entered (it |the )?wrong|recorded (it |the )?wrong|"
     r"explain|show me how"
     r")\b",
     re.I,
@@ -449,6 +450,8 @@ def detect_faq(text):
         "show stock", "show my stock", "show inventory",
         "inventory", "stock list", "how much stock", "quantity left",
         "what is in stock", "what i have in stock",
+        "low stock", "stock is low", "running low", "out of stock",
+        "reorder", "need to restock", "restock alert",
     ]):
         return "check_stock"
     if "stock" in q and any(k in q for k in ["check", "view", "see", "list", "show", "left", "remaining"]):
@@ -459,11 +462,15 @@ def detect_faq(text):
     # ── Dashboard / reports (before record_sale) ──────────────────────────────
     if any(k in q for k in [
         "dashboard", "sales report", "see report", "daily report",
-        "sales today", "how much i made", "how much did i make",
+        "sales today", "today sales", "todays sales", "today's sales",
+        "daily sales", "weekly sales", "monthly sales",
+        "how much i made", "how much did i make",
         "total sales", "my sales", "profit", "how much have i",
     ]):
         return "dashboard"
     if "report" in q and any(k in q for k in ["how", "see", "check", "view", "get"]):
+        return "dashboard"
+    if "sales" in q and any(k in q for k in ["today", "daily", "yesterday", "this week", "this month", "weekly", "monthly"]):
         return "dashboard"
 
     # ── Record a payment ──────────────────────────────────────────────────────
@@ -502,13 +509,41 @@ def detect_faq(text):
         "add stock", "set price", "add product", "add item", "new product",
         "selling price", "cost price", "stock price", "set up product",
         "setup product", "create product", "restock at", "new cost",
-        "update price", "change price",
+        "update price", "change price", "update prices", "update my price",
+        "change my price", "edit price", "adjust price",
+        "remove item", "remove an item", "remove product", "delete product",
+        "delete item", "remove stock", "delete stock",
     ]):
         return "add_stock"
-    if "product" in q and any(k in q for k in ["add", "create", "set up", "new", "how"]):
+    if "product" in q and any(k in q for k in ["add", "create", "set up", "new", "how", "remove", "delete", "edit"]):
         return "add_stock"
-    if "stock" in q and any(k in q for k in ["add", "create", "new", "put", "enter"]):
+    if "stock" in q and any(k in q for k in ["add", "create", "new", "put", "enter", "remove", "delete"]):
         return "add_stock"
+    if "price" in q and any(k in q for k in ["update", "change", "set", "edit", "adjust", "how"]):
+        return "add_stock"
+
+    # ── Redeem a plan/token code ──────────────────────────────────────────────
+    if any(k in q for k in [
+        "redeem", "redeem code", "redeem a code", "plan code", "token code",
+        "activation code", "activate code", "activate my plan", "enter code",
+        "have a code", "got a code", "coupon", "voucher",
+    ]):
+        return "redeem_code"
+
+    # ── Referral / invite bonus ───────────────────────────────────────────────
+    if any(k in q for k in [
+        "referral", "referral bonus", "referral code", "invite bonus",
+        "refer a friend", "invite a friend", "invite friends", "cashback",
+        "invite reward", "referral reward", "my invite code",
+    ]):
+        return "referral"
+
+    # ── Opportunities ─────────────────────────────────────────────────────────
+    if any(k in q for k in [
+        "opportunities", "opportunity", "loan offer", "grant", "offers for me",
+        "apply for loan", "funding", "financing offer",
+    ]):
+        return "opportunities"
 
     # ── Generic help / formats ────────────────────────────────────────────────
     if any(k in q for k in ["help", "formats", "what can", "commands", "what do"]):
@@ -807,6 +842,29 @@ FAQ_ANSWERS = {
         "Your business name and address are what show on your receipts and invoices.\n\n"
         "*On WhatsApp:* send  change name  and tiTi will walk you through it.\n\n"
         "Your customers, records, and transactions are not affected."
+    ),
+    "redeem_code": (
+        "If you have a plan/token code (e.g. GO-A1B2C3D4 or PRO-XY123456):\n\n"
+        "*On the web app:* open the dashboard → *Have a plan code?* → enter the "
+        "code → your plan activates instantly.\n\n"
+        "*On WhatsApp:* send  redeem YOUR-CODE  (e.g. redeem GO-A1B2C3D4).\n\n"
+        "Each code is single-use and may have an expiry date."
+    ),
+    "referral": (
+        "Earn by inviting other business owners:\n\n"
+        "1. Set your referral code on the web dashboard (Refer / Invite section).\n"
+        "2. Share your link, or ask a friend to send  join YOURCODE  to tiTi.\n"
+        "3. Your friend gets 14 days free on GO when they sign up.\n\n"
+        "On GO/PRO you earn plan credit each month for every friend who has an "
+        "active GO subscription — the credit reduces your next subscription "
+        "payment. Basic can invite up to 2 friends."
+    ),
+    "opportunities": (
+        "Opportunities are offers — loans, grants, equipment, trade deals — posted "
+        "by the CreditVoice team.\n\n"
+        "Open *Opportunities* in the web app menu to browse them. Some ask a few "
+        "questions when you apply — answer them and submit. A red badge shows when "
+        "there's a new opportunity you haven't opened yet."
     ),
     "send_reminders": (
         "To send payment reminders to your debtors:\n\n"

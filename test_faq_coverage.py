@@ -15,6 +15,18 @@ def _answered(t):
 
 
 ANSWERABLE = [
+    # broad how-to coverage across the feature set
+    "i made a mistake in a sale",
+    "how do i update my prices",
+    "what happens when stock is low",
+    "how do i remove an item",
+    "how do i redeem a code",
+    "what is the referral bonus",
+    "what are opportunities",
+    "how do i see todays sales",
+    "how do i reverse a payment",
+    "how do i track my suppliers",
+    "how do i set a delivery date",
     "tell me about invoices",
     "do you support multiple shops",
     "do you allow multiple users",
