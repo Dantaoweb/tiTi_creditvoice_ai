@@ -9,10 +9,30 @@ import re
 # ── Detection ─────────────────────────────────────────────────────────────────
 
 _QUESTION_STARTERS = (
-    "how", "what", "where", "when", "why",
-    "can i", "do i", "is there", "show me",
-    "help me", "help with", "i don't know", "i dont know",
-    "teach me", "explain", "check", "list of",
+    "how", "what", "whats", "what's", "where", "when", "why", "which", "who",
+    "can i", "can you", "can we", "can the", "could i", "could you",
+    "do i", "do you", "does", "is there", "are there", "is it", "is my",
+    "show me", "tell me", "help me", "help with", "i don't know", "i dont know",
+    "teach me", "explain", "check", "list of", "want to", "i want", "i need to",
+    "way to", "any way", "please",
+)
+
+# Broader help/how-to phrasings anywhere in the message — so we recognise a
+# question even when it doesn't start with a classic question word.
+_HELP_PATTERNS = re.compile(
+    r"\b("
+    r"how\s+(do|to|can|should|would|does)|"
+    r"tell me (about|how)|"
+    r"is it possible|is there (a )?way|any way to|way to|"
+    r"do you (support|have|allow|let me)|does (the app|titi|it)|"
+    r"can (the app|titi|i|you|we)|"
+    r"what('?s| is| are)?\s+(the )?(way|process|steps?|option|options)\b|"
+    r"where (do|can|is|are)|"
+    r"i want to (know|learn|understand|see|find)|"
+    r"walk me through|guide me|"
+    r"explain|show me how"
+    r")\b",
+    re.I,
 )
 
 
@@ -22,8 +42,7 @@ def _is_question(text):
         return True
     if any(q.startswith(s) for s in _QUESTION_STARTERS):
         return True
-    # "how do i …" or "how to …" anywhere in the text
-    if re.search(r"\bhow\s+(do|to|can|should)\b", q):
+    if _HELP_PATTERNS.search(q):
         return True
     return False
 
@@ -113,12 +132,16 @@ def detect_faq(text):
     ]):
         return "product_alias"
 
-    # ── Change business name / profile ───────────────────────────────────────
+    # ── Change business name / profile / address ─────────────────────────────
     if any(k in q for k in [
         "change name", "rename business", "update name", "change my name",
         "update business name", "change business name", "rename my business",
+        "business name", "shop name", "my name", "store name",
         "change profile", "update profile", "change my business type",
-        "edit profile", "edit my name", "wrong name", "fix my name",
+        "business type", "edit profile", "edit my name", "wrong name", "fix my name",
+        "my profile", "update my details", "edit my details", "my details",
+        "business address", "shop address", "store address", "my address",
+        "add my address", "set my address", "change my address",
     ]):
         return "change_name"
 
@@ -299,7 +322,13 @@ def detect_faq(text):
         "location tag", "tag location", "which branch", "set branch",
         "branches", "shop location", "tag by location", "branch tag",
         "track by branch", "branch filter", "branch name",
+        "multiple shop", "multiple store", "more than one shop", "several shops",
+        "many shops", "multiple location", "multiple outlet", "different location",
+        "second shop", "another shop", "other shops",
     ]):
+        return "branch_location"
+    if any(w in q for w in ["shop", "store", "outlet", "location", "branch"]) and \
+       any(k in q for k in ["multiple", "more", "another", "several", "many", "different", "second", "each"]):
         return "branch_location"
 
     # ── PWA / install / offline ───────────────────────────────────────────────
@@ -347,9 +376,15 @@ def detect_faq(text):
         "staff invite", "create staff", "new staff", "staff can",
         "staff permission", "who can record", "second user",
         "another user", "another person record",
+        "multiple user", "more users", "other user", "many users",
+        "add worker", "add employee", "my worker", "my employee", "my team",
+        "team member", "salesperson", "sales person", "cashier account",
     ]):
         return "staff_accounts"
     if "staff" in q and any(k in q for k in ["how", "add", "invite", "access", "what"]):
+        return "staff_accounts"
+    if any(w in q for w in ["worker", "employee", "assistant", "cashier", "salesperson", "sales person", "team member"]) and \
+       any(k in q for k in ["add", "invite", "another", "more", "access", "give", "can", "how", "new", "record"]):
         return "staff_accounts"
 
     # ── Upgrade / plan ────────────────────────────────────────────────────────
@@ -750,9 +785,13 @@ FAQ_ANSWERS = {
         "Send  formats  to see all commands."
     ),
     "change_name": (
-        "To update your business name or type:\n\n"
-        "change name\n\n"
-        "tiTi will walk you through the update step by step.\n"
+        "To update your profile — business name, business type, or address:\n\n"
+        "*On the web app:*\n"
+        "1. Open the menu and tap *My Profile*\n"
+        "2. Edit your name, business type, or address\n"
+        "3. Tap *Save changes*\n\n"
+        "Your business name and address are what show on your receipts and invoices.\n\n"
+        "*On WhatsApp:* send  change name  and tiTi will walk you through it.\n\n"
         "Your customers, records, and transactions are not affected."
     ),
     "send_reminders": (
