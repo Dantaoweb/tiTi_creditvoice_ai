@@ -75,6 +75,10 @@ class User(Base):
     # (log-out-everywhere, PIN reset, owner revoking a staff).
     token_version = Column(Integer, default=0, nullable=False)
 
+    # Per-business running receipt counter — each sale gets the next number so
+    # this business sees a clean 1, 2, 3… on receipts (not the global row id).
+    receipt_counter = Column(Integer, default=0, nullable=False)
+
     # Staff assigned to a branch record their transactions into it.
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
 
@@ -213,6 +217,9 @@ class Transaction(Base):
     is_invoice = Column(Boolean, default=False, nullable=True)
 
     voided_at = Column(DateTime, nullable=True)
+
+    # Per-business receipt number (1, 2, 3…), assigned when the sale is recorded.
+    receipt_number = Column(Integer, nullable=True)
 
     # Formal invoice: per-business sequential number (INV-0001), assigned the
     # first time an invoice document is issued for this sale. Null until then.

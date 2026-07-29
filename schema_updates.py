@@ -110,6 +110,7 @@ def ensure_schema_updates(engine):
         "branch_id": "INTEGER",
         "token_version": "INTEGER DEFAULT 0",
         "address": "VARCHAR",
+        "receipt_counter": "INTEGER DEFAULT 0",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
@@ -278,6 +279,7 @@ def ensure_schema_updates(engine):
         "voided_at":   "TIMESTAMP",
         "is_invoice":  f"BOOLEAN DEFAULT {boolean_false}",
         "service_date": "TIMESTAMP",
+        "receipt_number": "INTEGER",
         "invoice_number": "INTEGER",
         "invoiced_at": "TIMESTAMP",
         "invoice_sent_at": "TIMESTAMP",

@@ -218,6 +218,7 @@ def save_direct_sale(
     low_stock_alerts = []
 
     try:
+        from web_pos import next_receipt_number
         tx = Transaction(
             customer_id=None,
             type="SALE",
@@ -230,6 +231,7 @@ def save_direct_sale(
             message_id=message_id,
             created_at=_utcnow(),
             branch_id=_get_recording_branch_id(db, business_owner_phone, user),
+            receipt_number=next_receipt_number(db, business_owner_phone),
         )
         db.add(tx)
         db.flush()
@@ -399,6 +401,7 @@ def save_customer_pending(
 
         if pending.action == "BUY":
             _pending_items_count = len(pending_items) if pending_items else 0
+            from web_pos import next_receipt_number
             tx = Transaction(
                 customer_id=customer.id,
                 type="BUY",
@@ -413,6 +416,7 @@ def save_customer_pending(
                 created_at=_utcnow(),
                 branch_id=_default_branch_id,
                 is_invoice=(_pending_items_count > 1),
+                receipt_number=next_receipt_number(db, business_owner_phone),
             )
             db.add(tx)
             db.flush()
@@ -450,6 +454,7 @@ def save_customer_pending(
                     latest_buy.due_date = pending.due_date
 
         elif pending.action == "COMBINED":
+            from web_pos import next_receipt_number
             buy_tx = Transaction(
                 customer_id=customer.id,
                 type="BUY",
@@ -463,6 +468,7 @@ def save_customer_pending(
                 message_id=f"{message_id}_buy",
                 created_at=_utcnow(),
                 branch_id=_default_branch_id,
+                receipt_number=next_receipt_number(db, business_owner_phone),
             )
             db.add(buy_tx)
             db.flush()

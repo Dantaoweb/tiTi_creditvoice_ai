@@ -198,7 +198,7 @@ export default function Receipt() {
           )}
           <div className="receipt-sub">{isInvoice ? "INVOICE" : (isPayment ? "Payment Receipt" : title)}</div>
           <div className="receipt-date">{dateTimeStr(receipt.created_at)}</div>
-          <div className="receipt-ref">{isInvoice && invoiceNo ? invoiceNo : `Receipt #${receipt.id}`}</div>
+          <div className="receipt-ref">{isInvoice && invoiceNo ? invoiceNo : `Receipt #${receipt.receipt_number ?? receipt.id}`}</div>
         </div>
 
         {receipt.customer && (

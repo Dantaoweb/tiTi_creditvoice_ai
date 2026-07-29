@@ -61,7 +61,7 @@ def _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx
     else:
         lines.append("Settled:  Fully paid")
     lines.append("--------------------")
-    lines.append(f"Ref: TXN-{tx.id}")
+    lines.append(f"Receipt #{tx.receipt_number}" if getattr(tx, "receipt_number", None) else f"Ref: TXN-{tx.id}")
     lines.append(cfg["footer"])
     return "\n".join(lines)
 

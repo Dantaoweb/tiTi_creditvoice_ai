@@ -4,6 +4,17 @@ import uuid
 from models import Customer, InventoryItem, InventoryMovement, Transaction, TransactionItem, User, utcnow
 
 
+def next_receipt_number(db, owner_phone):
+    """Next per-business receipt number — bumps the owner's running counter so
+    each sale gets a clean 1, 2, 3… (single writer, so no race). Returns None if
+    the owner isn't found (falls back to the row id for display)."""
+    owner = db.query(User).filter(User.phone == owner_phone).first()
+    if not owner:
+        return None
+    owner.receipt_counter = (owner.receipt_counter or 0) + 1
+    return owner.receipt_counter
+
+
 def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
                   branch_id=None, due_date=None, customer_name=None, customer_phone=None,
                   service_date=None):
@@ -86,6 +97,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         branch_id=branch_id,
         due_date=due_date if is_credit else None,
         service_date=service_date,
+        receipt_number=next_receipt_number(db, owner_phone),
     )
     db.add(main_tx)
     db.flush()
@@ -266,6 +278,7 @@ def get_pos_receipt(db, tx_id, user=None):
         "biz_address": biz_address,
         "branch_name": branch_name,
         "branch_address": branch_address,
+        "receipt_number": tx.receipt_number,
         "config": config,
         "invoice_number": tx.invoice_number,
         "invoice_sent_at": tx.invoice_sent_at.isoformat() if tx.invoice_sent_at else None,
