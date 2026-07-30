@@ -218,20 +218,15 @@ class CreateBranchRequest(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def _money(value):
-    return int(value or 0)
-
-
-def _iso(value):
-    return value.isoformat() if value else None
+# Shared session/scope/format/inventory-limit helpers now live in web_common,
+# so the per-domain route modules can import them without importing this monolith.
+from web_common import (
+    _get_db, _money, _iso, _safe_filename, _owner_filter,
+    _active_inventory_count, _check_inventory_limit,
+    _session_user, _session_owner_phone, _session_branch_scope,
+    _scoped_read, _require_tx_in_scope, _require_stock_manager,
+    _session_subscription, _add_notification,
+)
 
 
 def _send_web_receipt(db, owner_phone, tx_id):
@@ -252,145 +247,6 @@ def _send_web_receipt(db, owner_phone, tx_id):
         send_whatsapp_message(phone, format_receipt_text(receipt))
     except Exception:
         import traceback; traceback.print_exc()
-
-
-def _safe_filename(name: str) -> str:
-    """Strip characters that could break a Content-Disposition filename= field."""
-    import re
-    return re.sub(r'["\\\r\n;]', "_", name)
-
-
-def _owner_filter(query, model, owner_phone):
-    if owner_phone:
-        return query.filter(model.owner_phone == owner_phone)
-    return query
-
-
-def _active_inventory_count(db, owner_phone: str) -> int:
-    """Count inventory items that are 'active' — have a selling price set."""
-    from models import InventoryItem
-    return db.query(InventoryItem).filter(
-        InventoryItem.owner_phone == owner_phone,
-        InventoryItem.selling_price != None,
-    ).count()
-
-
-def _check_inventory_limit(db, owner_phone: str, subscription) -> str | None:
-    """Return an error message if the owner is at their active inventory limit, else None."""
-    from plans import plan_limit, normalize_plan
-    # subscription is the dict returned by get_business_subscription — read its
-    # "plan" key. (getattr on a dict never finds "plan", so it silently pinned
-    # every upgraded user to BASIC and capped them at 5 active products.)
-    plan = normalize_plan((subscription or {}).get("plan", "BASIC"))
-    limit = plan_limit(plan, "active_inventory_items")
-    if limit is None:
-        return None
-    count = _active_inventory_count(db, owner_phone)
-    if count >= limit:
-        return (
-            f"You have reached the Basic plan limit of {limit} active products. "
-            f"Draft items (no price set) are unlimited. "
-            f"Upgrade to Go to add unlimited active products."
-        )
-    return None
-
-
-def _session_user(db, session: dict):
-    """The logged-in User, fetched at most once per request (cached on the
-    SQLAlchemy session's request-scoped `.info` dict)."""
-    cache = db.info.setdefault("_req", {})
-    if "user" not in cache:
-        cache["user"] = db.query(User).filter(User.id == session["user_id"]).first()
-    return cache["user"]
-
-
-def _session_owner_phone(db, session: dict) -> str:
-    """Resolve the business owner phone from a web session.
-    Staff members' sessions resolve to their owner's phone automatically.
-    Raises 401 if the user is not found. Cached per request.
-    """
-    from fastapi import HTTPException
-    cache = db.info.setdefault("_req", {})
-    if "owner_phone" in cache:
-        return cache["owner_phone"]
-    user = _session_user(db, session)
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    if user.parent_id:
-        owner = db.query(User).filter(User.id == user.parent_id).first()
-        phone = owner.phone if owner else user.phone
-    else:
-        phone = user.phone
-    cache["owner_phone"] = phone
-    return phone
-
-
-def _session_branch_scope(db, session: dict):
-    """(branch_id, limited) the current user's data access is confined to.
-    Owner/admin → (None, False) sees all branches; a branch staff → (their
-    branch_id, True). See branch_scope_for_user."""
-    from webhook_context import branch_scope_for_user
-    return branch_scope_for_user(_session_user(db, session))
-
-
-def _scoped_read(db, session: dict, requested_branch_id=None):
-    """Effective (branch_id, recorded_by_id) for a read, enforcing branch
-    isolation:
-      - owner/full-access: (requested_branch_id, None) — sees all, may filter
-        by a branch they picked in the UI
-      - branch staff: (their branch_id, None) — locked to their branch
-      - staff with no branch: (None, their id) — locked to their own records
-    Pass the pair straight to the report/query helpers."""
-    from webhook_context import branch_scope_for_user
-    user = _session_user(db, session)
-    branch_id, limited = branch_scope_for_user(user)
-    if not limited:
-        return requested_branch_id, None
-    if branch_id is not None:
-        return branch_id, None
-    return None, user.id
-
-
-def _require_tx_in_scope(db, session: dict, tx):
-    """A limited staff may only act on a transaction within their scope — their
-    branch (branch admin) or their own records (regular staff). Owner / full
-    access is unrestricted. 404 (not 403) so it doesn't reveal the tx exists."""
-    eff_branch, rec = _scoped_read(db, session)
-    if eff_branch is not None and tx.branch_id != eff_branch:
-        raise HTTPException(status_code=404, detail="Not found.")
-    if rec is not None and tx.recorded_by_id != rec:
-        raise HTTPException(status_code=404, detail="Not found.")
-
-
-def _require_stock_manager(db, session: dict):
-    """Only the owner or a branch admin (a staff granted see-all-branch access)
-    may manage stock. Regular staff record sales but cannot add / edit / adjust
-    inventory. Returns the acting user."""
-    user = _session_user(db, session)
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found.")
-    if user.parent_id is None or user.can_view_all_transactions:
-        return user
-    raise HTTPException(status_code=403, detail="Only the owner or a branch admin can manage stock.")
-
-
-def _add_notification(db, owner_phone, event_type, title, body):
-    """Insert an in-app notification for the business owner (shown in the bell).
-    The caller is responsible for committing."""
-    from models import AppNotification
-    db.add(AppNotification(
-        owner_phone=owner_phone, event_type=event_type, title=title, body=body,
-        is_read=0, created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-    ))
-
-
-def _session_subscription(db, session: dict):
-    """The business subscription, resolved at most once per request."""
-    cache = db.info.setdefault("_req", {})
-    if "sub" not in cache:
-        user = _session_user(db, session)
-        cache["sub"] = get_business_subscription(db, user) if user else None
-    return cache["sub"]
 
 
 def _pending_payload(pending):
