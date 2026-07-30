@@ -1,0 +1,342 @@
+"""
+Inventory routes: list, add, catalog, bulk-add, edit, adjust stock.
+
+Split out of web_routes.py. Register with register_inventory_routes(app);
+shared helpers come from web_common. Stock management is owner/branch-admin only
+(via _require_stock_manager).
+"""
+from typing import Optional
+
+from fastapi import Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from database import SessionLocal
+from models import User, InventoryItem, InventoryMovement, utcnow
+from web_auth import require_web_auth
+from web_common import (
+    _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
+    _require_stock_manager, _check_inventory_limit, _session_user,
+)
+
+
+class AddInventoryRequest(BaseModel):
+    owner_phone: str = Field(max_length=20)
+    name: str = Field(max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
+    quantity: Optional[float] = 0.0
+    cost_price: Optional[int] = None
+    selling_price: Optional[int] = None
+    low_stock_alert: Optional[int] = None
+    is_service: bool = False
+    retail_unit: Optional[str] = Field(default=None, max_length=30)
+    retail_per_base: Optional[int] = None
+    retail_price: Optional[int] = None
+
+
+class EditInventoryRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
+    cost_price: Optional[int] = None
+    selling_price: Optional[int] = None
+    low_stock_alert: Optional[int] = None
+    is_available: Optional[bool] = None
+    retail_unit: Optional[str] = Field(default=None, max_length=30)
+    retail_per_base: Optional[int] = None
+    retail_price: Optional[int] = None
+
+
+class AdjustStockRequest(BaseModel):
+    qty_delta: int
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class BulkCatalogItem(BaseModel):
+    name: str = Field(max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
+    selling_price: Optional[int] = None
+    is_service: bool = False
+
+
+class BulkAddInventoryRequest(BaseModel):
+    owner_phone: str = Field(max_length=20)
+    names: list[str] = Field(default_factory=list, max_length=100)   # plain product names
+    items: list[BulkCatalogItem] = Field(default_factory=list, max_length=100)  # priced/service items
+
+
+def register_inventory_routes(app):
+
+    @app.get("/app/api/inventory")
+    def web_inventory(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            query = _owner_filter(db.query(InventoryItem), InventoryItem, owner_phone)
+            # Branch staff see only their branch's stock. (Unassigned staff and
+            # owners see the full catalogue so they can still sell/manage.)
+            eff_branch, _rec = _scoped_read(db, session)
+            if eff_branch is not None:
+                query = query.filter(InventoryItem.branch_id == eff_branch)
+            rows = query.order_by(InventoryItem.updated_at.desc()).limit(200).all()
+            return {
+                "items": [
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "unit": item.unit,
+                        "quantity": item.quantity,
+                        "cost_price": _money(item.cost_price),
+                        "selling_price": _money(item.selling_price),
+                        "low_stock_alert": item.low_stock_alert,
+                        "is_available": bool(item.is_available),
+                        "is_service": item.quantity is None or item.category == "service",
+                        "retail_unit": item.retail_unit,
+                        "retail_per_base": item.retail_per_base,
+                        "retail_price": item.retail_price,
+                        "updated_at": _iso(item.updated_at),
+                    }
+                    for item in rows
+                ]
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/inventory")
+    def web_add_inventory(
+        payload: AddInventoryRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+
+            # Enforce active-inventory limit for Basic plan when a price is being set
+            if payload.selling_price is not None:
+                from subscriptions import get_business_subscription
+                owner = db.query(User).filter(User.phone == owner_phone).first()
+                sub = get_business_subscription(db, owner) if owner else None
+                err = _check_inventory_limit(db, owner_phone, sub)
+                if err:
+                    raise HTTPException(status_code=403, detail=err)
+
+            _qty = None if payload.is_service else (payload.quantity or 0.0)
+            from transaction_save import _get_recording_branch_id
+            item = InventoryItem(
+                owner_phone=owner_phone,
+                name=payload.name.strip().lower(),
+                unit=(payload.unit or "").strip() or None,
+                quantity=_qty,
+                cost_price=None if payload.is_service else payload.cost_price,
+                selling_price=payload.selling_price,
+                low_stock_alert=None if payload.is_service else payload.low_stock_alert,
+                is_available=True,
+                branch_id=_get_recording_branch_id(db, owner_phone, _session_user(db, session)),
+                category="service" if payload.is_service else None,
+                retail_unit=payload.retail_unit.strip().lower() if payload.retail_unit else None,
+                retail_per_base=payload.retail_per_base,
+                retail_price=payload.retail_price,
+            )
+            db.add(item)
+            if not payload.is_service and _qty:
+                db.flush()
+                db.add(InventoryMovement(
+                    owner_phone=owner_phone,
+                    item_id=item.id,
+                    movement_type="IN",
+                    quantity=_qty,
+                    unit_price=payload.cost_price,
+                    source_type="WEB_ADD",
+                    source_id=None,
+                    recorded_by_id=session["user_id"],
+                    note="Initial stock",
+                ))
+            db.commit()
+            db.refresh(item)
+            return {
+                "id": item.id, "name": item.name, "unit": item.unit,
+                "quantity": item.quantity or 0,
+                "cost_price": _money(item.cost_price),
+                "selling_price": _money(item.selling_price),
+            }
+        finally:
+            db.close()
+
+    @app.get("/app/api/inventory/catalog")
+    def web_inventory_catalog(session: dict = Depends(require_web_auth)):
+        from business_templates import (
+            INDUSTRY_PRODUCT_CATALOG, template_key_for_user,
+            has_service_price_catalog, service_price_catalog_for_user,
+        )
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+
+            # Service businesses (laundry, barber, car wash, tailor, mechanic…)
+            # get their own industry price list — never the retail/provisions
+            # fallback. Entries carry the suggested price and variant.
+            if user and has_service_price_catalog(user):
+                services = []
+                for name, variant, price in service_price_catalog_for_user(user):
+                    label = f"{name} ({variant})" if variant else name
+                    services.append({
+                        "name": label,        # unique display/name incl. variant
+                        "variant": variant,
+                        "price": price,
+                    })
+                return {"kind": "service", "services": services}
+
+            # Product businesses → category → names (retail fallback only applies
+            # to businesses that actually sell goods).
+            key = template_key_for_user(user) if user else None
+            btype = getattr(user, "business_type", None) if user else None
+            entries = (
+                INDUSTRY_PRODUCT_CATALOG.get(btype)
+                or (INDUSTRY_PRODUCT_CATALOG.get(key, []) if key else [])
+                or INDUSTRY_PRODUCT_CATALOG.get("retail_trading", [])
+            )
+            categories = {}
+            for name, cat in entries:
+                categories.setdefault(cat, []).append(name)
+            return {"kind": "product", "catalog": categories}
+        finally:
+            db.close()
+
+    @app.post("/app/api/inventory/bulk")
+    def web_bulk_add_inventory(
+        payload: BulkAddInventoryRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            saved, skipped = 0, 0
+            from transaction_save import _get_recording_branch_id
+            _import_branch_id = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
+
+            # Normalize plain names and priced/service catalog items into one list
+            rows = [{"name": n} for n in payload.names]
+            rows += [
+                {"name": it.name, "unit": it.unit,
+                 "selling_price": it.selling_price, "is_service": it.is_service}
+                for it in payload.items
+            ]
+
+            for row in rows:
+                name_clean = str(row.get("name", "")).strip().lower()
+                if not name_clean:
+                    continue
+                existing = db.query(InventoryItem).filter(
+                    InventoryItem.owner_phone == owner_phone,
+                    InventoryItem.name == name_clean,
+                ).first()
+                if existing:
+                    skipped += 1
+                    continue
+                item = InventoryItem(
+                    owner_phone=owner_phone,
+                    name=name_clean,
+                    is_available=True,
+                    branch_id=_import_branch_id,
+                )
+                if row.get("selling_price"):
+                    item.selling_price = int(row["selling_price"])
+                if row.get("unit"):
+                    item.unit = row["unit"]
+                if row.get("is_service"):
+                    item.category = "service"
+                    item.quantity = None   # services have no stock
+                db.add(item)
+                saved += 1
+            if saved:
+                db.commit()
+            return {"saved": saved, "already_existed": skipped}
+        finally:
+            db.close()
+
+    @app.put("/app/api/inventory/{item_id}")
+    def web_edit_inventory(
+        item_id: int,
+        payload: EditInventoryRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            item = db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.owner_phone == owner_phone,
+            ).first()
+            if not item:
+                raise HTTPException(status_code=404, detail="Item not found.")
+            if payload.name is not None:
+                item.name = payload.name.strip().lower()
+            if payload.unit is not None:
+                item.unit = payload.unit.strip() or None
+            if payload.cost_price is not None:
+                item.cost_price = payload.cost_price
+            if payload.selling_price is not None:
+                # Only enforce limit when activating a previously draft item
+                if item.selling_price is None:
+                    from subscriptions import get_business_subscription
+                    owner = db.query(User).filter(User.phone == owner_phone).first()
+                    sub = get_business_subscription(db, owner) if owner else None
+                    err = _check_inventory_limit(db, owner_phone, sub)
+                    if err:
+                        raise HTTPException(status_code=403, detail=err)
+                item.selling_price = payload.selling_price
+            if payload.low_stock_alert is not None:
+                item.low_stock_alert = payload.low_stock_alert
+            if payload.is_available is not None:
+                item.is_available = payload.is_available
+            if payload.retail_unit is not None:
+                item.retail_unit = payload.retail_unit.strip().lower() or None
+            if payload.retail_per_base is not None:
+                item.retail_per_base = payload.retail_per_base or None
+            if payload.retail_price is not None:
+                item.retail_price = payload.retail_price or None
+            item.updated_at = utcnow()
+            db.commit()
+            return {"id": item.id, "name": item.name, "selling_price": _money(item.selling_price)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/inventory/{item_id}/adjust")
+    def web_adjust_stock(
+        item_id: int,
+        payload: AdjustStockRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            item = db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.owner_phone == owner_phone,
+            ).first()
+            if not item:
+                raise HTTPException(status_code=404, detail="Item not found.")
+            delta = payload.qty_delta
+            item.quantity = (item.quantity or 0) + delta
+            item.updated_at = utcnow()
+            db.add(InventoryMovement(
+                owner_phone=item.owner_phone,
+                item_id=item.id,
+                movement_type="IN" if delta > 0 else "OUT",
+                quantity=abs(delta),
+                source_type="WEB_ADJUST",
+                source_id=None,
+                recorded_by_id=session["user_id"],
+                note=payload.note or ("Stock added" if delta > 0 else "Stock removed"),
+            ))
+            db.commit()
+            return {"id": item.id, "new_quantity": item.quantity}
+        except HTTPException:
+            raise
+        except Exception:
+            import traceback; traceback.print_exc()
+            raise HTTPException(status_code=400, detail="Could not adjust stock. Please try again.")
+        finally:
+            db.close()
