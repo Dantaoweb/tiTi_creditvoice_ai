@@ -273,3 +273,23 @@ def _add_notification(db, owner_phone, event_type, title, body):
         owner_phone=owner_phone, event_type=event_type, title=title, body=body,
         is_read=0, created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ))
+
+
+def _send_web_receipt(db, owner_phone, tx_id):
+    """Best-effort: send the customer their receipt on WhatsApp after a web sale
+    or payment (mirrors the WhatsApp flow). No-op if the customer has no phone."""
+    if not tx_id:
+        return
+    try:
+        from web_pos import get_pos_receipt, format_receipt_text
+        from whatsapp_client import send_whatsapp_message
+        owner_user = db.query(User).filter(User.phone == owner_phone).first()
+        receipt = get_pos_receipt(db, tx_id, user=owner_user)
+        if not receipt:
+            return
+        phone = (receipt.get("customer") or {}).get("phone")
+        if not phone:
+            return
+        send_whatsapp_message(phone, format_receipt_text(receipt))
+    except Exception:
+        import traceback; traceback.print_exc()
