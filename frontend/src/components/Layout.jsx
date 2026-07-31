@@ -13,6 +13,7 @@ import { apiFetch, apiPost } from "../lib/api";
 import { useOfflineSync } from "../lib/useOfflineSync";
 import TitiPanel from "./TitiPanel";
 import NotificationBell from "./NotificationBell";
+import WelcomeGuide from "./WelcomeGuide";
 
 function buildNav(L, group) {
   // Businesses that don't sell products (savings/ajo, dues collection) get the
@@ -169,6 +170,9 @@ export default function Layout() {
 
   return (
     <div className="shell">
+      {/* First-time guide (shows once per device) */}
+      <WelcomeGuide />
+
       {/* Drawer overlay (mobile) */}
       <div
         className={`sidebar-overlay${drawerOpen ? " visible" : ""}`}

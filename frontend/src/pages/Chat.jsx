@@ -32,10 +32,21 @@ export default function Chat() {
   const chunksRef   = useRef([]);
   const audioBlobRef = useRef(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
+  // Only auto-focus the input on desktop. On mobile, focusing on mount pops the
+  // on-screen keyboard and scrolls the page up, hiding the header (hamburger) and
+  // the welcome instructions — the first thing a new user needs to see.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (window.matchMedia("(min-width: 769px)").matches) {
+      inputRef.current?.focus();
+    }
+  }, []);
+
+  // Keep the newest message in view — but only once the thread has content, and
+  // scoped to the thread container ("nearest") so it never scrolls the whole
+  // page and pushes the header off-screen on the empty first-load state.
+  useEffect(() => {
+    if (messages.length === 0) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy]);
 
   // Fetch fast mode state on mount
