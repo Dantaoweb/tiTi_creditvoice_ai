@@ -159,7 +159,13 @@ def _notify_customer_payment_receipt(db, customer, pay_tx, balance, user, busine
         else:
             lines.append("Settled:  Fully paid")
         lines.append("--------------------")
-        lines.append(f"Ref: PAY-{pay_tx.id}")
+        # Per-business receipt number when the payment has one; fall back to the
+        # raw id for payments recorded before per-business numbering.
+        lines.append(
+            f"Receipt #{pay_tx.receipt_number}"
+            if getattr(pay_tx, "receipt_number", None)
+            else f"Ref: PAY-{pay_tx.id}"
+        )
         lines.append(footer)
         receipt = "\n".join(lines)
 
@@ -431,6 +437,7 @@ def save_customer_pending(
                 )
 
         elif pending.action == "PAY":
+            from web_pos import next_receipt_number
             tx = Transaction(
                 customer_id=customer.id,
                 type="PAY",
@@ -439,6 +446,9 @@ def save_customer_pending(
                 message_id=message_id,
                 created_at=_utcnow(),
                 branch_id=_default_branch_id,
+                # Standalone debt payments get their own per-business receipt
+                # number too (parity with sales and the web pay endpoint).
+                receipt_number=next_receipt_number(db, business_owner_phone),
             )
             db.add(tx)
             db.flush()

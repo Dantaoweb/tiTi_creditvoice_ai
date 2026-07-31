@@ -212,6 +212,7 @@ def get_pos_receipt(db, tx_id, user=None):
             } if customer else None,
             "recorded_by": recorder.name if recorder else None,
             "biz_name": bname,
+            "receipt_number": tx.receipt_number,
             "config": cfg,
             "items": [],
             "note": tx.product,

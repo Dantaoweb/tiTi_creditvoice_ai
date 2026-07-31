@@ -1419,6 +1419,7 @@ def register_web_routes(app):
             ).first()
             if not customer:
                 raise HTTPException(status_code=404, detail="Customer not found.")
+            from web_pos import next_receipt_number
             tx = Transaction(
                 customer_id=customer_id,
                 type="PAY",
@@ -1427,6 +1428,10 @@ def register_web_routes(app):
                 recorded_by_id=session["user_id"],
                 message_id=f"web-pay-{uuid.uuid4()}",
                 branch_id=payload.branch_id,
+                # Debt payments get their own per-business receipt number too, so
+                # the payment receipt reads "Receipt #4" like sales — not the raw
+                # global transaction id the per-business feature exists to hide.
+                receipt_number=next_receipt_number(db, owner_phone),
             )
             db.add(tx)
             db.commit()

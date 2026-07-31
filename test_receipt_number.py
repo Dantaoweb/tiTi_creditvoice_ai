@@ -10,9 +10,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import uuid
+
 from database import Base
-from models import User
-from web_pos import save_pos_sale, get_pos_receipt
+from models import User, Customer, Transaction
+from web_pos import save_pos_sale, get_pos_receipt, next_receipt_number
 
 
 def _db():
@@ -42,3 +44,38 @@ def test_receipt_numbers_are_per_business():
     b_num, b_txid = _sale(db, "234800000222", "b")
     assert b_num == 1
     assert b_txid > 3            # global id kept climbing; the receipt # did not
+
+
+def test_debt_payment_gets_per_business_receipt_number():
+    """A standalone debt payment (PAY) must carry its own per-business receipt
+    number and expose it on the receipt — not fall back to the global tx id."""
+    db = _db()
+    db.add(User(id="o", phone="234800000333", name="Shop", role="owner"))
+    db.commit()
+
+    # Two sales first → the owner counter is now at 2
+    _sale(db, "234800000333", "o")
+    _sale(db, "234800000333", "o")
+
+    cust = Customer(owner_phone="234800000333", name="ada", customer_phone="234800000999")
+    db.add(cust)
+    db.commit()
+    db.add(Transaction(customer_id=cust.id, type="BUY", amount=5000,
+                       product="goods", recorded_by_id="o", message_id="m1"))
+    db.commit()
+
+    # Record a debt payment the way the web pay endpoint now does
+    pay = Transaction(
+        customer_id=cust.id, type="PAY", amount=2000, product="Payment",
+        recorded_by_id="o", message_id=f"web-pay-{uuid.uuid4()}",
+        receipt_number=next_receipt_number(db, "234800000333"),
+    )
+    db.add(pay)
+    db.commit()
+
+    owner = db.query(User).filter(User.phone == "234800000333").first()
+    rec = get_pos_receipt(db, pay.id, user=owner)
+    assert rec["type"] == "PAY"
+    assert "receipt_number" in rec           # PAY branch must expose the field
+    assert rec["receipt_number"] == 3        # continues the per-business sequence
+    assert pay.id > 3                         # global id is larger — number is not the id
