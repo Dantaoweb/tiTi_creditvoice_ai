@@ -173,11 +173,13 @@ def process_incoming_payment(
         tx.matched_at = _utcnow()
         tx.matched_by = "auto"
         # Record the payment against the customer's credit balance
+        from web_pos import next_receipt_number
         pay_tx = Transaction(
             customer_id=matched_customer.id,
             type="PAY",
             amount=amount,
             product="Wallet payment",
+            receipt_number=next_receipt_number(db, owner_phone),
         )
         db.add(pay_tx)
 
@@ -240,11 +242,13 @@ def manually_match_payment(db, wallet_tx_id: int, customer_id: int, owner_phone:
     tx.matched_by = "manual"
 
     # Record payment
+    from web_pos import next_receipt_number
     pay_tx = Transaction(
         customer_id=customer.id,
         type="PAY",
         amount=tx.amount,
         product="Wallet payment",
+        receipt_number=next_receipt_number(db, owner_phone),
     )
     db.add(pay_tx)
     db.commit()

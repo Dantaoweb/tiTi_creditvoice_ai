@@ -352,6 +352,7 @@ def handle_record_trip_pending(db, phone, text, pending, user, business_owner_ph
             return {"status": "trip_truck_missing"}
 
         from models import Transaction
+        from web_pos import next_receipt_number
         tx = Transaction(
             type="BUY",
             amount=total,
@@ -363,6 +364,7 @@ def handle_record_trip_pending(db, phone, text, pending, user, business_owner_ph
             owner_phone=business_owner_phone,
             recorded_by_id=None,
             created_at=_utcnow(),
+            receipt_number=next_receipt_number(db, business_owner_phone),
         )
         db.add(tx)
         db.delete(pending)

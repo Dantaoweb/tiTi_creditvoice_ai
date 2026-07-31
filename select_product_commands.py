@@ -685,6 +685,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             db.flush()
 
         # BUY transaction
+        from web_pos import next_receipt_number
         buy_tx = Transaction(
             customer_id=customer.id,
             type="BUY",
@@ -694,6 +695,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             recorded_by_id=user.id,
             message_id=f"{message_id}_sp_buy",
             created_at=_utcnow(),
+            receipt_number=next_receipt_number(db, business_owner_phone),
         )
         db.add(buy_tx)
         db.flush()

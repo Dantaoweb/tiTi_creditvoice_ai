@@ -312,6 +312,7 @@ def _save_job(db, owner_phone, customer_name, items, total, paid, discount):
     if discount:
         note += f" (discount N{discount:,})"
 
+    from web_pos import next_receipt_number
     buy_tx = Transaction(
         customer_id=customer.id,
         type="BUY",
@@ -319,6 +320,7 @@ def _save_job(db, owner_phone, customer_name, items, total, paid, discount):
         product=note[:200],
         recorded_by_id=None,
         created_at=_utcnow(),
+        receipt_number=next_receipt_number(db, owner_phone),
     )
     db.add(buy_tx)
     db.flush()

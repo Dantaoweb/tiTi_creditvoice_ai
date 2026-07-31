@@ -79,3 +79,35 @@ def test_debt_payment_gets_per_business_receipt_number():
     assert "receipt_number" in rec           # PAY branch must expose the field
     assert rec["receipt_number"] == 3        # continues the per-business sequence
     assert pay.id > 3                         # global id is larger — number is not the id
+
+
+def test_fast_capture_entries_are_numbered_without_gaps():
+    """Fast-capture (bulk day review) sales and standalone payments each get a
+    per-business number; a COMBINED sale's companion PAY does NOT consume one,
+    so the visible sale sequence has no gaps."""
+    import fast_capture_commands as fc
+
+    db = _db()
+    db.add(User(id="o", phone="234800000444", name="Shop", role="owner"))
+    db.commit()
+
+    class _Entry:
+        recorded_by_id = "o"
+        created_at = None
+        status = None
+        reviewed_at = None
+
+    fc._commit_entry(db, "234800000444", _Entry(), {"action": "SALE", "buy_amount": 100, "product": "x"})
+    fc._commit_entry(db, "234800000444", _Entry(), {"action": "BUY", "name": "ada", "buy_amount": 5000, "product": "y"})
+    # COMBINED: BUY gets a number, its companion PAY must not
+    fc._commit_entry(db, "234800000444", _Entry(),
+                     {"action": "COMBINED", "name": "ada", "buy_amount": 3000, "paid_amount": 1000, "product": "z"})
+    fc._commit_entry(db, "234800000444", _Entry(), {"action": "PAY", "name": "ada", "paid_amount": 2000})
+    db.commit()
+
+    rows = db.query(Transaction).order_by(Transaction.id).all()
+    numbered = [r.receipt_number for r in rows if r.receipt_number is not None]
+    # SALE=1, BUY=2, COMBINED BUY=3, standalone PAY=4 — the companion PAY is unnumbered
+    assert numbered == [1, 2, 3, 4]
+    companion = [r for r in rows if r.type == "PAY" and r.receipt_number is None]
+    assert len(companion) == 1               # exactly the COMBINED companion payment

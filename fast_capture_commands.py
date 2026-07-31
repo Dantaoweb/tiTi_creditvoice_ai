@@ -219,6 +219,7 @@ def _auto_approve_high_confidence(db, owner_phone, entries):
 
 def _commit_entry(db, owner_phone, entry, parsed):
     """Write one FastCaptureEntry to the real Transaction table."""
+    from web_pos import next_receipt_number
     action = parsed.get("action")
     if not action:
         entry.status = "skipped"
@@ -235,6 +236,7 @@ def _commit_entry(db, owner_phone, entry, parsed):
             unit_price=parsed.get("unit_price"),
             recorded_by_id=entry.recorded_by_id,
             created_at=entry.created_at,
+            receipt_number=next_receipt_number(db, owner_phone),
         )
         db.add(tx)
         db.flush()
@@ -264,9 +266,12 @@ def _commit_entry(db, owner_phone, entry, parsed):
             due_date=parsed.get("due_date"),
             recorded_by_id=entry.recorded_by_id,
             created_at=entry.created_at,
+            receipt_number=next_receipt_number(db, owner_phone),
         )
         db.add(tx)
         db.flush()
+        # The COMBINED PAY is a companion to the BUY above (whose receipt already
+        # carries the number) — it is never shown on its own, so no number.
         if action == "COMBINED" and parsed.get("paid_amount"):
             pay_tx = Transaction(
                 customer_id=customer.id,
@@ -284,6 +289,7 @@ def _commit_entry(db, owner_phone, entry, parsed):
             amount=parsed.get("paid_amount") or 0,
             recorded_by_id=entry.recorded_by_id,
             created_at=entry.created_at,
+            receipt_number=next_receipt_number(db, owner_phone),
         )
         db.add(tx)
 
