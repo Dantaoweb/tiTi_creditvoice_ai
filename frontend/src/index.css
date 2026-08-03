@@ -3460,7 +3460,7 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .upgrade-table-wrap {
   border: 1px solid var(--line);
   border-radius: 14px;
-  overflow: hidden;
+  overflow-x: auto;   /* let all plan columns scroll on small screens */
 }
 .upgrade-table-title {
   font-size: 13px;
@@ -3554,14 +3554,30 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
     grid-template-columns: 1fr;
   }
   .upgrade-card--featured { order: -1; }
-  .upgrade-table th:nth-child(4),
-  .upgrade-table td:nth-child(4) { display: none; }
+  /* Keep every plan column (Basic/Go/Pro/Premium) visible; the wrap scrolls
+     horizontally instead of dropping a column. */
+  .upgrade-table { min-width: 560px; }
 }
 @media (max-width: 480px) {
   .upgrade-table { font-size: 12px; }
   .upgrade-table th, .upgrade-table td { padding: 8px 10px; }
 }
 
+
+/* Inventory: selling-below-cost warning */
+.inv-below-cost-warning {
+  margin: 2px 0 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+@media (prefers-color-scheme: dark) {
+  .inv-below-cost-warning { background: #78350f33; border-color: #b45309; color: #fcd34d; }
+}
 
 /* ── First-time welcome guide ─────────────────────────────────────────────── */
 .welcome-overlay { z-index: 9998; }  /* above drawers, tab bar, tiTi panel, sticky action bars */

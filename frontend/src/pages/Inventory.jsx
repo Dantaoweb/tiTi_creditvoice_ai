@@ -333,6 +333,13 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
           )}
         </div>
 
+        {!isService && form.selling_price !== "" && form.cost_price !== "" &&
+         parseAmt(form.selling_price) < parseAmt(form.cost_price) && (
+          <div className="inv-below-cost-warning">
+            ⚠️ Selling price is below your cost price — you'll be selling at a loss.
+          </div>
+        )}
+
         {!isService && (
           <div className="form-row">
             <div className="form-group">
@@ -447,6 +454,12 @@ function EditItemModal({ item, onClose, onSaved }) {
             </div>
           )}
         </div>
+        {!isService && form.selling_price !== "" && form.cost_price !== "" &&
+         parseAmt(form.selling_price) < parseAmt(form.cost_price) && (
+          <div className="inv-below-cost-warning">
+            ⚠️ Selling price is below your cost price — you'll be selling at a loss.
+          </div>
+        )}
         {!isService && (
           <div className="form-row">
             <div className="form-group">
