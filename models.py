@@ -385,6 +385,11 @@ class InventoryItem(Base):
 
     batch_no = Column(String, nullable=True)        # batch / NAFDAC / lot number
 
+    # Per-business custom fields (e.g. car dealers: maker, model, year, colour,
+    # chassis no, engine no). JSON keyed by the field definitions in
+    # business_templates.INVENTORY_FIELDS. NULL for businesses with no extra set.
+    attributes_json = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=utcnow)
 
     updated_at = Column(DateTime, default=utcnow)

@@ -3564,6 +3564,13 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 }
 
 
+/* Inventory: per-business custom attributes shown under the item name */
+.td-attr-line {
+  font-size: 11.5px;
+  color: var(--text-muted, #6b7280);
+  margin-top: 2px;
+}
+
 /* Inventory: selling-below-cost warning */
 .inv-below-cost-warning {
   margin: 2px 0 8px;

@@ -5,6 +5,7 @@ Split out of web_routes.py. Register with register_inventory_routes(app);
 shared helpers come from web_common. Stock management is owner/branch-admin only
 (via _require_stock_manager).
 """
+import json
 from typing import Optional
 
 from fastapi import Depends, HTTPException
@@ -19,6 +20,25 @@ from web_common import (
 )
 
 
+def _clean_attributes(user, raw):
+    """Keep only the keys defined for this business's stock fields, as trimmed
+    strings. Returns a JSON string (or None when empty)."""
+    from business_templates import inventory_fields_for_user
+    allowed = {f["key"] for f in inventory_fields_for_user(user)}
+    clean = {}
+    for k, v in (raw or {}).items():
+        if k in allowed and v is not None and str(v).strip():
+            clean[k] = str(v).strip()
+    return json.dumps(clean) if clean else None
+
+
+def _load_attributes(item):
+    try:
+        return json.loads(item.attributes_json) if item.attributes_json else {}
+    except Exception:
+        return {}
+
+
 class AddInventoryRequest(BaseModel):
     owner_phone: str = Field(max_length=20)
     name: str = Field(max_length=120)
@@ -31,6 +51,7 @@ class AddInventoryRequest(BaseModel):
     retail_unit: Optional[str] = Field(default=None, max_length=30)
     retail_per_base: Optional[int] = None
     retail_price: Optional[int] = None
+    attributes: dict = Field(default_factory=dict)   # per-business custom stock fields
 
 
 class EditInventoryRequest(BaseModel):
@@ -43,6 +64,7 @@ class EditInventoryRequest(BaseModel):
     retail_unit: Optional[str] = Field(default=None, max_length=30)
     retail_per_base: Optional[int] = None
     retail_price: Optional[int] = None
+    attributes: Optional[dict] = None
 
 
 class AdjustStockRequest(BaseModel):
@@ -64,6 +86,18 @@ class BulkAddInventoryRequest(BaseModel):
 
 
 def register_inventory_routes(app):
+
+    @app.get("/app/api/inventory/fields")
+    def web_inventory_fields(session: dict = Depends(require_web_auth)):
+        """Custom stock-field definitions for this business (e.g. car dealers get
+        maker/model/year/colour/chassis/engine). Empty for most businesses."""
+        from business_templates import inventory_fields_for_user
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            return {"fields": inventory_fields_for_user(user) if user else []}
+        finally:
+            db.close()
 
     @app.get("/app/api/inventory")
     def web_inventory(session: dict = Depends(require_web_auth)):
@@ -92,6 +126,7 @@ def register_inventory_routes(app):
                         "retail_unit": item.retail_unit,
                         "retail_per_base": item.retail_per_base,
                         "retail_price": item.retail_price,
+                        "attributes": _load_attributes(item),
                         "updated_at": _iso(item.updated_at),
                     }
                     for item in rows
@@ -121,6 +156,7 @@ def register_inventory_routes(app):
 
             _qty = None if payload.is_service else (payload.quantity or 0.0)
             from transaction_save import _get_recording_branch_id
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
             item = InventoryItem(
                 owner_phone=owner_phone,
                 name=payload.name.strip().lower(),
@@ -135,6 +171,7 @@ def register_inventory_routes(app):
                 retail_unit=payload.retail_unit.strip().lower() if payload.retail_unit else None,
                 retail_per_base=payload.retail_per_base,
                 retail_price=payload.retail_price,
+                attributes_json=_clean_attributes(owner_user, payload.attributes),
             )
             db.add(item)
             if not payload.is_service and _qty:
@@ -296,6 +333,9 @@ def register_inventory_routes(app):
                 item.retail_per_base = payload.retail_per_base or None
             if payload.retail_price is not None:
                 item.retail_price = payload.retail_price or None
+            if payload.attributes is not None:
+                owner_user = db.query(User).filter(User.phone == owner_phone).first()
+                item.attributes_json = _clean_attributes(owner_user, payload.attributes)
             item.updated_at = utcnow()
             db.commit()
             return {"id": item.id, "name": item.name, "selling_price": _money(item.selling_price)}

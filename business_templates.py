@@ -3584,6 +3584,34 @@ def customer_profile_fields_for_user(user):
     return fields if fields is not None else _GENERIC_PROFILE_FIELDS
 
 
+# ── Per-business custom stock fields ─────────────────────────────────────────
+# Extra attributes captured when adding stock, for businesses whose items carry
+# identity beyond name/price/quantity. Stored on InventoryItem.attributes_json.
+# Businesses not listed here get no extra fields (empty list).
+INVENTORY_FIELDS = {
+    "car_dealer": [
+        {"key": "maker",      "label": "Maker / Make",   "type": "text"},
+        {"key": "model",      "label": "Model",          "type": "text"},
+        {"key": "year",       "label": "Year",           "type": "text"},
+        {"key": "color",      "label": "Colour",         "type": "text"},
+        {"key": "chassis_no", "label": "Chassis number", "type": "text"},
+        {"key": "engine_no",  "label": "Engine number",  "type": "text"},
+    ],
+}
+
+
+def inventory_fields_for_user(user):
+    """Structured stock-field definitions for the user's business type (e.g. car
+    dealers get maker/model/year/colour/chassis/engine). Empty list when the
+    business type has no extra fields."""
+    key = template_key_for_user(user)
+    fields = INVENTORY_FIELDS.get(key)
+    if fields is None:
+        btype = getattr(user, "business_type", None)
+        fields = INVENTORY_FIELDS.get(btype)
+    return fields if fields is not None else []
+
+
 _SERVICE_MENU_TEMPLATE_KEYS = frozenset({
     "laundry", "car_wash", "barber", "tailor", "mechanic",
     "artisan_services", "salon_beauty",

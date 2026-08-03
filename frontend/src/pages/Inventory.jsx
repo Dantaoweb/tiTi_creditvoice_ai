@@ -241,17 +241,19 @@ function BulkAddModal({ ownerPhone, onClose, onSaved }) {
 }
 
 // ── Add item modal ───────────────────────────────────────────────────────────
-function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
+function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved }) {
   const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
   const [form, setForm] = useState({
     name: "", unit: "", quantity: "",
     cost_price: "", selling_price: "", low_stock_alert: "",
     retail_unit: "", retail_per_base: "", retail_price: "",
   });
+  const [attrs, setAttrs] = useState({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
+  function setAttr(k, v) { setAttrs(p => ({ ...p, [k]: v })); }
 
   const isService = itemType === "service";
 
@@ -272,6 +274,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
         retail_unit: !isService ? (form.retail_unit.trim() || null) : null,
         retail_per_base: (!isService && form.retail_per_base !== "") ? parseAmt(form.retail_per_base) : null,
         retail_price: (!isService && form.retail_price !== "") ? parseAmt(form.retail_price) : null,
+        attributes: isService ? {} : attrs,
       });
       onSaved(item);
       onClose();
@@ -315,6 +318,17 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
             />
           </div>
         </div>
+
+        {!isService && fields.length > 0 && (
+          <div className="form-row" style={{ flexWrap: "wrap" }}>
+            {fields.map(f => (
+              <div className="form-group" key={f.key} style={{ flex: "1 1 45%", minWidth: 0 }}>
+                <label className="form-label">{f.label}</label>
+                <input value={attrs[f.key] || ""} onChange={e => setAttr(f.key, e.target.value)} />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="form-row">
           <div className="form-group">
@@ -391,7 +405,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, onClose, onSaved }) {
 }
 
 // ── Edit item modal ──────────────────────────────────────────────────────────
-function EditItemModal({ item, onClose, onSaved }) {
+function EditItemModal({ item, fields = [], onClose, onSaved }) {
   const isService = item.is_service;
   const [form, setForm] = useState({
     name: item.name,
@@ -404,10 +418,12 @@ function EditItemModal({ item, onClose, onSaved }) {
     retail_per_base: item.retail_per_base || "",
     retail_price: item.retail_price || "",
   });
+  const [attrs, setAttrs] = useState(item.attributes || {});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
+  function setAttr(k, v) { setAttrs(p => ({ ...p, [k]: v })); }
 
   async function save() {
     setSaving(true); setErr("");
@@ -422,6 +438,7 @@ function EditItemModal({ item, onClose, onSaved }) {
         retail_unit: form.retail_unit.trim() || null,
         retail_per_base: form.retail_per_base !== "" ? parseAmt(form.retail_per_base) : null,
         retail_price: form.retail_price !== "" ? parseAmt(form.retail_price) : null,
+        ...(fields.length > 0 && !isService ? { attributes: attrs } : {}),
       });
       onSaved();
       onClose();
@@ -442,6 +459,16 @@ function EditItemModal({ item, onClose, onSaved }) {
             <input value={form.unit} onChange={e => set("unit", e.target.value)} />
           </div>
         </div>
+        {!isService && fields.length > 0 && (
+          <div className="form-row" style={{ flexWrap: "wrap" }}>
+            {fields.map(f => (
+              <div className="form-group" key={f.key} style={{ flex: "1 1 45%", minWidth: 0 }}>
+                <label className="form-label">{f.label}</label>
+                <input value={attrs[f.key] || ""} onChange={e => setAttr(f.key, e.target.value)} />
+              </div>
+            ))}
+          </div>
+        )}
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">{isService ? "Price (₦)" : "Selling price (₦)"}</label>
@@ -589,6 +616,7 @@ export default function Inventory() {
   const [showCatalog, setShowCatalog] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [adjustItem, setAdjustItem] = useState(null);
+  const [fields, setFields] = useState([]);   // per-business custom stock fields
 
   function load() {
     setLoading(true);
@@ -599,6 +627,10 @@ export default function Inventory() {
   }
 
   useEffect(load, [ownerPhone]);
+
+  useEffect(() => {
+    apiFetch("inventory/fields").then(d => setFields(d.fields || [])).catch(() => {});
+  }, []);
 
   const filtered = search
     ? rows.filter(r => (r.name || "").toLowerCase().includes(search.toLowerCase()))
@@ -684,12 +716,19 @@ export default function Inventory() {
           columns={[
             {
               key: "name", label: "Name", sortKey: "name",
-              render: r => (
-                <span>
-                  <strong className="td-strong">{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>
-                  {r.is_service && <span className="svc-chip">service</span>}
-                </span>
-              ),
+              render: r => {
+                const attrLine = fields
+                  .map(f => (r.attributes || {})[f.key])
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <span>
+                    <strong className="td-strong">{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>
+                    {r.is_service && <span className="svc-chip">service</span>}
+                    {attrLine && <div className="td-attr-line">{attrLine}</div>}
+                  </span>
+                );
+              },
             },
             {
               key: "qty_or_avail", label: "Stock / Status",
@@ -754,6 +793,7 @@ export default function Inventory() {
         <AddItemModal
           ownerPhone={ownerPhone}
           isServiceBiz={isServiceBiz}
+          fields={fields}
           onClose={() => setShowAdd(false)}
           onSaved={item => {
             setRows(prev => [{ ...item, is_available: true, is_service: item.is_service ?? false }, ...prev]);
@@ -764,6 +804,7 @@ export default function Inventory() {
       {editItem && (
         <EditItemModal
           item={editItem}
+          fields={fields}
           onClose={() => setEditItem(null)}
           onSaved={load}
         />

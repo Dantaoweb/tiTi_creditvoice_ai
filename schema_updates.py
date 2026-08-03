@@ -186,6 +186,7 @@ def ensure_schema_updates(engine):
         "retail_per_base": "INTEGER",
         "retail_price": "INTEGER",
         "branch_id": "INTEGER",
+        "attributes_json": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in inventory_updates.items():
