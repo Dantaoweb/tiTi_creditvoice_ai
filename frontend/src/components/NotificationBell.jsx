@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, X } from "lucide-react";
-import { apiFetch, apiPost } from "../lib/api";
+import { Bell, X, Trash2 } from "lucide-react";
+import { apiFetch, apiPost, apiDelete } from "../lib/api";
 
 const TYPE_ICONS = {
   low_stock:    "⚠️",
@@ -43,6 +43,17 @@ export default function NotificationBell() {
   async function markAllRead() {
     await apiPost("notifications/read-all", {}).catch(() => {});
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+  }
+
+  async function deleteOne(id, e) {
+    e.stopPropagation();
+    setNotifications(prev => prev.filter(n => n.id !== id));  // optimistic
+    await apiDelete(`notifications/${id}`).catch(() => {});
+  }
+
+  async function clearAll() {
+    setNotifications([]);  // optimistic
+    await apiFetch("notifications/clear", {}, { method: "POST" }).catch(() => {});
   }
 
   function timeAgo(iso) {
@@ -92,13 +103,21 @@ export default function NotificationBell() {
             padding: "12px 14px", borderBottom: "1px solid var(--border)",
           }}>
             <span style={{ fontWeight: 700, fontSize: 14 }}>Notifications</span>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {unread > 0 && (
                 <button
                   onClick={markAllRead}
                   style={{ fontSize: 11, color: "var(--brand)", background: "none", border: "none", cursor: "pointer" }}
                 >
                   Mark all read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  onClick={clearAll}
+                  style={{ fontSize: 11, color: "var(--rose)", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  Clear all
                 </button>
               )}
               <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
@@ -143,9 +162,19 @@ export default function NotificationBell() {
                         {n.body}
                       </div>
                     </div>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0, marginTop: 2 }}>
-                      {timeAgo(n.created_at)}
-                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                        {timeAgo(n.created_at)}
+                      </span>
+                      <button
+                        onClick={(e) => deleteOne(n.id, e)}
+                        title="Delete"
+                        style={{ background: "none", border: "none", cursor: "pointer",
+                                 color: "var(--text-muted)", padding: 2, lineHeight: 0 }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 );

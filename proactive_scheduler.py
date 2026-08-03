@@ -279,6 +279,66 @@ def _purge_old_logs(db) -> None:
         )
 
 
+# Notifications self-limit so the app_notifications table can't grow without
+# bound: read ones drop after 30 days, and no business keeps more than 200 rows.
+_NOTIF_READ_RETENTION_DAYS = 30
+_NOTIF_KEEP_MAX = 200
+
+
+def _purge_old_notifications(db) -> None:
+    """Delete read notifications older than 30 days, and cap each business to the
+    most recent 200 rows so the bell's backing table stays bounded.
+
+    'note' notifications are NEVER auto-deleted — notes are business records, so
+    the automatic retention leaves them alone. (Users can still delete them by
+    hand from the bell.)"""
+    from models import AppNotification
+    from sqlalchemy import func
+
+    # coalesce so rows with a NULL event_type still count as non-note.
+    not_a_note = func.coalesce(AppNotification.event_type, "") != "note"
+
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=_NOTIF_READ_RETENTION_DAYS)
+    deleted_read = db.query(AppNotification).filter(
+        AppNotification.is_read == 1,
+        AppNotification.created_at < cutoff,
+        not_a_note,
+    ).delete(synchronize_session=False)
+
+    # The cap counts and deletes only non-note rows; notes are always kept.
+    capped = 0
+    overflowing = (
+        db.query(AppNotification.owner_phone)
+        .filter(not_a_note)
+        .group_by(AppNotification.owner_phone)
+        .having(func.count(AppNotification.id) > _NOTIF_KEEP_MAX)
+        .all()
+    )
+    for (owner_phone,) in overflowing:
+        keep_ids = [
+            r.id for r in db.query(AppNotification.id)
+            .filter(AppNotification.owner_phone == owner_phone, not_a_note)
+            .order_by(AppNotification.created_at.desc(), AppNotification.id.desc())
+            .limit(_NOTIF_KEEP_MAX)
+            .all()
+        ]
+        if keep_ids:
+            capped += db.query(AppNotification).filter(
+                AppNotification.owner_phone == owner_phone,
+                not_a_note,
+                ~AppNotification.id.in_(keep_ids),
+            ).delete(synchronize_session=False)
+
+    if deleted_read or capped:
+        db.commit()
+        print(
+            f"[proactive] Notification retention: purged {deleted_read} read "
+            f"(>{_NOTIF_READ_RETENTION_DAYS}d) + {capped} over the {_NOTIF_KEEP_MAX}-row cap "
+            f"(notes preserved).",
+            flush=True,
+        )
+
+
 # ── Delivery / ready-by reminders (owner-facing) ────────────────────────────────
 
 def _check_delivery_due(db):
@@ -396,6 +456,7 @@ async def run_proactive_scheduler():
             _check_delivery_due(db)
             _reconcile_balances(db)
             _purge_old_logs(db)
+            _purge_old_notifications(db)
             global last_run_at
             last_run_at = datetime.now(timezone.utc)
             print("[proactive] Cycle complete.", flush=True)

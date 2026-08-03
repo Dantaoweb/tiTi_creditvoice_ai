@@ -4,7 +4,7 @@ In-app notification routes (the bell): list, mark-one-read, mark-all-read.
 First per-domain slice split out of web_routes.py. Register with
 register_notification_routes(app); shared helpers come from web_common.
 """
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 
 from database import SessionLocal
 from models import User, AppNotification
@@ -74,5 +74,45 @@ def register_notification_routes(app):
             ).update({"is_read": 1})
             db.commit()
             return {"ok": True}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/notifications/{notif_id}")
+    def web_delete_notification(notif_id: int, session: dict = Depends(require_web_auth)):
+        """Permanently delete a single notification (frees the row)."""
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401)
+            owner_phone = _session_owner_phone(db, session)
+            deleted = db.query(AppNotification).filter(
+                AppNotification.id == notif_id,
+                AppNotification.owner_phone == owner_phone,
+            ).delete(synchronize_session=False)
+            db.commit()
+            return {"ok": True, "deleted": deleted}
+        finally:
+            db.close()
+
+    @app.post("/app/api/notifications/clear")
+    def web_clear_notifications(
+        only_read: bool = Query(default=False),
+        session: dict = Depends(require_web_auth),
+    ):
+        """Delete notifications for this business. only_read=true clears just the
+        read ones; otherwise clears all. Rows are removed, not just hidden."""
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user:
+                raise HTTPException(status_code=401)
+            owner_phone = _session_owner_phone(db, session)
+            q = db.query(AppNotification).filter(AppNotification.owner_phone == owner_phone)
+            if only_read:
+                q = q.filter(AppNotification.is_read == 1)
+            deleted = q.delete(synchronize_session=False)
+            db.commit()
+            return {"ok": True, "deleted": deleted}
         finally:
             db.close()
