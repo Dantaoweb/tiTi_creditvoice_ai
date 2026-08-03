@@ -147,6 +147,64 @@ def check_staff_limit(db, owner, subscription):
     )
 
 
+def check_branch_limit(db, owner, subscription):
+    """True if the owner can add another branch under their plan.
+
+    Pro allows 1 branch; Premium is unlimited (limit None)."""
+    from models import Branch
+    limit = subscription["limits"].get("branches")
+    if limit is None:
+        return True, None
+
+    count = db.query(Branch).filter(Branch.owner_phone == owner.phone).count()
+    if count < limit:
+        return True, None
+
+    return False, (
+        f"Your {subscription['plan']} plan allows {limit} "
+        f"branch{'es' if limit != 1 else ''}.\n\n"
+        "Upgrade to Premium for unlimited branches."
+    )
+
+
+# Partnership roles bucket into two caps: investor-type roles (investor, silent
+# investor) count against "investors"; everyone else (partner, co-founder)
+# counts against "partners".
+_INVESTOR_ROLES = ("investor", "silent")
+
+
+def _partner_bucket(role):
+    return "investor" if str(role).lower() in _INVESTOR_ROLES else "partner"
+
+
+def check_partner_limit(db, owner, subscription, role="partner"):
+    """True if the owner can add another partner/investor under their plan.
+
+    Counted per bucket: Pro allows 1 partner AND 1 investor; Premium is
+    unlimited. Pending and active records both count against the cap."""
+    from models import BusinessPartner
+    bucket = _partner_bucket(role)
+    key = "investors" if bucket == "investor" else "partners"
+    label = "investor" if bucket == "investor" else "partner"
+    limit = subscription["limits"].get(key)
+    if limit is None:
+        return True, None
+
+    rows = db.query(BusinessPartner).filter(
+        BusinessPartner.owner_phone == owner.phone,
+        BusinessPartner.status.in_(["active", "pending"]),
+    ).all()
+    count = sum(1 for r in rows if _partner_bucket(r.role) == bucket)
+    if count < limit:
+        return True, None
+
+    return False, (
+        f"Your {subscription['plan']} plan allows {limit} {label}"
+        f"{'s' if limit != 1 else ''}.\n\n"
+        f"Upgrade to Premium for unlimited {label}s."
+    )
+
+
 def create_subscription_payment_request(db, user, plan):
     owner = get_business_owner_user(db, user)
     plan = normalize_plan(plan)

@@ -6,19 +6,20 @@ import { nairaFull } from "../lib/format";
 
 // ── Plan feature matrix ──────────────────────────────────────────────────────
 const FEATURES = [
-  { label: "Customers",              basic: "Up to 50",       go: "Unlimited",  pro: "Unlimited",  icon: Users },
-  { label: "Transactions / month",   basic: "Up to 100",      go: "Unlimited",  pro: "Unlimited",  icon: Zap },
-  { label: "Inventory items",        basic: "Up to 5",        go: "Unlimited",  pro: "Unlimited",  icon: Package },
-  { label: "Invoice / multi-item",   basic: "5 / month",      go: "Unlimited",  pro: "Unlimited",  icon: null },
-  { label: "Debt reminders",         basic: true,             go: true,         pro: true },
-  { label: "POS",                    basic: true,             go: true,         pro: true },
-  { label: "Exports (Excel/PDF)",    basic: false,            go: true,         pro: true,         icon: Download },
-  { label: "Advanced reports",       basic: false,            go: true,         pro: true,         icon: BarChart2 },
-  { label: "Voice notes",            basic: false,            go: true,         pro: true },
-  { label: "Auto send reminders",    basic: false,            go: true,         pro: true,         icon: Bell },
-  { label: "Staff accounts",         basic: false,            go: false,        pro: true,         icon: Users },
-  { label: "Branches",               basic: false,            go: false,        pro: true,         icon: Building2 },
-  { label: "Partners / Investors",   basic: false,            go: false,        pro: true },
+  { label: "Customers",              basic: "Up to 50",       go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: Users },
+  { label: "Transactions / month",   basic: "Up to 100",      go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: Zap },
+  { label: "Inventory items",        basic: "Up to 5",        go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: Package },
+  { label: "Invoice / multi-item",   basic: "5 / month",      go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: null },
+  { label: "Debt reminders",         basic: true,             go: true,         pro: true,         premium: true },
+  { label: "POS",                    basic: true,             go: true,         pro: true,         premium: true },
+  { label: "Exports (Excel/PDF)",    basic: false,            go: true,         pro: true,         premium: true,         icon: Download },
+  { label: "Advanced reports",       basic: false,            go: true,         pro: true,         premium: true,         icon: BarChart2 },
+  { label: "Voice notes",            basic: false,            go: true,         pro: true,         premium: true },
+  { label: "Auto send reminders",    basic: false,            go: true,         pro: true,         premium: true,         icon: Bell },
+  { label: "Staff accounts",         basic: false,            go: false,        pro: "Unlimited",  premium: "Unlimited",  icon: Users },
+  { label: "Branches",               basic: false,            go: false,        pro: "1",          premium: "Unlimited",  icon: Building2 },
+  { label: "Partners",               basic: false,            go: false,        pro: "1",          premium: "Unlimited" },
+  { label: "Investors",              basic: false,            go: false,        pro: "1",          premium: "Unlimited" },
 ];
 
 // ── Bank Transfer modal ──────────────────────────────────────────────────────
@@ -187,7 +188,7 @@ export default function Upgrade() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [bankModal, setBankModal] = useState(null);  // "GO" | "PRO" | null
+  const [bankModal, setBankModal] = useState(null);  // "GO" | "PRO" | "PREMIUM" | null
   const [successMsg, setSuccessMsg] = useState("");
   const [monnifyErr, setMonnifyErr] = useState("");
 
@@ -201,7 +202,7 @@ export default function Upgrade() {
   useEffect(load, []);
 
   const currentPlan = (status?.plan || user?.subscription_plan || "BASIC").toUpperCase();
-  const prices = status?.prices || { GO: 3000, PRO: 7000 };
+  const prices = status?.prices || { GO: 3000, PRO: 7000, PREMIUM: 10000 };
 
   function handleMonnifySuccess(result) {
     setSuccessMsg(`🎉 Payment confirmed! Your ${result.plan} plan is now active.`);
@@ -230,9 +231,17 @@ export default function Upgrade() {
       key: "PRO",
       label: "Pro",
       price: prices.PRO,
-      desc: "Everything in Go, plus team & branches",
+      desc: "Team & staff, plus 1 branch, 1 partner, 1 investor",
       color: "#d97706",
       bg: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+    },
+    {
+      key: "PREMIUM",
+      label: "Premium",
+      price: prices.PREMIUM,
+      desc: "Everything in Pro with unlimited branches, partners & investors",
+      color: "#0f766e",
+      bg: "linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%)",
     },
   ];
 
@@ -343,6 +352,7 @@ export default function Upgrade() {
                   <th>Basic</th>
                   <th style={{ color: "#863bff" }}>Go</th>
                   <th style={{ color: "#d97706" }}>Pro</th>
+                  <th style={{ color: "#0f766e" }}>Premium</th>
                 </tr>
               </thead>
               <tbody>
@@ -352,6 +362,7 @@ export default function Upgrade() {
                     <td><Cell val={f.basic} /></td>
                     <td><Cell val={f.go} /></td>
                     <td><Cell val={f.pro} /></td>
+                    <td><Cell val={f.premium} /></td>
                   </tr>
                 ))}
               </tbody>

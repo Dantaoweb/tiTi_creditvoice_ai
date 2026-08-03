@@ -47,15 +47,16 @@ def register_subscription_routes(app):
                 raise HTTPException(status_code=401, detail="User not found.")
             sub = get_business_subscription(db, user)
             pending = get_pending_subscription_payment(db, user)
-            go_price  = get_plan_price("GO")
-            pro_price = get_plan_price("PRO")
+            go_price      = get_plan_price("GO")
+            pro_price     = get_plan_price("PRO")
+            premium_price = get_plan_price("PREMIUM")
             bank_details = get_payment_account_message()
             is_test = "sandbox" in os.getenv("MONNIFY_BASE_URL", "sandbox")
             return {
                 "plan":       sub["plan"],
                 "status":     sub["status"],
                 "expires_at": sub["expires_at"].isoformat() if sub["expires_at"] else None,
-                "prices":     {"GO": go_price, "PRO": pro_price},
+                "prices":     {"GO": go_price, "PRO": pro_price, "PREMIUM": premium_price},
                 "bank_details": bank_details,
                 "monnify": {
                     "api_key":       os.getenv("MONNIFY_API_KEY", ""),

@@ -869,6 +869,23 @@ def ensure_schema_updates(engine):
                         f"ALTER TABLE transaction_items ADD COLUMN {col} {typ}"
                     ))
 
+    # ── One-time grandfather: existing PRO subscribers → PREMIUM ─────────────
+    # The plan ladder gained a 4th tier (Premium). Today's PRO capabilities
+    # (unlimited branches/partners/investors) moved up to PREMIUM, and PRO
+    # became a capped tier (1 branch / 1 partner / 1 investor). To honour what
+    # current PRO subscribers already paid for, move them to PREMIUM. Runs once,
+    # idempotently, and only touches rows still on PRO.
+    _PRO_TO_PREMIUM = "grandfather_pro_to_premium_2026_07"
+    if not _migration_applied(engine, _PRO_TO_PREMIUM):
+        with engine.begin() as connection:
+            result = connection.execute(text(
+                "UPDATE users SET subscription_plan = 'PREMIUM' "
+                "WHERE subscription_plan = 'PRO'"
+            ))
+        moved = getattr(result, "rowcount", None)
+        _mark_migration(engine, _PRO_TO_PREMIUM)
+        print(f"[schema] grandfathered {moved} PRO account(s) to PREMIUM", flush=True)
+
     # Record that this full migration batch completed successfully.
     # The timestamp lets ops confirm exactly when each schema version
     # was applied to production.

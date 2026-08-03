@@ -53,6 +53,21 @@ def register_branch_routes(app):
             if not user or user.parent_id is not None:
                 raise HTTPException(status_code=403, detail="Only business owners can manage branches.")
             owner_phone = user.phone
+
+            # Branches are a Pro/Premium feature. Pro is capped at 1 branch;
+            # Premium is unlimited. (Existing branches on lower plans are kept —
+            # this only guards adding a new one.)
+            from subscriptions import (
+                get_business_subscription, ensure_feature_allowed, check_branch_limit,
+            )
+            allowed, upgrade_msg = ensure_feature_allowed(db, user, "BRANCHES", "Branches")
+            if not allowed:
+                raise HTTPException(status_code=403, detail=upgrade_msg)
+            subscription = get_business_subscription(db, user)
+            within, limit_msg = check_branch_limit(db, user, subscription)
+            if not within:
+                raise HTTPException(status_code=403, detail=limit_msg)
+
             name = payload.name.strip()
             if not name:
                 raise HTTPException(status_code=400, detail="Branch name is required.")

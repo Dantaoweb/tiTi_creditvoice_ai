@@ -211,6 +211,21 @@ def handle_invite_partner(db, phone, parsed, user, business_owner_phone, send_me
         send_message(phone, "An invitation is already pending for this person.")
         return {"status": "partner_invite_pending"}
 
+    # Partners/investors are a Pro/Premium feature. Pro caps each bucket at 1
+    # (one partner AND one investor); Premium is unlimited.
+    from subscriptions import (
+        get_business_subscription, ensure_feature_allowed, check_partner_limit,
+    )
+    allowed, upgrade_msg = ensure_feature_allowed(db, user, "PARTNERS", "Partners & investors")
+    if not allowed:
+        send_message(phone, upgrade_msg)
+        return {"status": "partner_invite_no_plan"}
+    subscription = get_business_subscription(db, user)
+    within, limit_msg = check_partner_limit(db, user, subscription, role)
+    if not within:
+        send_message(phone, limit_msg)
+        return {"status": "partner_invite_limit"}
+
     bp = BusinessPartner(
         owner_phone=business_owner_phone,
         partner_phone=partner_phone,

@@ -8,7 +8,7 @@ from business_templates import (
     template_next_steps_for_user,
     template_plan_value_for_user,
 )
-from plans import PLAN_GO, PLAN_PRO, PLAN_BASIC, normalize_plan, plan_allows_feature
+from plans import PLAN_GO, PLAN_PRO, PLAN_PREMIUM, PLAN_BASIC, normalize_plan, plan_allows_feature
 
 
 def build_plan_message(subscription, user=None):
@@ -88,6 +88,7 @@ def build_upgrade_message(user=None):
     from business_templates import template_key_for_user
     go_price = int(os.getenv("PLAN_GO_PRICE", "3000"))
     pro_price = int(os.getenv("PLAN_PRO_PRICE", "7000"))
+    premium_price = int(os.getenv("PLAN_PREMIUM_PRICE", "10000"))
 
     template_key = template_key_for_user(user) if user else None
     is_thrift = template_key == "thrift_contribution"
@@ -96,15 +97,18 @@ def build_upgrade_message(user=None):
     if is_thrift:
         basic_desc = "10 participants. No reminders or history."
         go_desc = "Unlimited participants, contribution reminders, history, reports."
-        pro_desc = "Everything in Go, plus collectors or staff can record contributions."
+        pro_desc = "Everything in Go, plus collectors or staff can record contributions. 1 branch, 1 partner, 1 investor."
+        premium_desc = "Everything in Pro, with unlimited branches, partners, and investors."
     elif is_school:
         basic_desc = "50 students, 100 transactions/month."
         go_desc = "Unlimited students, fee reminders, payment reports, notes."
-        pro_desc = "Everything in Go, plus bursar or admin staff can record fee payments."
+        pro_desc = "Everything in Go, plus bursar or admin staff can record fee payments. 1 branch, 1 partner, 1 investor."
+        premium_desc = "Everything in Pro, with unlimited branches, partners, and investors."
     else:
         basic_desc = "50 customers, 100 transactions/month."
         go_desc = "Unlimited customers, transactions, inventory, suppliers, reminders, reports."
-        pro_desc = "Everything in Go, plus staff management (add staff, permissions, admin sees staff records)."
+        pro_desc = "Everything in Go, plus staff management. 1 branch, 1 partner, 1 investor."
+        premium_desc = "Everything in Pro, with unlimited branches, partners, and investors."
 
     industry_value = ""
     if user:
@@ -123,8 +127,10 @@ def build_upgrade_message(user=None):
         f"{go_desc}\n\n"
         f"2. PRO - N{pro_price:,}/month\n"
         f"{pro_desc}\n\n"
-        "3. My current plan\n"
-        "4. Cancel"
+        f"3. PREMIUM - N{premium_price:,}/month\n"
+        f"{premium_desc}\n\n"
+        "4. My current plan\n"
+        "5. Cancel"
     )
 
 
@@ -134,6 +140,8 @@ def get_plan_price(plan):
         return int(os.getenv("PLAN_GO_PRICE", "3000"))
     if plan == PLAN_PRO:
         return int(os.getenv("PLAN_PRO_PRICE", "7000"))
+    if plan == PLAN_PREMIUM:
+        return int(os.getenv("PLAN_PREMIUM_PRICE", "10000"))
     return 0
 
 
@@ -151,12 +159,22 @@ def get_payment_account_message():
 def build_plan_payment_message(plan):
     plan = normalize_plan(plan)
     amount = get_plan_price(plan)
-    if plan == PLAN_PRO:
+    if plan == PLAN_PREMIUM:
+        benefits = (
+            "Everything in Pro plus:\n"
+            "- Unlimited branches\n"
+            "- Unlimited partners\n"
+            "- Unlimited investors\n"
+            "- Add staff & staff permissions\n"
+            "- Future Yoruba, Pidgin, and Hausa voice"
+        )
+    elif plan == PLAN_PRO:
         benefits = (
             "Everything in Go plus:\n"
             "- Add staff\n"
             "- Staff permissions\n"
             "- Admin sees staff records\n"
+            "- 1 branch, 1 partner, 1 investor\n"
             "- Future Yoruba, Pidgin, and Hausa voice"
         )
     else:

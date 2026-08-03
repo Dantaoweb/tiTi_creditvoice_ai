@@ -48,8 +48,8 @@ def register_token_routes(app):
                 raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
 
             plan = payload.plan.upper()
-            if plan not in ("GO", "PRO"):
-                raise HTTPException(status_code=400, detail="plan must be GO or PRO")
+            if plan not in ("GO", "PRO", "PREMIUM"):
+                raise HTTPException(status_code=400, detail="plan must be GO, PRO, or PREMIUM")
             if not (1 <= payload.count <= 1000):
                 raise HTTPException(status_code=400, detail="count must be 1–1000")
             if payload.duration_days < 1:

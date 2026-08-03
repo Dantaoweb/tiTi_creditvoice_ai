@@ -1,6 +1,6 @@
 from context_memory import save_context
 from messages import build_home_more_menu, build_owner_home_menu, build_upgrade_message
-from plans import PLAN_PRO
+from plans import PLAN_PRO, PLAN_PREMIUM
 from reports import build_dashboard_menu_message
 
 
@@ -515,7 +515,7 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             return {"status": "more_upgrade"}
 
         if normalized in ["3", "teachers", "teacher", "staff"]:
-            if subscription.get("plan") == PLAN_PRO:
+            if subscription.get("plan") in (PLAN_PRO, PLAN_PREMIUM):
                 db.delete(pending)
                 db.commit()
                 return {"parsed": {"type": "STAFF_MENU"}}
@@ -568,7 +568,7 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             send_message(phone, build_upgrade_message(user))
             return {"status": "more_upgrade"}
         if normalized in ["3", "staff"]:
-            if subscription.get("plan") == PLAN_PRO:
+            if subscription.get("plan") in (PLAN_PRO, PLAN_PREMIUM):
                 db.delete(pending)
                 db.commit()
                 return {"parsed": {"type": "STAFF_MENU"}}
@@ -611,7 +611,7 @@ def handle_home_more_menu(db, phone, text, pending, user, subscription, send_mes
             return {"status": "more_upgrade"}
 
         if normalized in ["3", "staff"]:
-            if subscription.get("plan") == PLAN_PRO:
+            if subscription.get("plan") in (PLAN_PRO, PLAN_PREMIUM):
                 db.delete(pending)
                 db.commit()
                 return {"parsed": {"type": "STAFF_MENU"}}

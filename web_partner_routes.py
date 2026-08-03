@@ -98,6 +98,19 @@ def register_partner_routes(app):
                 raise HTTPException(status_code=400, detail="You cannot invite yourself.")
 
             role = payload.role if payload.role in ROLE_ACCESS else "partner"
+
+            # Partners/investors are a Pro/Premium feature. Pro caps each bucket
+            # at 1 (one partner AND one investor); Premium is unlimited.
+            from subscriptions import (
+                get_business_subscription, ensure_feature_allowed, check_partner_limit,
+            )
+            allowed, upgrade_msg = ensure_feature_allowed(db, owner, "PARTNERS", "Partners & investors")
+            if not allowed:
+                raise HTTPException(status_code=403, detail=upgrade_msg)
+            subscription = get_business_subscription(db, owner)
+            within, limit_msg = check_partner_limit(db, owner, subscription, role)
+            if not within:
+                raise HTTPException(status_code=403, detail=limit_msg)
             existing = db.query(BusinessPartner).filter(
                 BusinessPartner.owner_phone == owner.phone,
                 BusinessPartner.partner_phone == partner_phone,

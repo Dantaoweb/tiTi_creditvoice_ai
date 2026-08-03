@@ -31,7 +31,8 @@ def _pro_owner(phone):
     client.post("/app/api/auth/register", json={"name": "Owner", "phone": phone, "pin": "5678"})
     db = SessionLocal()
     u = db.query(User).filter(User.phone == phone).first()
-    u.subscription_plan = "PRO"; u.subscription_status = "ACTIVE"
+    # Premium so multi-branch tests aren't blocked by the Pro 1-branch cap.
+    u.subscription_plan = "PREMIUM"; u.subscription_status = "ACTIVE"
     db.commit(); db.close()
     return client.post("/app/api/auth/login", json={"phone": phone, "pin": "5678"}).cookies
 

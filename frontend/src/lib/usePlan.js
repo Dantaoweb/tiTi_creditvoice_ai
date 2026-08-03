@@ -1,11 +1,12 @@
 import { useAuth } from "../context/AuthContext";
 
-const ORDER = { BASIC: 1, GO: 2, PRO: 3 };
+const ORDER = { BASIC: 1, GO: 2, PRO: 3, PREMIUM: 4 };
 
 const LIMITS = {
-  BASIC: { active_inventory_items: 5, school_teachers: 3 },
-  GO:    { active_inventory_items: null, school_teachers: null },
-  PRO:   { active_inventory_items: null, school_teachers: null },
+  BASIC:   { active_inventory_items: 5, school_teachers: 3, branches: 0, partners: 0, investors: 0 },
+  GO:      { active_inventory_items: null, school_teachers: null, branches: 0, partners: 0, investors: 0 },
+  PRO:     { active_inventory_items: null, school_teachers: null, branches: 1, partners: 1, investors: 1 },
+  PREMIUM: { active_inventory_items: null, school_teachers: null, branches: null, partners: null, investors: null },
 };
 
 const FEATURE_MIN = {

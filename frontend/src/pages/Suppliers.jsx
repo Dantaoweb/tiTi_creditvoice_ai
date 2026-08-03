@@ -512,7 +512,7 @@ function SupplierProfileTab({ userPlan }) {
   const [cac, setCac]             = useState("");
   const [products, setProducts]   = useState([{ ...EMPTY_PRODUCT }]);
 
-  const isPro = (userPlan || "").toUpperCase() === "PRO";
+  const isPro = ["PRO", "PREMIUM"].includes((userPlan || "").toUpperCase());
 
   useEffect(() => {
     Promise.all([

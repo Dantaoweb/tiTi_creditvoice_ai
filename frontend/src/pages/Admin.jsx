@@ -135,7 +135,7 @@ function UsersTab() {
     load(1, q);
   }
 
-  const PLAN_COLOR = { BASIC: "#6b7280", PRO: "var(--brand)", ENTERPRISE: "#7c3aed" };
+  const PLAN_COLOR = { BASIC: "#6b7280", GO: "#863bff", PRO: "#d97706", PREMIUM: "#0f766e", ENTERPRISE: "#7c3aed" };
   const STATUS_COLOR = { ACTIVE: "var(--green,#16a34a)", EXPIRED: "#dc2626", TRIAL: "#d97706" };
 
   return (
@@ -308,6 +308,7 @@ function TokenCodesTab() {
             <select value={plan} onChange={e => setPlan(e.target.value)}>
               <option value="GO">GO</option>
               <option value="PRO">PRO</option>
+              <option value="PREMIUM">PREMIUM</option>
             </select>
           </div>
           <div className="form-group">

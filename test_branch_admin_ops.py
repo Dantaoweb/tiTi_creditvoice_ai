@@ -37,7 +37,8 @@ def _setup():
     client.post("/app/api/auth/register", json={"name": "Owner", "phone": owner_phone, "pin": "5678"})
     db = SessionLocal()
     owner = db.query(User).filter(User.phone == owner_phone).first()
-    owner.subscription_plan = "PRO"; owner.subscription_status = "ACTIVE"
+    # Multi-branch is a Premium capability (Pro is capped at 1 branch).
+    owner.subscription_plan = "PREMIUM"; owner.subscription_status = "ACTIVE"
     main = Branch(owner_phone=owner_phone, name="Main", is_default=True)
     extra = Branch(owner_phone=owner_phone, name="Extra", is_default=False)
     db.add_all([main, extra]); db.commit()

@@ -1,13 +1,18 @@
-PLAN_BASIC = "BASIC"
-PLAN_GO    = "GO"
-PLAN_PRO   = "PRO"
+PLAN_BASIC   = "BASIC"
+PLAN_GO      = "GO"
+PLAN_PRO     = "PRO"
+PLAN_PREMIUM = "PREMIUM"
 
 PLAN_ORDER = {
-    PLAN_BASIC: 1,
-    PLAN_GO:    2,
-    PLAN_PRO:   3,
+    PLAN_BASIC:   1,
+    PLAN_GO:      2,
+    PLAN_PRO:     3,
+    PLAN_PREMIUM: 4,
 }
 
+# Numeric caps: None = unlimited, 0 = feature not available on the plan.
+# Pro unlocks staff/branches/partners but caps branches/partners/investors at 1
+# each; Premium removes those caps (everything unlimited).
 PLAN_LIMITS = {
     PLAN_BASIC: {
         "customers":              50,
@@ -18,6 +23,9 @@ PLAN_LIMITS = {
         "active_suppliers":       5,    # suppliers with cost-price items
         "staff":                  0,    # no app-access staff on Basic
         "school_teachers":        3,    # school-only: teacher roster records
+        "branches":               0,    # single location
+        "partners":               0,
+        "investors":              0,
     },
     PLAN_GO: {
         "customers":              None,
@@ -28,6 +36,9 @@ PLAN_LIMITS = {
         "active_suppliers":       None,
         "staff":                  0,    # Go = sole proprietor, no staff
         "school_teachers":        None,
+        "branches":               0,    # single location
+        "partners":               0,
+        "investors":              0,
     },
     PLAN_PRO: {
         "customers":              None,
@@ -38,6 +49,22 @@ PLAN_LIMITS = {
         "active_suppliers":       None,
         "staff":                  None, # unlimited app-access staff
         "school_teachers":        None,
+        "branches":               1,    # one branch (the owner's location)
+        "partners":               1,    # one partner
+        "investors":              1,    # one investor
+    },
+    PLAN_PREMIUM: {
+        "customers":              None,
+        "monthly_transactions":   None,
+        "monthly_invoice_uses":   None,
+        "thrift_participants":    None,
+        "active_inventory_items": None,
+        "active_suppliers":       None,
+        "staff":                  None, # unlimited app-access staff
+        "school_teachers":        None,
+        "branches":               None, # unlimited branches
+        "partners":               None, # unlimited partners
+        "investors":              None, # unlimited investors
     },
 }
 

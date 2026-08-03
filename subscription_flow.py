@@ -3,7 +3,7 @@ import re
 from admin import support_line
 from messages import build_plan_message, build_plan_payment_message, build_upgrade_message
 from models import PendingAction, SubscriptionPayment
-from plans import PLAN_GO, PLAN_PRO, normalize_plan
+from plans import PLAN_GO, PLAN_PRO, PLAN_PREMIUM, normalize_plan
 from subscriptions import create_subscription_payment_request, get_business_owner_user
 
 
@@ -69,11 +69,18 @@ def handle_upgrade_menu_pending(db, phone, text, pending, user, subscription, bu
         send_message(phone, build_plan_payment_message(PLAN_PRO))
         return {"status": "upgrade_pro_selected"}
 
-    if normalized in ["3", "my plan", "plan"]:
+    if normalized in ["3", "premium"]:
+        pending.action = "UPGRADE_PLAN_SELECTED"
+        pending.customer_name = PLAN_PREMIUM
+        db.commit()
+        send_message(phone, build_plan_payment_message(PLAN_PREMIUM))
+        return {"status": "upgrade_premium_selected"}
+
+    if normalized in ["4", "my plan", "plan"]:
         send_message(phone, build_plan_message(subscription, user))
         return {"status": "upgrade_my_plan"}
 
-    if normalized in ["4", "cancel", "exit", "back"]:
+    if normalized in ["5", "cancel", "exit", "back"]:
         pending_business_name = pending.customer_name or business_name
         db.delete(pending)
         if not user:
@@ -173,7 +180,7 @@ def handle_upgrade_plan_selected(
 
     send_message(
         phone,
-        "After payment, send PAID GO or PAID PRO.\n"
+        "After payment, send PAID GO, PAID PRO, or PAID PREMIUM.\n"
         "You can also send your receipt screenshot or payment reference here."
     )
     return {"status": "upgrade_plan_waiting_for_payment"}

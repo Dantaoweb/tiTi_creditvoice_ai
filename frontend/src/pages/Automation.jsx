@@ -82,7 +82,7 @@ export default function Automation() {
           reminder_time: d.reminder.reminder_time,
         });
         if (d.bot) setBot(d.bot);
-        setIsPro(cfg.plan === "PRO" || cfg.plan === "ENTERPRISE");
+        setIsPro(cfg.plan === "PRO" || cfg.plan === "PREMIUM" || cfg.plan === "ENTERPRISE");
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
