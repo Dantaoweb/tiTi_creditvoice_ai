@@ -12,7 +12,7 @@ import { usePlan } from "../lib/usePlan";
 
 const PAGE_SIZE = 20;   // products shown at once; slide/arrow to reveal more
 
-function ProductGrid({ ownerPhone, qtyFor, onSetQty }) {
+function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
@@ -21,11 +21,12 @@ function ProductGrid({ ownerPhone, qtyFor, onSetQty }) {
 
   useEffect(() => {
     if (!ownerPhone) return;
-    apiFetch("pos/products", { owner_phone: ownerPhone })
+    setLoading(true);
+    apiFetch("pos/products", { owner_phone: ownerPhone, ...(branchId ? { branch_id: branchId } : {}) })
       .then(d => setProducts(d.products || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [ownerPhone]);
+  }, [ownerPhone, branchId]);
 
   const filtered = q.trim()
     ? products.filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
@@ -248,6 +249,26 @@ export default function POS() {
   const creditRef = useRef(null);
   const creditVisible = useRef(false);
 
+  // Branch the sale is made from. Only owners choose it; branch staff are locked
+  // to their own branch by the backend, so we never show them a switcher.
+  const isOwner = !user?.parent_id;
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState(null);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    apiFetch("branches")
+      .then(d => {
+        const list = d.branches || [];
+        setBranches(list);
+        if (list.length) {
+          const def = list.find(b => b.is_default) || list[0];
+          setBranchId(def.id);
+        }
+      })
+      .catch(() => {});
+  }, [isOwner]);
+
   const total  = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
   const paid   = Math.min(parseAmt(payment), total);
   const change = Math.max(0, parseAmt(payment) - total);
@@ -346,6 +367,7 @@ export default function POS() {
         fraction:   it.fraction || 1.0,
       })),
       payment_amount: paid,
+      branch_id: branchId,
       due_date: (customer && owed > 0 && dueDate) ? dueDate : null,
       service_date: serviceDate || null,
     };
@@ -380,7 +402,21 @@ export default function POS() {
             <span onClick={() => window.location.href = "/app/upgrade"}>Upgrade to Go →</span>
           </div>
         )}
-        <ProductGrid ownerPhone={ownerPhone} qtyFor={qtyFor} onSetQty={setProductQty} />
+        {isOwner && branches.length > 1 && (
+          <div className="pos-branch-bar">
+            <span className="pos-branch-label">Selling from:</span>
+            <select
+              className="pos-branch-select"
+              value={branchId ?? ""}
+              onChange={e => setBranchId(Number(e.target.value))}
+            >
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>{b.name}{b.is_default ? " (default)" : ""}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <ProductGrid ownerPhone={ownerPhone} branchId={branchId} qtyFor={qtyFor} onSetQty={setProductQty} />
       </div>
 
       {/* ── Right: Order (cart + payment) ───────────────────────────── */}

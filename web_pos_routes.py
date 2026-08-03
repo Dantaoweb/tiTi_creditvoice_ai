@@ -44,11 +44,30 @@ class PosSaveRequest(BaseModel):
     service_date: Optional[datetime] = None   # promised delivery / ready-by date
 
 
+def _selling_branch(db, session, owner_phone, requested_branch_id):
+    """The branch a sale is happening from — you can only sell stock that belongs
+    to it. Branch staff are locked to their own branch; an owner may pick any of
+    their branches and otherwise falls back to their default branch. Returns None
+    for single-location businesses (no branches → no filtering)."""
+    scope_branch, _rec = _scoped_read(db, session)
+    if scope_branch is not None:
+        return scope_branch
+    if requested_branch_id is not None:
+        b = db.query(Branch).filter(
+            Branch.id == requested_branch_id, Branch.owner_phone == owner_phone
+        ).first()
+        if b:
+            return b.id
+    from transaction_save import _get_default_branch_id
+    return _get_default_branch_id(db, owner_phone)
+
+
 def register_pos_routes(app):
 
     @app.get("/app/api/pos/products")
     def web_pos_products(
         q: Optional[str] = Query(default=None),
+        branch_id: Optional[int] = Query(default=None),
         session: dict = Depends(require_web_auth),
     ):
         db = SessionLocal()
@@ -59,6 +78,11 @@ def register_pos_routes(app):
                 InventoryItem.owner_phone == owner_phone,
                 InventoryItem.selling_price != None,
             )
+            # Only show stock that belongs to the branch being sold from, so a
+            # branch can't sell another branch's (or the default branch's) stock.
+            eff_branch = _selling_branch(db, session, owner_phone, branch_id)
+            if eff_branch is not None:
+                query = query.filter(InventoryItem.branch_id == eff_branch)
             if q:
                 query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
             rows = query.order_by(InventoryItem.name).limit(50).all()
@@ -104,6 +128,24 @@ def register_pos_routes(app):
             else:
                 from transaction_save import _get_recording_branch_id
                 eff_branch = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
+
+            # Enforce branch gating server-side: you cannot sell an item that
+            # belongs to a different branch. Business-wide items (no branch) are
+            # sellable from anywhere.
+            if eff_branch is not None:
+                ids = [it["inventory_item_id"] for it in items if it.get("inventory_item_id")]
+                if ids:
+                    wrong = db.query(InventoryItem).filter(
+                        InventoryItem.owner_phone == owner_phone,
+                        InventoryItem.id.in_(ids),
+                        InventoryItem.branch_id != None,
+                        InventoryItem.branch_id != eff_branch,
+                    ).first()
+                    if wrong:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"'{wrong.name.title()}' belongs to another branch and can't be sold from here.",
+                        )
             result = save_pos_sale(
                 db,
                 owner_phone,

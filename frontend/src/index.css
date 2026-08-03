@@ -1024,6 +1024,28 @@ tr.low-stock td { background: #fffbeb; }
   font-weight: 600;
 }
 
+.pos-branch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pos-branch-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.pos-branch-select {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface, #fff);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .pos-products-panel {
   display: flex;
   flex-direction: column;
