@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from database import SessionLocal
-from models import User, AppNotification, FailedParse, Transaction, utcnow
+from models import User, AppNotification, FailedParse, Transaction, Customer, InventoryItem, utcnow
 from web_auth import require_web_auth
 from web_common import _admin_rate_check, _export_rate_check
 
@@ -252,9 +252,17 @@ def register_admin_routes(app):
         page: int = Query(default=1, ge=1),
         per_page: int = Query(default=50, le=200),
         q: str = Query(default=""),
+        sort: str = Query(default="recent"),   # recent | active | name
         session: dict = Depends(require_web_auth),
     ):
+        """Business directory with per-user activity — how much each business
+        actually uses the app: transactions recorded (all-time + last 30 days),
+        last active, and customer / stock counts. sort=active ranks every
+        business by transaction volume (the platform-wide "most active" view)."""
         from admin import is_app_admin
+        from collections import defaultdict
+        from datetime import timedelta
+        from sqlalchemy import func, case
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
@@ -263,20 +271,107 @@ def register_admin_routes(app):
             if not _admin_rate_check(user.phone):
                 raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
 
+            month_start = utcnow() - timedelta(days=30)
+            not_voided = Transaction.is_voided != True
+            recent_flag = case((Transaction.created_at >= month_start, 1), else_=0)
+
+            # ── Global activity maps (one grouped pass each) ──────────────────
+            # A transaction belongs to a business via its customer's owner_phone,
+            # or (direct sales with no customer) via the recorder's owner. Build
+            # both, keyed by owner phone.
+            tx_total  = defaultdict(int)
+            tx_30d    = defaultdict(int)
+            last_seen = {}
+
+            cust_rows = (
+                db.query(
+                    Customer.owner_phone,
+                    func.count(Transaction.id),
+                    func.sum(recent_flag),
+                    func.max(Transaction.created_at),
+                )
+                .join(Transaction, Transaction.customer_id == Customer.id)
+                .filter(not_voided)
+                .group_by(Customer.owner_phone)
+                .all()
+            )
+            for ph, cnt, c30, last in cust_rows:
+                if not ph:
+                    continue
+                tx_total[ph] += int(cnt or 0)
+                tx_30d[ph] += int(c30 or 0)
+                if last:
+                    last_seen[ph] = last
+
+            # Map every user id → their business owner phone (owners → self,
+            # staff → parent) so direct sales attribute to the business.
+            id_phone, parent_of = {}, {}
+            for uid, uphone, pid in db.query(User.id, User.phone, User.parent_id).all():
+                id_phone[uid] = uphone
+                parent_of[uid] = pid
+
+            def _owner_phone(uid):
+                pid = parent_of.get(uid)
+                return id_phone.get(pid) if pid else id_phone.get(uid)
+
+            direct_rows = (
+                db.query(
+                    Transaction.recorded_by_id,
+                    func.count(Transaction.id),
+                    func.sum(recent_flag),
+                    func.max(Transaction.created_at),
+                )
+                .filter(Transaction.customer_id == None, not_voided)
+                .group_by(Transaction.recorded_by_id)
+                .all()
+            )
+            for rid, cnt, c30, last in direct_rows:
+                ph = _owner_phone(rid)
+                if not ph:
+                    continue
+                tx_total[ph] += int(cnt or 0)
+                tx_30d[ph] += int(c30 or 0)
+                if last and (ph not in last_seen or last > last_seen[ph]):
+                    last_seen[ph] = last
+
+            # ── Base directory query ──────────────────────────────────────────
             query = db.query(User).filter(User.parent_id == None)
             if q:
                 like = f"%{q}%"
                 query = query.filter(
                     User.name.ilike(like) | User.phone.ilike(like) | User.email.ilike(like)
                 )
-
             total = query.count()
-            rows  = query.order_by(User.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+            start = (page - 1) * per_page
+            if sort == "active":
+                # True platform-wide ranking: order all matches by tx volume.
+                owners = query.all()
+                owners.sort(key=lambda u: (tx_total.get(u.phone, 0), tx_30d.get(u.phone, 0)), reverse=True)
+                rows = owners[start:start + per_page]
+            elif sort == "name":
+                rows = query.order_by(User.name).offset(start).limit(per_page).all()
+            else:
+                rows = query.order_by(User.created_at.desc()).offset(start).limit(per_page).all()
+
+            # ── Customer / stock counts for the page's businesses ─────────────
+            page_phones = [u.phone for u in rows if u.phone]
+            cust_counts = dict(
+                db.query(Customer.owner_phone, func.count(Customer.id))
+                .filter(Customer.owner_phone.in_(page_phones))
+                .group_by(Customer.owner_phone).all()
+            ) if page_phones else {}
+            item_counts = dict(
+                db.query(InventoryItem.owner_phone, func.count(InventoryItem.id))
+                .filter(InventoryItem.owner_phone.in_(page_phones))
+                .group_by(InventoryItem.owner_phone).all()
+            ) if page_phones else {}
 
             return {
                 "total": total,
                 "page": page,
                 "per_page": per_page,
+                "sort": sort,
                 "users": [
                     {
                         "id": u.id,
@@ -287,6 +382,11 @@ def register_admin_routes(app):
                         "subscription_plan": u.subscription_plan,
                         "subscription_status": u.subscription_status,
                         "created_at": u.created_at.isoformat() if u.created_at else None,
+                        "transactions_total": tx_total.get(u.phone, 0),
+                        "transactions_30d": tx_30d.get(u.phone, 0),
+                        "last_active": last_seen[u.phone].isoformat() if u.phone in last_seen else None,
+                        "customers": int(cust_counts.get(u.phone, 0)),
+                        "stock_items": int(item_counts.get(u.phone, 0)),
                     }
                     for u in rows
                 ],

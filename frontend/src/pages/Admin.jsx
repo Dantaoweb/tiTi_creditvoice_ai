@@ -118,11 +118,12 @@ function UsersTab() {
   const [data, setData] = useState(null);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState("recent");   // recent | active | name
   const [loading, setLoading] = useState(true);
 
-  function load(pg = page, search = q) {
+  function load(pg = page, search = q, srt = sort) {
     setLoading(true);
-    apiFetch(`admin/users?page=${pg}&per_page=50&q=${encodeURIComponent(search)}`)
+    apiFetch(`admin/users?page=${pg}&per_page=50&sort=${srt}&q=${encodeURIComponent(search)}`)
       .then(d => setData(d))
       .finally(() => setLoading(false));
   }
@@ -133,6 +134,21 @@ function UsersTab() {
     e.preventDefault();
     setPage(1);
     load(1, q);
+  }
+
+  function changeSort(srt) {
+    setSort(srt);
+    setPage(1);
+    load(1, q, srt);
+  }
+
+  function fmtLastActive(iso) {
+    if (!iso) return "never";
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (days <= 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 30) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString();
   }
 
   const PLAN_COLOR = { BASIC: "#6b7280", GO: "#863bff", PRO: "#d97706", PREMIUM: "#0f766e", ENTERPRISE: "#7c3aed" };
@@ -152,19 +168,37 @@ function UsersTab() {
         </button>
       </form>
 
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Sort:</span>
+        {[["active", "Most active"], ["recent", "Newest"], ["name", "Name"]].map(([val, lbl]) => (
+          <button
+            key={val}
+            onClick={() => changeSort(val)}
+            className="btn btn-sm"
+            style={{
+              padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+              border: "1px solid var(--border)",
+              background: sort === val ? "var(--brand)" : "transparent",
+              color: sort === val ? "#fff" : "var(--text-muted)",
+            }}
+          >{lbl}</button>
+        ))}
+      </div>
+
       {loading ? (
         <p style={{ color: "var(--text-muted)" }}>Loading…</p>
       ) : !data ? null : (
         <>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 10 }}>
             Showing {data.users.length.toLocaleString()} of {(data.total ?? 0).toLocaleString()} businesses
+            {sort === "active" && " · ranked by transactions recorded"}
           </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "var(--surface-2, #f9fafb)", textAlign: "left" }}>
-                  {["Name", "Phone", "Business Type", "Plan", "Status", "Joined"].map(h => (
-                    <th key={h} style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", fontWeight: 600 }}>{h}</th>
+                  {["Name", "Phone", "Business Type", "Plan", "Status", "Txns", "30d", "Customers", "Stock", "Last active", "Joined"].map(h => (
+                    <th key={h} style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -191,6 +225,11 @@ function UsersTab() {
                         {u.subscription_status || "ACTIVE"}
                       </span>
                     </td>
+                    <td style={{ padding: "7px 10px", fontWeight: 700, textAlign: "right" }}>{(u.transactions_total ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "7px 10px", color: "var(--text-muted)", textAlign: "right" }}>{(u.transactions_30d ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "7px 10px", color: "var(--text-muted)", textAlign: "right" }}>{(u.customers ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "7px 10px", color: "var(--text-muted)", textAlign: "right" }}>{(u.stock_items ?? 0).toLocaleString()}</td>
+                    <td style={{ padding: "7px 10px", color: "var(--text-muted)", fontSize: 11, whiteSpace: "nowrap" }}>{fmtLastActive(u.last_active)}</td>
                     <td style={{ padding: "7px 10px", color: "var(--text-muted)", fontSize: 11, whiteSpace: "nowrap" }}>
                       {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
                     </td>
