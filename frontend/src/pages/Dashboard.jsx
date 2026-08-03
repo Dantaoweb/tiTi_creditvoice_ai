@@ -47,9 +47,33 @@ function InviteCard() {
     finally { setSaving(false); }
   }
 
+  // Always share an absolute URL. The server builds data.link from APP_BASE_URL,
+  // which may be unset (giving a relative path) — fall back to this origin so the
+  // link is always shareable.
+  const shareLink = data?.referral_code
+    ? ((data.link && /^https?:\/\//i.test(data.link))
+        ? data.link
+        : `${window.location.origin}/app/login?mode=register&ref=${data.referral_code}`)
+    : null;
+
   function copyLink() {
-    if (!data?.link) return;
-    navigator.clipboard.writeText(data.link).then(() => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink).then(() => {
+      setCopied("web");
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  async function shareCode() {
+    if (!shareLink) return;
+    const text = `Join me on tiTi! Sign up with my code ${data.referral_code} and get 14 days of GO plan free:`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Join me on tiTi", text, url: shareLink });
+        return;
+      } catch { /* user cancelled — fall through to copy */ }
+    }
+    navigator.clipboard.writeText(`${text} ${shareLink}`).then(() => {
       setCopied("web");
       setTimeout(() => setCopied(false), 2000);
     });
@@ -93,11 +117,14 @@ function InviteCard() {
               </div>
 
               {/* Web link */}
-              {data.link && (
+              {shareLink && (
                 <div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Web sign-up link</div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all", flex: 1 }}>{data.link}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all", flex: 1 }}>{shareLink}</span>
+                    <button className="btn btn-primary btn-sm" onClick={shareCode}>
+                      <Share2 size={12} /> Share
+                    </button>
                     <button className="btn btn-secondary btn-sm" onClick={copyLink}>
                       {copied === "web" ? <><CheckCircle size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
                     </button>
