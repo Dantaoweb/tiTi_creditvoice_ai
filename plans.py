@@ -10,6 +10,23 @@ PLAN_ORDER = {
     PLAN_PREMIUM: 4,
 }
 
+# ── Billing period ───────────────────────────────────────────────────────────
+# Plans bill monthly (30-day window) or yearly (365-day window). Yearly is
+# priced at YEARLY_MONTHS × the monthly price — i.e. 2 months free.
+PERIOD_MONTHLY = "MONTHLY"
+PERIOD_YEARLY  = "YEARLY"
+YEARLY_MONTHS  = 10
+
+
+def normalize_period(period):
+    p = (period or PERIOD_MONTHLY).upper().strip()
+    return p if p in (PERIOD_MONTHLY, PERIOD_YEARLY) else PERIOD_MONTHLY
+
+
+def period_days(period):
+    """Activation window in days for a billing period."""
+    return 365 if normalize_period(period) == PERIOD_YEARLY else 30
+
 # Numeric caps: None = unlimited, 0 = feature not available on the plan.
 # Pro unlocks staff/branches/partners but caps branches/partners/investors at 1
 # each; Premium removes those caps (everything unlimited).

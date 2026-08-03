@@ -21,10 +21,12 @@ from web_common import _add_notification
 
 class SubscriptionRequestBody(BaseModel):
     plan: str = Field(max_length=10)
+    period: str = Field(default="MONTHLY", max_length=10)
 
 
 class MonnifyInitBody(BaseModel):
     plan: str = Field(max_length=10)
+    period: str = Field(default="MONTHLY", max_length=10)
 
 
 class MonnifyVerifyBody(BaseModel):
@@ -57,6 +59,11 @@ def register_subscription_routes(app):
                 "status":     sub["status"],
                 "expires_at": sub["expires_at"].isoformat() if sub["expires_at"] else None,
                 "prices":     {"GO": go_price, "PRO": pro_price, "PREMIUM": premium_price},
+                "prices_yearly": {
+                    "GO":      get_plan_price("GO", "YEARLY"),
+                    "PRO":     get_plan_price("PRO", "YEARLY"),
+                    "PREMIUM": get_plan_price("PREMIUM", "YEARLY"),
+                },
                 "bank_details": bank_details,
                 "monnify": {
                     "api_key":       os.getenv("MONNIFY_API_KEY", ""),
@@ -67,6 +74,7 @@ def register_subscription_routes(app):
                     "id":     pending.id,
                     "plan":   pending.plan,
                     "amount": pending.amount,
+                    "period": pending.billing_period or "MONTHLY",
                     "method": pending.payment_method,
                     "status": pending.status,
                 } if pending else None,
@@ -96,13 +104,14 @@ def register_subscription_routes(app):
             plan = normalize_plan(payload.plan)
             if plan == PLAN_BASIC:
                 raise HTTPException(status_code=400, detail="Cannot request a downgrade to Basic.")
-            payment = create_subscription_payment_request(db, user, plan)
+            payment = create_subscription_payment_request(db, user, plan, payload.period)
             payment.payment_method = "BANK_TRANSFER"
             db.commit()
             return {
                 "ok": True,
                 "payment_id": payment.id,
                 "plan": plan,
+                "period": payment.billing_period,
                 "amount": payment.amount,
                 "bank_details": get_payment_account_message(),
                 "reference": user.phone,
@@ -138,7 +147,7 @@ def register_subscription_routes(app):
                 plan = normalize_plan(payload.plan)
                 if plan == PLAN_BASIC:
                     raise HTTPException(status_code=400, detail="Invalid plan.")
-                payment = create_subscription_payment_request(db, user, plan)
+                payment = create_subscription_payment_request(db, user, plan, payload.period)
                 payment.payment_method = "BANK_TRANSFER"
                 db.commit()
 
@@ -187,7 +196,7 @@ def register_subscription_routes(app):
             plan = normalize_plan(payload.plan)
             if plan == PLAN_BASIC:
                 raise HTTPException(status_code=400, detail="Cannot request Basic via Monnify.")
-            payment = create_subscription_payment_request(db, user, plan)
+            payment = create_subscription_payment_request(db, user, plan, payload.period)
             payment.payment_method = "MONNIFY"
             # Use the DB payment ID as the unique reference for Monnify
             db.flush()
@@ -205,7 +214,8 @@ def register_subscription_routes(app):
                 "is_test": is_test,
                 "customer_name": user.name or user.phone,
                 "customer_email": user.email or f"{user.phone}@creditvoice.app",
-                "description": f"CreditVoice {plan} Plan - 1 month",
+                "period": payment.billing_period,
+                "description": f"CreditVoice {plan} Plan - {'1 year' if payment.billing_period == 'YEARLY' else '1 month'}",
             }
         finally:
             db.close()

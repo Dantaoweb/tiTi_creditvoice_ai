@@ -578,6 +578,10 @@ class SubscriptionPayment(Base):
 
     amount = Column(Integer)
 
+    # "MONTHLY" (30-day) or "YEARLY" (365-day). Drives the activation window in
+    # approve_subscription_payment.
+    billing_period = Column(String, default="MONTHLY")
+
     status = Column(String, default="PENDING")
 
     payment_method = Column(String, default="BANK_TRANSFER")

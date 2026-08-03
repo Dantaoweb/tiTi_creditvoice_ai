@@ -205,10 +205,12 @@ def check_partner_limit(db, owner, subscription, role="partner"):
     )
 
 
-def create_subscription_payment_request(db, user, plan):
+def create_subscription_payment_request(db, user, plan, period="MONTHLY"):
+    from plans import normalize_period
     owner = get_business_owner_user(db, user)
     plan = normalize_plan(plan)
-    amount = get_plan_price(plan)
+    period = normalize_period(period)
+    amount = get_plan_price(plan, period)
 
     existing = db.query(SubscriptionPayment).filter(
         SubscriptionPayment.user_id == owner.id,
@@ -220,6 +222,7 @@ def create_subscription_payment_request(db, user, plan):
     if existing:
         existing.plan = plan
         existing.amount = amount
+        existing.billing_period = period
         existing.phone = owner.phone
         existing.payment_method = "BANK_TRANSFER"
         existing.evidence_type = None
@@ -232,6 +235,7 @@ def create_subscription_payment_request(db, user, plan):
         phone=owner.phone,
         plan=plan,
         amount=amount,
+        billing_period=period,
         status="PENDING",
         payment_method="BANK_TRANSFER"
     )
@@ -240,7 +244,7 @@ def create_subscription_payment_request(db, user, plan):
     return payment
 
 
-def create_monnify_subscription_link(db, user, plan):
+def create_monnify_subscription_link(db, user, plan, period="MONTHLY"):
     """Create/reuse a pending subscription payment as a Monnify online payment
     and return (payment, checkout_url). checkout_url is None when Monnify is
     unavailable, in which case the caller should fall back to bank transfer.
@@ -252,19 +256,20 @@ def create_monnify_subscription_link(db, user, plan):
     from wallet_service import create_monnify_checkout
 
     owner = get_business_owner_user(db, user)
-    payment = create_subscription_payment_request(db, user, plan)
+    payment = create_subscription_payment_request(db, user, plan, period)
     payment.payment_method = "MONNIFY"
     db.flush()
     ref = f"CV-SUB-{payment.id}-{_uuid.uuid4().hex[:6].upper()}"
     payment.evidence_ref = ref
 
     email = getattr(owner, "email", None) or f"{owner.phone}@creditvoice.app"
+    _term = "1 year" if (payment.billing_period or "MONTHLY").upper() == "YEARLY" else "1 month"
     checkout_url = create_monnify_checkout(
         reference=ref,
         amount=payment.amount,
         customer_name=(owner.name or owner.phone),
         customer_email=email,
-        description=f"CreditVoice {payment.plan} Plan - 1 month",
+        description=f"CreditVoice {payment.plan} Plan - {_term}",
     )
     return payment, checkout_url
 
@@ -291,9 +296,10 @@ def approve_subscription_payment(db, payment, admin_user):
     if not owner:
         return None
 
+    from plans import period_days
     owner.subscription_plan = normalize_plan(payment.plan)
     owner.subscription_status = "ACTIVE"
-    owner.subscription_expires_at = _utcnow() + timedelta(days=30)
+    owner.subscription_expires_at = _utcnow() + timedelta(days=period_days(payment.billing_period))
     payment.status = "APPROVED"
     payment.approved_at = _utcnow()
     payment.approved_by_user_id = admin_user.id if admin_user else None

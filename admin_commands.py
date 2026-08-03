@@ -63,7 +63,7 @@ def notify_subscription_admins(db, payment, owner, send_message, evidence_receiv
         "Subscription Payment Pending\n\n"
         f"Business: {owner_name}\n"
         f"Phone: {payment.phone}\n"
-        f"Plan: {payment.plan}\n"
+        f"Plan: {payment.plan} ({(getattr(payment, 'billing_period', None) or 'MONTHLY').title()})\n"
         f"Amount: N{payment.amount:,}\n"
         f"Method: {method}\n"
         f"{evidence_line}\n\n"

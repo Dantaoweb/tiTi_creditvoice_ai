@@ -869,6 +869,16 @@ def ensure_schema_updates(engine):
                         f"ALTER TABLE transaction_items ADD COLUMN {col} {typ}"
                     ))
 
+    # ── billing_period on subscription_payments (monthly vs yearly) ──────────
+    if "subscription_payments" in inspector.get_table_names():
+        _sp_cols = {c["name"] for c in inspector.get_columns("subscription_payments")}
+        if "billing_period" not in _sp_cols:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "ALTER TABLE subscription_payments "
+                    "ADD COLUMN billing_period VARCHAR DEFAULT 'MONTHLY'"
+                ))
+
     # ── One-time grandfather: existing PRO subscribers → PREMIUM ─────────────
     # The plan ladder gained a 4th tier (Premium). Today's PRO capabilities
     # (unlimited branches/partners/investors) moved up to PREMIUM, and PRO

@@ -134,8 +134,7 @@ def build_upgrade_message(user=None):
     )
 
 
-def get_plan_price(plan):
-    plan = normalize_plan(plan)
+def _monthly_price(plan):
     if plan == PLAN_GO:
         return int(os.getenv("PLAN_GO_PRICE", "3000"))
     if plan == PLAN_PRO:
@@ -143,6 +142,24 @@ def get_plan_price(plan):
     if plan == PLAN_PREMIUM:
         return int(os.getenv("PLAN_PREMIUM_PRICE", "10000"))
     return 0
+
+
+# Yearly prices default to 10× the monthly price (2 months free) but can be
+# overridden per plan on Render via these env vars.
+_YEARLY_ENV = {
+    PLAN_GO:      "PLAN_GO_YEARLY_PRICE",
+    PLAN_PRO:     "PLAN_PRO_YEARLY_PRICE",
+    PLAN_PREMIUM: "PLAN_PREMIUM_YEARLY_PRICE",
+}
+
+
+def get_plan_price(plan, period="MONTHLY"):
+    from plans import normalize_period, PERIOD_YEARLY, YEARLY_MONTHS
+    plan = normalize_plan(plan)
+    monthly = _monthly_price(plan)
+    if monthly and normalize_period(period) == PERIOD_YEARLY:
+        return int(os.getenv(_YEARLY_ENV[plan], str(monthly * YEARLY_MONTHS)))
+    return monthly
 
 
 def get_payment_account_message():
@@ -156,9 +173,22 @@ def get_payment_account_message():
     )
 
 
-def build_plan_payment_message(plan):
+def build_plan_payment_message(plan, period="MONTHLY"):
+    from plans import normalize_period, PERIOD_YEARLY
     plan = normalize_plan(plan)
-    amount = get_plan_price(plan)
+    period = normalize_period(period)
+    amount = get_plan_price(plan, period)
+    is_yearly = period == PERIOD_YEARLY
+    per_label = "year" if is_yearly else "month"
+    monthly_amt = get_plan_price(plan, "MONTHLY")
+    yearly_amt = get_plan_price(plan, "YEARLY")
+    # Let the user switch billing period from this same screen.
+    toggle = (
+        f"\nBilling: *{'Yearly' if is_yearly else 'Monthly'}*\n"
+        f"1. Monthly - N{monthly_amt:,}/month\n"
+        f"2. Yearly - N{yearly_amt:,}/year (2 months free)\n"
+        f"Reply 1 or 2 to switch.\n"
+    )
     if plan == PLAN_PREMIUM:
         benefits = (
             "Everything in Pro plus:\n"
@@ -191,8 +221,9 @@ def build_plan_payment_message(plan):
         )
 
     return (
-        f"{plan} Plan - N{amount:,}/month\n\n"
-        f"{benefits}\n\n"
+        f"{plan} Plan - N{amount:,}/{per_label}\n\n"
+        f"{benefits}\n"
+        f"{toggle}\n"
         "Pay to:\n"
         f"{get_payment_account_message()}\n\n"
         f"After payment, send:\nPAID {plan}\n\n"

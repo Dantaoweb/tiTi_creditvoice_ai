@@ -1,9 +1,10 @@
+import json
 import re
 
 from admin import support_line
 from messages import build_plan_message, build_plan_payment_message, build_upgrade_message
 from models import PendingAction, SubscriptionPayment
-from plans import PLAN_GO, PLAN_PRO, PLAN_PREMIUM, normalize_plan
+from plans import PLAN_GO, PLAN_PRO, PLAN_PREMIUM, normalize_plan, normalize_period
 from subscriptions import create_subscription_payment_request, get_business_owner_user
 
 
@@ -12,6 +13,23 @@ def is_subscription_evidence_text(text):
         r"\b(receipt|ref|reference|transfer|payment|sent|paid)\b",
         text.lower()
     ))
+
+
+def _pending_period(pending):
+    """Billing period chosen during the upgrade flow, stored on payload_json."""
+    try:
+        return normalize_period((json.loads(pending.payload_json or "{}") or {}).get("period"))
+    except Exception:
+        return "MONTHLY"
+
+
+def _set_pending_period(pending, period):
+    try:
+        data = json.loads(pending.payload_json or "{}") or {}
+    except Exception:
+        data = {}
+    data["period"] = normalize_period(period)
+    pending.payload_json = json.dumps(data)
 
 
 def handle_subscription_media_receipt(
@@ -58,6 +76,7 @@ def handle_upgrade_menu_pending(db, phone, text, pending, user, subscription, bu
     if normalized in ["1", "go"]:
         pending.action = "UPGRADE_PLAN_SELECTED"
         pending.customer_name = PLAN_GO
+        _set_pending_period(pending, "MONTHLY")
         db.commit()
         send_message(phone, build_plan_payment_message(PLAN_GO))
         return {"status": "upgrade_go_selected"}
@@ -65,6 +84,7 @@ def handle_upgrade_menu_pending(db, phone, text, pending, user, subscription, bu
     if normalized in ["2", "pro"]:
         pending.action = "UPGRADE_PLAN_SELECTED"
         pending.customer_name = PLAN_PRO
+        _set_pending_period(pending, "MONTHLY")
         db.commit()
         send_message(phone, build_plan_payment_message(PLAN_PRO))
         return {"status": "upgrade_pro_selected"}
@@ -72,6 +92,7 @@ def handle_upgrade_menu_pending(db, phone, text, pending, user, subscription, bu
     if normalized in ["3", "premium"]:
         pending.action = "UPGRADE_PLAN_SELECTED"
         pending.customer_name = PLAN_PREMIUM
+        _set_pending_period(pending, "MONTHLY")
         db.commit()
         send_message(phone, build_plan_payment_message(PLAN_PREMIUM))
         return {"status": "upgrade_premium_selected"}
@@ -118,11 +139,25 @@ def handle_upgrade_plan_selected(
         send_message(phone, "Upgrade request closed.")
         return {"status": "upgrade_plan_cancelled"}
 
+    # Switch billing period (monthly ↔ yearly) and re-show the payment details.
+    if normalized in ["1", "monthly", "month"]:
+        _set_pending_period(pending, "MONTHLY")
+        db.commit()
+        send_message(phone, build_plan_payment_message(normalize_plan(pending.customer_name), "MONTHLY"))
+        return {"status": "upgrade_period_monthly"}
+    if normalized in ["2", "yearly", "year", "annual", "annually"]:
+        _set_pending_period(pending, "YEARLY")
+        db.commit()
+        send_message(phone, build_plan_payment_message(normalize_plan(pending.customer_name), "YEARLY"))
+        return {"status": "upgrade_period_yearly"}
+
+    period = _pending_period(pending)
+
     # Pay online (card / transfer via secure Monnify link) — auto-activates on payment
     if normalized in ["online", "pay online", "card", "link", "pay by card", "pay with card"]:
         plan = normalize_plan(pending.customer_name)
         from subscriptions import create_monnify_subscription_link
-        payment, checkout_url = create_monnify_subscription_link(db, user, plan)
+        payment, checkout_url = create_monnify_subscription_link(db, user, plan, period)
         if checkout_url:
             pending.action = "SUBSCRIPTION_PAYMENT_PENDING"
             pending.customer_name = plan
@@ -141,13 +176,13 @@ def handle_upgrade_plan_selected(
         send_message(
             phone,
             "Online payment is temporarily unavailable. Please pay by bank transfer:\n\n"
-            + build_plan_payment_message(plan)
+            + build_plan_payment_message(plan, period)
         )
         return {"status": "subscription_monnify_unavailable"}
 
     if evidence_text or normalized in ["paid", "done", "i have paid", "i paid"]:
         plan = normalize_plan(pending.customer_name)
-        payment = create_subscription_payment_request(db, user, plan)
+        payment = create_subscription_payment_request(db, user, plan, period)
         pending.action = "SUBSCRIPTION_PAYMENT_PENDING"
         pending.customer_name = plan
         pending.reminder_id = payment.id

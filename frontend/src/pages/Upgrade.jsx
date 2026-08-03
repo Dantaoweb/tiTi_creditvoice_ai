@@ -23,18 +23,19 @@ const FEATURES = [
 ];
 
 // ── Bank Transfer modal ──────────────────────────────────────────────────────
-function BankTransferModal({ plan, status, onClose, onDone }) {
+function BankTransferModal({ plan, period = "MONTHLY", status, onClose, onDone }) {
   const [step, setStep] = useState("details"); // details | confirm | done
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [info, setInfo] = useState(null);
+  const periodLabel = period === "YEARLY" ? "year" : "month";
 
   useEffect(() => {
     setLoading(true);
-    apiPost("subscription/request", { plan })
+    apiPost("subscription/request", { plan, period })
       .then(d => { setInfo(d); setLoading(false); })
       .catch(e => { setErr(e.message); setLoading(false); });
-  }, [plan]);
+  }, [plan, period]);
 
   const bankLines = (info?.bank_details || "").split("\n").filter(Boolean);
 
@@ -52,7 +53,7 @@ function BankTransferModal({ plan, status, onClose, onDone }) {
             <>
               <div className="upgrade-bank-amount">
                 <Banknote size={20} />
-                Pay <strong>{nairaFull(info.amount)}</strong> to:
+                Pay <strong>{nairaFull(info.amount)}</strong> ({periodLabel === "year" ? "yearly" : "monthly"}) to:
               </div>
               <div className="upgrade-bank-card">
                 {bankLines.map((line, i) => (
@@ -86,7 +87,7 @@ function BankTransferModal({ plan, status, onClose, onDone }) {
               <button className="btn btn-primary" onClick={async () => {
                 // Alert admins (WhatsApp + email) that this user reports paying.
                 // Non-blocking: still advance the UI even if the ping fails.
-                try { await apiPost("subscription/confirm-payment", { plan }); } catch { /* ignore */ }
+                try { await apiPost("subscription/confirm-payment", { plan, period }); } catch { /* ignore */ }
                 setStep("done"); onDone && onDone();
               }}>
                 I've made the transfer
@@ -191,6 +192,7 @@ export default function Upgrade() {
   const [bankModal, setBankModal] = useState(null);  // "GO" | "PRO" | "PREMIUM" | null
   const [successMsg, setSuccessMsg] = useState("");
   const [monnifyErr, setMonnifyErr] = useState("");
+  const [billing, setBilling] = useState("MONTHLY");  // "MONTHLY" | "YEARLY"
 
   function load() {
     setLoading(true);
@@ -203,6 +205,10 @@ export default function Upgrade() {
 
   const currentPlan = (status?.plan || user?.subscription_plan || "BASIC").toUpperCase();
   const prices = status?.prices || { GO: 3000, PRO: 7000, PREMIUM: 10000 };
+  const pricesYearly = status?.prices_yearly || { GO: 30000, PRO: 70000, PREMIUM: 100000 };
+  const isYearly = billing === "YEARLY";
+  const priceFor = (key) => (isYearly ? pricesYearly[key] : prices[key]);
+  const perLabel = isYearly ? "/year" : "/month";
 
   function handleMonnifySuccess(result) {
     setSuccessMsg(`🎉 Payment confirmed! Your ${result.plan} plan is now active.`);
@@ -222,7 +228,7 @@ export default function Upgrade() {
     {
       key: "GO",
       label: "Go",
-      price: prices.GO,
+      price: priceFor("GO"),
       desc: "For growing businesses",
       color: "#863bff",
       bg: "linear-gradient(135deg, #f3e8ff 0%, #ede9fe 100%)",
@@ -230,7 +236,7 @@ export default function Upgrade() {
     {
       key: "PRO",
       label: "Pro",
-      price: prices.PRO,
+      price: priceFor("PRO"),
       desc: "Team & staff, plus 1 branch, 1 partner, 1 investor",
       color: "#d97706",
       bg: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
@@ -238,7 +244,7 @@ export default function Upgrade() {
     {
       key: "PREMIUM",
       label: "Premium",
-      price: prices.PREMIUM,
+      price: priceFor("PREMIUM"),
       desc: "Everything in Pro with unlimited branches, partners & investors",
       color: "#0f766e",
       bg: "linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%)",
@@ -264,7 +270,7 @@ export default function Upgrade() {
           </div>
           {status.pending_payment && (
             <div className="upgrade-pending-chip">
-              ⏳ {status.pending_payment.plan} upgrade pending ({status.pending_payment.method === "BANK_TRANSFER" ? "Bank Transfer" : "Monnify"})
+              ⏳ {status.pending_payment.plan}{status.pending_payment.period === "YEARLY" ? " (Yearly)" : ""} upgrade pending ({status.pending_payment.method === "BANK_TRANSFER" ? "Bank Transfer" : "Monnify"})
             </div>
           )}
         </div>
@@ -285,6 +291,30 @@ export default function Upgrade() {
         <div className="td-muted" style={{ padding: 40, textAlign: "center" }}>Loading…</div>
       ) : (
         <>
+          {/* Monthly / Yearly billing toggle */}
+          <div className="upgrade-billing-toggle" role="tablist"
+               style={{ display: "flex", justifyContent: "center", gap: 4, margin: "4px auto 18px",
+                        background: "var(--surface, #f1f5f9)", borderRadius: 999, padding: 4, width: "fit-content" }}>
+            {[["MONTHLY", "Monthly"], ["YEARLY", "Yearly"]].map(([val, lbl]) => (
+              <button
+                key={val}
+                role="tab"
+                aria-selected={billing === val}
+                onClick={() => setBilling(val)}
+                className="btn"
+                style={{
+                  borderRadius: 999, border: "none", fontWeight: 700, padding: "7px 18px",
+                  background: billing === val ? "#2563eb" : "transparent",
+                  color: billing === val ? "#fff" : "var(--muted)",
+                }}
+              >
+                {lbl}{val === "YEARLY" && <span style={{
+                  marginLeft: 6, fontSize: 11, fontWeight: 700,
+                  color: billing === val ? "#bfdbfe" : "#16a34a" }}>2 months free</span>}
+              </button>
+            ))}
+          </div>
+
           {/* Plan cards */}
           <div className="upgrade-cards">
             {PLANS.map(p => {
@@ -300,7 +330,7 @@ export default function Upgrade() {
                   <div className="upgrade-card-name" style={{ color: p.color }}>{p.label}</div>
                   <div className="upgrade-card-price">
                     {p.price ? (
-                      <>{nairaFull(p.price)}<span className="upgrade-card-period">/month</span></>
+                      <>{nairaFull(p.price)}<span className="upgrade-card-period">{perLabel}</span></>
                     ) : (
                       <span style={{ color: "var(--muted)" }}>Free</span>
                     )}
@@ -380,6 +410,7 @@ export default function Upgrade() {
       {bankModal && (
         <BankTransferModal
           plan={bankModal}
+          period={billing}
           onClose={() => setBankModal(null)}
           onDone={() => load()}
         />
