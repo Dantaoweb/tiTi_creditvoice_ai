@@ -131,9 +131,11 @@ function PaymentModal({ customer, onClose, onSaved }) {
 // ── Customer profile / measurements modal ────────────────────────────────────
 const _LONG_KEYS = new Set(["notes", "style_notes", "fault"]);
 
-function ProfileModal({ customer, onClose }) {
+function ProfileModal({ customer, onClose, onSaved }) {
   const [fields, setFields] = useState([]);
   const [values, setValues] = useState({});
+  const [name, setName] = useState(customer.name || "");
+  const [phone, setPhone] = useState(customer.phone || "");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -151,8 +153,13 @@ function ProfileModal({ customer, onClose }) {
   async function save() {
     setSaving(true); setErr("");
     try {
+      // Rename / phone update (only if changed) then structured profile values.
+      if (name.trim() !== (customer.name || "") || (phone || "") !== (customer.phone || "")) {
+        await apiPut(`customers/${customer.id}`, { name: name.trim(), phone });
+      }
       await apiPost(`customers/${customer.id}/profile`, { values });
       setSaved(true);
+      if (onSaved) onSaved();
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   }
@@ -160,6 +167,17 @@ function ProfileModal({ customer, onClose }) {
   return (
     <Modal title={`Details — ${customer.name}`} onClose={onClose}>
       <div className="modal-body" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+          <div className="form-group" style={{ flex: "1 1 55%", minWidth: 0 }}>
+            <label className="form-label">Customer name</label>
+            <input value={name} onChange={e => { setName(e.target.value); setSaved(false); }} />
+          </div>
+          <div className="form-group" style={{ flex: "1 1 40%", minWidth: 0 }}>
+            <label className="form-label">Phone</label>
+            <input inputMode="tel" value={phone}
+              onChange={e => { setPhone(e.target.value); setSaved(false); }} />
+          </div>
+        </div>
         {loading ? (
           <div className="td-muted">Loading…</div>
         ) : (
@@ -800,7 +818,7 @@ export default function Customers() {
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
                       className="btn btn-ghost btn-xs"
-                      title="Details / measurements"
+                      title="Edit name & details"
                       onClick={() => setProfileCustomer(r)}
                     >
                       <Pencil size={13} />
@@ -866,6 +884,7 @@ export default function Customers() {
         <ProfileModal
           customer={profileCustomer}
           onClose={() => setProfileCustomer(null)}
+          onSaved={load}
         />
       )}
     </>

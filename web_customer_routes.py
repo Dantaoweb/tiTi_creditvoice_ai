@@ -29,6 +29,11 @@ class AddCustomerRequest(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=20)
 
 
+class EditCustomerRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=20)
+
+
 class RecordPaymentRequest(BaseModel):
     amount: int
     note: Optional[str] = Field(default=None, max_length=500)
@@ -140,6 +145,49 @@ def register_customer_routes(app):
             db.commit()
             db.refresh(c)
             return {"id": c.id, "name": c.name, "phone": c.customer_phone, "balance": 0}
+        finally:
+            db.close()
+
+    @app.put("/app/api/customers/{customer_id}")
+    def web_edit_customer(
+        customer_id: int,
+        payload: EditCustomerRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Rename a customer (and/or update their phone). Owner-scoped like the
+        other customer mutations; blocks renaming onto another customer's name."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            customer = db.query(Customer).filter(
+                Customer.id == customer_id,
+                Customer.owner_phone == owner_phone,
+            ).first()
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found.")
+
+            if payload.name is not None:
+                new_name = payload.name.strip()
+                if not new_name:
+                    raise HTTPException(status_code=400, detail="Name cannot be empty.")
+                clash = db.query(Customer).filter(
+                    Customer.owner_phone == owner_phone,
+                    Customer.name == new_name,
+                    Customer.id != customer_id,
+                ).first()
+                if clash:
+                    raise HTTPException(status_code=409, detail="Another customer already has this name.")
+                customer.name = new_name
+
+            if payload.phone is not None:
+                customer.customer_phone = payload.phone.strip() or None
+
+            db.commit()
+            return {
+                "id": customer.id,
+                "name": customer.name,
+                "phone": customer.customer_phone,
+            }
         finally:
             db.close()
 
