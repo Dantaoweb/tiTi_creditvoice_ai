@@ -163,7 +163,7 @@ def require_web_auth(
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == payload["user_id"]).first()
-        if not user or (user.token_version or 0) != payload.get("ver", 0):
+        if not user or user.deleted_at or (user.token_version or 0) != payload.get("ver", 0):
             raise HTTPException(status_code=401, detail="Session ended. Please log in again.")
     finally:
         db.close()
@@ -198,7 +198,9 @@ def web_login(db: Session, phone: str, pin: str, ip: str = None) -> dict:
     if not _auth_rate_check(phone):
         raise HTTPException(status_code=429, detail="Too many login attempts. Please wait 15 minutes.")
     user = user_by_phone(db, phone)
-    if not user:
+    # Treat a soft-deleted (admin-removed) account as not registered — don't
+    # reveal that it exists, and never issue it a token.
+    if not user or user.deleted_at:
         raise HTTPException(status_code=401, detail="Phone number not registered. Create an account first.")
 
     if not user.recovery_pin_hash:

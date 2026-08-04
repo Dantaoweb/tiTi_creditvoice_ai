@@ -382,6 +382,7 @@ def register_admin_routes(app):
                         "subscription_plan": u.subscription_plan,
                         "subscription_status": u.subscription_status,
                         "created_at": u.created_at.isoformat() if u.created_at else None,
+                        "deleted_at": u.deleted_at.isoformat() if u.deleted_at else None,
                         "transactions_total": tx_total.get(u.phone, 0),
                         "transactions_30d": tx_30d.get(u.phone, 0),
                         "last_active": last_seen[u.phone].isoformat() if u.phone in last_seen else None,
@@ -391,5 +392,73 @@ def register_admin_routes(app):
                     for u in rows
                 ],
             }
+        finally:
+            db.close()
+
+    @app.delete("/app/api/admin/users/{user_id}")
+    def web_admin_remove_user(user_id: str, session: dict = Depends(require_web_auth)):
+        """Soft-remove a business: mark it (and its staff) deleted, sign every
+        session out (token_version bump), and block future logins. Recoverable
+        via the restore endpoint. App-admin only, audited."""
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            actor = db.query(User).filter(User.id == session["user_id"]).first()
+            if not actor or not is_app_admin(actor.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(actor.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+
+            target = db.query(User).filter(User.id == user_id, User.parent_id == None).first()
+            if not target:
+                raise HTTPException(status_code=404, detail="Business not found.")
+            if target.id == actor.id:
+                raise HTTPException(status_code=400, detail="You cannot remove your own account.")
+            if target.deleted_at:
+                return {"ok": True, "already_removed": True}
+
+            now = utcnow()
+            # Remove the owner and cascade to their staff so the whole business
+            # loses access together.
+            members = db.query(User).filter(User.parent_id == target.id).all()
+            for u in [target, *members]:
+                u.deleted_at = now
+                u.token_version = (u.token_version or 0) + 1
+
+            from audit import audit
+            audit(db, action="ADMIN_REMOVE_USER", actor_id=actor.id, actor_phone=actor.phone,
+                  resource=f"user:{target.id}:{target.phone}")
+            db.commit()
+            return {"ok": True, "staff_removed": len(members)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/users/{user_id}/restore")
+    def web_admin_restore_user(user_id: str, session: dict = Depends(require_web_auth)):
+        """Undo a soft-remove: clear the deleted flag on the business and its
+        staff so they can log in again. App-admin only, audited."""
+        from admin import is_app_admin
+        db = SessionLocal()
+        try:
+            actor = db.query(User).filter(User.id == session["user_id"]).first()
+            if not actor or not is_app_admin(actor.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(actor.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+
+            target = db.query(User).filter(User.id == user_id, User.parent_id == None).first()
+            if not target:
+                raise HTTPException(status_code=404, detail="Business not found.")
+
+            members = db.query(User).filter(User.parent_id == target.id).all()
+            for u in [target, *members]:
+                u.deleted_at = None
+                u.token_version = (u.token_version or 0) + 1
+
+            from audit import audit
+            audit(db, action="ADMIN_RESTORE_USER", actor_id=actor.id, actor_phone=actor.phone,
+                  resource=f"user:{target.id}:{target.phone}")
+            db.commit()
+            return {"ok": True, "staff_restored": len(members)}
         finally:
             db.close()

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { apiFetch, apiPost } from "../lib/api";
+import { apiFetch, apiPost, apiDelete } from "../lib/api";
 import { nairaFull, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
-import { Download, RefreshCw, Search, Ticket } from "lucide-react";
+import { Download, RefreshCw, Search, Ticket, Trash2, RotateCcw } from "lucide-react";
 
 // ── tiny bar chart ──────────────────────────────────────────────────────────
 
@@ -120,6 +120,7 @@ function UsersTab() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState("recent");   // recent | active | name
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
 
   function load(pg = page, search = q, srt = sort) {
     setLoading(true);
@@ -129,6 +130,21 @@ function UsersTab() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function removeUser(u) {
+    if (!window.confirm(`Remove ${u.name || u.phone}? They (and their staff) will be signed out and blocked from logging in. You can restore them later.`)) return;
+    setBusyId(u.id);
+    try { await apiDelete(`admin/users/${u.id}`); load(); }
+    catch (e) { alert(e.message || "Could not remove user."); }
+    finally { setBusyId(null); }
+  }
+
+  async function restoreUser(u) {
+    setBusyId(u.id);
+    try { await apiPost(`admin/users/${u.id}/restore`, {}); load(); }
+    catch (e) { alert(e.message || "Could not restore user."); }
+    finally { setBusyId(null); }
+  }
 
   function handleSearch(e) {
     e.preventDefault();
@@ -197,15 +213,22 @@ function UsersTab() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "var(--surface-2, #f9fafb)", textAlign: "left" }}>
-                  {["Name", "Phone", "Business Type", "Plan", "Status", "Txns", "30d", "Customers", "Stock", "Last active", "Joined"].map(h => (
-                    <th key={h} style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                  {["Name", "Phone", "Business Type", "Plan", "Status", "Txns", "30d", "Customers", "Stock", "Last active", "Joined", ""].map((h, i) => (
+                    <th key={i} style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {data.users.map(u => (
-                  <tr key={u.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "7px 10px", fontWeight: 500 }}>{u.name || "—"}</td>
+                  <tr key={u.id} style={{ borderBottom: "1px solid var(--border)", opacity: u.deleted_at ? 0.55 : 1 }}>
+                    <td style={{ padding: "7px 10px", fontWeight: 500 }}>
+                      {u.name || "—"}
+                      {u.deleted_at && (
+                        <span style={{ marginLeft: 6, background: "#dc262618", color: "#dc2626", borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
+                          REMOVED
+                        </span>
+                      )}
+                    </td>
                     <td style={{ padding: "7px 10px" }}>{u.phone}</td>
                     <td style={{ padding: "7px 10px", color: "var(--text-muted)" }}>{u.business_type_label || "—"}</td>
                     <td style={{ padding: "7px 10px" }}>
@@ -232,6 +255,23 @@ function UsersTab() {
                     <td style={{ padding: "7px 10px", color: "var(--text-muted)", fontSize: 11, whiteSpace: "nowrap" }}>{fmtLastActive(u.last_active)}</td>
                     <td style={{ padding: "7px 10px", color: "var(--text-muted)", fontSize: 11, whiteSpace: "nowrap" }}>
                       {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
+                    </td>
+                    <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
+                      {u.deleted_at ? (
+                        <button
+                          className="btn btn-sm" disabled={busyId === u.id}
+                          onClick={() => restoreUser(u)}
+                          title="Restore this business"
+                          style={{ padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, border: "1px solid var(--border)", background: "transparent", color: "#16a34a", display: "inline-flex", alignItems: "center", gap: 4 }}
+                        ><RotateCcw size={12} /> Restore</button>
+                      ) : (
+                        <button
+                          className="btn btn-sm" disabled={busyId === u.id}
+                          onClick={() => removeUser(u)}
+                          title="Remove this business"
+                          style={{ padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 4 }}
+                        ><Trash2 size={12} /> Remove</button>
+                      )}
                     </td>
                   </tr>
                 ))}
