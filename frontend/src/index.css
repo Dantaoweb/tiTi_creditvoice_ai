@@ -1619,6 +1619,10 @@ tr.low-stock td { background: #fffbeb; }
 .receipt-table th:first-child, .receipt-table td:first-child { padding-left: 0; }
 .receipt-table thead th { background: none; font-size: 10.5px; padding-bottom: 6px; }
 .receipt-right { text-align: right; white-space: nowrap; }
+.receipt-item-attrs { margin-top: 2px; display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.receipt-item-attrs span { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.receipt-item-attrs span::after { content: "•"; margin-left: 10px; color: var(--line); }
+.receipt-item-attrs span:last-child::after { content: ""; margin-left: 0; }
 
 .receipt-total-row td { border-top: 1px solid var(--line); padding-top: 10px; font-weight: 700; font-size: 15px; }
 

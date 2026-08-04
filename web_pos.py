@@ -1,7 +1,32 @@
 """POS (Point of Sale) save logic for the web app."""
+import json
 import uuid
 
 from models import Customer, InventoryItem, InventoryMovement, Transaction, TransactionItem, User, utcnow
+
+
+def _receipt_item_attributes(attributes_json, field_labels):
+    """Turn a sale line's snapshotted attributes JSON into an ordered list of
+    {label, value} for display, using the business's stock-field labels (and a
+    title-cased fallback for any unknown key). Empty values are dropped."""
+    if not attributes_json:
+        return []
+    try:
+        data = json.loads(attributes_json) or {}
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    out = []
+    # Keep the template's field order first, then any leftover keys.
+    ordered_keys = list(field_labels.keys()) + [k for k in data if k not in field_labels]
+    for key in ordered_keys:
+        val = data.get(key)
+        if val is None or str(val).strip() == "":
+            continue
+        label = field_labels.get(key) or key.replace("_", " ").title()
+        out.append({"label": label, "value": str(val).strip()})
+    return out
 
 
 def next_receipt_number(db, owner_phone):
@@ -102,9 +127,18 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
     db.add(main_tx)
     db.flush()
 
+    from inventory_suppliers import find_matching_inventory_item
     for it in items:
         qty = int(it.get("qty", 1))
         up = int(it.get("unit_price", 0))
+        # Snapshot the linked stock item's custom fields (e.g. a car's chassis /
+        # engine / colour) onto the sale line so they print on the receipt and
+        # stay correct even after the item is later edited or sold.
+        _iid = it.get("inventory_item_id")
+        _inv = db.query(InventoryItem).filter(InventoryItem.id == _iid).first() if _iid else None
+        if not _inv:
+            _nm = (it.get("name") or "").strip()
+            _inv = find_matching_inventory_item(db, owner_phone, _nm, it.get("unit")) if _nm else None
         db.add(TransactionItem(
             transaction_id=main_tx.id,
             product=it.get("name", ""),
@@ -112,6 +146,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
             unit=it.get("unit"),
             unit_price=up,
             total=qty * up,
+            attributes_json=(getattr(_inv, "attributes_json", None) if _inv else None),
         ))
 
     pay_tx_id = None
@@ -241,8 +276,9 @@ def get_pos_receipt(db, tx_id, user=None):
     balance_owed = max(0, tx.amount - paid_amount) if customer else 0
 
     # Business-specific receipt config
-    from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG
+    from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG, inventory_fields_for_user
     config = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
+    _field_labels = {f["key"]: f["label"] for f in inventory_fields_for_user(user)} if user else {}
 
     # Business name + address from the owner record
     biz_name = None
@@ -290,6 +326,7 @@ def get_pos_receipt(db, tx_id, user=None):
                 "unit": it.unit,
                 "unit_price": it.unit_price,
                 "total": it.total,
+                "attributes": _receipt_item_attributes(getattr(it, "attributes_json", None), _field_labels),
             }
             for it in items
         ],

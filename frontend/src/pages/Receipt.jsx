@@ -104,6 +104,7 @@ export default function Receipt() {
     } else {
       (receipt.items || []).forEach(it => {
         L.push(`${it.product}${it.unit ? ` (${it.unit})` : ""}  x${it.qty} = ${nairaFull(it.total)}`);
+        (it.attributes || []).forEach(a => L.push(`   ${a.label}: ${a.value}`));
       });
       L.push("--------------------");
       L.push(`Total: ${nairaFull(receipt.total)}`);
@@ -244,7 +245,16 @@ export default function Receipt() {
           <tbody>
             {receipt.items.map((it, i) => (
               <tr key={i}>
-                <td>{it.product}{it.unit ? ` (${it.unit})` : ""}</td>
+                <td>
+                  {it.product}{it.unit ? ` (${it.unit})` : ""}
+                  {(it.attributes || []).length > 0 && (
+                    <div className="receipt-item-attrs">
+                      {it.attributes.map((a, j) => (
+                        <span key={j}>{a.label}: {a.value}</span>
+                      ))}
+                    </div>
+                  )}
+                </td>
                 <td className="receipt-right">{it.qty}</td>
                 <td className="receipt-right">{fmtAmt(it.unit_price)}</td>
                 <td className="receipt-right">{fmtAmt(it.total)}</td>

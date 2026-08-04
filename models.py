@@ -249,6 +249,11 @@ class TransactionItem(Base):
 
     total = Column(Integer)
 
+    # Snapshot of the sold stock item's custom fields (e.g. car chassis/engine/
+    # colour) at sale time, as a JSON object, so the receipt stays accurate even
+    # after the item is edited or sold.
+    attributes_json = Column(String, nullable=True)
+
     created_at = Column(
         DateTime,
         default=utcnow

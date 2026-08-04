@@ -862,6 +862,7 @@ def ensure_schema_updates(engine):
         tx_item_updates = {
             "unit": "VARCHAR",
             "branch_id": "INTEGER",
+            "attributes_json": "VARCHAR",
         }
         with engine.begin() as connection:
             for col, typ in tx_item_updates.items():
