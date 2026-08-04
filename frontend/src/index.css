@@ -3597,6 +3597,34 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   margin-top: 2px;
 }
 
+/* Get-started card (empty state + business-type suggestion) */
+.getstarted-card {
+  position: relative;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  .getstarted-card { background: #1e293b; border-color: #334155; }
+}
+.getstarted-close {
+  position: absolute; top: 10px; right: 10px;
+  background: none; border: none; cursor: pointer; color: var(--muted);
+}
+.getstarted-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; color: var(--ink); }
+.getstarted-suggest { margin-top: 10px; font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+.getstarted-body { font-size: 13.5px; color: var(--ink); }
+.getstarted-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.getstarted-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.getstarted-pick {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface, #fff); color: var(--ink); font-size: 13px; font-weight: 600;
+  cursor: pointer; text-align: left;
+}
+.getstarted-pick:hover { border-color: var(--brand); }
+
 /* Inventory: selling-below-cost warning */
 .inv-below-cost-warning {
   margin: 2px 0 8px;

@@ -10,6 +10,7 @@ import DataTable from "../components/DataTable";
 import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
+import GettingStarted from "../components/GettingStarted";
 import { usePlan } from "../lib/usePlan";
 import { useToast } from "../components/Toast";
 import { Lock } from "lucide-react";
@@ -388,6 +389,7 @@ export default function Dashboard() {
   return (
     <>
       <WhatsAppNudge titiNumber={titiNumber} />
+      <GettingStarted />
       <StaleDataBanner isStale={isStale} />
 
       {error && (
