@@ -468,8 +468,20 @@ def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Option
     if re.search(r"business\s+(?:type|types|kind)", tl) or (has_howmany and "business" in tl and "type" in tl):
         from business_templates import BUSINESS_CATEGORIES
         total = sum(len(c["businesses"]) for c in BUSINESS_CATEGORIES)
-        return (f"CreditVoice supports *{total} business types* across "
-                f"{len(BUSINESS_CATEGORIES)} categories.")
+        # "how many business types" just wants the count; anything asking to
+        # list/show/see them (or a plain "business types") gets the full list,
+        # grouped under each category so it stays readable.
+        wants_count_only = has_howmany and not (has_which or re.search(r"\bwhat\b", tl))
+        if wants_count_only:
+            return (f"CreditVoice supports *{total} business types* across "
+                    f"{len(BUSINESS_CATEGORIES)} categories.")
+        header = (f"CreditVoice supports *{total} business types* across "
+                  f"{len(BUSINESS_CATEGORIES)} categories:\n")
+        body = "\n".join(
+            f"*{c['label']}:* " + ", ".join(b[1] for b in c["businesses"])
+            for c in BUSINESS_CATEGORIES
+        )
+        return header + body
 
     # 2) Debtors — who owes / which customer owes / not paid / how many owe
     if (debt and (has_which or has_howmany)) or (not_paid and ("customer" in tl or has_which)):

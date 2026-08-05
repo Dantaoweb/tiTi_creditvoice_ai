@@ -93,6 +93,27 @@ def test_all_screenshot_questions_get_answers():
     assert not misses, f"query engine missed: {misses}"
 
 
+# ── Listing business types (not just counting them) ───────────────────────────
+
+def test_list_business_types_enumerates_them_grouped():
+    db = make_db(); seed(db)
+    for q in ("list the business types you support",
+              "what business types do you support",
+              "show me the business types"):
+        a = ask(db, q)
+        assert a, q
+        assert "Car Dealer" in a and "Pharmacy" in a, q      # specific types listed
+        assert "Retail / Trading" in a                        # grouped under categories
+        assert a.count("\n") > 5, q                           # multi-line, not the count reply
+
+
+def test_how_many_business_types_stays_count_only():
+    db = make_db(); seed(db)
+    a = ask(db, "How many business types are on creditvoice")
+    assert a and "business types" in a and a.rstrip().endswith("categories.")
+    assert "Car Dealer" not in a
+
+
 # ── Precision: "not paid anything" ≠ "owes me" ────────────────────────────────
 
 def test_not_paid_anything_excludes_part_payers():
