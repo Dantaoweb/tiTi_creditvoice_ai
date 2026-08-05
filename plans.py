@@ -10,6 +10,10 @@ PLAN_ORDER = {
     PLAN_PREMIUM: 4,
 }
 
+# Every paid tier. Use this (not a hard-coded ["GO","PRO"]) wherever "is this a
+# paying customer?" is asked — so new tiers like PREMIUM are always included.
+PAID_PLANS = (PLAN_GO, PLAN_PRO, PLAN_PREMIUM)
+
 # ── Billing period ───────────────────────────────────────────────────────────
 # Plans bill monthly (30-day window) or yearly (365-day window). Yearly is
 # priced at YEARLY_MONTHS × the monthly price — i.e. 2 months free.
@@ -253,6 +257,11 @@ FEATURE_VALUE_BY_TEMPLATE = {
 def normalize_plan(plan):
     plan = (plan or PLAN_BASIC).upper().strip()
     return plan if plan in PLAN_ORDER else PLAN_BASIC
+
+
+def is_paid_plan(plan):
+    """True for any paying tier (GO/PRO/PREMIUM), False for BASIC/unknown."""
+    return normalize_plan(plan) in PAID_PLANS
 
 
 def plan_allows_feature(plan, feature):

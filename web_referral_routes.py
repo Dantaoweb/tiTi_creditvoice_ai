@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from database import SessionLocal
 from models import User, Referral, ReferralSettings
+from plans import PAID_PLANS, is_paid_plan
 from web_auth import require_web_auth
 from web_common import _admin_rate_check
 
@@ -22,7 +23,8 @@ def _get_cashback_amount(db) -> int:
 
 
 def _count_active_go_invitees(db, referral_code: str) -> int:
-    """Count how many of a referrer's invitees currently have an active GO/PRO subscription."""
+    """Count how many of a referrer's invitees currently have an active paid
+    (GO/PRO/PREMIUM) subscription."""
     if not referral_code:
         return 0
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -34,7 +36,7 @@ def _count_active_go_invitees(db, referral_code: str) -> int:
         return 0
     return db.query(User).filter(
         User.phone.in_(referee_phones),
-        User.subscription_plan.in_(["GO", "PRO"]),
+        User.subscription_plan.in_(PAID_PLANS),
         User.subscription_status == "ACTIVE",
         (User.subscription_expires_at == None) | (User.subscription_expires_at > now),
     ).count()
@@ -64,14 +66,14 @@ def register_referral_routes(app):
                 Referral.referral_code == user.referral_code
             ).all() if user.referral_code else []
 
-            invite_limit = None if plan in ("GO", "PRO") else 2
+            invite_limit = None if is_paid_plan(plan) else 2
             invite_used = len(referrals)
             cashback_per_referral = _get_cashback_amount(db)
 
-            # Live active count — invitees currently on an active GO/PRO subscription
+            # Live active count — invitees currently on an active paid subscription
             active_go = _count_active_go_invitees(db, user.referral_code)
             not_yet_go = invite_used - active_go
-            credit_this_month = active_go * cashback_per_referral if plan in ("GO", "PRO") else 0
+            credit_this_month = active_go * cashback_per_referral if is_paid_plan(plan) else 0
 
             base_url = os.getenv("APP_BASE_URL", "").rstrip("/") or ""
             titi_wa = os.getenv("TITI_WHATSAPP", "").strip()
@@ -99,7 +101,7 @@ def register_referral_routes(app):
                         "referee_phone": r.referee_phone,
                         "active": (
                             referee_users.get(r.referee_phone) is not None
-                            and (referee_users[r.referee_phone].subscription_plan or "").upper() in ("GO", "PRO")
+                            and is_paid_plan(referee_users[r.referee_phone].subscription_plan)
                             and referee_users[r.referee_phone].subscription_status == "ACTIVE"
                             and (
                                 referee_users[r.referee_phone].subscription_expires_at is None
@@ -206,9 +208,9 @@ def register_referral_routes(app):
                 referrer = db.query(User).filter(User.referral_code == code).first()
                 referrer_plan = (referrer.subscription_plan or "BASIC").upper() if referrer else "—"
                 active_go = _count_active_go_invitees(db, code)
-                # Bonus mirrors the user-facing credit: active GO/PRO invitees ×
-                # rate, credited only while the referrer is on GO/PRO.
-                bonus = active_go * rate if referrer_plan in ("GO", "PRO") else 0
+                # Bonus mirrors the user-facing credit: active paid invitees ×
+                # rate, credited only while the referrer is on a paid plan.
+                bonus = active_go * rate if is_paid_plan(referrer_plan) else 0
                 rows.append({
                     "referral_code": code,
                     "referrer_phone": referrer.phone if referrer else (rs[0].referrer_phone if rs else None),
