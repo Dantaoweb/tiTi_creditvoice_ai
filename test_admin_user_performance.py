@@ -23,6 +23,10 @@ client = TestClient(app, raise_server_exceptions=True)
 
 @pytest.fixture(autouse=True)
 def _reset():
+    # app_admin_phones() reads env live; another test module may have overwritten
+    # APP_ADMIN_PHONES at import, so restore ours before each test (whole suite
+    # runs in one process on CI).
+    os.environ["APP_ADMIN_PHONES"] = "2348090000001"
     with web_auth._auth_lock:
         web_auth._auth_attempts.clear()
     yield
