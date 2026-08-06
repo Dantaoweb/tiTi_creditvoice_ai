@@ -64,6 +64,22 @@ def detect_faq(text):
     ):
         return "change_name"
 
+    # ── Referral / refer a friend — HIGH PRIORITY ────────────────────────────
+    # Answered before the question gate so plain statements ("I want to refer my
+    # friend", "refer people") are caught too. Scoped tightly to referral intent
+    # so it never steals staff/partner invites ("invite staff", "invite partner").
+    if (
+        "referral" in q
+        or "refer a friend" in q or "refer my friend" in q or "refer friend" in q
+        or "refer people" in q or "refer someone" in q or "refer somebody" in q
+        or "refer others" in q or "refer my friends" in q
+        or re.search(r"\b(want to|wanna|like to|how (do i|to|can i)|can i|help me|let me)\s+refer\b", q)
+        or "invite a friend" in q or "invite my friend" in q or "invite friends" in q
+        or "invite people" in q or "invite my friends" in q
+        or "invite bonus" in q or "invite reward" in q or "cashback" in q
+    ):
+        return "referral"
+
     if not _is_question(text):
         return None
 
@@ -851,13 +867,15 @@ FAQ_ANSWERS = {
         "Each code is single-use and may have an expiry date."
     ),
     "referral": (
-        "Earn by inviting other business owners:\n\n"
-        "1. Set your referral code on the web dashboard (Refer / Invite section).\n"
-        "2. Share your link, or ask a friend to send  join YOURCODE  to tiTi.\n"
-        "3. Your friend gets 14 days free on GO when they sign up.\n\n"
-        "On GO/PRO you earn plan credit each month for every friend who has an "
-        "active GO subscription — the credit reduces your next subscription "
-        "payment. Basic can invite up to 2 friends."
+        "Invite other business owners and earn — here's how:\n\n"
+        "1. Create your code: open the web app → Dashboard → *Invite a Friend*, "
+        "then pick your referral code (e.g. DANSHOP).\n"
+        "2. Share it: tap *Share* to send your sign-up link, or ask your friend to "
+        "send  join YOURCODE  to tiTi on WhatsApp.\n"
+        "3. Your friend gets 14 days free on GO when they join.\n\n"
+        "On any paid plan (GO, PRO or PREMIUM) you earn plan credit every month for "
+        "each friend who is on an active paid plan — it reduces your next "
+        "subscription payment. On Basic you can invite up to 2 friends."
     ),
     "opportunities": (
         "Opportunities are offers — loans, grants, equipment, trade deals — posted "

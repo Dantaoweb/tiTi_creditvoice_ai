@@ -86,3 +86,33 @@ def test_change_name_requests_are_handled():
         return (p and p.get("type") == "REONBOARD") or detect_faq(t) == "change_name"
     missed = [t for t in CHANGE_NAME_REQUESTS if not handled(t)]
     assert not missed, f"unhandled name-change requests: {missed}"
+
+
+# Referral questions — however phrased, including plain statements — must reach
+# the referral answer (how to create/generate a code, how to refer a friend).
+REFERRAL_REQUESTS = [
+    "how to refer people",
+    "how do i refer my friend",
+    "i want to refer my friend",
+    "how to create referral code",
+    "how do i generate my referral code",
+    "how can i get my referral code",
+    "refer a friend",
+    "i want to invite my friend",
+    "how do i share my referral link",
+    "what is the referral bonus",
+    "how do i earn cashback",
+    "can i refer someone",
+]
+
+
+def test_referral_requests_are_handled():
+    missed = [t for t in REFERRAL_REQUESTS if detect_faq(t) != "referral"]
+    assert not missed, f"unhandled referral requests: {missed}"
+
+
+def test_referral_does_not_steal_staff_or_partner_invites():
+    # Staff/partner invites must NOT be routed to the referral answer.
+    for t in ["how do i invite staff", "invite partner 08012345678 investor 500000",
+              "how do i add a staff member", "can i invite a partner"]:
+        assert detect_faq(t) != "referral", f"{t!r} wrongly routed to referral"
