@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
-  Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText,
+  Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
   MoreHorizontal, ChevronDown, UserCircle,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -36,6 +36,7 @@ function buildNav(L, group) {
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
+    { to: "/fuel",         label: "Fuel Station",     icon: Fuel, fuelOnly: true },
     { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
     { to: "/staff",        label: "Staff",            icon: UserCheck       },
     { to: "/partners",     label: "Partners",         icon: Handshake       },
@@ -93,7 +94,10 @@ export default function Layout() {
 
   const L = getBizLabels(user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
-  const NAV = buildNav(L, user?.menu_group).filter(item => !item.adminOnly || isAdmin);
+  const FUEL_TYPES = ["filling_station", "fuel_marketer", "kerosene_diesel", "lpg_gas", "lubricants", "other_energy"];
+  const isFuel = user?.business_category === "energy_fuel" || FUEL_TYPES.includes(user?.business_type);
+  const NAV = buildNav(L, user?.menu_group).filter(item =>
+    (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel));
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {

@@ -207,6 +207,10 @@ def register_web_routes(app):
     from web_school_routes import register_school_routes
     register_school_routes(app)
 
+    # ── Filling-station operations (fuel businesses) ──────────────────────────
+    from web_fuel_routes import register_fuel_routes
+    register_fuel_routes(app)
+
     # ── Partners & Business notes — split into their own modules ──────────────
     from web_partner_routes import register_partner_routes
     from web_notes_routes import register_notes_routes

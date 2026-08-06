@@ -871,6 +871,110 @@ def ensure_schema_updates(engine):
                         f"ALTER TABLE transaction_items ADD COLUMN {col} {typ}"
                     ))
 
+    # ── Filling-station operations tables (fuel businesses) ──────────────────
+    _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    _bool_true = "BOOLEAN DEFAULT TRUE" if engine.dialect.name == "postgresql" else "INTEGER DEFAULT 1"
+    _fuel_tables = {
+        "fuel_tanks": f"""
+            CREATE TABLE fuel_tanks (
+                id {_pk},
+                owner_phone VARCHAR,
+                branch_id INTEGER,
+                name VARCHAR,
+                product VARCHAR,
+                capacity_litres REAL DEFAULT 0,
+                current_level_litres REAL DEFAULT 0,
+                created_at TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+        """,
+        "fuel_pumps": f"""
+            CREATE TABLE fuel_pumps (
+                id {_pk},
+                owner_phone VARCHAR,
+                branch_id INTEGER,
+                name VARCHAR,
+                tank_id INTEGER,
+                product VARCHAR,
+                current_meter REAL DEFAULT 0,
+                is_active {_bool_true},
+                created_at TIMESTAMP
+            )
+        """,
+        "fuel_prices": f"""
+            CREATE TABLE fuel_prices (
+                id {_pk},
+                owner_phone VARCHAR,
+                branch_id INTEGER,
+                product VARCHAR,
+                price_per_litre INTEGER,
+                updated_by_id VARCHAR,
+                updated_at TIMESTAMP
+            )
+        """,
+        "fuel_deliveries": f"""
+            CREATE TABLE fuel_deliveries (
+                id {_pk},
+                owner_phone VARCHAR,
+                branch_id INTEGER,
+                tank_id INTEGER,
+                product VARCHAR,
+                litres REAL,
+                cost_per_litre INTEGER,
+                supplier VARCHAR,
+                waybill VARCHAR,
+                delivered_at TIMESTAMP,
+                recorded_by_id VARCHAR,
+                created_at TIMESTAMP
+            )
+        """,
+        "fuel_shifts": f"""
+            CREATE TABLE fuel_shifts (
+                id {_pk},
+                owner_phone VARCHAR,
+                branch_id INTEGER,
+                pump_id INTEGER,
+                product VARCHAR,
+                attendant_id VARCHAR,
+                attendant_name VARCHAR,
+                shift_label VARCHAR,
+                opening_meter REAL,
+                closing_meter REAL,
+                price_per_litre INTEGER,
+                litres_sold REAL DEFAULT 0,
+                expected_amount INTEGER DEFAULT 0,
+                cash_amount INTEGER DEFAULT 0,
+                pos_amount INTEGER DEFAULT 0,
+                transfer_amount INTEGER DEFAULT 0,
+                credit_amount INTEGER DEFAULT 0,
+                shortfall INTEGER DEFAULT 0,
+                status VARCHAR DEFAULT 'open',
+                opened_at TIMESTAMP,
+                closed_at TIMESTAMP,
+                recorded_by_id VARCHAR
+            )
+        """,
+        "fuel_dips": f"""
+            CREATE TABLE fuel_dips (
+                id {_pk},
+                owner_phone VARCHAR,
+                branch_id INTEGER,
+                tank_id INTEGER,
+                dipped_litres REAL,
+                computed_litres REAL,
+                variance_litres REAL,
+                note VARCHAR,
+                dipped_at TIMESTAMP,
+                recorded_by_id VARCHAR
+            )
+        """,
+    }
+    _existing_tables = set(inspector.get_table_names())
+    for _tname, _ddl in _fuel_tables.items():
+        if _tname not in _existing_tables:
+            with engine.begin() as connection:
+                connection.execute(text(_ddl))
+
     # ── billing_period on subscription_payments (monthly vs yearly) ──────────
     if "subscription_payments" in inspector.get_table_names():
         _sp_cols = {c["name"] for c in inspector.get_columns("subscription_payments")}

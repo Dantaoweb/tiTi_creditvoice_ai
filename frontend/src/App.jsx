@@ -26,6 +26,7 @@ import Invoices     from "./pages/Invoices";
 import Deliveries   from "./pages/Deliveries";
 import Wallet       from "./pages/Wallet";
 import Thrift        from "./pages/Thrift";
+import FuelStation   from "./pages/FuelStation";
 import Opportunities from "./pages/Opportunities";
 import Terms        from "./pages/Terms";
 import Privacy      from "./pages/Privacy";
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="customers"    element={<Customers />}    />
           <Route path="transactions" element={<Transactions />} />
           <Route path="inventory"    element={<Inventory />}    />
+          <Route path="fuel"         element={<FuelStation />}  />
           <Route path="suppliers"    element={<Suppliers />}    />
           <Route path="staff"        element={<Staff />}        />
           <Route path="partners"     element={<Partners />}     />

@@ -1105,6 +1105,111 @@ class ReferralSettings(Base):
     updated_at = Column(DateTime, default=utcnow)
 
 
+# ── Filling-station operations (fuel businesses) ─────────────────────────────
+# A station is a branch. Fuel is tracked as tank level (deliveries in, meter
+# sales out), not as counted stock. Attendant shifts reconcile pump meters to
+# cash so shortfalls surface. All rows are branch-scoped by (owner_phone,
+# branch_id).
+
+class FuelTank(Base):
+    __tablename__ = "fuel_tanks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    branch_id = Column(Integer, nullable=True)
+    name = Column(String)                       # e.g. "Tank 1"
+    product = Column(String)                    # PMS / AGO / DPK / LPG
+    capacity_litres = Column(Float, default=0.0)
+    current_level_litres = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow)
+
+
+class FuelPump(Base):
+    __tablename__ = "fuel_pumps"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    branch_id = Column(Integer, nullable=True)
+    name = Column(String)                       # e.g. "Pump 3" / nozzle label
+    tank_id = Column(Integer, ForeignKey("fuel_tanks.id"), nullable=True)
+    product = Column(String)
+    current_meter = Column(Float, default=0.0)  # last closing totalizer reading
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class FuelPrice(Base):
+    __tablename__ = "fuel_prices"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    branch_id = Column(Integer, nullable=True)
+    product = Column(String)                    # current price is the latest row
+    price_per_litre = Column(Integer)           # naira
+    updated_by_id = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=utcnow)
+
+
+class FuelDelivery(Base):
+    __tablename__ = "fuel_deliveries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    branch_id = Column(Integer, nullable=True)
+    tank_id = Column(Integer, ForeignKey("fuel_tanks.id"))
+    product = Column(String)
+    litres = Column(Float)                       # added to the tank level
+    cost_per_litre = Column(Integer, nullable=True)
+    supplier = Column(String, nullable=True)
+    waybill = Column(String, nullable=True)
+    delivered_at = Column(DateTime, default=utcnow)
+    recorded_by_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class FuelShift(Base):
+    __tablename__ = "fuel_shifts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    branch_id = Column(Integer, nullable=True)
+    pump_id = Column(Integer, ForeignKey("fuel_pumps.id"))
+    product = Column(String)
+    attendant_id = Column(String, nullable=True)     # User.id of the attendant
+    attendant_name = Column(String, nullable=True)
+    shift_label = Column(String, nullable=True)      # "day" / "night" (optional)
+    opening_meter = Column(Float)
+    closing_meter = Column(Float, nullable=True)
+    price_per_litre = Column(Integer)                # snapshot at open
+    litres_sold = Column(Float, default=0.0)
+    expected_amount = Column(Integer, default=0)     # litres_sold * price
+    cash_amount = Column(Integer, default=0)
+    pos_amount = Column(Integer, default=0)
+    transfer_amount = Column(Integer, default=0)
+    credit_amount = Column(Integer, default=0)
+    shortfall = Column(Integer, default=0)           # expected - collected
+    status = Column(String, default="open")          # open / closed
+    opened_at = Column(DateTime, default=utcnow)
+    closed_at = Column(DateTime, nullable=True)
+    recorded_by_id = Column(String, nullable=True)
+
+
+class FuelDip(Base):
+    __tablename__ = "fuel_dips"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    branch_id = Column(Integer, nullable=True)
+    tank_id = Column(Integer, ForeignKey("fuel_tanks.id"))
+    dipped_litres = Column(Float)                    # physical stick reading
+    computed_litres = Column(Float)                  # book level at dip time
+    variance_litres = Column(Float)                  # dipped - computed
+    note = Column(String, nullable=True)
+    dipped_at = Column(DateTime, default=utcnow)
+    recorded_by_id = Column(String, nullable=True)
+
+
 class VerifiedSupplier(Base):
     """A CreditVoice user who has applied to appear in the supplier directory."""
 
