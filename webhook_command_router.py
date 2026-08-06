@@ -187,6 +187,14 @@ def handle_parsed_command(
     if parsed["type"] == "REMOVE_PIN":
         return handle_remove_pin(db, user, parsed["pin"], send_whatsapp_message, phone)
 
+    if parsed["type"] == "SET_REFERRAL_CODE":
+        from referral_commands import handle_set_referral_code
+        return handle_set_referral_code(db, user, parsed["code"], send_whatsapp_message, phone)
+
+    if parsed["type"] == "SHOW_REFERRAL_CODE":
+        from referral_commands import handle_show_referral_code
+        return handle_show_referral_code(db, user, send_whatsapp_message, phone)
+
     if parsed["type"] == "LINK_PHONE":
         return handle_link_phone(db, user, parsed["phone"], send_whatsapp_message, phone)
 

@@ -3052,6 +3052,27 @@ def parse_message(text):
     if _rem_pin:
         return {"type": "REMOVE_PIN", "pin": _rem_pin.group("pin")}
 
+    # ── Referral code (set / view) ────────────────────────────────────────────
+    # "set my referral code DANSHOP", "create referral code DANSHOP",
+    # "my referral code is DANSHOP", "referral code DANSHOP",
+    # "i want my referral code to be DANSHOP"
+    _set_ref = (
+        re.match(r"^(?:set|create|change|update|make|add|choose|pick)\s+(?:my\s+|a\s+)?referral\s+code\s+(?:to\s+|as\s+|be\s+)?(?P<code>[a-z0-9]{3,20})$", clean_text)
+        or re.match(r"^my\s+referral\s+code\s+(?:is|to|=)\s+(?P<code>[a-z0-9]{3,20})$", clean_text)
+        or re.match(r"^i\s+want\s+my\s+referral\s+code\s+(?:to\s+be\s+|as\s+)(?P<code>[a-z0-9]{3,20})$", clean_text)
+        or re.match(r"^referral\s+code\s+(?P<code>[a-z0-9]{3,20})$", clean_text)
+    )
+    if _set_ref:
+        return {"type": "SET_REFERRAL_CODE", "code": _set_ref.group("code").upper()}
+
+    # "my referral code" | "show my referral code" | "what is my referral code"
+    if clean_text in [
+        "my referral code", "show my referral code", "show referral code",
+        "what is my referral code", "what's my referral code", "whats my referral code",
+        "my referral link", "my invite code", "my invite link", "view referral code",
+    ]:
+        return {"type": "SHOW_REFERRAL_CODE"}
+
     # "recover 08012345678 1234"  |  "recover account 08012345678 pin 1234"
     _recover = re.match(
         r"^recover(?:\s+account)?\s+(?P<phone>[\d\s\+\-]{7,15}?)\s+(?:pin\s+)?(?P<pin>\d{4,6})$",
