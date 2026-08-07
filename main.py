@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app_routes import register_http_routes
@@ -190,6 +190,66 @@ async def _unhandled_exception(request: Request, exc: Exception):
     )
 
 
+# ── Public marketing homepage + SEO files ────────────────────────────────────
+# The root serves a fast, crawlable static landing page (brand ranking + rich
+# WhatsApp/social link previews). The React app stays at /app.
+_SITE_URL = "https://creditvoiceai.com"
+_LANDING_PATH = os.path.join(os.path.dirname(__file__), "web", "landing.html")
+try:
+    with open(_LANDING_PATH, encoding="utf-8") as _f:
+        _LANDING_RAW = _f.read()
+except OSError:
+    _LANDING_RAW = "<!doctype html><title>CreditVoice</title><h1>CreditVoice</h1><p><a href=\"/app\">Open the app</a></p>"
+
+
+def _render_landing():
+    wa = os.getenv("TITI_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
+    wa_href, wa_style = (f"https://wa.me/{wa}", "") if wa else ("/app", "display:none")
+    gsc = os.getenv("GOOGLE_SITE_VERIFICATION", "").strip()
+    gsc_meta = f'<meta name="google-site-verification" content="{gsc}" />' if gsc else ""
+    return (
+        _LANDING_RAW
+        .replace("%%WA_HREF%%", wa_href)
+        .replace("%%WA_STYLE%%", wa_style)
+        .replace("%%GSC_META%%", gsc_meta)
+    )
+
+
 @app.api_route("/", methods=["GET", "HEAD"])
-def root_redirect():
-    return RedirectResponse(url="/app/", status_code=302)
+def home():
+    return HTMLResponse(_render_landing())
+
+
+@app.get("/robots.txt")
+def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /app/api/\n\n"
+        f"Sitemap: {_SITE_URL}/sitemap.xml\n"
+    )
+    return PlainTextResponse(body)
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml():
+    from datetime import date
+    today = date.today().isoformat()
+    pages = [
+        (f"{_SITE_URL}/", today, "1.0"),
+        (f"{_SITE_URL}/app", None, "0.8"),
+        (f"{_SITE_URL}/app/terms", None, "0.3"),
+        (f"{_SITE_URL}/app/privacy", None, "0.3"),
+    ]
+    rows = ""
+    for loc, lastmod, prio in pages:
+        rows += f"  <url><loc>{loc}</loc>"
+        if lastmod:
+            rows += f"<lastmod>{lastmod}</lastmod>"
+        rows += f"<priority>{prio}</priority></url>\n"
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{rows}</urlset>\n"
+    )
+    return Response(content=xml, media_type="application/xml")

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>CreditVoice — Record sales, credit &amp; inventory on WhatsApp</title>
+  <meta name="description" content="CreditVoice is a WhatsApp business assistant (tiTi) that helps small and informal businesses in Nigeria record sales, track who owes them, manage stock, and send receipts — no app download needed." />
+  <link rel="canonical" href="https://creditvoiceai.com/" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#863bff" />
+  %%GSC_META%%
+
+  <!-- Open Graph (WhatsApp / Facebook / LinkedIn link previews) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CreditVoice" />
+  <meta property="og:title" content="CreditVoice — Record sales, credit &amp; inventory on WhatsApp" />
+  <meta property="og:description" content="tiTi helps small and informal businesses record sales, track credit, manage stock and send receipts — right inside WhatsApp." />
+  <meta property="og:url" content="https://creditvoiceai.com/" />
+  <meta property="og:image" content="https://creditvoiceai.com/app/logo.png" />
+  <meta property="og:locale" content="en_NG" />
+
+  <!-- Twitter / X card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CreditVoice — Record sales, credit &amp; inventory on WhatsApp" />
+  <meta name="twitter:description" content="tiTi helps small and informal businesses record sales, track credit, manage stock and send receipts — right inside WhatsApp." />
+  <meta name="twitter:image" content="https://creditvoiceai.com/app/logo.png" />
+
+  <link rel="icon" type="image/png" href="/app/favicon.png" />
+  <link rel="apple-touch-icon" href="/app/favicon.png" />
+
+  <!-- Structured data: Organization + SoftwareApplication + FAQ -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "CreditVoice",
+        "url": "https://creditvoiceai.com/",
+        "logo": "https://creditvoiceai.com/app/logo.png",
+        "email": "support@creditvoiceai.com",
+        "description": "WhatsApp business assistant for small and informal businesses in Nigeria."
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "CreditVoice",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, Android",
+        "url": "https://creditvoiceai.com/app",
+        "description": "Record sales, track credit and debtors, manage inventory, and send receipts through WhatsApp or the web dashboard.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "NGN" }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is CreditVoice?",
+            "acceptedAnswer": { "@type": "Answer", "text": "CreditVoice is a WhatsApp assistant called tiTi that helps small and informal businesses record sales, track who owes them, manage stock, and send receipts — with a web dashboard for reports." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to download an app?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. You can use CreditVoice entirely inside WhatsApp by chatting with tiTi. There is also a web dashboard, and an Android app, but no download is required to start." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is CreditVoice free?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes, there is a free Basic plan. Paid plans (Go, Pro, Premium) add unlimited records, staff accounts, branches and more." }
+          },
+          {
+            "@type": "Question",
+            "name": "What can tiTi do?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Record cash and credit sales, track debtors and send reminders, manage inventory and low-stock alerts, generate receipts and reports, and support staff, branches and partners." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    :root { --brand:#863bff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff; --soft:#f8fafc; }
+    * { box-sizing:border-box; }
+    html,body { margin:0; padding:0; }
+    body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif; color:var(--ink); background:var(--bg); line-height:1.6; -webkit-font-smoothing:antialiased; }
+    a { color:var(--brand); text-decoration:none; }
+    .wrap { max-width:960px; margin:0 auto; padding:0 20px; }
+    header { display:flex; align-items:center; justify-content:space-between; padding:18px 0; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; }
+    .brand img { width:32px; height:32px; border-radius:8px; }
+    .btn { display:inline-block; background:var(--brand); color:#fff; font-weight:700; padding:12px 20px; border-radius:10px; font-size:15px; }
+    .btn.ghost { background:transparent; color:var(--brand); border:1px solid var(--brand); }
+    .hero { padding:48px 0 40px; text-align:center; }
+    .hero h1 { font-size:34px; line-height:1.2; margin:0 0 14px; letter-spacing:-0.5px; }
+    .hero p.lead { font-size:18px; color:var(--muted); max-width:640px; margin:0 auto 26px; }
+    .cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    .tag { display:inline-block; background:#f3e8ff; color:var(--brand); font-weight:700; font-size:12px; padding:5px 12px; border-radius:999px; margin-bottom:18px; }
+    section { padding:34px 0; border-top:1px solid var(--line); }
+    h2 { font-size:22px; margin:0 0 18px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px; }
+    .card { background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:18px; }
+    .card h3 { margin:0 0 6px; font-size:16px; }
+    .card p { margin:0; color:var(--muted); font-size:14px; }
+    .steps { counter-reset:s; display:grid; gap:14px; }
+    .step { display:flex; gap:14px; align-items:flex-start; }
+    .step .n { flex:0 0 auto; width:30px; height:30px; border-radius:50%; background:var(--brand); color:#fff; font-weight:700; display:grid; place-items:center; }
+    details { border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin-bottom:10px; }
+    summary { font-weight:700; cursor:pointer; }
+    details p { color:var(--muted); margin:8px 0 0; }
+    footer { border-top:1px solid var(--line); padding:26px 0 40px; color:var(--muted); font-size:14px; }
+    footer a { color:var(--muted); margin-right:16px; }
+    @media (max-width:560px){ .hero h1{font-size:27px;} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand"><img src="/app/logo.png" alt="CreditVoice logo" width="32" height="32" /> CreditVoice</div>
+      <a class="btn" href="/app">Open the app</a>
+    </header>
+
+    <div class="hero">
+      <span class="tag">WhatsApp business assistant</span>
+      <h1>Run your business books right inside WhatsApp</h1>
+      <p class="lead">CreditVoice's assistant, <strong>tiTi</strong>, helps small and informal businesses in Nigeria record sales, track who owes them, manage stock, and send receipts — no download needed.</p>
+      <div class="cta">
+        <a class="btn" href="/app">Get started free</a>
+        <a class="btn ghost" href="%%WA_HREF%%" style="%%WA_STYLE%%">Message tiTi on WhatsApp</a>
+      </div>
+    </div>
+
+    <section>
+      <h2>Everything your shop needs</h2>
+      <div class="grid">
+        <div class="card"><h3>Record sales</h3><p>Log cash and credit sales in seconds — by text or voice note to tiTi.</p></div>
+        <div class="card"><h3>Track credit &amp; debtors</h3><p>See who owes you, how much, and send friendly payment reminders automatically.</p></div>
+        <div class="card"><h3>Manage inventory</h3><p>Track stock levels, cost and selling price, with low-stock alerts.</p></div>
+        <div class="card"><h3>Send receipts</h3><p>Give customers a clean receipt and keep a numbered record for your business.</p></div>
+        <div class="card"><h3>Reports &amp; profit</h3><p>Daily, weekly and monthly sales, top products, and profit margins on the dashboard.</p></div>
+        <div class="card"><h3>Staff &amp; branches</h3><p>Add staff, set permissions, and run multiple branches on higher plans.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><div><strong>Message tiTi</strong><br />Start a chat on WhatsApp or open the web app.</div></div>
+        <div class="step"><div class="n">2</div><div><strong>Record as you sell</strong><br />Type or speak your sales, payments and stock — tiTi understands everyday language.</div></div>
+        <div class="step"><div class="n">3</div><div><strong>See your money</strong><br />Track debtors, get reminders, print receipts, and view reports any time.</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Frequently asked questions</h2>
+      <details open><summary>What is CreditVoice?</summary><p>CreditVoice is a WhatsApp assistant called tiTi that helps small and informal businesses record sales, track who owes them, manage stock, and send receipts — with a web dashboard for reports.</p></details>
+      <details><summary>Do I need to download an app?</summary><p>No. You can use CreditVoice entirely inside WhatsApp by chatting with tiTi. There is also a web dashboard and an Android app, but no download is required to start.</p></details>
+      <details><summary>Is CreditVoice free?</summary><p>Yes, there is a free Basic plan. Paid plans (Go, Pro, Premium) add unlimited records, staff accounts, branches and more.</p></details>
+      <details><summary>What can tiTi do?</summary><p>Record cash and credit sales, track debtors and send reminders, manage inventory and low-stock alerts, generate receipts and reports, and support staff, branches and partners.</p></details>
+    </section>
+
+    <footer>
+      <div style="margin-bottom:10px;">
+        <a href="/app">Open the app</a>
+        <a href="/app/terms">Terms</a>
+        <a href="/app/privacy">Privacy</a>
+        <a href="mailto:support@creditvoiceai.com">support@creditvoiceai.com</a>
+      </div>
+      © CreditVoice. Built for small and informal businesses in Nigeria.
+    </footer>
+  </div>
+</body>
+</html>
