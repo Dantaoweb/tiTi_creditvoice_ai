@@ -21,8 +21,10 @@ def _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx
     now = _utcnow()
     date_str = tx.created_at.strftime("%d/%m/%Y  %H:%M") if tx.created_at else now.strftime("%d/%m/%Y  %H:%M")
 
-    lines = [
-        business_name.upper(),
+    lines = [business_name.upper()]
+    if business_owner_phone:
+        lines.append(f"Tel: {business_owner_phone}")
+    lines += [
         date_str,
         "--------------------",
     ]

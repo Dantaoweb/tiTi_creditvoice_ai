@@ -189,6 +189,9 @@ export default function Receipt() {
       <div className="receipt-paper">
         <div className="receipt-header">
           <div className="receipt-brand">{bizName}</div>
+          {receipt.biz_phone && (
+            <div className="receipt-muted" style={{ fontSize: 12 }}>Tel: {receipt.biz_phone}</div>
+          )}
           {(receipt.branch_address || receipt.biz_address) && (
             <div className="receipt-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>
               {receipt.branch_address || receipt.biz_address}

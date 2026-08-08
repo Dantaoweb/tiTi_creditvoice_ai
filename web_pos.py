@@ -226,6 +226,13 @@ def get_pos_receipt(db, tx_id, user=None):
     customer = db.query(Customer).filter(Customer.id == tx.customer_id).first() if tx.customer_id else None
     recorder = db.query(User).filter(User.id == tx.recorded_by_id).first() if tx.recorded_by_id else None
 
+    # Business contact phone shown on the receipt — always the owner's number,
+    # even when a staff member recorded the sale.
+    owner_user = user
+    if user and getattr(user, "parent_id", None):
+        owner_user = db.query(User).filter(User.id == user.parent_id).first() or user
+    biz_phone = getattr(owner_user, "phone", None) if owner_user else None
+
     # Payment receipt (standalone PAY transaction) — amount paid + current balance
     if tx.type == "PAY":
         from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG
@@ -247,6 +254,7 @@ def get_pos_receipt(db, tx_id, user=None):
             } if customer else None,
             "recorded_by": recorder.name if recorder else None,
             "biz_name": bname,
+            "biz_phone": biz_phone,
             "receipt_number": tx.receipt_number,
             "config": cfg,
             "items": [],
@@ -312,6 +320,7 @@ def get_pos_receipt(db, tx_id, user=None):
         } if customer else None,
         "recorded_by": recorder.name if recorder else None,
         "biz_name": biz_name,
+        "biz_phone": biz_phone,
         "biz_address": biz_address,
         "branch_name": branch_name,
         "branch_address": branch_address,
@@ -348,6 +357,8 @@ def format_receipt_text(receipt):
     lines.append("PAYMENT RECEIPT" if is_payment else (cfg.get("title") or "RECEIPT").upper())
     if receipt.get("biz_name"):
         lines.append(receipt["biz_name"])
+    if receipt.get("biz_phone"):
+        lines.append(f"Tel: {receipt['biz_phone']}")
     lines.append("--------------------")
     if cust.get("name"):
         lines.append(f"{cfg.get('customer_label', 'Customer')}: {cust['name'].title()}")

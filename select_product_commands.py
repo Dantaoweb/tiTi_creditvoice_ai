@@ -164,6 +164,7 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
 def build_customer_receipt(
     business_name, customer_name, cart, total, paid,
     balance, due_date_str, tx_id, config=None, show_discount=False,
+    business_phone=None,
 ):
     cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
@@ -171,6 +172,10 @@ def build_customer_receipt(
     lines = [
         cfg["title"].upper(),
         business_name.title(),
+    ]
+    if business_phone:
+        lines.append(f"Tel: {business_phone}")
+    lines += [
         date_str,
         "--------------------",
         f"{cfg['customer_label']}: {customer_name.title()}",
@@ -801,6 +806,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
         customer_receipt = build_customer_receipt(
             business_name, customer_name, cart, total, paid, balance,
             due_date_str, buy_tx.id, receipt_cfg, show_discount=show_discount,
+            business_phone=business_owner_phone,
         )
         send_message(customer_phone, customer_receipt)
     else:
