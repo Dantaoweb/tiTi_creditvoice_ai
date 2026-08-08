@@ -92,6 +92,19 @@ def staff_recording_allowed(db, user):
     return plan_allows_feature(subscription["plan"], "STAFF")
 
 
+def staff_record_block_message(user, subscription):
+    """Return a WhatsApp block message if a staff sub-account may not record
+    under the given (already-resolved) subscription dict, else None. Owners are
+    never blocked."""
+    from plans import plan_allows_feature
+    if not user or getattr(user, "parent_id", None) is None:
+        return None
+    if plan_allows_feature((subscription or {}).get("plan"), "STAFF"):
+        return None
+    return ("Your business is on the Basic plan, so staff cannot record sales. "
+            "Please ask the owner to renew to Pro or Premium.")
+
+
 def get_month_start():
     now = _utcnow()
     return datetime(now.year, now.month, 1)

@@ -117,6 +117,12 @@ def handle_service_job_confirm(db, phone, text, pending, user, owner_phone, send
 
     # YES — save
     if normalized in ["yes", "1", "save", "ok", "confirm"]:
+        # Staff can record only on a plan that includes staff (Pro/Premium).
+        from subscriptions import staff_recording_allowed
+        if not staff_recording_allowed(db, user):
+            send_message(phone, "Your business is on the Basic plan, so staff cannot "
+                                "record sales. Ask the owner to renew to Pro or Premium.")
+            return {"status": "staff_recording_blocked"}
         if not items:
             db.delete(pending)
             db.commit()

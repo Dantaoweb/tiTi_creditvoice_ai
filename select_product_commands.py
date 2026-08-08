@@ -641,6 +641,13 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
         send_message(phone, "Cancelled. Send 'select product' to start again.")
         return {"status": "select_product_confirm_cancelled"}
 
+    # Staff can record only on a plan that includes staff (Pro/Premium).
+    from subscriptions import staff_record_block_message
+    _block = staff_record_block_message(user, subscription)
+    if _block:
+        send_message(phone, _block)
+        return {"status": "staff_recording_blocked"}
+
     show_discount = normalized in ["yes receipt", "yes d", "yes discount", "yes r"]
     if normalized not in ["yes", "yes receipt", "yes d", "yes discount", "yes r"]:
         cart = _load_cart(pending)
