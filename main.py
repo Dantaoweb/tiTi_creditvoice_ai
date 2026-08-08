@@ -204,14 +204,16 @@ except OSError:
 
 def _render_landing():
     wa = os.getenv("TITI_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
-    wa_href, wa_style = (f"https://wa.me/{wa}", "") if wa else ("/app", "display:none")
+    wa_button = (
+        f'<a class="btn ghost" href="https://wa.me/{wa}">Message tiTi on WhatsApp</a>'
+        if wa else ""
+    )
     gsc = os.getenv("GOOGLE_SITE_VERIFICATION", "").strip()
     gsc_meta = f'<meta name="google-site-verification" content="{gsc}" />' if gsc else ""
     return (
         _LANDING_RAW
-        .replace("%%WA_HREF%%", wa_href)
-        .replace("%%WA_STYLE%%", wa_style)
-        .replace("%%GSC_META%%", gsc_meta)
+        .replace("<!--WA_BUTTON-->", wa_button)
+        .replace("<!--GSC_META-->", gsc_meta)
     )
 
 

@@ -27,8 +27,10 @@ def test_home_is_crawlable_html_with_seo_tags():
     assert 'name="twitter:card"' in body
     assert 'application/ld+json' in body
     assert '"FAQPage"' in body
-    # Placeholders were substituted.
-    assert "%%WA_HREF%%" not in body and "%%GSC_META%%" not in body
+    # Template placeholders were substituted (and the raw file uses HTML
+    # comments so it validates clean in editors).
+    assert "<!--WA_BUTTON-->" not in body and "<!--GSC_META-->" not in body
+    assert "%%" not in body
 
 
 def test_head_home_ok():
