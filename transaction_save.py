@@ -549,6 +549,18 @@ def save_confirmed_pending_transaction(
     subscription,
     send_message,
 ):
+    # A staff sub-account may record only when the business plan includes staff
+    # (Pro/Premium). If the business has lapsed to Basic, block the staff member
+    # so it behaves like a plain Basic account (owner-only recording).
+    if user and getattr(user, "parent_id", None) is not None:
+        if not plan_allows_feature((subscription or {}).get("plan"), "STAFF"):
+            send_message(
+                phone,
+                "Your business is on the Basic plan, so staff cannot record "
+                "sales. Please ask the owner to renew to Pro or Premium.",
+            )
+            return {"status": "staff_recording_blocked"}
+
     inventory_enabled = bool(
         subscription and plan_allows_feature(subscription.get("plan"), "INVENTORY")
     )

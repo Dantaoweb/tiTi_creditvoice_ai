@@ -4,6 +4,10 @@ from datetime import datetime, timedelta, timezone
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+
+# Days a paid plan keeps working after its expiry date before dropping to Basic.
+SUBSCRIPTION_GRACE_DAYS = 3
+
 from messages import get_plan_price
 from models import Customer, SubscriptionPayment, Transaction, User
 from plans import (
@@ -33,18 +37,23 @@ def get_business_subscription(db, user):
     expires_at = getattr(owner, "subscription_expires_at", None)
 
     if expires_at and expires_at < _utcnow():
-        status = "EXPIRED"
-        # Persist the downgrade so the DB reflects reality
-        if owner and plan != PLAN_BASIC:
-            owner.subscription_plan = PLAN_BASIC
-            owner.subscription_status = "EXPIRED"
-            try:
-                db.commit()
-            except Exception:
-                db.rollback()
-        plan = PLAN_BASIC
+        if _utcnow() < expires_at + timedelta(days=SUBSCRIPTION_GRACE_DAYS):
+            # Grace window: the paid plan keeps working for a few days past
+            # expiry so a late renewal doesn't disrupt the business.
+            status = "GRACE"
+        else:
+            status = "EXPIRED"
+            # Persist the downgrade so the DB reflects reality
+            if owner and plan != PLAN_BASIC:
+                owner.subscription_plan = PLAN_BASIC
+                owner.subscription_status = "EXPIRED"
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
+            plan = PLAN_BASIC
 
-    if status not in ["ACTIVE", "TRIAL"]:
+    if status not in ["ACTIVE", "TRIAL", "GRACE"]:
         plan = PLAN_BASIC
 
     return {
@@ -69,6 +78,18 @@ def ensure_feature_allowed(db, user, feature, feature_label):
         owner,
         feature,
     )
+
+
+def staff_recording_allowed(db, user):
+    """True if this user may record sales/payments. Owners always may; a staff
+    sub-account may only when the business plan includes staff (Pro/Premium).
+    So when a business lapses to Basic, its staff can no longer record — the
+    business behaves like a plain Basic account (owner-only)."""
+    from plans import plan_allows_feature
+    if not user or getattr(user, "parent_id", None) is None:
+        return True
+    subscription = get_business_subscription(db, user)
+    return plan_allows_feature(subscription["plan"], "STAFF")
 
 
 def get_month_start():
@@ -310,8 +331,10 @@ def app_user_effective_plan(user):
     status = (getattr(user, "subscription_status", None) or "ACTIVE").upper()
     expires_at = getattr(user, "subscription_expires_at", None)
     if expires_at and expires_at < _utcnow():
-        return "EXPIRED"
-    if status not in ["ACTIVE", "TRIAL"]:
+        # Only "expired" once the grace window has also passed.
+        if _utcnow() >= expires_at + timedelta(days=SUBSCRIPTION_GRACE_DAYS):
+            return "EXPIRED"
+    if status not in ["ACTIVE", "TRIAL", "GRACE"]:
         return status
     return normalize_plan(getattr(user, "subscription_plan", PLAN_BASIC))
 

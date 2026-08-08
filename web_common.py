@@ -256,6 +256,23 @@ def _require_stock_manager(db, session: dict):
     raise HTTPException(status_code=403, detail="Only the owner or a branch admin can manage stock.")
 
 
+def _require_can_record(db, session: dict):
+    """Block a staff sub-account from recording sales/payments when the business
+    is on Basic (staff feature not included) — e.g. after a paid plan lapses.
+    Owners are always allowed. Returns the acting user."""
+    from subscriptions import staff_recording_allowed
+    user = _session_user(db, session)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found.")
+    if not staff_recording_allowed(db, user):
+        raise HTTPException(
+            status_code=403,
+            detail="Staff can only record on the Pro or Premium plan. "
+                   "Ask the business owner to renew the subscription.",
+        )
+    return user
+
+
 def _session_subscription(db, session: dict):
     """The business subscription, resolved at most once per request."""
     cache = db.info.setdefault("_req", {})

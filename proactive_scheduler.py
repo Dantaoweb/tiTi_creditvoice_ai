@@ -440,6 +440,65 @@ def _reconcile_balances(db):
               "investigate if this recurs", flush=True)
 
 
+def _check_subscription_expiry(db):
+    """Remind owners whose paid plan is about to expire (within 3 days) or is in
+    its post-expiry grace window, so they renew before losing paid features."""
+    from models import ProactiveLog, User
+    from plans import PAID_PLANS
+    from subscriptions import SUBSCRIPTION_GRACE_DAYS
+
+    now = _utcnow()
+    owners = db.query(User).filter(
+        User.parent_id == None,
+        User.phone != None,
+        User.subscription_plan.in_(PAID_PLANS),
+        User.subscription_expires_at != None,
+    ).all()
+
+    for owner in owners:
+        exp = owner.subscription_expires_at
+        if not exp:
+            continue
+        plan = owner.subscription_plan
+
+        if now < exp:
+            # Upcoming expiry — only within the 3-day lead window.
+            days_left = (exp - now).days
+            if (exp - now) > timedelta(days=3):
+                continue
+            event_type, cooldown_h = "sub_expiring", 48
+            title = "Subscription expiring soon"
+            body = (
+                f"Your {plan} plan expires in {max(days_left, 0)} day(s) "
+                f"(on {exp.strftime('%d %b %Y')}). Renew to keep staff, branches, "
+                "reminders and your other paid features. Reply UPGRADE to renew."
+            )
+        elif now < exp + timedelta(days=SUBSCRIPTION_GRACE_DAYS):
+            # In the grace window — expired but still working for a few days.
+            grace_left = (exp + timedelta(days=SUBSCRIPTION_GRACE_DAYS) - now).days
+            event_type, cooldown_h = "sub_grace", 24
+            title = "Subscription expired — grace period"
+            body = (
+                f"Your {plan} plan expired on {exp.strftime('%d %b %Y')}. You have "
+                f"about {max(grace_left, 0)} day(s) of grace left before it drops to "
+                "Basic (staff can no longer record, extra branches/partners lock). "
+                "Reply UPGRADE to renew now."
+            )
+        else:
+            continue
+
+        last = db.query(ProactiveLog).filter(
+            ProactiveLog.owner_phone == owner.phone,
+            ProactiveLog.event_type == event_type,
+        ).order_by(ProactiveLog.sent_at.desc()).first()
+        if last and (now - last.sent_at) < timedelta(hours=cooldown_h):
+            continue
+
+        _notify(db, owner.phone, event_type, title, body)
+        db.add(ProactiveLog(owner_phone=owner.phone, event_type=event_type, sent_at=now))
+        db.commit()
+
+
 async def run_proactive_scheduler():
     from database import SessionLocal
 
@@ -454,6 +513,7 @@ async def run_proactive_scheduler():
             _check_inactivity(db)
             _check_reminder_automation(db)
             _check_delivery_due(db)
+            _check_subscription_expiry(db)
             _reconcile_balances(db)
             _purge_old_logs(db)
             _purge_old_notifications(db)

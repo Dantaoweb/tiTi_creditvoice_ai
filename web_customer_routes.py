@@ -19,7 +19,7 @@ from reports import get_balance, get_owner_transaction_query
 from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
-    _session_user, _send_web_receipt, _add_notification,
+    _session_user, _send_web_receipt, _add_notification, _require_can_record,
 )
 
 
@@ -245,6 +245,7 @@ def register_customer_routes(app):
     ):
         db = SessionLocal()
         try:
+            _require_can_record(db, session)
             owner_phone = _session_owner_phone(db, session)
             customer = db.query(Customer).filter(
                 Customer.id == customer_id,

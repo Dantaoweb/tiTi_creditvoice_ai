@@ -23,7 +23,7 @@ from transaction_save import save_confirmed_pending_transaction
 from transaction_setup import handle_transaction_setup
 from webhook_context import load_webhook_user_context, visibility_recorded_by_id
 from web_auth import require_web_auth
-from web_common import _demo_rate_check, _ai_rate_check, _money, _iso
+from web_common import _demo_rate_check, _ai_rate_check, _money, _iso, _require_can_record
 
 
 class DemoChatRequest(BaseModel):
@@ -385,6 +385,7 @@ def register_chat_routes(app):
     def web_capture_confirm(payload: CaptureConfirmRequest, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
+            _require_can_record(db, session)
             phone = session["phone"]
             context = load_webhook_user_context(db, phone, "text")
             if not context.user:

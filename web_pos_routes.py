@@ -18,7 +18,7 @@ from web_pos import get_pos_receipt, save_pos_sale
 from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _money, _iso, _scoped_read, _session_user,
-    _require_tx_in_scope, _send_web_receipt,
+    _require_tx_in_scope, _send_web_receipt, _require_can_record,
 )
 
 
@@ -113,6 +113,7 @@ def register_pos_routes(app):
     ):
         db = SessionLocal()
         try:
+            _require_can_record(db, session)
             owner_phone = _session_owner_phone(db, session)
             items = [it.model_dump() for it in payload.items]
             # Don't trust a client-supplied branch: a branch staff records into
