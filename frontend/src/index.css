@@ -1649,8 +1649,11 @@ tr.low-stock td { background: #fffbeb; }
   .titi-fab, .titi-panel, .titi-overlay { display: none !important; }
 }
 
-/* Hide titi FAB whenever any modal is open so it never blocks modal actions */
-body:has(.modal-overlay) .titi-fab { display: none !important; }
+/* Hide the titi FAB and the bottom tab bar whenever any modal is open, so they
+   never sit on top of the modal's action buttons (e.g. the Add product / Add
+   stock submit button was getting buried behind the bottom bar on small phones). */
+body:has(.modal-overlay) .titi-fab,
+body:has(.modal-overlay) .bottom-tab-bar { display: none !important; }
 
 /* ── tiTi floating panel ─────────────────────────────────────────────── */
 .titi-fab {
