@@ -733,7 +733,7 @@ function SupplierProfileTab({ userPlan }) {
   return (
     <div style={{ maxWidth: 680 }}>
       {!profile && (
-        <div className="card" style={{ padding: 20, marginBottom: 20, background: "linear-gradient(135deg,#ede9fe,#f5f3ff)" }}>
+        <div className="card" style={{ padding: 20, marginBottom: 20, background: "linear-gradient(135deg,#e6efff,#f0f6ff)" }}>
           <strong style={{ fontSize: 15 }}>What you gain as a Verified Supplier</strong>
           <ul style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 2, marginTop: 8, paddingLeft: 16 }}>
             <li>Discovered by retailers searching for your product on CreditVoice</li>

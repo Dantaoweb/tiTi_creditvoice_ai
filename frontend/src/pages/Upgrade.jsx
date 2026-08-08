@@ -230,8 +230,8 @@ export default function Upgrade() {
       label: "Go",
       price: priceFor("GO"),
       desc: "For growing businesses",
-      color: "#863bff",
-      bg: "linear-gradient(135deg, #f3e8ff 0%, #ede9fe 100%)",
+      color: "#1a56db",
+      bg: "linear-gradient(135deg, #eff4ff 0%, #e6efff 100%)",
     },
     {
       key: "PRO",
@@ -259,7 +259,7 @@ export default function Upgrade() {
         <div className="upgrade-current-banner">
           <div>
             <span className="upgrade-current-label">Current plan: </span>
-            <strong style={{ color: currentPlan === "BASIC" ? "var(--muted)" : "#863bff" }}>
+            <strong style={{ color: currentPlan === "BASIC" ? "var(--muted)" : "#1a56db" }}>
               {currentPlan}
             </strong>
             {status.expires_at && (
@@ -380,7 +380,7 @@ export default function Upgrade() {
                 <tr>
                   <th>Feature</th>
                   <th>Basic</th>
-                  <th style={{ color: "#863bff" }}>Go</th>
+                  <th style={{ color: "#1a56db" }}>Go</th>
                   <th style={{ color: "#d97706" }}>Pro</th>
                   <th style={{ color: "#0f766e" }}>Premium</th>
                 </tr>

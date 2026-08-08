@@ -167,7 +167,7 @@ function UsersTab() {
     return new Date(iso).toLocaleDateString();
   }
 
-  const PLAN_COLOR = { BASIC: "#6b7280", GO: "#863bff", PRO: "#d97706", PREMIUM: "#0f766e", ENTERPRISE: "#7c3aed" };
+  const PLAN_COLOR = { BASIC: "#6b7280", GO: "#1a56db", PRO: "#d97706", PREMIUM: "#0f766e", ENTERPRISE: "#1a56db" };
   const STATUS_COLOR = { ACTIVE: "var(--green,#16a34a)", EXPIRED: "#dc2626", TRIAL: "#d97706" };
 
   return (
@@ -639,7 +639,7 @@ function SuppliersTab() {
             { label: "Contacts sent",         value: stats.total_contacts,     color: "#2563eb" },
             { label: "Confirmed connections",  value: stats.total_connections,  color: "#059669" },
             { label: "Overall avg rating",     value: stats.overall_avg_rating ? `${stats.overall_avg_rating} ★` : "—", color: "#d97706" },
-            { label: "Approved suppliers",     value: stats.approved_suppliers, color: "#7c3aed" },
+            { label: "Approved suppliers",     value: stats.approved_suppliers, color: "#1a56db" },
           ].map(s => (
             <div key={s.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value ?? "—"}</div>
@@ -1166,7 +1166,7 @@ export default function Admin() {
               <div className="metrics-grid">
                 <StatCard label="Total Businesses" value={stats.users.total} color="var(--brand)" />
                 <StatCard label="New Today" value={stats.users.new_today} color="#0ea5e9" />
-                <StatCard label="New This Week" value={stats.users.new_this_week} color="#8b5cf6" />
+                <StatCard label="New This Week" value={stats.users.new_this_week} color="#3b82f6" />
                 <StatCard label="New This Month" value={stats.users.new_this_month} color="#f59e0b" />
               </div>
               <div style={{ marginTop: 16, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10 }}>
@@ -1181,7 +1181,7 @@ export default function Admin() {
               <div className="metrics-grid">
                 <StatCard label="Total Transactions" value={stats.transactions.total} color="#16a34a" />
                 <StatCard label="Today" value={stats.transactions.today} color="#0ea5e9" />
-                <StatCard label="This Week" value={stats.transactions.this_week} color="#8b5cf6" />
+                <StatCard label="This Week" value={stats.transactions.this_week} color="#3b82f6" />
               </div>
               <div style={{ marginTop: 16, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>TRANSACTIONS — LAST 14 DAYS</div>

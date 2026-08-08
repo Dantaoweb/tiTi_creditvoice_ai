@@ -122,7 +122,7 @@ export default function Transactions() {
                 title="Export is available on the Go plan. Upgrade to download your records."
                 onClick={() => window.location.href = "/app/upgrade"}
               >
-                <Lock size={11} style={{ color: "#a78bfa" }} />
+                <Lock size={11} style={{ color: "#3b82f6" }} />
                 <Download size={13} /> Export
               </button>
             )}

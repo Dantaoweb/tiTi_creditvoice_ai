@@ -20,7 +20,7 @@ export default function UpgradeGate({ allowed, plan = "Go", feature = "This feat
         display: "inline-flex", alignItems: "center", gap: 4,
         background: "#1e1b4b", border: "1px solid #4c1d95",
         borderRadius: 6, padding: "2px 8px",
-        fontSize: 12, color: "#a78bfa", fontWeight: 600,
+        fontSize: 12, color: "#3b82f6", fontWeight: 600,
         cursor: "default", userSelect: "none",
       }}>
         <Lock size={10} /> {plan}
@@ -41,14 +41,14 @@ export default function UpgradeGate({ allowed, plan = "Go", feature = "This feat
         borderRadius: 10, gap: 8,
         backdropFilter: "blur(1px)",
       }}>
-        <Lock size={20} color="#a78bfa" />
+        <Lock size={20} color="#3b82f6" />
         <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{feature}</div>
         <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-          Available on the <strong style={{ color: "#a78bfa" }}>{plan}</strong> plan
+          Available on the <strong style={{ color: "#3b82f6" }}>{plan}</strong> plan
         </div>
         <button
           style={{
-            marginTop: 4, background: "#863bff", color: "#fff", border: "none",
+            marginTop: 4, background: "#1a56db", color: "#fff", border: "none",
             borderRadius: 8, padding: "7px 18px", fontSize: 13, fontWeight: 600,
             cursor: "pointer",
           }}
@@ -68,9 +68,9 @@ export function LockBadge({ plan = "Go" }) {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 3,
-      background: "rgba(134,59,255,0.15)", border: "1px solid rgba(134,59,255,0.3)",
+      background: "rgba(26,86,219,0.15)", border: "1px solid rgba(26,86,219,0.3)",
       borderRadius: 4, padding: "1px 6px",
-      fontSize: 11, color: "#a78bfa", fontWeight: 600,
+      fontSize: 11, color: "#3b82f6", fontWeight: 600,
     }}>
       <Lock size={9} /> {plan}
     </span>
@@ -93,7 +93,7 @@ export function LimitBar({ used, limit, label, upgradePlan = "Go" }) {
       }}>
         <span>{used} / {limit} {label} used</span>
         {atMax && (
-          <span style={{ color: "#a78bfa", fontWeight: 600, cursor: "pointer" }}
+          <span style={{ color: "#3b82f6", fontWeight: 600, cursor: "pointer" }}
             onClick={() => window.location.href = "/app/upgrade"}>
             Upgrade to {upgradePlan} →
           </span>
@@ -103,7 +103,7 @@ export function LimitBar({ used, limit, label, upgradePlan = "Go" }) {
         <div style={{
           height: "100%", borderRadius: 2,
           width: `${pct}%`,
-          background: atMax ? "#ef4444" : "#863bff",
+          background: atMax ? "#ef4444" : "#1a56db",
           transition: "width 0.3s",
         }} />
       </div>

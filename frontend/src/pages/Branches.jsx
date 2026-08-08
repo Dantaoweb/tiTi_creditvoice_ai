@@ -21,7 +21,7 @@ export default function Branches() {
   if (!canUseBranches) {
     return (
       <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-        <Lock size={36} color="#a78bfa" style={{ margin: "0 auto 16px" }} />
+        <Lock size={36} color="#3b82f6" style={{ margin: "0 auto 16px" }} />
         <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
           Branches requires Pro
         </div>

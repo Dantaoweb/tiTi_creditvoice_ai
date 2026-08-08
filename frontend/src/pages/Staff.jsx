@@ -411,7 +411,7 @@ export default function Staff() {
             onClick={() => setTab("performance")}>
             <Users size={13} />
             Admin Staff
-            {!canUseAppStaff && <Lock size={11} style={{ color: "#a78bfa" }} />}
+            {!canUseAppStaff && <Lock size={11} style={{ color: "#3b82f6" }} />}
           </button>
         ) : (
           ["performance", "profiles"].map(t => (
@@ -419,7 +419,7 @@ export default function Staff() {
               style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}
               onClick={() => setTab(t)}>
               {t === "performance" ? "Performance" : "HR Profiles"}
-              {t === "performance" && !canUseAppStaff && <Lock size={11} style={{ color: "#a78bfa" }} />}
+              {t === "performance" && !canUseAppStaff && <Lock size={11} style={{ color: "#3b82f6" }} />}
             </button>
           ))
         )}
@@ -433,7 +433,7 @@ export default function Staff() {
       {/* Upgrade wall for non-Pro trying to access app-access staff */}
       {tab === "performance" && !canUseAppStaff && (
         <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-          <Lock size={36} color="#a78bfa" style={{ margin: "0 auto 16px" }} />
+          <Lock size={36} color="#3b82f6" style={{ margin: "0 auto 16px" }} />
           <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
             {isSchool ? "Admin Staff requires Pro" : "Staff requires Pro"}
           </div>
@@ -450,7 +450,7 @@ export default function Staff() {
 
       {tab === "profiles" && !canUseAppStaff && (
         <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-          <Lock size={36} color="#a78bfa" style={{ margin: "0 auto 16px" }} />
+          <Lock size={36} color="#3b82f6" style={{ margin: "0 auto 16px" }} />
           <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>HR Profiles requires Pro</div>
           <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 14, maxWidth: 400, margin: "0 auto 20px" }}>
             Set staff positions, salaries and employee IDs. Available on the Pro plan.

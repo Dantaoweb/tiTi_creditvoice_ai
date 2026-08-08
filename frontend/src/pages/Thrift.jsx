@@ -57,11 +57,11 @@ function ThriftExplainer({ mode }) {
       };
 
   return (
-    <div className="card" style={{ borderLeft: "3px solid #863bff", marginBottom: 0 }}>
+    <div className="card" style={{ borderLeft: "3px solid #1a56db", marginBottom: 0 }}>
       <div className="card-header" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Info size={14} color="#a78bfa" />
-          <span className="card-title" style={{ color: "#a78bfa", fontSize: 13 }}>{text.title}</span>
+          <Info size={14} color="#3b82f6" />
+          <span className="card-title" style={{ color: "#3b82f6", fontSize: 13 }}>{text.title}</span>
         </div>
         {open ? <ChevronUp size={14} color="var(--muted)" /> : <ChevronDown size={14} color="var(--muted)" />}
       </div>
@@ -339,7 +339,7 @@ export default function Thrift() {
 
       {/* Page header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        <Activity size={20} color="#a78bfa" />
+        <Activity size={20} color="#3b82f6" />
         <span style={{ fontSize: 16, fontWeight: 700 }}>Thrift / Ajo & Savings</span>
       </div>
 
@@ -370,8 +370,8 @@ export default function Thrift() {
 
       {/* Wallet CTA */}
       <div className="card" style={{
-        background: "linear-gradient(135deg, rgba(134,59,255,0.15), rgba(134,59,255,0.05))",
-        border: "1px solid rgba(134,59,255,0.3)",
+        background: "linear-gradient(135deg, rgba(26,86,219,0.15), rgba(26,86,219,0.05))",
+        border: "1px solid rgba(26,86,219,0.3)",
         marginTop: 8,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

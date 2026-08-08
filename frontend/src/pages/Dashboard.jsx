@@ -83,12 +83,12 @@ function InviteCard() {
   const atLimit = data?.invite_limit !== null && data?.invite_used >= data?.invite_limit;
 
   return (
-    <div className="card" style={{ borderLeft: "3px solid rgba(134,59,255,0.4)" }}>
+    <div className="card" style={{ borderLeft: "3px solid rgba(26,86,219,0.4)" }}>
       <div className="card-header" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <span className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Share2 size={15} color="#a78bfa" /> Invite a Friend
+          <Share2 size={15} color="#3b82f6" /> Invite a Friend
           {data?.invite_used > 0 && (
-            <span style={{ fontSize: 11, background: data.active_go > 0 ? "rgba(22,163,74,0.15)" : "rgba(134,59,255,0.15)", color: data.active_go > 0 ? "#16a34a" : "#a78bfa", borderRadius: 4, padding: "2px 6px" }}>
+            <span style={{ fontSize: 11, background: data.active_go > 0 ? "rgba(22,163,74,0.15)" : "rgba(26,86,219,0.15)", color: data.active_go > 0 ? "#16a34a" : "#3b82f6", borderRadius: 4, padding: "2px 6px" }}>
               {data.active_go > 0 ? `${data.active_go} active` : `${data.invite_used} joined`}
             </span>
           )}
@@ -99,8 +99,8 @@ function InviteCard() {
       {open && (
         <div style={{ marginTop: 12, display: "grid", gap: 14 }}>
           {/* Reward info */}
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", background: "rgba(134,59,255,0.08)", borderRadius: 8, padding: "10px 12px", lineHeight: 1.6 }}>
-            Your friend gets <strong style={{ color: "#a78bfa" }}>14 days on GO plan</strong> free.{" "}
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", background: "rgba(26,86,219,0.08)", borderRadius: 8, padding: "10px 12px", lineHeight: 1.6 }}>
+            Your friend gets <strong style={{ color: "#3b82f6" }}>14 days on GO plan</strong> free.{" "}
             {data?.plan === "BASIC"
               ? <>You can invite <strong style={{ color: "var(--ink)" }}>{Math.max(0, 2 - (data?.invite_used || 0))} more</strong> friend{Math.max(0, 2 - (data?.invite_used || 0)) !== 1 ? "s" : ""} on your Basic plan.</>
               : <>For each friend with an <strong style={{ color: "#16a34a" }}>active GO subscription</strong>, you earn <strong style={{ color: "#16a34a" }}>{nairaFull(data?.cashback_per_referral || 0)}</strong> plan credit that month — automatically off your next payment.</>
@@ -112,7 +112,7 @@ function InviteCard() {
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Your referral code</div>
-                <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 18, letterSpacing: 3, color: "#a78bfa" }}>
+                <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 18, letterSpacing: 3, color: "#3b82f6" }}>
                   {data.referral_code}
                 </span>
               </div>
@@ -220,7 +220,7 @@ function InviteCard() {
 
           {atLimit && (
             <div style={{ fontSize: 13, color: "#f59e0b" }}>
-              You've used both Basic invites. <Link to="/wallet" style={{ color: "#a78bfa" }}>Upgrade to GO</Link> for unlimited invites + cashback.
+              You've used both Basic invites. <Link to="/wallet" style={{ color: "#3b82f6" }}>Upgrade to GO</Link> for unlimited invites + cashback.
             </div>
           )}
         </div>
@@ -262,14 +262,14 @@ function RedeemCodeCard({ onRedeemed }) {
   }
 
   return (
-    <div className="card" style={{ borderLeft: "3px solid rgba(134,59,255,0.4)" }}>
+    <div className="card" style={{ borderLeft: "3px solid rgba(26,86,219,0.4)" }}>
       <div
         className="card-header"
         style={{ cursor: "pointer" }}
         onClick={() => setOpen(o => !o)}
       >
         <span className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Ticket size={15} color="#a78bfa" /> Have a plan code?
+          <Ticket size={15} color="#3b82f6" /> Have a plan code?
         </span>
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{open ? "▲" : "▼"}</span>
       </div>
@@ -603,7 +603,7 @@ export default function Dashboard() {
             title="CSV export is available on the Go plan."
             onClick={() => window.location.href = "/app/upgrade"}
           >
-            <Lock size={11} style={{ color: "#a78bfa" }} />
+            <Lock size={11} style={{ color: "#3b82f6" }} />
             <Download size={13} /> Export (Go plan)
           </button>
         )}

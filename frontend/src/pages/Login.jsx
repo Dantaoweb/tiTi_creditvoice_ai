@@ -417,7 +417,7 @@ export default function Login() {
                 disabled={busy || !!refFromUrl}
               />
               {refFromUrl && (
-                <span className="form-hint" style={{ color: "#a78bfa" }}>
+                <span className="form-hint" style={{ color: "#3b82f6" }}>
                   ✓ Referral code applied — you'll get 14 days on GO plan free.
                 </span>
               )}

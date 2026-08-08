@@ -2413,7 +2413,7 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   align-items: center;
   gap: 10px;
   padding: 13px 16px;
-  background: #863bff;
+  background: #1a56db;
   color: #fff;
   box-shadow: 0 -2px 16px rgba(0,0,0,0.18);
 }
@@ -2429,7 +2429,7 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 
 .install-banner-btn {
   background: #fff;
-  color: #863bff;
+  color: #1a56db;
   border: none;
   border-radius: 6px;
   padding: 7px 16px;
@@ -3056,7 +3056,7 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #a78bfa;
+  color: #3b82f6;
   text-decoration: none;
   font-size: 14px;
   margin-bottom: 28px;
@@ -3093,7 +3093,7 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   margin-bottom: 8px;
 }
 .legal-page a {
-  color: #a78bfa;
+  color: #3b82f6;
   text-decoration: underline;
 }
 .legal-page strong { color: #fff; }
@@ -3418,18 +3418,18 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 }
 .upgrade-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
 .upgrade-card--current {
-  border-color: #863bff;
-  box-shadow: 0 0 0 2px #863bff33;
+  border-color: #1a56db;
+  box-shadow: 0 0 0 2px #1a56db33;
 }
 .upgrade-card--featured {
-  border-color: #863bff;
+  border-color: #1a56db;
 }
 .upgrade-popular-badge {
   position: absolute;
   top: -12px;
   left: 50%;
   transform: translateX(-50%);
-  background: #863bff;
+  background: #1a56db;
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -3464,8 +3464,8 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   text-align: center;
   font-size: 13px;
   font-weight: 600;
-  color: #863bff;
-  background: #f3e8ff;
+  color: #1a56db;
+  background: #eff4ff;
   border-radius: 8px;
   padding: 8px;
 }
