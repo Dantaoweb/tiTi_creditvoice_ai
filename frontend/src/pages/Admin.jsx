@@ -1102,7 +1102,78 @@ function NotifyTab() {
   );
 }
 
-const TABS = ["Overview", "Users", "Suppliers", "Opportunities", "Token Codes", "Referrals", "Notify", "Failed Messages"];
+// ── Subscription payments: approve/reject bank transfers ──────────────────────
+function PaymentsTab() {
+  const [payments, setPayments] = useState(null);
+  const [busyId, setBusyId]     = useState(null);
+  const [msg, setMsg]           = useState("");
+  const [err, setErr]           = useState("");
+
+  function load() {
+    setErr("");
+    apiFetch("admin/subscription-payments?status=PENDING")
+      .then(d => setPayments(d.payments || []))
+      .catch(e => { setErr(e.message); setPayments([]); });
+  }
+  useEffect(() => { load(); }, []);
+
+  async function act(id, kind) {
+    setBusyId(id); setMsg(""); setErr("");
+    try {
+      const r = await apiPost(`admin/subscription-payments/${id}/${kind}`, {});
+      setMsg(kind === "approve" ? `Approved — ${r.plan} plan is now active.` : "Payment rejected.");
+      load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusyId(null); }
+  }
+
+  if (payments === null) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
+
+  return (
+    <section>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <h3 style={{ margin: 0 }}>Pending payments</h3>
+        <button onClick={load} title="Refresh" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
+          <RefreshCw size={15} />
+        </button>
+      </div>
+      {msg && <div style={{ color: "#16a34a", marginBottom: 10 }}>{msg}</div>}
+      {err && <div style={{ color: "var(--rose)", marginBottom: 10 }}>{err}</div>}
+      {payments.length === 0 ? (
+        <p style={{ color: "var(--text-muted)" }}>No pending payments. Bank transfers a user reports paying appear here for you to confirm.</p>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {payments.map(p => (
+            <div key={p.id} className="card" style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>
+                  {p.owner_name || "—"} <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>· {p.phone}</span>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  {p.plan} · {p.period === "YEARLY" ? "Yearly" : "Monthly"} · {nairaFull(p.amount)} · {p.method === "BANK_TRANSFER" ? "Bank transfer" : p.method}
+                </div>
+                {p.evidence_ref && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Ref: {p.evidence_ref}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-primary btn-sm" disabled={busyId === p.id}
+                        style={{ background: "#16a34a", borderColor: "#16a34a" }}
+                        onClick={() => act(p.id, "approve")}>
+                  {busyId === p.id ? "…" : "Approve"}
+                </button>
+                <button className="btn btn-secondary btn-sm" disabled={busyId === p.id}
+                        onClick={() => { if (window.confirm("Reject this payment?")) act(p.id, "reject"); }}>
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Token Codes", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -1235,6 +1306,7 @@ export default function Admin() {
       )}
 
       {tab === "Users"          && <UsersTab />}
+      {tab === "Payments"       && <PaymentsTab />}
       {tab === "Suppliers"      && <SuppliersTab />}
       {tab === "Opportunities"  && <OpportunitiesTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}

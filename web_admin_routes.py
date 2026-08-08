@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from database import SessionLocal
 from models import User, AppNotification, FailedParse, Transaction, Customer, InventoryItem, utcnow
 from web_auth import require_web_auth
-from web_common import _admin_rate_check, _export_rate_check
+from web_common import _admin_rate_check, _export_rate_check, _add_notification
 
 
 class AdminNotifyRequest(BaseModel):
@@ -460,5 +460,142 @@ def register_admin_routes(app):
                   resource=f"user:{target.id}:{target.phone}")
             db.commit()
             return {"ok": True, "staff_restored": len(members)}
+        finally:
+            db.close()
+
+    # ── Subscription payments: list + approve/reject bank transfers ───────────
+    @app.get("/app/api/admin/subscription-payments")
+    def web_admin_subscription_payments(
+        status: str = Query(default="PENDING"),
+        session: dict = Depends(require_web_auth),
+    ):
+        """Pending (default) subscription payments awaiting admin confirmation —
+        the web equivalent of the WhatsApp 'approve <phone>' flow."""
+        from admin import is_app_admin
+        from models import SubscriptionPayment
+        db = SessionLocal()
+        try:
+            actor = db.query(User).filter(User.id == session["user_id"]).first()
+            if not actor or not is_app_admin(actor.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(actor.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+
+            q = db.query(SubscriptionPayment)
+            if status:
+                q = q.filter(SubscriptionPayment.status == status.upper())
+            rows = q.order_by(SubscriptionPayment.created_at.desc()).limit(200).all()
+            owners = {
+                u.id: u for u in db.query(User).filter(
+                    User.id.in_([r.user_id for r in rows] or [None])
+                ).all()
+            }
+            return {"payments": [
+                {
+                    "id": r.id,
+                    "plan": r.plan,
+                    "period": r.billing_period or "MONTHLY",
+                    "amount": r.amount,
+                    "method": r.payment_method,
+                    "status": r.status,
+                    "phone": r.phone,
+                    "owner_name": (owners.get(r.user_id).name if owners.get(r.user_id) else None),
+                    "evidence_type": r.evidence_type,
+                    "evidence_ref": r.evidence_ref,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]}
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/subscription-payments/{payment_id}/approve")
+    def web_admin_approve_payment(payment_id: int, session: dict = Depends(require_web_auth)):
+        """Activate a pending subscription payment (bank transfer) from the web."""
+        from admin import is_app_admin
+        from models import SubscriptionPayment, PendingAction
+        from subscriptions import approve_subscription_payment
+        db = SessionLocal()
+        try:
+            actor = db.query(User).filter(User.id == session["user_id"]).first()
+            if not actor or not is_app_admin(actor.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(actor.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+
+            payment = db.query(SubscriptionPayment).filter(SubscriptionPayment.id == payment_id).first()
+            if not payment:
+                raise HTTPException(status_code=404, detail="Payment not found.")
+            if payment.status != "PENDING":
+                raise HTTPException(status_code=409, detail=f"Payment already {payment.status.lower()}.")
+
+            owner = approve_subscription_payment(db, payment, actor)
+            if not owner:
+                raise HTTPException(status_code=409, detail="Could not approve (already processed).")
+            db.query(PendingAction).filter(
+                PendingAction.phone == owner.phone,
+                PendingAction.action == "SUBSCRIPTION_PAYMENT_PENDING",
+            ).delete()
+            from audit import audit
+            audit(db, action="ADMIN_APPROVE_SUBSCRIPTION", actor_id=actor.id, actor_phone=actor.phone,
+                  resource=f"payment:{payment.id}:{owner.phone}:{owner.subscription_plan}")
+            _exp = owner.subscription_expires_at.strftime('%d/%m/%Y') if owner.subscription_expires_at else "—"
+            _add_notification(db, owner.phone, "upgrade", "Subscription activated",
+                              f"Your {owner.subscription_plan} plan is now active (expires {_exp}).")
+            db.commit()
+            try:
+                from whatsapp_client import send_whatsapp_message
+                send_whatsapp_message(
+                    owner.phone,
+                    f"Your {owner.subscription_plan} plan is now active.\nExpires: {_exp}\n\n"
+                    "Send MY PLAN anytime to check your subscription.")
+            except Exception:
+                pass
+            return {"ok": True, "plan": owner.subscription_plan, "expires_at":
+                    owner.subscription_expires_at.isoformat() if owner.subscription_expires_at else None}
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/subscription-payments/{payment_id}/reject")
+    def web_admin_reject_payment(payment_id: int, session: dict = Depends(require_web_auth)):
+        """Reject a pending subscription payment and let the owner know."""
+        from admin import is_app_admin
+        from models import SubscriptionPayment, PendingAction
+        db = SessionLocal()
+        try:
+            actor = db.query(User).filter(User.id == session["user_id"]).first()
+            if not actor or not is_app_admin(actor.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(actor.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+
+            payment = db.query(SubscriptionPayment).filter(SubscriptionPayment.id == payment_id).first()
+            if not payment:
+                raise HTTPException(status_code=404, detail="Payment not found.")
+            if payment.status != "PENDING":
+                raise HTTPException(status_code=409, detail=f"Payment already {payment.status.lower()}.")
+
+            payment.status = "REJECTED"
+            owner = db.query(User).filter(User.id == payment.user_id).first()
+            if owner:
+                db.query(PendingAction).filter(
+                    PendingAction.phone == owner.phone,
+                    PendingAction.action == "SUBSCRIPTION_PAYMENT_PENDING",
+                ).delete()
+                _add_notification(db, owner.phone, "upgrade", "Payment not confirmed",
+                                  "Your subscription payment could not be confirmed. Please send a clearer receipt or contact support.")
+            from audit import audit
+            audit(db, action="ADMIN_REJECT_SUBSCRIPTION", actor_id=actor.id, actor_phone=actor.phone,
+                  resource=f"payment:{payment.id}")
+            db.commit()
+            if owner:
+                try:
+                    from whatsapp_client import send_whatsapp_message
+                    send_whatsapp_message(
+                        owner.phone,
+                        "Your subscription payment could not be confirmed. Please send a clearer receipt.")
+                except Exception:
+                    pass
+            return {"ok": True}
         finally:
             db.close()
