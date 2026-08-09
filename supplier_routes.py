@@ -260,16 +260,18 @@ def register_supplier_routes(app, get_db=None):
         try:
             phone = _get_owner(db, request)
 
-            # Supplier status is a PRO feature
+            # Verified Supplier status is a Pro-and-above feature. Include PREMIUM
+            # (the tier Pro users were grandfathered into) and legacy ENTERPRISE,
+            # or Premium users are wrongly told to "upgrade to PRO".
             user = db.query(User).filter(User.phone == phone).first()
             plan = (user.subscription_plan or "BASIC").upper() if user else "BASIC"
-            if plan not in ("PRO", "ENTERPRISE"):
+            if plan not in ("PRO", "PREMIUM", "ENTERPRISE"):
                 raise HTTPException(
                     status_code=403,
                     detail=(
-                        "Verified Supplier status is a PRO feature. "
-                        "Upgrade to PRO to list your business in the supplier directory "
-                        "and get recommended to retailers across Nigeria."
+                        "Verified Supplier status is a Pro feature. "
+                        "Upgrade to Pro or Premium to list your business in the supplier "
+                        "directory and get recommended to retailers across Nigeria."
                     ),
                 )
 
