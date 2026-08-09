@@ -110,6 +110,37 @@ def get_month_start():
     return datetime(now.year, now.month, 1)
 
 
+def monthly_transaction_count(db, owner_phone):
+    """Non-voided transactions the business recorded in the current month."""
+    from reports import get_owner_transaction_query
+    return get_owner_transaction_query(db, owner_phone).filter(
+        Transaction.created_at >= get_month_start()
+    ).count()
+
+
+def monthly_transaction_usage(db, owner_phone, subscription):
+    """(count, limit, remaining) for the current month. limit/remaining are None
+    when the plan is unlimited. Used for the approaching-limit warning."""
+    limit = subscription["limits"].get("monthly_transactions")
+    count = monthly_transaction_count(db, owner_phone)
+    remaining = None if limit is None else max(0, limit - count)
+    return count, limit, remaining
+
+
+def check_monthly_transaction_limit(db, owner_phone, subscription):
+    """(allowed, message). Blocks a new sale once the month's transaction cap is
+    reached (Basic = 100). Unlimited plans always pass."""
+    limit = subscription["limits"].get("monthly_transactions")
+    if limit is None:
+        return True, None
+    if monthly_transaction_count(db, owner_phone) < limit:
+        return True, None
+    return False, (
+        f"You've reached the Basic plan limit of {limit} transactions this month. "
+        "Upgrade to Go for unlimited transactions."
+    )
+
+
 def check_monthly_invoice_limit(db, owner_phone, subscription):
     limit = subscription["limits"].get("monthly_invoice_uses")
     if limit is None:

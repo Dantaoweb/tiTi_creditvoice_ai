@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, User, X } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -14,6 +14,7 @@ const PAGE_SIZE = 20;   // products shown at once; slide/arrow to reveal more
 
 function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   const [products, setProducts] = useState([]);
+  const [usage, setUsage] = useState(null);   // { count, limit, remaining }
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -23,10 +24,25 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
     if (!ownerPhone) return;
     setLoading(true);
     apiFetch("pos/products", { owner_phone: ownerPhone, ...(branchId ? { branch_id: branchId } : {}) })
-      .then(d => setProducts(d.products || []))
+      .then(d => { setProducts(d.products || []); setUsage(d.monthly_transactions || null); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [ownerPhone, branchId]);
+
+  // Basic monthly-transaction cap warning (only when a limit applies and it's close).
+  const capBanner = (usage && usage.limit != null && usage.remaining != null && usage.remaining <= 10) ? (
+    <div className="pos-cap-banner" style={{
+      margin: "0 0 10px", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+      background: usage.remaining === 0 ? "#fee2e2" : "#fef3c7",
+      border: `1px solid ${usage.remaining === 0 ? "#fca5a5" : "#fcd34d"}`,
+      color: usage.remaining === 0 ? "#991b1b" : "#92400e",
+    }}>
+      {usage.remaining === 0
+        ? `You've reached the Basic limit of ${usage.limit} sales this month. Upgrade to Go for unlimited.`
+        : `${usage.remaining} of ${usage.limit} monthly sales left on Basic. Upgrade to Go for unlimited.`}
+      {" "}<Link to="/upgrade" style={{ color: "inherit", textDecoration: "underline" }}>Upgrade</Link>
+    </div>
+  ) : null;
 
   const filtered = q.trim()
     ? products.filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
@@ -52,6 +68,7 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
 
   return (
     <div className="pos-products-panel">
+      {capBanner}
       <div className="pos-pgrid-search">
         <Search size={15} className="pos-search-icon" />
         <input

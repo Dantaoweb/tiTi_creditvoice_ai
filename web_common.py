@@ -256,11 +256,16 @@ def _require_stock_manager(db, session: dict):
     raise HTTPException(status_code=403, detail="Only the owner or a branch admin can manage stock.")
 
 
-def _require_can_record(db, session: dict):
-    """Block a staff sub-account from recording sales/payments when the business
-    is on Basic (staff feature not included) — e.g. after a paid plan lapses.
-    Owners are always allowed. Returns the acting user."""
-    from subscriptions import staff_recording_allowed
+def _require_can_record(db, session: dict, count_sale: bool = True):
+    """Guard before recording. Blocks:
+      - a staff sub-account when the business is on Basic (staff not included);
+      - a new SALE once the business hits its monthly transaction cap
+        (Basic = 100). Pass count_sale=False for debt payments so collecting
+        money owed is never blocked.
+    Owners are allowed (subject to the monthly cap). Returns the acting user."""
+    from subscriptions import (
+        staff_recording_allowed, get_business_subscription, check_monthly_transaction_limit,
+    )
     user = _session_user(db, session)
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
@@ -270,6 +275,12 @@ def _require_can_record(db, session: dict):
             detail="Staff can only record on the Pro or Premium plan. "
                    "Ask the business owner to renew the subscription.",
         )
+    if count_sale:
+        owner_phone = _session_owner_phone(db, session)
+        sub = get_business_subscription(db, user)
+        ok, msg = check_monthly_transaction_limit(db, owner_phone, sub)
+        if not ok:
+            raise HTTPException(status_code=403, detail=msg)
     return user
 
 

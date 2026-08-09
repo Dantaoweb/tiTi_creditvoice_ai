@@ -16,7 +16,7 @@ from models import User, InventoryItem, InventoryMovement, utcnow
 from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
-    _require_stock_manager, _check_inventory_limit, _session_user,
+    _require_stock_manager, _check_inventory_limit, _session_user, _active_inventory_count,
 )
 
 
@@ -251,6 +251,16 @@ def register_inventory_routes(app):
             from transaction_save import _get_recording_branch_id
             _import_branch_id = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
 
+            # Enforce the active-product cap (Basic = 5). Extra priced items are
+            # still saved, but as unlimited drafts (no price) rather than active
+            # products, and we report how many so the UI can prompt an upgrade.
+            from subscriptions import get_business_subscription
+            from plans import plan_limit
+            sub = get_business_subscription(db, _session_user(db, session))
+            active_limit = plan_limit(sub["plan"], "active_inventory_items")
+            active_count = _active_inventory_count(db, owner_phone)
+            priced_blocked = 0
+
             # Normalize plain names and priced/service catalog items into one list
             rows = [{"name": n} for n in payload.names]
             rows += [
@@ -276,8 +286,14 @@ def register_inventory_routes(app):
                     is_available=True,
                     branch_id=_import_branch_id,
                 )
-                if row.get("selling_price"):
+                want_price = bool(row.get("selling_price"))
+                if want_price and active_limit is not None and active_count >= active_limit:
+                    # No active slots left — keep it as a draft (unlimited).
+                    want_price = False
+                    priced_blocked += 1
+                if want_price:
                     item.selling_price = int(row["selling_price"])
+                    active_count += 1
                 if row.get("unit"):
                     item.unit = row["unit"]
                 if row.get("is_service"):
@@ -287,7 +303,16 @@ def register_inventory_routes(app):
                 saved += 1
             if saved:
                 db.commit()
-            return {"saved": saved, "already_existed": skipped}
+            resp = {"saved": saved, "already_existed": skipped}
+            if priced_blocked:
+                resp["priced_blocked"] = priced_blocked
+                resp["active_limit"] = active_limit
+                resp["message"] = (
+                    f"{priced_blocked} item(s) were saved without a price because you've "
+                    f"reached the Basic limit of {active_limit} active products. "
+                    "Upgrade to Go for unlimited priced products."
+                )
+            return resp
         finally:
             db.close()
 

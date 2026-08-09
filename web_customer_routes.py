@@ -245,7 +245,8 @@ def register_customer_routes(app):
     ):
         db = SessionLocal()
         try:
-            _require_can_record(db, session)
+            # A debt repayment must never be blocked by the monthly sales cap.
+            _require_can_record(db, session, count_sale=False)
             owner_phone = _session_owner_phone(db, session)
             customer = db.query(Customer).filter(
                 Customer.id == customer_id,

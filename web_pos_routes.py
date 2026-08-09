@@ -86,6 +86,10 @@ def register_pos_routes(app):
             if q:
                 query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
             rows = query.order_by(InventoryItem.name).limit(50).all()
+            # Monthly transaction usage — lets the POS warn as the Basic cap nears.
+            from subscriptions import get_business_subscription, monthly_transaction_usage
+            _sub = get_business_subscription(db, _session_user(db, session))
+            _count, _limit, _remaining = monthly_transaction_usage(db, owner_phone, _sub)
             return {
                 "products": [
                     {
@@ -101,7 +105,8 @@ def register_pos_routes(app):
                         "retail_price": _money(item.retail_price) if item.retail_price else None,
                     }
                     for item in rows
-                ]
+                ],
+                "monthly_transactions": {"count": _count, "limit": _limit, "remaining": _remaining},
             }
         finally:
             db.close()
