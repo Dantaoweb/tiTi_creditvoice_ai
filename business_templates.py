@@ -1543,7 +1543,9 @@ RECEIPT_CONFIG = {
         "title": "Laundry Receipt",
         "customer_label": "Customer",
         "amount_label": "Total",
-        "footer": "Thank you for choosing us. Your clothes are ready!",
+        # Never claim the clothes are ready — this receipt is often printed at
+        # drop-off. Keep it accurate for both drop-off and collection.
+        "footer": "Thank you for choosing us. Please keep this receipt to collect your items.",
     },
     "car_dealer": {
         "title": "Vehicle Sale Receipt",
