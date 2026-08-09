@@ -617,30 +617,7 @@ FAQ_ANSWERS = {
         "Or go to dashboard → choose 7 for Customer List.\n\n"
         "To see who owes you the most, send: due"
     ),
-    "add_stock": (
-        "How to add stock:\n\n"
-        "With quantity + price in one message:\n"
-        "add stock honey 10 liters at 10000, selling price 12000\n\n"
-        "Price only (no quantity):\n"
-        "add stock rice cost 3000 sell 4000\n\n"
-        "Quantity only (keeps existing price):\n"
-        "add stock 10 bags rice\n\n"
-        "Restock at a new price (adds to what is already there):\n"
-        "add stock eggs 150 crates at 5600, selling price 6200\n\n"
-        "Update price only (no quantity change):\n"
-        "add stock eggs crate cost 5600 sell 6200\n\n"
-        "Send  formats  to see all examples."
-    ),
-    "record_sale": (
-        "How to record a customer sale:\n\n"
-        "Ade bought rice 5000\n"
-        "Ade bought 3 bags rice at 2000 each\n"
-        "Ade bought rice 5000 paid 2000\n\n"
-        "With due date:\n"
-        "Ade bought rice 5000 paid 2000 due tomorrow\n\n"
-        "Sold form:\n"
-        "i sold 3 liters honey to Ade at 4000 paid 2000"
-    ),
+    # add_stock, record_sale → merged into build_app_guide_message (single source).
     "record_payment": (
         "How to record a payment:\n\n"
         "Ade paid 3000\n"
@@ -681,19 +658,7 @@ FAQ_ANSWERS = {
         "To see upcoming supplier payments:\n"
         "supplier due this week"
     ),
-    "add_supplier": (
-        "How to record a supplier purchase:\n\n"
-        "Ayo supply me 10 bags rice at 5000 each\n"
-        "I buy 12 liters oil from Ayo at 3000\n\n"
-        "To record payment to supplier:\n"
-        "I paid Ayo 14000 for rice\n\n"
-        "To see all suppliers:\n"
-        "suppliers\n\n"
-        "To see supplier payments due today:\n"
-        "supplier due\n\n"
-        "To see payments due this week:\n"
-        "supplier due this week"
-    ),
+    # add_supplier → merged into build_app_guide_message (single source).
     "check_stock": (
         "To see your current stock:\n\n"
         "stock\n\n"
@@ -701,23 +666,7 @@ FAQ_ANSWERS = {
         "stock honey\n"
         "stock rice"
     ),
-    "add_customer": (
-        "To add a customer:\n\n"
-        "add customer Ade\n\n"
-        "To save their phone number:\n"
-        "Ade phone 08012345678\n\n"
-        "Saving the number lets tiTi send receipts directly to the customer."
-    ),
-    "dashboard": (
-        "To see your sales and reports:\n\n"
-        "dashboard\n\n"
-        "Or ask directly:\n"
-        "sales today\n"
-        "sales this week\n"
-        "sales this month\n"
-        "margin report\n"
-        "products below cost"
-    ),
+    # add_customer, dashboard → merged into build_app_guide_message (single source).
     "due_date": (
         "To set a due date on a sale:\n\n"
         "Ade bought rice 5000 paid 2000 due tomorrow\n"
@@ -749,15 +698,7 @@ FAQ_ANSWERS = {
         "- Staff accounts\n\n"
         "Send  my plan  to see your current plan."
     ),
-    "receipt": (
-        "To print a receipt for a customer:\n\n"
-        "print receipt Ade\n"
-        "receipt 42\n\n"
-        "Receipts are sent automatically when you use:\n"
-        "select product\n\n"
-        "Save the customer number first:\n"
-        "Ade phone 08012345678"
-    ),
+    # receipt → merged into build_app_guide_message ("pdf" topic, single source).
     "shop_tag": (
         "Your shop tag is a short name customers use to find your shop.\n\n"
         "When you turn the bot on, tiTi creates one automatically.\n"
@@ -827,17 +768,7 @@ FAQ_ANSWERS = {
         "unlink phone 08012345678\n\n"
         "Maximum 2 linked phones per account."
     ),
-    "void_transaction": (
-        "To void (undo) a transaction:\n\n"
-        "void last\n"
-        "void 42\n"
-        "void last customer returned goods\n\n"
-        "The transaction will no longer count in balances or reports.\n"
-        "A note is saved recording who voided it and when.\n\n"
-        "If a staff member voids a transaction, the business owner gets an alert immediately.\n\n"
-        "Staff can only void transactions they personally recorded.\n"
-        "To void a transaction recorded by someone else, the owner must do it."
-    ),
+    # void_transaction → merged into build_app_guide_message ("void", single source).
     "analytics": (
         "You can ask tiTi questions about your business and get answers from your actual records.\n\n"
         "Examples:\n\n"
@@ -884,20 +815,7 @@ FAQ_ANSWERS = {
         "questions when you apply — answer them and submit. A red badge shows when "
         "there's a new opportunity you haven't opened yet."
     ),
-    "send_reminders": (
-        "To send payment reminders to your debtors:\n\n"
-        "1. Send:  due\n"
-        "2. Choose a list:\n"
-        "   1. Due in 2 days\n"
-        "   2. Due today\n"
-        "   3. Overdue\n"
-        "3. Pick a customer number to preview their reminder\n"
-        "4. Reply YES to send it via WhatsApp\n\n"
-        "To skip a customer:\n"
-        "skip reminder\n\n"
-        "To set up automatic daily reminders:\n"
-        "reminder automation"
-    ),
+    # send_reminders → merged into build_app_guide_message ("reminder", single source).
     "reminder_automation": (
         "Reminder automation sends daily WhatsApp payment reminders to your debtors.\n\n"
         "See current settings:\n"
@@ -1065,31 +983,7 @@ FAQ_ANSWERS = {
         "Then choose option 10 (Export data CSV)\n"
         "tiTi will send you a download link."
     ),
-    "staff_accounts": (
-        "Staff accounts (Pro plan) let your assistant or sales team record "
-        "transactions on your behalf, with you keeping full oversight.\n\n"
-        "To invite a staff member (web app → Staff):\n"
-        "1. Enter their name and phone number\n"
-        "2. Optionally attach them to a branch (and tick 'Join as branch admin')\n"
-        "3. Share the invite link or accept code with them\n"
-        "4. They open the link, enter the code, and create their PIN right there — "
-        "then they're signed in. No extra code needed to log in afterwards.\n\n"
-        "Everyday login: staff sign in with THEIR OWN phone number and PIN — never "
-        "yours.\n\n"
-        "What staff can do:\n"
-        "- Record sales and payments via WhatsApp or web\n"
-        "- View transactions they personally recorded\n\n"
-        "What staff cannot do (unless you allow it):\n"
-        "- See other people's transactions\n"
-        "- Void another person's transactions\n"
-        "- Add, edit or adjust stock (owner or branch admin only)\n"
-        "- Manage branches or other staff\n\n"
-        "Branch admin: go to Staff and tap 'Make branch admin' (they must be "
-        "assigned to a branch). A branch admin sees all records in their branch "
-        "AND can manage that branch's stock — but nothing outside their branch. A "
-        "regular staff just records sales and sees only their own. If an invite "
-        "code expired or was lost, tap 'Resend invite' for a fresh one."
-    ),
+    # staff_accounts → merged into build_app_guide_message ("staff", single source).
     "staff_profile": (
         "Staff profiles let you keep HR records for each team member — position, level, salary, and employee ID.\n\n"
         "To set a staff profile send:\n"
@@ -1103,51 +997,32 @@ FAQ_ANSWERS = {
         "  view staff profiles\n\n"
         "Or send *staff profiles* from the main menu, or go to More → Staff."
     ),
-    "business_partners": (
-        "Business partners let you bring a co-founder, active partner, investor, or silent investor "
-        "into your business with controlled visibility.\n\n"
-        "*Access levels:*\n"
-        "- Co-Founder: Full view — sales, stock, customers, costs\n"
-        "- Partner: Operations — sales, stock, customers\n"
-        "- Investor: Financial summary — P&L and returns\n"
-        "- Silent Investor: Investment status only\n\n"
-        "*To invite a partner:*\n"
-        "  invite partner 08012345678 co_founder 30%\n"
-        "  invite partner 08012345678 investor 500000\n\n"
-        "Your partner will receive a WhatsApp invitation.\n"
-        "They reply:  ACCEPT PARTNER [your phone]\n\n"
-        "*To view your partners:*\n"
-        "  view partners\n\n"
-        "*To remove a partner:*\n"
-        "  remove partner 08012345678\n\n"
-        "*If you are a partner in someone else's business:*\n"
-        "  partner status  — see which businesses you are linked to\n"
-        "  business overview  — see a summary based on your access level\n\n"
-        "Partners can only observe — they cannot record transactions in your business.\n"
-        "They can run their own business separately on tiTi."
-    ),
-    "business_notes": (
-        "Business notes are shared memos, expense records, and agreements that you "
-        "can make visible to your partners or investors.\n\n"
-        "*To add a note:*\n"
-        "  note rent paid 45000               ← visible to you only\n"
-        "  note rent paid 45000 partners       ← visible to partners\n"
-        "  note rent paid 45000 all            ← visible to partners and investors\n"
-        "  note agreement Emeka owns 30% all   ← agreement visible to all\n\n"
-        "*Categories tiTi auto-detects:*\n"
-        "  expense — paid, buy, rent, salary, fuel, electricity\n"
-        "  income  — received, income, revenue, profit\n"
-        "  agreement — agreement, contract, signed, deal\n"
-        "  memo    — everything else\n\n"
-        "*To view notes:*\n"
-        "  view notes\n"
-        "  view notes expenses\n\n"
-        "Partners and investors only see notes you have shared with them.\n"
-        "Owner always sees all notes.\n\n"
-        "You can also access Notes from the main menu → More → Notes."
-    ),
+    # business_partners → merged into build_app_guide_message ("partner", single source).
+    # business_notes → merged into build_app_guide_message ("notes", single source).
+}
+
+
+# Single source of truth: these topics also have a richer app guide that carries
+# BOTH the WhatsApp and web-app steps (build_app_guide_message). The FAQ defers
+# to it so the same question never yields two different answers.
+_FAQ_KEY_TO_GUIDE_TOPIC = {
+    "record_sale":       "record_sale",
+    "void_transaction":  "void",
+    "add_stock":         "inventory",
+    "add_customer":      "customers",
+    "add_supplier":      "supplier",
+    "send_reminders":    "reminder",
+    "staff_accounts":    "staff",
+    "business_partners": "partner",
+    "business_notes":    "notes",
+    "receipt":           "pdf",
+    "dashboard":         "summary",
 }
 
 
 def get_faq_answer(key):
+    topic = _FAQ_KEY_TO_GUIDE_TOPIC.get(key)
+    if topic:
+        from messages import build_app_guide_message
+        return build_app_guide_message(topic)
     return FAQ_ANSWERS.get(key, FAQ_ANSWERS["formats"])

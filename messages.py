@@ -926,6 +926,21 @@ def build_app_guide_message(topic):
             "3. Tap *Send* — tiTi will process it the same way\n\n"
             "💡 For shop checkout with receipt, use *POS* instead."
         ),
+        "price_list": (
+            "🧾 *How to set up your price list*\n\n"
+            "For services (tailoring, barbing, mechanic, laundry, etc.) your price "
+            "list is your menu of services and their prices.\n\n"
+            "*On the web app:*\n"
+            "1. Open *Price list* (or *Add stock*) in the sidebar\n"
+            "2. Tap *Catalog* to pick services suggested for your trade — or add your own\n"
+            "3. Set the price for each service and *Save*\n"
+            "4. Use *Select service* to record a job from your list\n\n"
+            "*On WhatsApp:*\n"
+            "• _price list_ — view or edit your services and prices\n"
+            "• _price haircut 1000_ — add or update a service and its price\n"
+            "• _select product_ — record a sale from your price list\n\n"
+            "💡 Send _price list_ any time to review or change your prices."
+        ),
         "inventory": (
             "📦 *How to add stock / inventory*\n\n"
             "*On WhatsApp:*\n"

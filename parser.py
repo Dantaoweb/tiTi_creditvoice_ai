@@ -2657,6 +2657,9 @@ def parse_message(text):
     if _nav_intent:
         _guide_topics = {
             "pdf":          ["pdf", "receipt", "download receipt", "print receipt", "export receipt", "download invoice"],
+            # price_list before record_sale: "how to record price list" must map
+            # to price_list, not be caught by record_sale's "how to record".
+            "price_list":   ["price list", "record price list", "set up price list", "add price list", "create price list", "my price list", "service prices", "record my prices", "set up my prices"],
             "record_sale":  ["record a sale", "record sale", "add a sale", "add sale", "how to sell", "how to record", "enter a sale", "input sale"],
             "void":         ["void transaction", "void a transaction", "void the transaction", "void last", "void sale", "void a sale",
                              "remove transaction", "remove a transaction", "delete transaction", "delete a transaction",
