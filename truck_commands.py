@@ -351,6 +351,13 @@ def handle_record_trip_pending(db, phone, text, pending, user, business_owner_ph
             send_message(phone, "Truck not found. Please try again.")
             return {"status": "trip_truck_missing"}
 
+        # Staff can record only on a plan that includes staff (Pro/Premium).
+        from subscriptions import staff_recording_allowed
+        if not staff_recording_allowed(db, user):
+            send_message(phone, "Your business is on the Basic plan, so staff cannot "
+                                "record trips. Ask the owner to renew to Pro or Premium.")
+            return {"status": "staff_recording_blocked"}
+
         from models import Transaction
         from web_pos import next_receipt_number
         tx = Transaction(

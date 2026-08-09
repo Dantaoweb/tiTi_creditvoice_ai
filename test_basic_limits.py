@@ -110,6 +110,31 @@ def test_pos_products_reports_usage():
     assert d["monthly_transactions"]["remaining"] == 5
 
 
+def test_whatsapp_sale_blocked_at_monthly_cap():
+    """The shared WhatsApp save path also enforces the Basic monthly cap."""
+    phone, uid, cook = _owner()  # Basic
+    _seed_month_sales(phone, uid, 100)
+    from transaction_save import save_confirmed_pending_transaction
+    from subscriptions import get_business_subscription
+
+    class _Pending:
+        action = "SALE"
+
+    msgs = []
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.phone == phone).first()
+        sub = get_business_subscription(db, owner)
+        res = save_confirmed_pending_transaction(
+            db, phone, _Pending(), owner, phone, None, "mid-x", [], sub,
+            lambda ph, m: msgs.append(m),
+        )
+    finally:
+        db.close()
+    assert res and res["status"] == "monthly_limit_reached"
+    assert "100 transactions" in msgs[0]
+
+
 def test_bulk_add_caps_active_products():
     phone, uid, cook = _owner()  # Basic, 5 active max
     items = [{"name": f"prod{i}", "selling_price": 500} for i in range(7)]

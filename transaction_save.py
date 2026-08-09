@@ -561,6 +561,15 @@ def save_confirmed_pending_transaction(
             )
             return {"status": "staff_recording_blocked"}
 
+    # Basic monthly transaction cap — block a new SALE (debt payments are exempt,
+    # so collecting money owed is never blocked).
+    if pending.action in ("SALE", "BUY", "COMBINED"):
+        from subscriptions import check_monthly_transaction_limit
+        ok, _msg = check_monthly_transaction_limit(db, business_owner_phone, subscription)
+        if not ok:
+            send_message(phone, _msg)
+            return {"status": "monthly_limit_reached"}
+
     inventory_enabled = bool(
         subscription and plan_allows_feature(subscription.get("plan"), "INVENTORY")
     )

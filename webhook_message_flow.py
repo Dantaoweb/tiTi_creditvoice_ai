@@ -312,6 +312,15 @@ def handle_webhook_body(body):
             and not is_command
             and is_fast_mode_active(db, business_owner_phone)
         ):
+            # Staff can record only on a plan that includes staff (Pro/Premium).
+            from subscriptions import staff_recording_allowed
+            if not staff_recording_allowed(db, user):
+                send_whatsapp_message(
+                    phone,
+                    "Your business is on the Basic plan, so staff cannot record "
+                    "sales. Please ask the owner to renew to Pro or Premium.",
+                )
+                return {"status": "staff_recording_blocked"}
             fc_settings = get_or_create_fast_capture_settings(db, business_owner_phone)
             raw_text = voice_transcript_text or text
             entry = save_fast_entry(db, business_owner_phone, user.id, raw_text, parsed)
