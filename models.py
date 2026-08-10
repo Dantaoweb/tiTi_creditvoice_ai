@@ -1032,6 +1032,22 @@ class AppNotification(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class PushSubscription(Base):
+    """A browser Web Push subscription for a device, so alerts can reach the
+    phone while the app is closed. Keyed to the business (owner_phone) so a push
+    reaches every subscribed device of that business (owner + staff)."""
+
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)   # business the subscription belongs to
+    user_id = Column(String, index=True)       # the user/device that subscribed
+    endpoint = Column(String, unique=True)     # push service endpoint (unique per device)
+    p256dh = Column(String)                     # subscription public key
+    auth = Column(String)                       # subscription auth secret
+    created_at = Column(DateTime, default=utcnow)
+
+
 class SchoolTeacher(Base):
     """Teacher roster for school businesses — record only, no app access.
     Basic plan: max 3. Go/Pro: unlimited.

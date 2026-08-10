@@ -28,3 +28,32 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
   event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_URL)));
 });
+
+// ── Web Push: show the notification on the phone ─────────────────────────────
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  const title = data.title || "CreditVoice";
+  const options = {
+    body: data.body || "",
+    icon: "/app/pwa-192.png",
+    badge: "/app/pwa-192.png",
+    tag: data.tag || "cv-notify",
+    data: { url: data.url || "/app" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Tapping the notification focuses an open app window or opens one.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/app";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const c of clients) {
+        if (c.url.includes("/app") && "focus" in c) return c.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
+  );
+});

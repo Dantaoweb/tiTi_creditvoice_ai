@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, X, Trash2 } from "lucide-react";
+import { Bell, X, Trash2, BellRing, BellOff } from "lucide-react";
 import { apiFetch, apiPost, apiDelete } from "../lib/api";
+import { getPushState, enablePush, disablePush } from "../lib/webpush";
 
 const TYPE_ICONS = {
   low_stock:    "⚠️",
@@ -12,7 +13,32 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);   // tap a notification to read it in full
+  const [push, setPush] = useState(null);               // { available, subscribed, key, ... }
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushErr, setPushErr] = useState("");
   const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (open && push === null) getPushState().then(setPush).catch(() => setPush({ available: false }));
+  }, [open, push]);
+
+  async function togglePush() {
+    if (!push) return;
+    setPushBusy(true); setPushErr("");
+    try {
+      if (push.subscribed) {
+        await disablePush();
+        setPush({ ...push, subscribed: false });
+      } else {
+        await enablePush(push.key);
+        setPush({ ...push, subscribed: true });
+      }
+    } catch (e) {
+      setPushErr(e.message || "Could not change notifications.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   function load() {
     apiFetch("notifications").then(d => setNotifications(d.notifications || [])).catch(() => {});
@@ -125,6 +151,32 @@ export default function NotificationBell() {
               </button>
             </div>
           </div>
+
+          {/* Phone notifications (Web Push) toggle — the silence control */}
+          {push && push.available && (
+            <div style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+              {push.subscribed ? <BellRing size={15} color="var(--brand)" /> : <BellOff size={15} color="var(--text-muted)" />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>Phone notifications</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {push.subscribed ? "On — alerts reach this device" : "Off — get alerts even when the app is closed"}
+                </div>
+                {pushErr && <div style={{ fontSize: 11, color: "var(--rose)", marginTop: 2 }}>{pushErr}</div>}
+              </div>
+              <button
+                onClick={togglePush}
+                disabled={pushBusy}
+                style={{
+                  flexShrink: 0, border: "none", borderRadius: 999, cursor: "pointer",
+                  padding: "5px 12px", fontSize: 12, fontWeight: 700,
+                  background: push.subscribed ? "var(--surface, #eef2f7)" : "var(--brand)",
+                  color: push.subscribed ? "var(--text-muted)" : "#fff",
+                }}
+              >
+                {pushBusy ? "…" : push.subscribed ? "Turn off" : "Turn on"}
+              </button>
+            </div>
+          )}
 
           <div style={{ overflowY: "auto", flex: 1 }}>
             {notifications.length === 0 ? (

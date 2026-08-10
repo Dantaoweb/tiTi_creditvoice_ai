@@ -696,6 +696,22 @@ def ensure_schema_updates(engine):
                 )
             """))
 
+    # ── push_subscriptions table (Web Push) ──────────────────────────────────
+    if "push_subscriptions" not in inspector.get_table_names():
+        _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        with engine.begin() as connection:
+            connection.execute(text(f"""
+                CREATE TABLE push_subscriptions (
+                    id {_pk},
+                    owner_phone VARCHAR,
+                    user_id VARCHAR,
+                    endpoint VARCHAR UNIQUE,
+                    p256dh VARCHAR,
+                    auth VARCHAR,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
     # ── proactive_log table ──────────────────────────────────────────────────
     if "proactive_log" not in inspector.get_table_names():
         _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"

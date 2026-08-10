@@ -294,13 +294,19 @@ def _session_subscription(db, session: dict):
 
 
 def _add_notification(db, owner_phone, event_type, title, body):
-    """Insert an in-app notification for the business owner (shown in the bell).
-    The caller is responsible for committing."""
+    """Insert an in-app notification for the business owner (shown in the bell)
+    and fire a Web Push to their subscribed devices. The caller is responsible
+    for committing the row; the push is fire-and-forget on a background thread."""
     from models import AppNotification
     db.add(AppNotification(
         owner_phone=owner_phone, event_type=event_type, title=title, body=body,
         is_read=0, created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ))
+    try:
+        from web_push import send_web_push
+        send_web_push(owner_phone, title, body)
+    except Exception:
+        pass
 
 
 def _send_web_receipt(db, owner_phone, tx_id):

@@ -40,6 +40,14 @@ def _notify(db, owner_phone, event_type, title, body, send_whatsapp=True):
     ))
     db.commit()
 
+    # Web Push to the business's subscribed devices (reaches the phone while the
+    # app is closed). Fire-and-forget; no-op when push is unconfigured.
+    try:
+        from web_push import send_web_push
+        send_web_push(owner_phone, title, body)
+    except Exception:
+        pass
+
     if send_whatsapp:
         try:
             send_whatsapp_message(owner_phone, f"*{title}*\n\n{body}")

@@ -116,7 +116,12 @@ def register_auth_routes(app):
     def web_auth_config():
         import os
         titi_number = os.getenv("TITI_WHATSAPP", "").strip()
-        return {"titi_whatsapp": titi_number}
+        from web_push import VAPID_PUBLIC_KEY, push_enabled
+        return {
+            "titi_whatsapp": titi_number,
+            "push_enabled": push_enabled(),
+            "vapid_public_key": VAPID_PUBLIC_KEY if push_enabled() else "",
+        }
 
     @app.get("/app/api/auth/otp-channels")
     def web_otp_channels(phone: str = Query(...), request: Request = None):
