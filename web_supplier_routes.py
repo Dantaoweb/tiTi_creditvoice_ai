@@ -5,9 +5,11 @@ Split out of web_routes.py. Register with register_supplier_routes(app);
 shared helpers come from web_common.
 """
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 
 from database import SessionLocal
 from models import Supplier, SupplierPurchase, SupplierPayment, utcnow
@@ -18,6 +20,14 @@ from web_common import _session_owner_phone, _owner_filter, _iso, _money, _requi
 class SupplierPayRequest(BaseModel):
     amount: int = Field(gt=0)
     note: str = Field(default="", max_length=200)
+
+
+class AddSupplierRequest(BaseModel):
+    name: str = Field(max_length=120)
+
+
+class SupplierPurchaseDueRequest(BaseModel):
+    due_date: Optional[str] = None   # "YYYY-MM-DD", or null to clear
 
 
 def _supplier_balance(db, supplier_id):
@@ -174,5 +184,58 @@ def register_supplier_routes(app):
             db.commit()
             _bought, _paid, balance = _supplier_balance(db, sup.id)
             return {"ok": True, "supplier": sup.name.title(), "balance": balance}
+        finally:
+            db.close()
+
+    @app.post("/app/api/suppliers")
+    def web_add_supplier(payload: AddSupplierRequest, session: dict = Depends(require_web_auth)):
+        """Create a supplier manually (before any purchase). Owner/branch-admin."""
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            name = payload.name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="Supplier name is required.")
+            existing = db.query(Supplier).filter(
+                Supplier.owner_phone == owner_phone,
+                func.lower(Supplier.name) == name.lower(),
+            ).first()
+            if existing:
+                raise HTTPException(status_code=409, detail="A supplier with that name already exists.")
+            sup = Supplier(name=name.lower(), owner_phone=owner_phone)
+            db.add(sup)
+            db.commit()
+            db.refresh(sup)
+            return {"ok": True, "id": sup.id, "name": sup.name.title()}
+        finally:
+            db.close()
+
+    @app.put("/app/api/suppliers/purchases/{purchase_id}/due-date")
+    def web_set_purchase_due(
+        purchase_id: int,
+        payload: SupplierPurchaseDueRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Set or clear the due date on a credit purchase (drives the overdue view)."""
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            p = db.query(SupplierPurchase).filter(
+                SupplierPurchase.id == purchase_id,
+                SupplierPurchase.owner_phone == owner_phone,
+            ).first()
+            if not p:
+                raise HTTPException(status_code=404, detail="Purchase not found.")
+            if payload.due_date:
+                try:
+                    p.due_date = datetime.strptime(payload.due_date[:10], "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid date. Use YYYY-MM-DD.")
+            else:
+                p.due_date = None
+            db.commit()
+            return {"ok": True, "due_date": _iso(p.due_date)}
         finally:
             db.close()

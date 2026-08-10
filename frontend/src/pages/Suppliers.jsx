@@ -88,6 +88,7 @@ function MySupplyChain() {
   const [error, setError]     = useState(null);
   const [payFor, setPayFor]   = useState(null);   // supplier row to pay
   const [detailId, setDetailId] = useState(null); // supplier id to view
+  const [addOpen, setAddOpen] = useState(false);  // manual add supplier
 
   function reload() {
     setLoading(true);
@@ -114,11 +115,12 @@ function MySupplyChain() {
       <div className="card">
         <div className="card-header">
           <span className="card-title">Suppliers <span className="text-subtle text-sm">({suppliers.length})</span></span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setAddOpen(true)}>+ Add supplier</button>
         </div>
         <DataTable
           loading={loading}
           rows={suppliers}
-          emptyText="No supplier records yet. Record a purchase via Quick Record → Stock Received."
+          emptyText="No supplier records yet. Add a supplier, or record a purchase via Quick Record → Stock Received."
           rowClass={r => r.has_overdue ? "low-stock" : ""}
           columns={[
             { key: "name",         label: "Supplier",        render: r => (
@@ -149,6 +151,9 @@ function MySupplyChain() {
           onPay={(sup) => { setDetailId(null); setPayFor(sup); }}
         />
       )}
+      {addOpen && (
+        <AddSupplierModal onClose={() => setAddOpen(false)} onDone={() => { setAddOpen(false); reload(); }} />
+      )}
       {!!(data?.recent_purchases?.length) && (
         <div className="card">
           <div className="card-header"><span className="card-title">Recent supplier purchases</span></div>
@@ -167,6 +172,45 @@ function MySupplyChain() {
         </div>
       )}
     </>
+  );
+}
+
+// Create a supplier manually (before any purchase).
+function AddSupplierModal({ onClose, onDone }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr]   = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!name.trim()) { setErr("Enter a supplier name."); return; }
+    setBusy(true); setErr("");
+    try {
+      await apiPost("suppliers", { name: name.trim() });
+      onDone();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <form className="modal" onSubmit={submit}>
+        <div className="modal-header">
+          <span className="modal-title">Add supplier</span>
+          <button type="button" className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-group">
+            <label className="form-label">Supplier name *</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dangote Cement" autoFocus />
+          </div>
+          {err && <div className="modal-error">{err}</div>}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Add supplier"}</button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -229,6 +273,21 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
     apiFetch(`suppliers/${supplierId}`).then(setD).catch(e => setErr(e.message));
   }, [supplierId]);
 
+  async function updateDue(pid, val) {
+    setErr("");
+    try {
+      await apiFetch(`suppliers/purchases/${pid}/due-date`, {}, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ due_date: val || null }),
+      });
+      setD(prev => ({
+        ...prev,
+        purchases: prev.purchases.map(x =>
+          x.id === pid ? { ...x, due_date: val ? new Date(val).toISOString() : null } : x),
+      }));
+    } catch (e) { setErr(e.message); }
+  }
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
@@ -252,13 +311,27 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
 
               <div className="card-title" style={{ marginBottom: 6 }}>Purchases</div>
               {d.purchases.length === 0 ? <p className="td-muted">None yet.</p> : (
-                <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
-                  {d.purchases.map(p => (
-                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, borderBottom: "1px solid var(--border)", paddingBottom: 5 }}>
-                      <span>{(p.product || "—")}{p.quantity ? ` · ${p.quantity}${p.unit || ""}` : ""}<br /><span className="td-muted" style={{ fontSize: 11 }}>{dateStr(p.created_at)}</span></span>
-                      <span style={{ textAlign: "right" }}>{nairaFull(p.total)}<br /><span className="td-muted" style={{ fontSize: 11 }}>paid {nairaFull(p.paid_amount)}</span></span>
-                    </div>
-                  ))}
+                <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                  {d.purchases.map(p => {
+                    const owed = (p.total || 0) - (p.paid_amount || 0);
+                    return (
+                      <div key={p.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                          <span>{(p.product || "—")}{p.quantity ? ` · ${p.quantity}${p.unit || ""}` : ""}<br /><span className="td-muted" style={{ fontSize: 11 }}>{dateStr(p.created_at)}</span></span>
+                          <span style={{ textAlign: "right" }}>{nairaFull(p.total)}<br /><span className="td-muted" style={{ fontSize: 11 }}>paid {nairaFull(p.paid_amount)}</span></span>
+                        </div>
+                        {owed > 0 && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 12 }}>
+                            <span className="td-muted">Due date:</span>
+                            <input type="date" value={p.due_date ? p.due_date.slice(0, 10) : ""}
+                              onChange={e => updateDue(p.id, e.target.value)}
+                              style={{ padding: "3px 6px", fontSize: 12 }} />
+                            {p.due_date && <button type="button" className="link-btn" onClick={() => updateDue(p.id, "")}>clear</button>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

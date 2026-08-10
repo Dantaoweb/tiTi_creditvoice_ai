@@ -147,6 +147,38 @@ def test_credit_purchase_then_pay_supplier_clears_balance():
     assert d2["balance"] == 0 and len(d2["payments"]) == 1
 
 
+def test_add_supplier_manually_and_reject_duplicate():
+    phone, cook = _owner()
+    r = client.post("/app/api/suppliers", cookies=cook, json={"name": "GTB Distributors"})
+    assert r.status_code == 200 and r.json()["name"] == "Gtb Distributors", r.text
+    # It shows in the list with a zero balance.
+    names = [s["name"] for s in client.get("/app/api/suppliers", cookies=cook).json()["suppliers"]]
+    assert "gtb distributors" in names
+    # Duplicate (case-insensitive) is rejected.
+    dup = client.post("/app/api/suppliers", cookies=cook, json={"name": "gtb distributors"})
+    assert dup.status_code == 409
+
+
+def test_edit_purchase_due_date():
+    phone, cook = _owner()
+    client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Blocks", "quantity": 200, "cost_per_unit": 500, "paid_now": 0, "supplier": "Lafarge",
+    })
+    db = SessionLocal()
+    try:
+        sup_id = db.query(Supplier).filter(Supplier.owner_phone == phone, Supplier.name == "lafarge").first().id
+    finally:
+        db.close()
+    pid = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()["purchases"][0]["id"]
+
+    r = client.put(f"/app/api/suppliers/purchases/{pid}/due-date", cookies=cook, json={"due_date": "2026-09-15"})
+    assert r.status_code == 200 and r.json()["due_date"][:10] == "2026-09-15", r.text
+
+    # Clear it.
+    r2 = client.put(f"/app/api/suppliers/purchases/{pid}/due-date", cookies=cook, json={"due_date": None})
+    assert r2.status_code == 200 and r2.json()["due_date"] is None
+
+
 def test_pay_rejects_other_owners_supplier():
     _p, cook = _owner()
     # A supplier that belongs to a different owner.
