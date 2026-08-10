@@ -72,6 +72,17 @@ class AdjustStockRequest(BaseModel):
     note: Optional[str] = Field(default=None, max_length=500)
 
 
+class StockReceivedRequest(BaseModel):
+    # Either an existing item_id, or a product name to create/receive into.
+    item_id: Optional[int] = None
+    product: Optional[str] = Field(default=None, max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
+    quantity: float
+    cost_per_unit: Optional[int] = None
+    supplier: Optional[str] = Field(default=None, max_length=120)   # blank → "Others"
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
 class BulkCatalogItem(BaseModel):
     name: str = Field(max_length=120)
     unit: Optional[str] = Field(default=None, max_length=30)
@@ -403,5 +414,84 @@ def register_inventory_routes(app):
         except Exception:
             import traceback; traceback.print_exc()
             raise HTTPException(status_code=400, detail="Could not adjust stock. Please try again.")
+        finally:
+            db.close()
+
+    @app.post("/app/api/inventory/stock-received")
+    def web_stock_received(
+        payload: StockReceivedRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Record stock received from a supplier: adds to physical inventory
+        (creating the product if new) AND records a SupplierPurchase against the
+        supplier (defaulting to 'Others' when none is given)."""
+        from models import SupplierPurchase
+        from inventory_suppliers import find_or_create_supplier, add_inventory_movement
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+
+            qty = payload.quantity
+            if not qty or qty <= 0:
+                raise HTTPException(status_code=400, detail="Quantity received must be greater than zero.")
+
+            # Resolve the product name/unit — from an existing item, or a new name.
+            unit = payload.unit
+            if payload.item_id:
+                existing = db.query(InventoryItem).filter(
+                    InventoryItem.id == payload.item_id,
+                    InventoryItem.owner_phone == owner_phone,
+                ).first()
+                if not existing:
+                    raise HTTPException(status_code=404, detail="Item not found.")
+                product = existing.name
+                unit = unit or existing.unit
+            else:
+                product = (payload.product or "").strip()
+                if not product:
+                    raise HTTPException(status_code=400, detail="Product name is required.")
+
+            supplier_name = (payload.supplier or "").strip() or "Others"
+            supplier = find_or_create_supplier(db, owner_phone, supplier_name)
+            db.flush()
+
+            cost = payload.cost_per_unit
+            total = int(round(cost * qty)) if cost else 0
+            purchase = SupplierPurchase(
+                supplier_id=supplier.id,
+                owner_phone=owner_phone,
+                product=product,
+                quantity=qty,
+                unit=unit,
+                unit_price=cost,
+                total=total,
+                paid_amount=total,   # received stock is treated as owned (no debt)
+                recorded_by_id=session["user_id"],
+                created_at=utcnow(),
+            )
+            db.add(purchase)
+            db.flush()
+
+            # Adds quantity to physical stock (creating the item if it doesn't
+            # exist yet) and logs the IN movement linked to this purchase.
+            item = add_inventory_movement(
+                db, owner_phone, product, qty, unit, cost,
+                "IN", "SUPPLIER_PURCHASE", purchase.id, session["user_id"],
+                (payload.note or "").strip() or f"Received from {supplier.name.title()}",
+            )
+            db.commit()
+            return {
+                "ok": True,
+                "product": product,
+                "new_quantity": item.quantity if item else None,
+                "supplier": supplier.name.title(),
+            }
+        except HTTPException:
+            raise
+        except Exception:
+            import traceback; traceback.print_exc()
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Could not record stock received. Please try again.")
         finally:
             db.close()

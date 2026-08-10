@@ -112,7 +112,7 @@ function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, allowN
   );
 }
 
-function InventorySearch({ ownerPhone, onSelect, value }) {
+function InventorySearch({ ownerPhone, onSelect, value, allowNew = false }) {
   const [items, setItems]   = useState([]);
   const [search, setSearch] = useState("");
   const [open, setOpen]     = useState(false);
@@ -124,14 +124,22 @@ function InventorySearch({ ownerPhone, onSelect, value }) {
       .catch(() => {});
   }, [ownerPhone]);
 
-  const filtered = search.trim()
-    ? items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+  const q = search.trim();
+  const filtered = q
+    ? items.filter(i => i.name.toLowerCase().includes(q.toLowerCase()))
     : [];
+  const exact = q && items.some(i => i.name.toLowerCase() === q.toLowerCase());
+  const showNew = allowNew && q && !exact;
 
   if (value) {
     return (
       <div className="qf-pill">
-        <span>{value.name} <span className="text-subtle">— {qty(value.quantity, value.unit || "units")} in stock</span></span>
+        <span>
+          {value.name}{" "}
+          <span className="text-subtle">
+            {value.isNew ? "— new product" : `— ${qty(value.quantity, value.unit || "units")} in stock`}
+          </span>
+        </span>
         <button type="button" onClick={() => onSelect(null)}>×</button>
       </div>
     );
@@ -144,9 +152,9 @@ function InventorySearch({ ownerPhone, onSelect, value }) {
         onChange={e => { setSearch(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Search product name…"
+        placeholder={allowNew ? "Search or type a new product…" : "Search product name…"}
       />
-      {open && filtered.length > 0 && (
+      {open && (filtered.length > 0 || showNew) && (
         <div className="qf-dropdown">
           {filtered.map(i => (
             <button key={i.id} type="button" onMouseDown={() => { onSelect(i); setSearch(""); setOpen(false); }}>
@@ -154,6 +162,11 @@ function InventorySearch({ ownerPhone, onSelect, value }) {
               <span className="text-subtle text-sm">{qty(i.quantity, i.unit || "units")}</span>
             </button>
           ))}
+          {showNew && (
+            <button type="button" onMouseDown={() => { onSelect({ id: null, name: q, isNew: true }); setSearch(""); setOpen(false); }}>
+              <span>+ Add new: <strong>{q}</strong></span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -398,34 +411,41 @@ function PaymentForm({ ownerPhone, onSuccess }) {
 }
 
 function StockForm({ ownerPhone, onSuccess }) {
-  const [item, setItem]       = useState(null);
-  const [qty, setQty]         = useState("");
-  const [cost, setCost]       = useState("");
-  const [note, setNote]       = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
+  const [item, setItem]         = useState(null);
+  const [qty, setQty]           = useState("");
+  const [cost, setCost]         = useState("");
+  const [supplier, setSupplier] = useState("");
+  const [note, setNote]         = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+
+  function _body() {
+    return {
+      item_id:       item?.id || null,
+      product:       item?.name || null,
+      unit:          item?.unit || null,
+      quantity:      parseAmt(qty),
+      cost_per_unit: cost ? parseAmt(cost) : null,
+      supplier:      supplier.trim() || null,   // blank → "Others" server-side
+      note:          note.trim() || null,
+    };
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!item || !qty) return;
     setLoading(true); setError(null);
+    const who = supplier.trim() ? ` from ${supplier.trim()}` : "";
     try {
-      const body = {
-        qty_delta: parseAmt(qty),
-        note:      note || (cost ? `Received @ N${parseAmt(cost)}/unit` : "Stock received"),
-      };
-      await apiPost(`inventory/${item.id}/adjust`, body);
-      onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock.`);
-      setItem(null); setQty(""); setCost(""); setNote("");
+      await apiPost("inventory/stock-received", _body());
+      onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
+      setItem(null); setQty(""); setCost(""); setSupplier(""); setNote("");
     } catch (e) {
       if (isNetworkError(e)) {
-        enqueue(
-          `inventory/${item.id}/adjust`,
-          { qty_delta: parseAmt(qty), note: note || (cost ? `Received @ N${cost}/unit` : "Stock received") },
-          `Stock +${qty} ${item.unit || "units"} of ${item.name}`,
-        );
-        onSuccess(`No internet — stock entry saved offline. Will sync automatically when you reconnect.`);
-        setItem(null); setQty(""); setCost(""); setNote("");
+        enqueue("inventory/stock-received", _body(),
+          `Stock +${qty} ${item.unit || "units"} of ${item.name}${who}`);
+        onSuccess("No internet — stock entry saved offline. Will sync automatically when you reconnect.");
+        setItem(null); setQty(""); setCost(""); setSupplier(""); setNote("");
       } else {
         setError(e.message);
       }
@@ -438,7 +458,7 @@ function StockForm({ ownerPhone, onSuccess }) {
     <form onSubmit={handleSubmit} className="qf-form">
       <div className="form-group">
         <label className="form-label">Product *</label>
-        <InventorySearch ownerPhone={ownerPhone} onSelect={setItem} value={item} />
+        <InventorySearch ownerPhone={ownerPhone} onSelect={setItem} value={item} allowNew />
       </div>
       <div className="qf-row qf-row--sm-lg">
         <div className="form-group">
@@ -451,8 +471,12 @@ function StockForm({ ownerPhone, onSuccess }) {
         </div>
       </div>
       <div className="form-group">
+        <label className="form-label">Supplier <span className="text-subtle">(optional)</span></label>
+        <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Supplier name — leave blank for “Others”" />
+      </div>
+      <div className="form-group">
         <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Supplier name, delivery ref…" />
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Delivery ref, batch…" />
       </div>
       {error && <div className="modal-error">{error}</div>}
       <button type="submit" className="btn btn-primary qf-btn" disabled={loading || !item}>
