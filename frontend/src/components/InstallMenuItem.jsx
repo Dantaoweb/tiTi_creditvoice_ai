@@ -55,11 +55,18 @@ export default function InstallMenuItem({ onNavigate }) {
                   <li>Tap <strong>Add</strong> — the CreditVoice icon appears on your home screen</li>
                 </ol>
               ) : (
-                <ol style={{ lineHeight: 1.9, paddingLeft: 18, margin: 0 }}>
-                  <li>Open your browser menu (the <strong>⋮</strong> at the top-right)</li>
-                  <li>Tap <strong>Install app</strong> or <strong>Add to Home screen</strong></li>
-                  <li>Confirm — CreditVoice then opens like an app</li>
-                </ol>
+                <>
+                  <ol style={{ lineHeight: 1.9, paddingLeft: 18, margin: 0 }}>
+                    <li>Open your browser menu (the <strong>⋮</strong> at the top-right)</li>
+                    <li>Tap <strong>Install app</strong> or <strong>Add to Home screen</strong></li>
+                    <li>Confirm — CreditVoice then opens like an app</li>
+                  </ol>
+                  <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface, #f8fafc)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+                    Phone says <strong>"Home screen layout locked"</strong>? That's an Android
+                    setting. Long-press your home screen → <strong>Home settings</strong> →
+                    turn off <strong>Lock Home screen layout</strong>, then try again.
+                  </div>
+                </>
               )}
             </div>
           </div>
