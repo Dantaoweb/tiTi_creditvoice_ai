@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { useApp } from "../context/AppContext";
+import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
@@ -615,11 +616,11 @@ function SupplierProfileTab({ userPlan }) {
         </div>
         <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: 13 }}>
           <Star size={13} style={{ color: "#d97706", marginRight: 6 }} />
-          <strong>PRO plan feature.</strong> Upgrade to PRO to apply for Verified Supplier status.
+          <strong>Pro plan feature.</strong> Upgrade to Pro or Premium to apply for Verified Supplier status.
         </div>
-        <a href="/app/settings" className="btn btn-primary" style={{ justifyContent: "center" }}>
-          Upgrade to PRO
-        </a>
+        <Link to="/upgrade" className="btn btn-primary" style={{ justifyContent: "center" }}>
+          Upgrade to Pro
+        </Link>
       </div>
     );
   }
@@ -820,7 +821,10 @@ function SupplierProfileTab({ userPlan }) {
 // Main export
 // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
 export default function Suppliers() {
-  const { user } = useApp();
+  // Plan gating needs the authenticated user (with subscription_plan), which
+  // lives in AuthContext. AppContext only carries ownerPhone/period, so reading
+  // user from it left userPlan undefined and gated even Pro/Premium users out.
+  const { user } = useAuth();
   const [tab, setTab] = useState("chain");
   const [inboxCount, setInboxCount] = useState(0);
 
