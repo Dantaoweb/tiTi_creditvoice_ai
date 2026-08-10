@@ -69,6 +69,7 @@ def test_stock_received_new_product_creates_item_supplier_and_purchase():
     })
     assert r.status_code == 200, r.text
     assert r.json()["new_quantity"] == 50
+    assert "STOCK RECEIVED" in (r.json().get("receipt") or "")
     assert _item_qty(phone, "cocoa") == 50
     sup, n = _supplier_and_purchases(phone, "dangote")
     assert sup is not None and n == 1
@@ -142,6 +143,7 @@ def test_credit_purchase_then_pay_supplier_clears_balance():
     # Pay the rest.
     pr = client.post(f"/app/api/suppliers/{sup_id}/pay", cookies=cook, json={"amount": 60000})
     assert pr.status_code == 200 and pr.json()["balance"] == 0, pr.text
+    assert "SUPPLIER PAYMENT RECEIPT" in (pr.json().get("receipt") or "")
 
     d2 = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()
     assert d2["balance"] == 0 and len(d2["payments"]) == 1

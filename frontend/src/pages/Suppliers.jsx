@@ -6,6 +6,7 @@ import { nairaFull, dateStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
+import ReceiptShareModal from "../components/ReceiptShareModal";
 import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, Star } from "lucide-react";
 
 // ── Star rating component ─────────────────────────────────────────────────────
@@ -220,6 +221,7 @@ function SupplierPayModal({ supplier, onClose, onDone }) {
   const [note, setNote]     = useState("");
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState("");
+  const [receipt, setReceipt] = useState(null);
 
   async function submit(e) {
     e.preventDefault();
@@ -227,9 +229,13 @@ function SupplierPayModal({ supplier, onClose, onDone }) {
     if (!amt || amt <= 0) { setErr("Enter an amount."); return; }
     setBusy(true); setErr("");
     try {
-      await apiPost(`suppliers/${supplier.id}/pay`, { amount: amt, note: note.trim() });
-      onDone();
+      const r = await apiPost(`suppliers/${supplier.id}/pay`, { amount: amt, note: note.trim() });
+      setReceipt(r.receipt || "");
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  if (receipt !== null) {
+    return <ReceiptShareModal title="Payment receipt" text={receipt} onClose={onDone} />;
   }
 
   return (

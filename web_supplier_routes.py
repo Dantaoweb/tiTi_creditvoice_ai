@@ -12,9 +12,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 
 from database import SessionLocal
-from models import Supplier, SupplierPurchase, SupplierPayment, utcnow
+from models import Supplier, SupplierPurchase, SupplierPayment, User, utcnow
 from web_auth import require_web_auth
 from web_common import _session_owner_phone, _owner_filter, _iso, _money, _require_stock_manager
+
+
+def _biz_name(db, owner_phone):
+    u = db.query(User).filter(User.phone == owner_phone).first()
+    return (u.business_type_label or u.name or "Your business") if u else "Your business"
 
 
 class SupplierPayRequest(BaseModel):
@@ -183,7 +188,18 @@ def register_supplier_routes(app):
             ))
             db.commit()
             _bought, _paid, balance = _supplier_balance(db, sup.id)
-            return {"ok": True, "supplier": sup.name.title(), "balance": balance}
+            note_line = f"Note: {payload.note.strip()}\n" if payload.note.strip() else ""
+            receipt = (
+                f"{_biz_name(db, owner_phone)}\n"
+                "SUPPLIER PAYMENT RECEIPT\n"
+                "--------------------\n"
+                f"Supplier: {sup.name.title()}\n"
+                f"Amount paid: N{payload.amount:,}\n"
+                f"Balance: N{balance:,}\n"
+                f"{note_line}"
+                f"Date: {utcnow().strftime('%d/%m/%Y')}"
+            )
+            return {"ok": True, "supplier": sup.name.title(), "balance": balance, "receipt": receipt}
         finally:
             db.close()
 

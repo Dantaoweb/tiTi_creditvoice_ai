@@ -7,6 +7,7 @@ import { apiFetch, apiPost } from "../lib/api";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { nairaFull, qty } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
+import ReceiptShareModal from "../components/ReceiptShareModal";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
 
@@ -419,6 +420,7 @@ function StockForm({ ownerPhone, onSuccess }) {
   const [note, setNote]         = useState("");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
+  const [receipt, setReceipt]   = useState(null);
 
   function _body() {
     return {
@@ -439,8 +441,9 @@ function StockForm({ ownerPhone, onSuccess }) {
     setLoading(true); setError(null);
     const who = supplier.trim() ? ` from ${supplier.trim()}` : "";
     try {
-      await apiPost("inventory/stock-received", _body());
+      const r = await apiPost("inventory/stock-received", _body());
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
+      if (r?.receipt) setReceipt(r.receipt);
       setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setNote("");
     } catch (e) {
       if (isNetworkError(e)) {
@@ -474,11 +477,11 @@ function StockForm({ ownerPhone, onSuccess }) {
       </div>
       <div className="qf-row qf-row--sm-lg">
         <div className="form-group">
-          <label className="form-label">Supplier <span className="text-subtle">(optional)</span></label>
+          <label className="form-label">Supplier</label>
           <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Leave blank for “Others”" />
         </div>
         <div className="form-group">
-          <label className="form-label">Paid now (₦) <span className="text-subtle">(optional)</span></label>
+          <label className="form-label">Paid now (₦)</label>
           <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(fmtAmt(e.target.value))} placeholder="full amount" />
         </div>
       </div>
@@ -490,6 +493,9 @@ function StockForm({ ownerPhone, onSuccess }) {
       <button type="submit" className="btn btn-primary qf-btn" disabled={loading || !item}>
         {loading ? "Saving…" : "Add to Stock"}
       </button>
+      {receipt && (
+        <ReceiptShareModal title="Stock received receipt" text={receipt} onClose={() => setReceipt(null)} />
+      )}
     </form>
   );
 }
