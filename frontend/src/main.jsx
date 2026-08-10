@@ -5,6 +5,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { AppProvider } from "./context/AppContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import App from "./App.jsx";
+import "./lib/pwaInstall";   // capture the install event as early as possible
 import "./index.css";
 
 createRoot(document.getElementById("root")).render(

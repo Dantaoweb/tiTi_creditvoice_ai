@@ -15,6 +15,7 @@ import TitiPanel from "./TitiPanel";
 import NotificationBell from "./NotificationBell";
 import WelcomeGuide from "./WelcomeGuide";
 import InstallPrompt from "./InstallPrompt";
+import InstallMenuItem from "./InstallMenuItem";
 
 function buildNav(L, group) {
   // Businesses that don't sell products (savings/ajo, dues collection) get the
@@ -227,6 +228,9 @@ export default function Layout() {
           )}
 
           {moreOpen && NAV.filter(i => i.to && !isPrimary(i)).map(renderNavItem)}
+
+          {/* Always-available way to install the app to the home screen */}
+          <InstallMenuItem onNavigate={closeDrawer} />
         </nav>
 
         {titiNumber && (

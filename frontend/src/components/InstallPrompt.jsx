@@ -1,25 +1,15 @@
 import { useState, useEffect } from "react";
 import { Download, X, Share2 } from "lucide-react";
+import { isIOS, isStandalone, canPromptInstall, promptInstall, onInstallChange } from "../lib/pwaInstall";
 
 const DISMISSED_KEY = "cv-install-dismissed-until";
 const SNOOZE_DAYS   = 14;
 
-function isIOS() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-}
-function isStandalone() {
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    window.navigator.standalone === true
-  );
-}
-
-// After sign-in, invites the user to add CreditVoice to their home screen so it
-// opens like an app. Android fires a native install prompt; iOS Safari can't, so
-// we show the Share → Add to Home Screen steps. A blinking pointer draws the eye.
+// First-time cue after sign-in inviting the user to add CreditVoice to their
+// home screen. Android fires the native prompt; iOS shows the Share → Add steps.
+// A blinking pointer draws the eye. The permanent entry lives in the sidebar.
 export default function InstallPrompt() {
-  const [deferred, setDeferred] = useState(null);   // Android beforeinstallprompt
-  const [visible, setVisible]   = useState(false);
+  const [visible, setVisible]     = useState(false);
   const [stepsOpen, setStepsOpen] = useState(false);
   const ios = isIOS();
 
@@ -32,21 +22,12 @@ export default function InstallPrompt() {
       const t = setTimeout(() => setVisible(true), 2500);
       return () => clearTimeout(t);
     }
-    const onPrompt = (e) => {
-      e.preventDefault();
-      setDeferred(e);
-      setTimeout(() => setVisible(true), 2500);
-    };
-    const onInstalled = () => {
-      setVisible(false);
-      localStorage.setItem(DISMISSED_KEY, String(Date.now() + 365 * 86400 * 1000));
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
+    // Android: show once the browser says it's installable.
+    let timer = null;
+    const check = () => { if (canPromptInstall()) timer = setTimeout(() => setVisible(true), 2500); };
+    check();
+    const off = onInstallChange(check);
+    return () => { off(); if (timer) clearTimeout(timer); };
   }, [ios]);
 
   if (!visible) return null;
@@ -58,9 +39,7 @@ export default function InstallPrompt() {
 
   async function handleAction() {
     if (ios) { setStepsOpen((o) => !o); return; }
-    if (!deferred) return;
-    deferred.prompt();
-    const { outcome } = await deferred.userChoice;
+    const outcome = await promptInstall();
     setVisible(false);
     if (outcome === "accepted") {
       localStorage.setItem(DISMISSED_KEY, String(Date.now() + 365 * 86400 * 1000));
