@@ -22,6 +22,18 @@ def _biz_name(db, owner_phone):
     return (u.business_type_label or u.name or "Your business") if u else "Your business"
 
 
+def _owner_header(db, owner_phone):
+    """Business header block shared by supplier receipts (same fields the sale
+    receipt uses)."""
+    u = db.query(User).filter(User.phone == owner_phone).first()
+    return {
+        "biz_name": (u.business_type_label or u.name) if u else "Your business",
+        "biz_address": getattr(u, "address", None) if u else None,
+        "biz_phone": owner_phone,
+        "recorded_by": (u.name if u else None),
+    }
+
+
 class SupplierPayRequest(BaseModel):
     amount: int = Field(gt=0)
     note: str = Field(default="", max_length=200)
@@ -122,6 +134,43 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
+    # ── Supplier receipts (stock-received purchases + payments) ───────────────
+    # Registered before /suppliers/{supplier_id} so the literal path wins.
+    @app.get("/app/api/suppliers/receipts")
+    def web_supplier_receipts(session: dict = Depends(require_web_auth)):
+        """List supplier receipts (purchases + payments) for the Receipts menu."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            sup_names = {s.id: s.name for s in db.query(Supplier).filter(Supplier.owner_phone == owner_phone).all()}
+            purchases = db.query(SupplierPurchase).filter(
+                SupplierPurchase.owner_phone == owner_phone
+            ).order_by(SupplierPurchase.created_at.desc()).limit(100).all()
+            payments = db.query(SupplierPayment).filter(
+                SupplierPayment.owner_phone == owner_phone
+            ).order_by(SupplierPayment.created_at.desc()).limit(100).all()
+
+            rows = []
+            for p in purchases:
+                rows.append({
+                    "kind": "purchase", "id": p.id,
+                    "supplier": (sup_names.get(p.supplier_id) or "").title() or "—",
+                    "label": p.product, "amount": _money(p.total),
+                    "balance": max(0, (p.total or 0) - (p.paid_amount or 0)),
+                    "created_at": _iso(p.created_at),
+                })
+            for p in payments:
+                rows.append({
+                    "kind": "payment", "id": p.id,
+                    "supplier": (sup_names.get(p.supplier_id) or "").title() or "—",
+                    "label": "Payment", "amount": _money(p.amount),
+                    "balance": 0, "created_at": _iso(p.created_at),
+                })
+            rows.sort(key=lambda r: r["created_at"] or "", reverse=True)
+            return {"receipts": rows}
+        finally:
+            db.close()
+
     @app.get("/app/api/suppliers/{supplier_id}")
     def web_supplier_detail(supplier_id: int, session: dict = Depends(require_web_auth)):
         """A supplier's purchase + payment history with a running balance."""
@@ -186,28 +235,19 @@ def register_supplier_routes(app):
             if not sup:
                 raise HTTPException(status_code=404, detail="Supplier not found.")
 
-            db.add(SupplierPayment(
+            pay = SupplierPayment(
                 supplier_id=sup.id,
                 owner_phone=owner_phone,
                 amount=payload.amount,
                 product=(payload.note.strip() or None),
                 recorded_by_id=session["user_id"],
                 created_at=utcnow(),
-            ))
-            db.commit()
-            _bought, _paid, balance = _supplier_balance(db, sup.id)
-            note_line = f"Note: {payload.note.strip()}\n" if payload.note.strip() else ""
-            receipt = (
-                f"{_biz_name(db, owner_phone)}\n"
-                "SUPPLIER PAYMENT RECEIPT\n"
-                "--------------------\n"
-                f"Supplier: {sup.name.title()}\n"
-                f"Amount paid: N{payload.amount:,}\n"
-                f"Balance: N{balance:,}\n"
-                f"{note_line}"
-                f"Date: {utcnow().strftime('%d/%m/%Y')}"
             )
-            return {"ok": True, "supplier": sup.name.title(), "balance": balance, "receipt": receipt}
+            db.add(pay)
+            db.commit()
+            db.refresh(pay)
+            _bought, _paid, balance = _supplier_balance(db, sup.id)
+            return {"ok": True, "supplier": sup.name.title(), "balance": balance, "payment_id": pay.id}
         finally:
             db.close()
 
@@ -294,5 +334,62 @@ def register_supplier_routes(app):
                 p.due_date = None
             db.commit()
             return {"ok": True, "due_date": _iso(p.due_date)}
+        finally:
+            db.close()
+
+    @app.get("/app/api/suppliers/receipt/{kind}/{item_id}")
+    def web_supplier_receipt(kind: str, item_id: int, session: dict = Depends(require_web_auth)):
+        """Rich supplier receipt (same shape/style as a sale receipt) for a
+        stock-received purchase or a supplier payment."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            header = _owner_header(db, owner_phone)
+
+            if kind == "purchase":
+                p = db.query(SupplierPurchase).filter(
+                    SupplierPurchase.id == item_id, SupplierPurchase.owner_phone == owner_phone,
+                ).first()
+                if not p:
+                    raise HTTPException(status_code=404, detail="Receipt not found.")
+                sup = db.query(Supplier).filter(Supplier.id == p.supplier_id).first()
+                total = p.total or 0
+                paid = p.paid_amount or 0
+                return {
+                    **header,
+                    "kind": "purchase",
+                    "id": p.id,
+                    "title": "Stock Received",
+                    "supplier": {"name": (sup.name.title() if sup else "—"), "phone": (sup.phone if sup else None)},
+                    "created_at": _iso(p.created_at),
+                    "items": [{
+                        "product": (p.product or "").title(), "qty": p.quantity, "unit": p.unit,
+                        "unit_price": _money(p.unit_price), "total": _money(total),
+                    }],
+                    "total": total, "paid": paid, "balance": max(0, total - paid),
+                    "due_date": _iso(p.due_date),
+                }
+
+            if kind == "payment":
+                pay = db.query(SupplierPayment).filter(
+                    SupplierPayment.id == item_id, SupplierPayment.owner_phone == owner_phone,
+                ).first()
+                if not pay:
+                    raise HTTPException(status_code=404, detail="Receipt not found.")
+                sup = db.query(Supplier).filter(Supplier.id == pay.supplier_id).first()
+                _b, _p, balance = _supplier_balance(db, pay.supplier_id)
+                return {
+                    **header,
+                    "kind": "payment",
+                    "id": pay.id,
+                    "title": "Supplier Payment",
+                    "supplier": {"name": (sup.name.title() if sup else "—"), "phone": (sup.phone if sup else None)},
+                    "created_at": _iso(pay.created_at),
+                    "amount": _money(pay.amount),
+                    "balance": balance,
+                    "note": pay.product,
+                }
+
+            raise HTTPException(status_code=400, detail="Unknown receipt kind.")
         finally:
             db.close()

@@ -484,29 +484,12 @@ def register_inventory_routes(app):
                 (payload.note or "").strip() or f"Received from {supplier.name.title()}",
             )
             db.commit()
-            _owner = db.query(User).filter(User.phone == owner_phone).first()
-            _biz = (_owner.business_type_label or _owner.name or "Your business") if _owner else "Your business"
-            _qty_line = f"{product.title()} x{qty:g}{(' ' + unit) if unit else ''}"
-            if cost:
-                _qty_line += f" @ N{cost:,}/unit"
-            balance = max(0, total - paid_amount)
-            receipt = (
-                f"{_biz}\n"
-                "STOCK RECEIVED\n"
-                "--------------------\n"
-                f"Supplier: {supplier.name.title()}\n"
-                f"{_qty_line}\n"
-                f"Total: N{total:,}\n"
-                f"Paid: N{paid_amount:,}\n"
-                f"Balance: N{balance:,}\n"
-                f"Date: {utcnow().strftime('%d/%m/%Y')}"
-            )
             return {
                 "ok": True,
                 "product": product,
                 "new_quantity": item.quantity if item else None,
                 "supplier": supplier.name.title(),
-                "receipt": receipt,
+                "purchase_id": purchase.id,
             }
         except HTTPException:
             raise

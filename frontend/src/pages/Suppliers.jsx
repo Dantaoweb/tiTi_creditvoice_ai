@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
-import ReceiptShareModal from "../components/ReceiptShareModal";
 import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, Star } from "lucide-react";
 
 // ── Star rating component ─────────────────────────────────────────────────────
@@ -226,7 +225,7 @@ function SupplierPayModal({ supplier, onClose, onDone }) {
   const [note, setNote]     = useState("");
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState("");
-  const [receipt, setReceipt] = useState(null);
+  const navigate = useNavigate();
 
   async function submit(e) {
     e.preventDefault();
@@ -235,12 +234,9 @@ function SupplierPayModal({ supplier, onClose, onDone }) {
     setBusy(true); setErr("");
     try {
       const r = await apiPost(`suppliers/${supplier.id}/pay`, { amount: amt, note: note.trim() });
-      setReceipt(r.receipt || "");
+      if (r?.payment_id) { navigate(`/suppliers/receipt/payment/${r.payment_id}`); return; }
+      onDone();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
-  }
-
-  if (receipt !== null) {
-    return <ReceiptShareModal title="Payment receipt" text={receipt} onClose={onDone} />;
   }
 
   return (

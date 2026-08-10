@@ -69,8 +69,16 @@ def test_stock_received_new_product_creates_item_supplier_and_purchase():
     })
     assert r.status_code == 200, r.text
     assert r.json()["new_quantity"] == 50
-    assert "STOCK RECEIVED" in (r.json().get("receipt") or "")
+    assert isinstance(r.json().get("purchase_id"), int)
     assert _item_qty(phone, "cocoa") == 50
+
+    # The purchase is retrievable as a rich supplier receipt.
+    rec = client.get(f"/app/api/suppliers/receipt/purchase/{r.json()['purchase_id']}", cookies=cook).json()
+    assert rec["kind"] == "purchase" and rec["biz_name"]
+    assert rec["supplier"]["name"] == "Dangote" and rec["items"][0]["product"] == "Cocoa"
+    # And it shows in the supplier receipts list.
+    lst = client.get("/app/api/suppliers/receipts", cookies=cook).json()["receipts"]
+    assert any(x["kind"] == "purchase" and x["id"] == r.json()["purchase_id"] for x in lst)
     sup, n = _supplier_and_purchases(phone, "dangote")
     assert sup is not None and n == 1
 
@@ -143,7 +151,10 @@ def test_credit_purchase_then_pay_supplier_clears_balance():
     # Pay the rest.
     pr = client.post(f"/app/api/suppliers/{sup_id}/pay", cookies=cook, json={"amount": 60000})
     assert pr.status_code == 200 and pr.json()["balance"] == 0, pr.text
-    assert "SUPPLIER PAYMENT RECEIPT" in (pr.json().get("receipt") or "")
+    assert isinstance(pr.json().get("payment_id"), int)
+    # The payment is retrievable as a rich supplier receipt.
+    rec = client.get(f"/app/api/suppliers/receipt/payment/{pr.json()['payment_id']}", cookies=cook).json()
+    assert rec["kind"] == "payment" and rec["amount"] == 60000 and rec["biz_name"]
 
     d2 = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()
     assert d2["balance"] == 0 and len(d2["payments"]) == 1
