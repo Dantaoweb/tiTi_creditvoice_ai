@@ -283,8 +283,13 @@ def register_web_routes(app):
         ".ico": "image/x-icon",
         ".html": "text/html",
         ".webmanifest": "application/manifest+json",
+        ".js": "application/javascript",
     }
-    _DIST_ROOT_STATIC = ["favicon.png", "favicon.svg", "logo.png", "icons.svg", "offline.html"]
+    _DIST_ROOT_STATIC = [
+        "favicon.png", "favicon.svg", "logo.png", "icons.svg", "offline.html",
+        # PWA install support — must be served as real files, not the SPA shell.
+        "manifest.webmanifest", "sw.js", "pwa-192.png", "pwa-512.png",
+    ]
     for _sf in _DIST_ROOT_STATIC:
         _fp = DIST_ROOT / _sf
         if not _fp.exists():

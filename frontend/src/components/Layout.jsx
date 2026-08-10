@@ -14,6 +14,7 @@ import { useOfflineSync } from "../lib/useOfflineSync";
 import TitiPanel from "./TitiPanel";
 import NotificationBell from "./NotificationBell";
 import WelcomeGuide from "./WelcomeGuide";
+import InstallPrompt from "./InstallPrompt";
 
 function buildNav(L, group) {
   // Businesses that don't sell products (savings/ajo, dues collection) get the
@@ -328,6 +329,7 @@ export default function Layout() {
         </header>
 
         <main className="page-content">
+          <InstallPrompt />
           <Outlet />
         </main>
       </div>

@@ -1,7 +1,6 @@
 import { Navigate, Routes, Route } from "react-router-dom";
 import { ToastProvider } from "./components/Toast";
 import { useAuth } from "./context/AuthContext";
-import InstallPrompt from "./components/InstallPrompt";
 import Layout       from "./components/Layout";
 import Landing      from "./pages/Landing";
 import Login        from "./pages/Login";
@@ -41,7 +40,6 @@ function RequireAuth({ children }) {
 export default function App() {
   return (
     <ToastProvider>
-      <InstallPrompt />
       <Routes>
         {/* Public */}
         <Route index element={<Landing />} />

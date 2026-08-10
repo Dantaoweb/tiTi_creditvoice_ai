@@ -1,61 +1,95 @@
 import { useState, useEffect } from "react";
-import { Download, X } from "lucide-react";
+import { Download, X, Share2 } from "lucide-react";
 
 const DISMISSED_KEY = "cv-install-dismissed-until";
-const SNOOZE_DAYS   = 7;
+const SNOOZE_DAYS   = 14;
 
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+}
+function isStandalone() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true
+  );
+}
+
+// After sign-in, invites the user to add CreditVoice to their home screen so it
+// opens like an app. Android fires a native install prompt; iOS Safari can't, so
+// we show the Share → Add to Home Screen steps. A blinking pointer draws the eye.
 export default function InstallPrompt() {
-  const [prompt, setPrompt]   = useState(null);
-  const [visible, setVisible] = useState(false);
+  const [deferred, setDeferred] = useState(null);   // Android beforeinstallprompt
+  const [visible, setVisible]   = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(false);
+  const ios = isIOS();
 
   useEffect(() => {
-    // Already installed — never show
-    if (window.matchMedia("(display-mode: standalone)").matches) return;
-
-    // Snoozed — don't show until snooze expires
+    if (isStandalone()) return;                       // already installed
     const until = localStorage.getItem(DISMISSED_KEY);
-    if (until && Date.now() < Number(until)) return;
+    if (until && Date.now() < Number(until)) return;  // snoozed
 
-    const handler = (e) => {
+    if (ios) {
+      const t = setTimeout(() => setVisible(true), 2500);
+      return () => clearTimeout(t);
+    }
+    const onPrompt = (e) => {
       e.preventDefault();
-      setPrompt(e);
-      // Delay the banner slightly so it doesn't flash on first load
-      setTimeout(() => setVisible(true), 8000);
+      setDeferred(e);
+      setTimeout(() => setVisible(true), 2500);
     };
-    window.addEventListener("beforeinstallprompt", handler);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, []);
+    const onInstalled = () => {
+      setVisible(false);
+      localStorage.setItem(DISMISSED_KEY, String(Date.now() + 365 * 86400 * 1000));
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, [ios]);
 
   if (!visible) return null;
 
-  async function handleInstall() {
-    if (!prompt) return;
-    prompt.prompt();
-    const { outcome } = await prompt.userChoice;
+  function snooze() {
+    localStorage.setItem(DISMISSED_KEY, String(Date.now() + SNOOZE_DAYS * 86400 * 1000));
+  }
+  function dismiss() { setVisible(false); snooze(); }
+
+  async function handleAction() {
+    if (ios) { setStepsOpen((o) => !o); return; }
+    if (!deferred) return;
+    deferred.prompt();
+    const { outcome } = await deferred.userChoice;
     setVisible(false);
     if (outcome === "accepted") {
       localStorage.setItem(DISMISSED_KEY, String(Date.now() + 365 * 86400 * 1000));
+    } else {
+      snooze();
     }
   }
 
-  function handleDismiss() {
-    setVisible(false);
-    localStorage.setItem(
-      DISMISSED_KEY,
-      String(Date.now() + SNOOZE_DAYS * 86400 * 1000)
-    );
-  }
-
   return (
-    <div className="install-banner">
-      <Download size={16} className="install-banner-icon" />
-      <span className="install-banner-text">
-        Install CreditVoice on your phone — works offline, no app store needed
-      </span>
-      <button className="install-banner-btn" onClick={handleInstall}>
-        Install
+    <div className="install-cue">
+      <span className="install-cue-pointer" aria-hidden="true">👉</span>
+      <div className="install-cue-icon"><Download size={18} /></div>
+      <div className="install-cue-body">
+        <div className="install-cue-title">Add CreditVoice to your phone</div>
+        <div className="install-cue-sub">
+          {ios ? "Open it like an app — no browser bar, no app store." : "One tap — works like an app, no app store."}
+        </div>
+        {ios && stepsOpen && (
+          <ol className="install-cue-steps">
+            <li>Tap the <Share2 size={12} style={{ verticalAlign: "-2px" }} /> <strong>Share</strong> button in your browser</li>
+            <li>Scroll and choose <strong>Add to Home Screen</strong></li>
+            <li>Tap <strong>Add</strong></li>
+          </ol>
+        )}
+      </div>
+      <button className="install-cue-btn" onClick={handleAction}>
+        {ios ? (stepsOpen ? "Got it" : "Show me how") : "Install"}
       </button>
-      <button className="install-banner-dismiss" onClick={handleDismiss} aria-label="Not now">
+      <button className="install-cue-x" onClick={dismiss} aria-label="Not now">
         <X size={14} />
       </button>
     </div>

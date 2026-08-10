@@ -20,3 +20,10 @@ createRoot(document.getElementById("root")).render(
     </ErrorBoundary>
   </StrictMode>
 );
+
+// Register the service worker (enables Add-to-Home-Screen install + offline page).
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/app/sw.js").catch(() => {});
+  });
+}
