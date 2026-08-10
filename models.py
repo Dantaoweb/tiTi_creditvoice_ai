@@ -286,6 +286,8 @@ class Supplier(Base):
 
     name = Column(String)
 
+    phone = Column(String, nullable=True)
+
     owner_phone = Column(String, index=True)
 
     created_at = Column(DateTime, default=utcnow)

@@ -161,6 +161,25 @@ def test_add_supplier_manually_and_reject_duplicate():
     assert dup.status_code == 409
 
 
+def test_add_supplier_with_phone_and_edit():
+    _p, cook = _owner()
+    r = client.post("/app/api/suppliers", cookies=cook, json={"name": "Musa Hausa", "phone": "08030000001"})
+    assert r.status_code == 200 and r.json()["phone"] == "08030000001", r.text
+    sid = r.json()["id"]
+    assert client.get(f"/app/api/suppliers/{sid}", cookies=cook).json()["phone"] == "08030000001"
+
+    # Edit name + phone.
+    e = client.put(f"/app/api/suppliers/{sid}", cookies=cook, json={"name": "Musa Trading", "phone": "08030000002"})
+    assert e.status_code == 200 and e.json()["phone"] == "08030000002", e.text
+    d2 = client.get(f"/app/api/suppliers/{sid}", cookies=cook).json()
+    assert d2["name"] == "musa trading" and d2["phone"] == "08030000002"
+
+    # Renaming onto another existing supplier is rejected.
+    client.post("/app/api/suppliers", cookies=cook, json={"name": "Existing Co"})
+    clash = client.put(f"/app/api/suppliers/{sid}", cookies=cook, json={"name": "Existing Co"})
+    assert clash.status_code == 409
+
+
 def test_edit_purchase_due_date():
     phone, cook = _owner()
     client.post("/app/api/inventory/stock-received", cookies=cook, json={

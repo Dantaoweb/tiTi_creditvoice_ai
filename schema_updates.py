@@ -991,6 +991,13 @@ def ensure_schema_updates(engine):
             with engine.begin() as connection:
                 connection.execute(text(_ddl))
 
+    # ── phone on suppliers (so receipts can be sent to a supplier) ───────────
+    if "suppliers" in inspector.get_table_names():
+        _sup_cols = {c["name"] for c in inspector.get_columns("suppliers")}
+        if "phone" not in _sup_cols:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE suppliers ADD COLUMN phone VARCHAR"))
+
     # ── billing_period on subscription_payments (monthly vs yearly) ──────────
     if "subscription_payments" in inspector.get_table_names():
         _sp_cols = {c["name"] for c in inspector.get_columns("subscription_payments")}

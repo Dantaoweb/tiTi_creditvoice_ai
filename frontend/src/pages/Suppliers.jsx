@@ -178,16 +178,17 @@ function MySupplyChain() {
 
 // Create a supplier manually (before any purchase).
 function AddSupplierModal({ onClose, onDone }) {
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr]   = useState("");
+  const [name, setName]   = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState("");
 
   async function submit(e) {
     e.preventDefault();
     if (!name.trim()) { setErr("Enter a supplier name."); return; }
     setBusy(true); setErr("");
     try {
-      await apiPost("suppliers", { name: name.trim() });
+      await apiPost("suppliers", { name: name.trim(), phone: phone.trim() });
       onDone();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   }
@@ -203,6 +204,10 @@ function AddSupplierModal({ onClose, onDone }) {
           <div className="form-group">
             <label className="form-label">Supplier name *</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dangote Cement" autoFocus />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Phone <span className="text-subtle">(optional)</span></label>
+            <input inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 0803…" />
           </div>
           {err && <div className="modal-error">{err}</div>}
         </div>
@@ -274,10 +279,29 @@ function SupplierPayModal({ supplier, onClose, onDone }) {
 function SupplierDetailModal({ supplierId, onClose, onPay }) {
   const [d, setD]     = useState(null);
   const [err, setErr] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [ename, setEname]     = useState("");
+  const [ephone, setEphone]   = useState("");
+  const [saving, setSaving]   = useState(false);
 
   useEffect(() => {
     apiFetch(`suppliers/${supplierId}`).then(setD).catch(e => setErr(e.message));
   }, [supplierId]);
+
+  function startEdit() { setEname(d.name || ""); setEphone(d.phone || ""); setErr(""); setEditing(true); }
+
+  async function saveEdit() {
+    if (!ename.trim()) { setErr("Enter a supplier name."); return; }
+    setSaving(true); setErr("");
+    try {
+      const r = await apiFetch(`suppliers/${supplierId}`, {}, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: ename.trim(), phone: ephone.trim() }),
+      });
+      setD(prev => ({ ...prev, name: ename.trim().toLowerCase(), phone: r.phone }));
+      setEditing(false);
+    } catch (e) { setErr(e.message); } finally { setSaving(false); }
+  }
 
   async function updateDue(pid, val) {
     setErr("");
@@ -305,6 +329,27 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
           {err && <div className="modal-error">{err}</div>}
           {!d ? <p className="td-muted">Loading…</p> : (
             <>
+              {!editing ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, fontSize: 13 }}>
+                  <span className="td-muted">{d.phone ? `☎ ${d.phone}` : "No phone on file"}</span>
+                  <button type="button" className="link-btn" onClick={startEdit}>Edit</button>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Supplier name *</label>
+                    <input value={ename} onChange={e => setEname(e.target.value)} autoFocus />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Phone</label>
+                    <input inputMode="tel" value={ephone} onChange={e => setEphone(e.target.value)} placeholder="e.g. 0803…" />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+                    <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={saveEdit}>{saving ? "Saving…" : "Save"}</button>
+                  </div>
+                </div>
+              )}
               <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 14 }}>
                 <MetricCard label="Purchased" value={nairaFull(d.total_bought)} />
                 <MetricCard label="Paid"      value={nairaFull(d.total_paid)} color="green" />

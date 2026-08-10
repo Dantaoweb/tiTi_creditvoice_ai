@@ -29,6 +29,12 @@ class SupplierPayRequest(BaseModel):
 
 class AddSupplierRequest(BaseModel):
     name: str = Field(max_length=120)
+    phone: str = Field(default="", max_length=20)
+
+
+class EditSupplierRequest(BaseModel):
+    name: str = Field(max_length=120)
+    phone: str = Field(default="", max_length=20)
 
 
 class SupplierPurchaseDueRequest(BaseModel):
@@ -80,6 +86,7 @@ def register_supplier_routes(app):
                 result.append({
                     "id": sup.id,
                     "name": sup.name,
+                    "phone": sup.phone,
                     "purchases": len(purchases),
                     "total_bought": total_bought,
                     "total_paid": total_paid,
@@ -138,6 +145,7 @@ def register_supplier_routes(app):
             return {
                 "id": sup.id,
                 "name": sup.name,
+                "phone": sup.phone,
                 "total_bought": total_bought,
                 "total_paid": total_paid,
                 "balance": balance,
@@ -219,11 +227,44 @@ def register_supplier_routes(app):
             ).first()
             if existing:
                 raise HTTPException(status_code=409, detail="A supplier with that name already exists.")
-            sup = Supplier(name=name.lower(), owner_phone=owner_phone)
+            sup = Supplier(name=name.lower(), phone=(payload.phone.strip() or None), owner_phone=owner_phone)
             db.add(sup)
             db.commit()
             db.refresh(sup)
-            return {"ok": True, "id": sup.id, "name": sup.name.title()}
+            return {"ok": True, "id": sup.id, "name": sup.name.title(), "phone": sup.phone}
+        finally:
+            db.close()
+
+    @app.put("/app/api/suppliers/{supplier_id}")
+    def web_edit_supplier(
+        supplier_id: int,
+        payload: EditSupplierRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Edit a supplier's name and phone. Owner/branch-admin only."""
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            sup = db.query(Supplier).filter(
+                Supplier.id == supplier_id, Supplier.owner_phone == owner_phone,
+            ).first()
+            if not sup:
+                raise HTTPException(status_code=404, detail="Supplier not found.")
+            name = payload.name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="Supplier name is required.")
+            clash = db.query(Supplier).filter(
+                Supplier.owner_phone == owner_phone,
+                func.lower(Supplier.name) == name.lower(),
+                Supplier.id != sup.id,
+            ).first()
+            if clash:
+                raise HTTPException(status_code=409, detail="Another supplier already has that name.")
+            sup.name = name.lower()
+            sup.phone = payload.phone.strip() or None
+            db.commit()
+            return {"ok": True, "id": sup.id, "name": sup.name.title(), "phone": sup.phone}
         finally:
             db.close()
 
