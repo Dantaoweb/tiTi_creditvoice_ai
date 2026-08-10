@@ -115,3 +115,49 @@ def test_stock_received_rejects_zero_quantity():
         "product": "Milk", "quantity": 0,
     })
     assert r.status_code == 400
+
+
+def test_credit_purchase_then_pay_supplier_clears_balance():
+    phone, cook = _owner()
+    # Receive on credit: total 100000, paid 40000 → owe 60000.
+    r = client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Cement", "quantity": 100, "cost_per_unit": 1000,
+        "paid_now": 40000, "supplier": "BUA",
+    })
+    assert r.status_code == 200, r.text
+
+    db = SessionLocal()
+    try:
+        sup_id = db.query(Supplier).filter(
+            Supplier.owner_phone == phone, Supplier.name == "bua"
+        ).first().id
+    finally:
+        db.close()
+
+    # Detail shows the debt.
+    d = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()
+    assert d["total_bought"] == 100000 and d["total_paid"] == 40000 and d["balance"] == 60000
+    assert len(d["purchases"]) == 1
+
+    # Pay the rest.
+    pr = client.post(f"/app/api/suppliers/{sup_id}/pay", cookies=cook, json={"amount": 60000})
+    assert pr.status_code == 200 and pr.json()["balance"] == 0, pr.text
+
+    d2 = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()
+    assert d2["balance"] == 0 and len(d2["payments"]) == 1
+
+
+def test_pay_rejects_other_owners_supplier():
+    _p, cook = _owner()
+    # A supplier that belongs to a different owner.
+    _p2, cook2 = _owner()
+    client.post("/app/api/inventory/stock-received", cookies=cook2, json={
+        "product": "Sand", "quantity": 5, "supplier": "Foreign",
+    })
+    db = SessionLocal()
+    try:
+        foreign_id = db.query(Supplier).filter(Supplier.name == "foreign").first().id
+    finally:
+        db.close()
+    r = client.post(f"/app/api/suppliers/{foreign_id}/pay", cookies=cook, json={"amount": 1000})
+    assert r.status_code == 404

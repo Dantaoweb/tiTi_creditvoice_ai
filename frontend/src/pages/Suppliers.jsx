@@ -86,14 +86,17 @@ function MySupplyChain() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [payFor, setPayFor]   = useState(null);   // supplier row to pay
+  const [detailId, setDetailId] = useState(null); // supplier id to view
 
-  useEffect(() => {
+  function reload() {
     setLoading(true);
     apiFetch("suppliers")
       .then(setData)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }
+  useEffect(reload, []);
 
   const suppliers   = data?.suppliers || [];
   const totalOwed   = suppliers.reduce((s, r) => s + r.balance, 0);
@@ -115,22 +118,37 @@ function MySupplyChain() {
         <DataTable
           loading={loading}
           rows={suppliers}
-          emptyText="No supplier records. Record a purchase from a supplier via WhatsApp."
+          emptyText="No supplier records yet. Record a purchase via Quick Record → Stock Received."
           rowClass={r => r.has_overdue ? "low-stock" : ""}
           columns={[
-            { key: "name",         label: "Supplier",        render: r => <strong className="td-strong">{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>, sortKey: "name" },
+            { key: "name",         label: "Supplier",        render: r => (
+              <button type="button" className="link-btn td-strong" style={{ textAlign: "left" }} onClick={() => setDetailId(r.id)}>
+                {(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}
+              </button>
+            ), sortKey: "name" },
             { key: "purchases",    label: "Purchases",       render: r => r.purchases, sortKey: "purchases" },
             { key: "total_bought", label: "Total purchased", render: r => nairaFull(r.total_bought), sortKey: "total_bought" },
             { key: "total_paid",   label: "Total paid",      render: r => nairaFull(r.total_paid), sortKey: "total_paid" },
             { key: "balance",      label: "Balance owed",    render: r => r.balance > 0
               ? <span className="text-rose font-bold">{nairaFull(r.balance)}</span>
               : <span className="text-subtle">{nairaFull(r.balance)}</span>, sortKey: "balance" },
-            { key: "next_due",     label: "Next due",        render: r => r.next_due
-              ? <span className={new Date(r.next_due) < new Date() ? "text-rose" : ""}>{dateStr(r.next_due)}</span>
-              : <span className="text-subtle">—</span> },
+            { key: "actions",      label: "",                render: r => (
+              <button className="btn btn-secondary btn-sm" onClick={() => setPayFor(r)}>Pay</button>
+            ) },
           ]}
         />
       </div>
+
+      {payFor && (
+        <SupplierPayModal supplier={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); reload(); }} />
+      )}
+      {detailId && (
+        <SupplierDetailModal
+          supplierId={detailId}
+          onClose={() => setDetailId(null)}
+          onPay={(sup) => { setDetailId(null); setPayFor(sup); }}
+        />
+      )}
       {!!(data?.recent_purchases?.length) && (
         <div className="card">
           <div className="card-header"><span className="card-title">Recent supplier purchases</span></div>
@@ -149,6 +167,117 @@ function MySupplyChain() {
         </div>
       )}
     </>
+  );
+}
+
+// Record a payment to a supplier (pays down what you owe them).
+function SupplierPayModal({ supplier, onClose, onDone }) {
+  const [amount, setAmount] = useState("");
+  const [note, setNote]     = useState("");
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    const amt = parseAmt(amount);
+    if (!amt || amt <= 0) { setErr("Enter an amount."); return; }
+    setBusy(true); setErr("");
+    try {
+      await apiPost(`suppliers/${supplier.id}/pay`, { amount: amt, note: note.trim() });
+      onDone();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <form className="modal" onSubmit={submit}>
+        <div className="modal-header">
+          <span className="modal-title">Pay {(supplier.name || "").replace(/\b\w/g, c => c.toUpperCase())}</span>
+          <button type="button" className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          {supplier.balance > 0 && (
+            <div className="td-muted" style={{ marginBottom: 10 }}>
+              You currently owe <strong className="text-rose">{nairaFull(supplier.balance)}</strong>.
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">Amount (₦) *</label>
+            <MoneyInput value={amount} onChange={setAmount} placeholder="0" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. part payment, transfer ref…" />
+          </div>
+          {err && <div className="modal-error">{err}</div>}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Record payment"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// A supplier's purchases + payments history with running balance.
+function SupplierDetailModal({ supplierId, onClose, onPay }) {
+  const [d, setD]     = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    apiFetch(`suppliers/${supplierId}`).then(setD).catch(e => setErr(e.message));
+  }, [supplierId]);
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">{d ? (d.name || "").replace(/\b\w/g, c => c.toUpperCase()) : "Supplier"}</span>
+          <button type="button" className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          {err && <div className="modal-error">{err}</div>}
+          {!d ? <p className="td-muted">Loading…</p> : (
+            <>
+              <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 14 }}>
+                <MetricCard label="Purchased" value={nairaFull(d.total_bought)} />
+                <MetricCard label="Paid"      value={nairaFull(d.total_paid)} color="green" />
+                <MetricCard label="Owed"      value={nairaFull(d.balance)} color={d.balance > 0 ? "rose" : "green"} />
+              </div>
+              <button className="btn btn-primary" style={{ width: "100%", marginBottom: 16 }}
+                onClick={() => onPay({ id: d.id, name: d.name, balance: d.balance })}>
+                Pay this supplier
+              </button>
+
+              <div className="card-title" style={{ marginBottom: 6 }}>Purchases</div>
+              {d.purchases.length === 0 ? <p className="td-muted">None yet.</p> : (
+                <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
+                  {d.purchases.map(p => (
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, borderBottom: "1px solid var(--border)", paddingBottom: 5 }}>
+                      <span>{(p.product || "—")}{p.quantity ? ` · ${p.quantity}${p.unit || ""}` : ""}<br /><span className="td-muted" style={{ fontSize: 11 }}>{dateStr(p.created_at)}</span></span>
+                      <span style={{ textAlign: "right" }}>{nairaFull(p.total)}<br /><span className="td-muted" style={{ fontSize: 11 }}>paid {nairaFull(p.paid_amount)}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="card-title" style={{ marginBottom: 6 }}>Payments</div>
+              {d.payments.length === 0 ? <p className="td-muted">None yet.</p> : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {d.payments.map(p => (
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, borderBottom: "1px solid var(--border)", paddingBottom: 5 }}>
+                      <span className="td-muted">{dateStr(p.created_at)}{p.product ? ` · ${p.product}` : ""}</span>
+                      <span className="text-green font-bold">{nairaFull(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -414,6 +414,7 @@ function StockForm({ ownerPhone, onSuccess }) {
   const [item, setItem]         = useState(null);
   const [qty, setQty]           = useState("");
   const [cost, setCost]         = useState("");
+  const [paidNow, setPaidNow]   = useState("");
   const [supplier, setSupplier] = useState("");
   const [note, setNote]         = useState("");
   const [loading, setLoading]   = useState(false);
@@ -426,6 +427,7 @@ function StockForm({ ownerPhone, onSuccess }) {
       unit:          item?.unit || null,
       quantity:      parseAmt(qty),
       cost_per_unit: cost ? parseAmt(cost) : null,
+      paid_now:      paidNow !== "" ? parseAmt(paidNow) : null,   // blank → fully paid
       supplier:      supplier.trim() || null,   // blank → "Others" server-side
       note:          note.trim() || null,
     };
@@ -439,13 +441,13 @@ function StockForm({ ownerPhone, onSuccess }) {
     try {
       await apiPost("inventory/stock-received", _body());
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
-      setItem(null); setQty(""); setCost(""); setSupplier(""); setNote("");
+      setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setNote("");
     } catch (e) {
       if (isNetworkError(e)) {
         enqueue("inventory/stock-received", _body(),
           `Stock +${qty} ${item.unit || "units"} of ${item.name}${who}`);
         onSuccess("No internet — stock entry saved offline. Will sync automatically when you reconnect.");
-        setItem(null); setQty(""); setCost(""); setSupplier(""); setNote("");
+        setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setNote("");
       } else {
         setError(e.message);
       }
@@ -470,9 +472,15 @@ function StockForm({ ownerPhone, onSuccess }) {
           <input inputMode="numeric" value={cost} onChange={e => setCost(fmtAmt(e.target.value))} placeholder="0" />
         </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Supplier <span className="text-subtle">(optional)</span></label>
-        <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Supplier name — leave blank for “Others”" />
+      <div className="qf-row qf-row--sm-lg">
+        <div className="form-group">
+          <label className="form-label">Supplier <span className="text-subtle">(optional)</span></label>
+          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Leave blank for “Others”" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Paid now (₦) <span className="text-subtle">(optional)</span></label>
+          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(fmtAmt(e.target.value))} placeholder="full amount" />
+        </div>
       </div>
       <div className="form-group">
         <label className="form-label">Note <span className="text-subtle">(optional)</span></label>

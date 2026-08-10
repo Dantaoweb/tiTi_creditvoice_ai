@@ -79,6 +79,7 @@ class StockReceivedRequest(BaseModel):
     unit: Optional[str] = Field(default=None, max_length=30)
     quantity: float
     cost_per_unit: Optional[int] = None
+    paid_now: Optional[int] = None   # None → fully paid; less than total → records supplier debt
     supplier: Optional[str] = Field(default=None, max_length=120)   # blank → "Others"
     note: Optional[str] = Field(default=None, max_length=500)
 
@@ -458,6 +459,8 @@ def register_inventory_routes(app):
 
             cost = payload.cost_per_unit
             total = int(round(cost * qty)) if cost else 0
+            # Default: fully paid (owned). A smaller paid_now records supplier debt.
+            paid_amount = total if payload.paid_now is None else max(0, min(int(payload.paid_now), total))
             purchase = SupplierPurchase(
                 supplier_id=supplier.id,
                 owner_phone=owner_phone,
@@ -466,7 +469,7 @@ def register_inventory_routes(app):
                 unit=unit,
                 unit_price=cost,
                 total=total,
-                paid_amount=total,   # received stock is treated as owned (no debt)
+                paid_amount=paid_amount,
                 recorded_by_id=session["user_id"],
                 created_at=utcnow(),
             )
