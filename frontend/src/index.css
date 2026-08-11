@@ -3696,9 +3696,6 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .name-chip__chev { opacity: .45; transition: opacity .12s ease, transform .12s ease; }
 .name-chip:hover .name-chip__chev,
 .name-chip:focus-visible .name-chip__chev { opacity: 1; transform: translateX(2px); }
-@media (prefers-color-scheme: dark) {
-  .name-chip { background: var(--surface-2, #122459); }
-}
 
 /* Inventory: selling-below-cost warning */
 .inv-below-cost-warning {
