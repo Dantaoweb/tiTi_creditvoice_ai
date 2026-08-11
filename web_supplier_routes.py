@@ -58,6 +58,18 @@ class SupplierPurchaseEditRequest(BaseModel):
     unit_price: Optional[int] = None   # cost per unit; recomputes total
 
 
+class SupplierPurchaseAddRequest(BaseModel):
+    """Record a purchase from *this* supplier (supplier-first). Grows physical
+    stock, exactly like Quick Record → Stock Received, but keyed by supplier."""
+    product: str = Field(max_length=120)
+    unit: Optional[str] = Field(default=None, max_length=30)
+    quantity: float
+    cost_per_unit: Optional[int] = None
+    paid_now: Optional[int] = None     # None → fully paid; less → records debt
+    due_date: Optional[str] = None     # "YYYY-MM-DD"
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
 def _supplier_balance(db, supplier_id):
     """(total_bought, total_paid, balance) for a supplier."""
     purchases = db.query(SupplierPurchase).filter(SupplierPurchase.supplier_id == supplier_id).all()
@@ -256,6 +268,99 @@ def register_supplier_routes(app):
             db.refresh(pay)
             _bought, _paid, balance = _supplier_balance(db, sup.id)
             return {"ok": True, "supplier": sup.name.title(), "balance": balance, "payment_id": pay.id}
+        finally:
+            db.close()
+
+    @app.post("/app/api/suppliers/{supplier_id}/purchase")
+    def web_supplier_record_purchase(
+        supplier_id: int,
+        payload: SupplierPurchaseAddRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Record a purchase from this supplier and grow physical stock. Mirrors
+        Quick Record → Stock Received (same SupplierPurchase + IN movement + note
+        routing), but supplier-first: keyed by supplier_id, not a typed name."""
+        from models import InventoryItem
+        from inventory_suppliers import add_inventory_movement
+        from web_inventory_routes import _save_stock_note
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            sup = db.query(Supplier).filter(
+                Supplier.id == supplier_id, Supplier.owner_phone == owner_phone,
+            ).first()
+            if not sup:
+                raise HTTPException(status_code=404, detail="Supplier not found.")
+
+            qty = payload.quantity
+            if not qty or qty <= 0:
+                raise HTTPException(status_code=400, detail="Quantity must be greater than zero.")
+            product = (payload.product or "").strip()
+            if not product:
+                raise HTTPException(status_code=400, detail="Product name is required.")
+
+            # Inherit the unit from the existing stock item so quantities aggregate
+            # onto the same product rather than splitting into a unitless twin.
+            unit = payload.unit
+            if not unit:
+                ex = db.query(InventoryItem).filter(
+                    InventoryItem.owner_phone == owner_phone,
+                    func.lower(InventoryItem.name) == product.lower(),
+                ).first()
+                unit = ex.unit if ex else None
+
+            cost = payload.cost_per_unit
+            total = int(round(cost * qty)) if cost else 0
+            paid_amount = total if payload.paid_now is None else max(0, min(int(payload.paid_now), total))
+            due_dt = None
+            if payload.due_date:
+                try:
+                    due_dt = datetime.strptime(payload.due_date[:10], "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid due date. Use YYYY-MM-DD.")
+
+            purchase = SupplierPurchase(
+                supplier_id=sup.id,
+                owner_phone=owner_phone,
+                product=product,
+                quantity=qty,
+                unit=unit,
+                unit_price=cost,
+                total=total,
+                paid_amount=paid_amount,
+                due_date=due_dt,
+                recorded_by_id=session["user_id"],
+                created_at=utcnow(),
+            )
+            db.add(purchase)
+            db.flush()
+
+            item = add_inventory_movement(
+                db, owner_phone, product, qty, unit, cost,
+                "IN", "SUPPLIER_PURCHASE", purchase.id, session["user_id"],
+                (payload.note or "").strip() or f"Received from {sup.name.title()}",
+            )
+            _save_stock_note(
+                db, owner_phone, session["user_id"], "delivery",
+                (payload.note or "").strip(),
+                f"{product.title()} from {sup.name.title()}",
+            )
+            db.commit()
+            _bought, _paid, balance = _supplier_balance(db, sup.id)
+            return {
+                "ok": True,
+                "purchase_id": purchase.id,
+                "product": product,
+                "new_quantity": item.quantity if item else None,
+                "balance": balance,
+            }
+        except HTTPException:
+            raise
+        except Exception:
+            import traceback; traceback.print_exc()
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Could not record purchase. Please try again.")
         finally:
             db.close()
 

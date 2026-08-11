@@ -284,10 +284,44 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   const [editPid, setEditPid] = useState(null);   // purchase being edited
   const [pqty, setPqty]       = useState("");
   const [pcost, setPcost]     = useState("");
+  const [showBuy, setShowBuy] = useState(false);   // record-purchase form
+  const [bProd, setBProd]     = useState("");
+  const [bQty, setBQty]       = useState("");
+  const [bCost, setBCost]     = useState("");
+  const [bPaid, setBPaid]     = useState("");
+  const [bDue, setBDue]       = useState("");
+  const [bNote, setBNote]     = useState("");
 
   useEffect(() => {
     apiFetch(`suppliers/${supplierId}`).then(setD).catch(e => setErr(e.message));
   }, [supplierId]);
+
+  function startBuy() {
+    // Commodity traders buy the same product repeatedly — pre-fill the last one.
+    setBProd(d?.purchases?.[0]?.product || "");
+    setBQty(""); setBCost(""); setBPaid(""); setBDue(""); setBNote("");
+    setErr(""); setShowBuy(true);
+  }
+
+  async function recordPurchase() {
+    if (!bProd.trim()) { setErr("Enter the product."); return; }
+    const qty = parseAmt(bQty);
+    if (!qty || qty <= 0) { setErr("Enter a quantity greater than 0."); return; }
+    setSaving(true); setErr("");
+    try {
+      await apiPost(`suppliers/${supplierId}/purchase`, {
+        product: bProd.trim(),
+        quantity: qty,
+        cost_per_unit: bCost ? parseAmt(bCost) : null,
+        paid_now: bPaid !== "" ? parseAmt(bPaid) : null,
+        due_date: bDue || null,
+        note: bNote.trim() || null,
+      });
+      const fresh = await apiFetch(`suppliers/${supplierId}`);
+      setD(fresh);
+      setShowBuy(false);
+    } catch (e) { setErr(e.message); } finally { setSaving(false); }
+  }
 
   function startEdit() { setEname(d.name || ""); setEphone(d.phone || ""); setErr(""); setEditing(true); }
 
@@ -380,10 +414,52 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                 <MetricCard label="Paid"      value={nairaFull(d.total_paid)} color="green" />
                 <MetricCard label="Owed"      value={nairaFull(d.balance)} color={d.balance > 0 ? "rose" : "green"} />
               </div>
-              <button className="btn btn-primary" style={{ width: "100%", marginBottom: 16 }}
+              <button className="btn btn-primary" style={{ width: "100%", marginBottom: 10 }}
                 onClick={() => onPay({ id: d.id, name: d.name, balance: d.balance })}>
                 Pay this supplier
               </button>
+
+              {!showBuy ? (
+                <button className="btn btn-secondary" style={{ width: "100%", marginBottom: 16 }} onClick={startBuy}>
+                  <Plus size={14} /> Record purchase from this supplier
+                </button>
+              ) : (
+                <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 12, marginBottom: 16, display: "grid", gap: 8 }}>
+                  <div className="card-title" style={{ marginBottom: 2 }}>New purchase</div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Product *</label>
+                    <input value={bProd} onChange={e => setBProd(e.target.value)} placeholder="e.g. Cocoa" autoFocus />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div className="form-group" style={{ margin: 0, flex: 1 }}>
+                      <label className="form-label">Qty *</label>
+                      <MoneyInput value={bQty} onChange={v => setBQty(v)} placeholder="10" />
+                    </div>
+                    <div className="form-group" style={{ margin: 0, flex: 1 }}>
+                      <label className="form-label">Cost/unit (₦)</label>
+                      <input inputMode="numeric" value={bCost} onChange={e => setBCost(e.target.value)} placeholder="0" />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div className="form-group" style={{ margin: 0, flex: 1 }}>
+                      <label className="form-label">Paid now (₦)</label>
+                      <input inputMode="numeric" value={bPaid} onChange={e => setBPaid(e.target.value)} placeholder="full amount" />
+                    </div>
+                    <div className="form-group" style={{ margin: 0, flex: 1 }}>
+                      <label className="form-label">Payment due</label>
+                      <input type="date" value={bDue} onChange={e => setBDue(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Note</label>
+                    <input value={bNote} onChange={e => setBNote(e.target.value)} placeholder="Delivery ref, batch…" />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowBuy(false)}>Cancel</button>
+                    <button className="btn btn-primary btn-sm" disabled={saving} onClick={recordPurchase}>{saving ? "Saving…" : "Save purchase"}</button>
+                  </div>
+                </div>
+              )}
 
               <div className="card-title" style={{ marginBottom: 6 }}>Purchases</div>
               {d.purchases.length === 0 ? <p className="td-muted">None yet.</p> : (

@@ -320,6 +320,49 @@ def test_edit_purchase_rejects_other_owner():
     assert r.status_code == 404
 
 
+def test_record_purchase_from_supplier_modal_grows_stock():
+    """Supplier-first purchase: records against the supplier AND grows physical
+    stock, mirroring Quick Record → Stock Received."""
+    phone, cook = _owner()
+    # Create the supplier first (manually), then buy from within its card.
+    sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Emeka Farms"}).json()["id"]
+
+    r = client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Cocoa", "quantity": 100, "cost_per_unit": 800,
+        "paid_now": 20000, "due_date": "2026-12-01", "note": "Truck A",
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["new_quantity"] == 100
+    assert r.json()["balance"] == 60000   # 80000 total - 20000 paid
+
+    # Physical stock was created + grown.
+    assert _item_qty(phone, "cocoa") == 100
+
+    # A second buy from the same supplier aggregates onto the same item.
+    r2 = client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Cocoa", "quantity": 50, "cost_per_unit": 800,
+    })
+    assert r2.status_code == 200, r2.text
+    assert _item_qty(phone, "cocoa") == 150
+
+    # Detail shows both purchases, the due date, and the delivery note went to Notes.
+    d = client.get(f"/app/api/suppliers/{sid}", cookies=cook).json()
+    assert len(d["purchases"]) == 2
+    assert any(p["due_date"] and p["due_date"][:10] == "2026-12-01" for p in d["purchases"])
+    notes = client.get("/app/api/notes?category=delivery", cookies=cook).json()["notes"]
+    assert any("Truck A" in n["body"] for n in notes)
+
+
+def test_record_purchase_rejects_other_owners_supplier():
+    _p, cook = _owner()
+    _p2, cook2 = _owner()
+    foreign = client.post("/app/api/suppliers", cookies=cook2, json={"name": "Foreign Co"}).json()["id"]
+    r = client.post(f"/app/api/suppliers/{foreign}/purchase", cookies=cook, json={
+        "product": "Rice", "quantity": 5,
+    })
+    assert r.status_code == 404
+
+
 def test_pay_rejects_other_owners_supplier():
     _p, cook = _owner()
     # A supplier that belongs to a different owner.
