@@ -389,6 +389,31 @@ def test_supplier_detail_date_range_window():
     assert len(allt["purchases"]) == 2 and allt["total_bought"] == 15000 and allt["range"] is None
 
 
+def test_inventory_movements_endpoint():
+    """The item detail modal reads recent stock movements for one item."""
+    phone, cook = _owner()
+    sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Emeka"}).json()["id"]
+    client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Cocoa", "quantity": 100, "cost_per_unit": 800, "note": "Truck A"})
+    # Resolve the item id.
+    db = SessionLocal()
+    try:
+        iid = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == phone, InventoryItem.name == "cocoa").first().id
+    finally:
+        db.close()
+
+    r = client.get(f"/app/api/inventory/{iid}/movements", cookies=cook)
+    assert r.status_code == 200, r.text
+    movs = r.json()["movements"]
+    assert len(movs) == 1 and movs[0]["type"] == "IN" and movs[0]["quantity"] == 100
+    assert movs[0]["note"] == "Truck A"
+
+    # Not this owner's item.
+    _p2, cook2 = _owner()
+    assert client.get(f"/app/api/inventory/{iid}/movements", cookies=cook2).status_code == 404
+
+
 def test_bought_vs_sold_report_pdf():
     phone, cook = _owner()
     sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Emeka"}).json()["id"]

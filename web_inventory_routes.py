@@ -444,6 +444,38 @@ def register_inventory_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/inventory/{item_id}/movements")
+    def web_inventory_movements(item_id: int, session: dict = Depends(require_web_auth)):
+        """Recent stock movements (in/out) for one item — the audit trail shown
+        in the item detail modal."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            item = db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.owner_phone == owner_phone,
+            ).first()
+            if not item:
+                raise HTTPException(status_code=404, detail="Item not found.")
+            movs = db.query(InventoryMovement).filter(
+                InventoryMovement.item_id == item.id,
+                InventoryMovement.owner_phone == owner_phone,
+            ).order_by(InventoryMovement.id.desc()).limit(100).all()
+            return {"movements": [
+                {
+                    "id": m.id,
+                    "type": m.movement_type,
+                    "quantity": m.quantity,
+                    "unit_price": _money(m.unit_price),
+                    "source_type": m.source_type,
+                    "note": m.note,
+                    "created_at": _iso(m.created_at),
+                }
+                for m in movs
+            ]}
+        finally:
+            db.close()
+
     @app.post("/app/api/inventory/stock-received")
     def web_stock_received(
         payload: StockReceivedRequest,

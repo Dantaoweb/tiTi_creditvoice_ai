@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, PlusCircle, MinusCircle } from "lucide-react";
+import { Plus, PlusCircle, MinusCircle, ChevronRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
-import { nairaFull, dateStr, parseAmt } from "../lib/format";
+import { nairaFull, dateStr, dateTimeStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
+import MetricCard from "../components/MetricCard";
 import { StockBadge } from "../components/Badge";
 import StaleDataBanner from "../components/StaleDataBanner";
 import { LimitBar } from "../components/UpgradeGate";
@@ -619,6 +620,87 @@ function AdjustModal({ item, onClose, onSaved }) {
   );
 }
 
+// ── Item detail modal ────────────────────────────────────────────────────────
+// One surface per item: stock/price metrics, movement history, and Edit /
+// Adjust actions (delegated to the existing modals). Mirrors Suppliers/Customers.
+function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust }) {
+  const [movs, setMovs] = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    apiFetch(`inventory/${item.id}/movements`)
+      .then(d => setMovs(d.movements || []))
+      .catch(e => setErr(e.message));
+  }, [item.id]);
+
+  const title = (item.name || "Item").replace(/\b\w/g, c => c.toUpperCase());
+  const attrLine = (fields || [])
+    .map(f => (item.attributes || {})[f.key]).filter(Boolean).join(" · ");
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="modal-body">
+        {err && <div className="modal-error">{err}</div>}
+        {item.is_service && <div style={{ marginBottom: 10 }}><span className="svc-chip">service</span></div>}
+        {attrLine && <div className="td-attr-line" style={{ marginBottom: 10 }}>{attrLine}</div>}
+
+        <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 14 }}>
+          {!item.is_service && (
+            <MetricCard label="In stock" value={`${(item.quantity ?? 0).toLocaleString()}${item.unit ? ` ${item.unit}` : ""}`}
+              color={item.low_stock_alert !== null && (item.quantity ?? 0) <= item.low_stock_alert ? "amber" : undefined} />
+          )}
+          <MetricCard label="Selling price" value={nairaFull(item.selling_price)} />
+          {!item.is_service && <MetricCard label="Cost price" value={item.cost_price ? nairaFull(item.cost_price) : "—"} />}
+        </div>
+
+        {canManage && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {!item.is_service && (
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => onAdjust(item)}>Adjust stock</button>
+            )}
+            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onEdit(item)}>Edit details</button>
+          </div>
+        )}
+
+        {!item.is_service && (
+          <>
+            <div className="card-title" style={{ marginBottom: 6 }}>Stock movements</div>
+            {!movs ? (
+              <p className="td-muted">Loading…</p>
+            ) : movs.length === 0 ? (
+              <p className="td-muted">No stock movements yet.</p>
+            ) : (
+              <table className="history-table">
+                <thead>
+                  <tr><th>Date</th><th>Type</th><th>Qty</th><th>Note</th></tr>
+                </thead>
+                <tbody>
+                  {movs.map(m => (
+                    <tr key={m.id}>
+                      <td className="td-muted">{dateTimeStr(m.created_at)}</td>
+                      <td>
+                        <span className="badge" style={{
+                          background: (m.type === "IN" ? "var(--brand)" : "var(--rose)") + "1a",
+                          color: m.type === "IN" ? "var(--brand)" : "var(--rose)",
+                        }}>{m.type === "IN" ? "+ In" : "− Out"}</span>
+                      </td>
+                      <td><strong>{(m.quantity ?? 0).toLocaleString()}</strong></td>
+                      <td className="td-muted">{m.note || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>Close</button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function Inventory() {
   const { ownerPhone } = useApp();
@@ -639,6 +721,7 @@ export default function Inventory() {
   const [showCatalog, setShowCatalog] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [adjustItem, setAdjustItem] = useState(null);
+  const [detailItem, setDetailItem] = useState(null);
   const [fields, setFields] = useState([]);   // per-business custom stock fields
 
   function load() {
@@ -746,7 +829,11 @@ export default function Inventory() {
                   .join(" · ");
                 return (
                   <span>
-                    <strong className="td-strong">{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>
+                    <button type="button" className="name-chip" onClick={() => setDetailItem(r)}
+                      title="Click to view, edit & adjust">
+                      <span>{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</span>
+                      <ChevronRight size={14} className="name-chip__chev" />
+                    </button>
                     {r.is_service && <span className="svc-chip">service</span>}
                     {attrLine && <div className="td-attr-line">{attrLine}</div>}
                   </span>
@@ -781,15 +868,8 @@ export default function Inventory() {
             { key: "updated_at", label: "Updated", render: r => <span className="td-muted">{dateStr(r.updated_at)}</span> },
             {
               key: "actions", label: "",
-              render: r => !canManageStock ? null : (
-                <div style={{ display: "flex", gap: 6 }}>
-                  {!r.is_service && (
-                    <button className="btn btn-ghost btn-xs" onClick={() => setAdjustItem(r)} title="Adjust stock">±</button>
-                  )}
-                  <button className="btn btn-ghost btn-xs" onClick={() => setEditItem(r)} title="Edit">
-                    <Pencil size={12} />
-                  </button>
-                </div>
+              render: r => (!canManageStock || r.is_service) ? null : (
+                <button className="btn btn-ghost btn-xs" onClick={() => setAdjustItem(r)} title="Adjust stock">±</button>
               ),
             },
           ]}
@@ -838,6 +918,17 @@ export default function Inventory() {
           item={adjustItem}
           onClose={() => setAdjustItem(null)}
           onSaved={load}
+        />
+      )}
+
+      {detailItem && (
+        <ItemDetailModal
+          item={detailItem}
+          fields={fields}
+          canManage={canManageStock}
+          onClose={() => setDetailItem(null)}
+          onEdit={it => { setDetailItem(null); setEditItem(it); }}
+          onAdjust={it => { setDetailItem(null); setAdjustItem(it); }}
         />
       )}
     </>
