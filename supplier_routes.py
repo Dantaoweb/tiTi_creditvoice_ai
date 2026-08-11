@@ -66,6 +66,32 @@ def _require_admin(db: Session, phone: str):
         raise HTTPException(status_code=403, detail="Admin only.")
 
 
+def _admin_phones(db: Session):
+    """Every app-admin phone: the env allow-list plus active DB-managed roles."""
+    from admin import app_admin_phones, ROLE_APP_ADMIN
+    from models import AppAdminRole
+    phones = set(app_admin_phones())
+    for r in db.query(AppAdminRole).filter(
+        AppAdminRole.role == ROLE_APP_ADMIN, AppAdminRole.is_active == True
+    ).all():
+        if r.phone:
+            phones.add(r.phone)
+    return [p for p in phones if p]
+
+
+def _notify_phone(db, phone, event_type, title, body, whatsapp=True):
+    """In-app notification + web push (+ optional WhatsApp) to one business.
+    Reuses the proactive scheduler's notifier so web owners and WhatsApp users
+    are all reached. Best-effort — never raises into the request."""
+    if not phone:
+        return
+    try:
+        from proactive_scheduler import _notify
+        _notify(db, phone, event_type, title, body, send_whatsapp=whatsapp)
+    except Exception:
+        pass
+
+
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
 class SupplierProductIn(BaseModel):
@@ -91,6 +117,10 @@ class SupplierApplyIn(BaseModel):
 class ContactMessageIn(BaseModel):
     product_interest: str  = Field(default="", max_length=120)
     message:          str  = Field(max_length=1000)
+
+
+class ConnectionRespondIn(BaseModel):
+    action: str = Field(max_length=10)   # "accept" | "decline"
 
 
 class OpportunityIn(BaseModel):
@@ -403,16 +433,37 @@ def register_supplier_routes(app, get_db=None):
             user = db.query(User).filter(User.phone == phone).first()
             biz = (user.business_type_label or user.name or phone) if user else phone
 
-            db.add(SupplierContactMessage(
+            msg = SupplierContactMessage(
                 id                 = str(uuid.uuid4()),
                 supplier_id        = supplier_id,
                 from_phone         = phone,
                 from_business_name = biz,
                 product_interest   = payload.product_interest or None,
                 message            = payload.message,
-            ))
+                connection_status  = "forwarded",   # auto-forwarded to the supplier
+            )
+            db.add(msg)
             db.commit()
-            return {"ok": True, "message": "Message sent to supplier."}
+
+            # Notify the supplier (they decide Accept/Decline) — no buyer contact
+            # is shared yet. Then log it for admins, who can block a bad actor.
+            sup_user = db.query(User).filter(User.phone == vs.owner_phone).first()
+            sup_biz = (sup_user.business_type_label or sup_user.name) if sup_user else "your business"
+            interest = f" for {payload.product_interest}" if payload.product_interest else ""
+            _notify_phone(
+                db, vs.owner_phone, "supplier_enquiry",
+                "🤝 New connection request",
+                f"{biz} wants to connect{interest}. Open Suppliers → Supplier Profile "
+                f"to Accept or Decline. Their contact is shared once you accept.",
+            )
+            for ap in _admin_phones(db):
+                _notify_phone(
+                    db, ap, "supplier_enquiry_admin",
+                    "Supplier enquiry",
+                    f"{biz} → {sup_biz}{interest}. Auto-forwarded; block from Admin if needed.",
+                    whatsapp=False,
+                )
+            return {"ok": True, "message": "Request sent. We'll let you know when the supplier responds."}
         finally:
             db.close()
 
@@ -439,15 +490,158 @@ def register_supplier_routes(app, get_db=None):
                     {
                         "id": m.id,
                         "from_business_name": m.from_business_name or m.from_phone,
+                        # Buyer's phone is only revealed after the supplier accepts.
+                        "from_phone": m.from_phone if m.connection_status == "accepted" else None,
                         "product_interest": m.product_interest or "",
                         "message": m.message,
                         "status": m.status,
+                        "connection_status": m.connection_status or "forwarded",
                         "created_at": m.created_at.isoformat() if m.created_at else None,
                     }
                     for m in msgs
+                    if (m.connection_status or "forwarded") != "blocked"
                 ],
-                "unread": sum(1 for m in msgs if m.status == "unread"),
+                # "Unread" here means requests still awaiting the supplier's decision.
+                "unread": sum(1 for m in msgs if (m.connection_status or "forwarded") == "forwarded"),
             }
+        finally:
+            db.close()
+
+    # ── Supplier accepts / declines a connection request ───────────────────────
+    @app.post("/app/api/verified-suppliers/connections/{msg_id}/respond")
+    def respond_connection(request: Request, msg_id: str, payload: ConnectionRespondIn):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            vs = db.query(VerifiedSupplier).filter(
+                VerifiedSupplier.owner_phone == phone,
+                VerifiedSupplier.verification_status == "approved",
+            ).first()
+            if not vs:
+                raise HTTPException(status_code=404, detail="No approved supplier profile.")
+            m = db.query(SupplierContactMessage).filter(
+                SupplierContactMessage.id == msg_id,
+                SupplierContactMessage.supplier_id == vs.id,
+            ).first()
+            if not m:
+                raise HTTPException(status_code=404, detail="Request not found.")
+            if m.connection_status == "blocked":
+                raise HTTPException(status_code=403, detail="This request is not available.")
+            if m.connection_status != "forwarded":
+                raise HTTPException(status_code=400, detail="You have already responded to this request.")
+
+            action = (payload.action or "").lower()
+            if action not in ("accept", "decline"):
+                raise HTTPException(status_code=400, detail="Action must be accept or decline.")
+
+            sup_user = db.query(User).filter(User.phone == phone).first()
+            sup_biz = (sup_user.business_type_label or sup_user.name) if sup_user else "the supplier"
+
+            if action == "accept":
+                m.connection_status = "accepted"
+                m.status = "read"
+                db.commit()
+                # Handshake complete: both sides can now see each other's contact,
+                # and the buyer may rate this supplier.
+                _notify_phone(
+                    db, m.from_phone, "supplier_enquiry",
+                    "✅ Supplier accepted your request",
+                    f"{sup_biz} accepted your connection. You can now see their contact "
+                    f"in Suppliers → Find Suppliers → My Requests, and rate them after you deal.",
+                )
+            else:
+                m.connection_status = "declined"
+                m.status = "read"
+                db.commit()
+                _notify_phone(
+                    db, m.from_phone, "supplier_enquiry",
+                    "Connection request declined",
+                    f"{sup_biz} is unable to take your request right now.",
+                )
+            return {"ok": True, "connection_status": m.connection_status}
+        finally:
+            db.close()
+
+    # ── Buyer's own connection requests (contact revealed once accepted) ───────
+    @app.get("/app/api/verified-suppliers/my-connections")
+    def my_connections(request: Request):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            msgs = db.query(SupplierContactMessage).filter(
+                SupplierContactMessage.from_phone == phone,
+            ).order_by(SupplierContactMessage.created_at.desc()).all()
+
+            out = []
+            for m in msgs:
+                if (m.connection_status or "forwarded") == "blocked":
+                    continue
+                vs = db.query(VerifiedSupplier).filter(VerifiedSupplier.id == m.supplier_id).first()
+                sup_user = db.query(User).filter(User.phone == vs.owner_phone).first() if vs else None
+                sup_biz = (sup_user.business_type_label or sup_user.name or (vs.owner_phone if vs else "")) if sup_user else (vs.owner_phone if vs else "")
+                accepted = m.connection_status == "accepted"
+                out.append({
+                    "id": m.id,
+                    "supplier_id": m.supplier_id,
+                    "supplier_name": sup_biz,
+                    "product_interest": m.product_interest or "",
+                    "message": m.message,
+                    "connection_status": m.connection_status or "forwarded",
+                    # Supplier's phone revealed only after they accept.
+                    "supplier_phone": (vs.owner_phone if (accepted and vs) else None),
+                    "can_rate": accepted,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                })
+            return {"connections": out}
+        finally:
+            db.close()
+
+    # ── Admin: monitor + block supplier connection requests ────────────────────
+    @app.get("/app/api/admin/supplier-connections")
+    def admin_supplier_connections(request: Request, status: str = ""):
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            _require_admin(db, phone)
+            q = db.query(SupplierContactMessage)
+            if status:
+                q = q.filter(SupplierContactMessage.connection_status == status)
+            msgs = q.order_by(SupplierContactMessage.created_at.desc()).limit(300).all()
+            out = []
+            for m in msgs:
+                vs = db.query(VerifiedSupplier).filter(VerifiedSupplier.id == m.supplier_id).first()
+                sup_user = db.query(User).filter(User.phone == vs.owner_phone).first() if vs else None
+                sup_biz = (sup_user.business_type_label or sup_user.name or (vs.owner_phone if vs else "")) if sup_user else (vs.owner_phone if vs else "")
+                out.append({
+                    "id": m.id,
+                    "from_business_name": m.from_business_name or m.from_phone,
+                    "from_phone": m.from_phone,
+                    "supplier_name": sup_biz,
+                    "product_interest": m.product_interest or "",
+                    "message": m.message,
+                    "connection_status": m.connection_status or "forwarded",
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                })
+            return {"connections": out, "total": len(out)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/supplier-connections/{msg_id}/block")
+    def admin_block_connection(request: Request, msg_id: str):
+        """Block a bad-actor enquiry: it drops out of the supplier's inbox and the
+        buyer's list, and can never be accepted (so no reveal, no rating)."""
+        db = SessionLocal()
+        try:
+            phone = _get_owner(db, request)
+            _require_admin(db, phone)
+            m = db.query(SupplierContactMessage).filter(
+                SupplierContactMessage.id == msg_id
+            ).first()
+            if not m:
+                raise HTTPException(status_code=404)
+            m.connection_status = "blocked"
+            db.commit()
+            return {"ok": True}
         finally:
             db.close()
 
@@ -657,6 +851,20 @@ def register_supplier_routes(app, get_db=None):
                 raise HTTPException(status_code=404, detail="Supplier not found.")
             if vs.owner_phone == phone:
                 raise HTTPException(status_code=400, detail="You cannot rate yourself.")
+
+            # Ratings are earned, not free: you can only rate a supplier once you
+            # have completed a handshake with them (they accepted your request).
+            # This keeps every review tied to a real, platform-verified dealing.
+            handshake = db.query(SupplierContactMessage).filter(
+                SupplierContactMessage.supplier_id == supplier_id,
+                SupplierContactMessage.from_phone == phone,
+                SupplierContactMessage.connection_status == "accepted",
+            ).first()
+            if not handshake:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You can rate a supplier only after they accept your connection request.",
+                )
 
             existing = db.query(SupplierRating).filter(
                 SupplierRating.supplier_id == supplier_id,

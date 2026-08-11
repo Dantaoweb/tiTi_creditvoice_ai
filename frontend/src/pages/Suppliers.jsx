@@ -449,16 +449,12 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
 // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
 // TAB 2: Find Suppliers (directory)
 // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
-function ContactModal({ supplier, onClose }) {
+function ContactModal({ supplier, onClose, onSent }) {
   const [product, setProduct]   = useState("");
   const [msg, setMsg]           = useState("");
   const [busy, setBusy]         = useState(false);
   const [done, setDone]         = useState(false);
   const [err, setErr]           = useState("");
-  const [stars, setStars]       = useState(0);
-  const [review, setReview]     = useState("");
-  const [rated, setRated]       = useState(false);
-  const [ratingBusy, setRatingBusy] = useState(false);
 
   async function send(e) {
     e.preventDefault();
@@ -470,68 +466,33 @@ function ContactModal({ supplier, onClose }) {
         message: msg,
       });
       setDone(true);
+      onSent && onSent();
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
-  }
-
-  async function submitRating() {
-    if (!stars) return;
-    setRatingBusy(true);
-    try {
-      await apiPost(`verified-suppliers/${supplier.id}/rate`, { rating: stars, review });
-      setRated(true);
-    } catch { /* non-blocking */ }
-    finally { setRatingBusy(false); }
   }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">Contact {supplier.business_name}</span>
+          <span className="modal-title">Request to connect · {supplier.business_name}</span>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         {done ? (
           <div style={{ padding: "24px 0", textAlign: "center" }}>
             <CheckCircle size={40} color="var(--green)" style={{ marginBottom: 12 }} />
-            <p style={{ fontWeight: 600, marginBottom: 4 }}>Message sent!</p>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 20 }}>
-              {supplier.business_name} will see your enquiry in their inbox.
+            <p style={{ fontWeight: 600, marginBottom: 4 }}>Request sent!</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
+              {supplier.business_name} will review it and decide. Once they accept, you'll both
+              see each other's contact — track it under <strong>My Requests</strong> below.
             </p>
-
-            {!rated ? (
-              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 20 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-                  Have you worked with them before? Rate your experience.
-                </p>
-                <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-                  <StarRating value={stars} onChange={setStars} size={28} />
-                </div>
-                {stars > 0 && (
-                  <textarea value={review} onChange={e => setReview(e.target.value)}
-                    rows={2} placeholder="Optional: share what went well or what to know…"
-                    style={{ width: "100%", marginBottom: 10, resize: "none" }} />
-                )}
-                <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-                  {stars > 0 && (
-                    <button className="btn btn-primary" onClick={submitRating} disabled={ratingBusy}>
-                      {ratingBusy ? "Saving…" : "Submit rating"}
-                    </button>
-                  )}
-                  <button className="btn btn-secondary" onClick={onClose}>
-                    {stars > 0 ? "Skip" : "Close"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <p style={{ color: "var(--green)", fontSize: 13, fontWeight: 600 }}>Rating saved — thank you!</p>
-                <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={onClose}>Close</button>
-              </>
-            )}
+            <button className="btn btn-primary" onClick={onClose}>Done</button>
           </div>
         ) : (
           <form onSubmit={send} style={{ display: "flex", flexDirection: "column", gap: 14, padding: "4px 0" }}>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, lineHeight: 1.5 }}>
+              Your phone number stays private until the supplier accepts. Tell them what you need.
+            </p>
             <div className="form-group">
               <label className="form-label">Product you're asking about</label>
               <input value={product} onChange={e => setProduct(e.target.value)}
@@ -547,7 +508,7 @@ function ContactModal({ supplier, onClose }) {
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={busy}>
-                {busy ? "Sending…" : <><Send size={13} style={{ marginRight: 6 }} />Send Message</>}
+                {busy ? "Sending…" : <><Send size={13} style={{ marginRight: 6 }} />Send Request</>}
               </button>
             </div>
           </form>
@@ -590,7 +551,7 @@ function SupplierCard({ s, onContact }) {
           </div>
         </div>
         <button className="btn btn-primary" style={{ flexShrink: 0, fontSize: 13 }} onClick={() => onContact(s)}>
-          Contact
+          Request to connect
         </button>
       </div>
 
@@ -639,6 +600,83 @@ function SupplierCard({ s, onContact }) {
   );
 }
 
+const CONN_BADGE = {
+  forwarded: { label: "Awaiting supplier", color: "#d97706", bg: "#fef3c7" },
+  accepted:  { label: "Connected",         color: "#059669", bg: "#d1fae5" },
+  declined:  { label: "Declined",          color: "#dc2626", bg: "#fee2e2" },
+};
+
+function MyRequests({ items, onRate }) {
+  if (!items.length) return null;
+  return (
+    <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card-header"><span className="card-title">My Requests <span className="text-subtle text-sm">({items.length})</span></span></div>
+      <div>
+        {items.map(c => {
+          const b = CONN_BADGE[c.connection_status] || CONN_BADGE.forwarded;
+          return (
+            <div key={c.id} style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ fontSize: 14 }}>{c.supplier_name}</strong>
+                  {c.product_interest && <span className="td-muted" style={{ fontSize: 12 }}> · {c.product_interest}</span>}
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: b.color, background: b.bg, borderRadius: 99, padding: "3px 10px" }}>{b.label}</span>
+              </div>
+              {c.connection_status === "accepted" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13 }}>📞 <a href={`tel:${c.supplier_phone}`} style={{ fontWeight: 600 }}>{c.supplier_phone}</a></span>
+                  <a className="btn btn-secondary btn-sm" href={`https://wa.me/${(c.supplier_phone || "").replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer">WhatsApp</a>
+                  {c.can_rate && <button className="btn btn-primary btn-sm" onClick={() => onRate(c)}>Rate supplier</button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RateModal({ conn, onClose, onDone }) {
+  const [stars, setStars]   = useState(0);
+  const [review, setReview] = useState("");
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState("");
+
+  async function submit() {
+    if (!stars) { setErr("Pick a star rating."); return; }
+    setBusy(true); setErr("");
+    try {
+      await apiPost(`verified-suppliers/${conn.supplier_id}/rate`, { rating: stars, review });
+      onDone();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">Rate {conn.supplier_name}</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div style={{ padding: "8px 0 4px", textAlign: "center" }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+            <StarRating value={stars} onChange={setStars} size={30} />
+          </div>
+          <textarea value={review} onChange={e => setReview(e.target.value)} rows={3}
+            placeholder="How was the deal? (optional)" style={{ width: "100%", resize: "none", marginBottom: 10 }} />
+          {err && <div className="login-error">{err}</div>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" onClick={submit} disabled={busy}>{busy ? "Saving…" : "Submit rating"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FindSuppliers() {
   const [suppliers, setSuppliers] = useState([]);
   const [meta, setMeta]           = useState({ states: [], supplier_types: [] });
@@ -647,6 +685,8 @@ function FindSuppliers() {
   const [state, setState]         = useState("");
   const [stype, setStype]         = useState("");
   const [contacting, setContacting] = useState(null);
+  const [myConns, setMyConns]     = useState([]);
+  const [rating, setRating]       = useState(null);
 
   const load = useCallback((p = "", s = "", t = "") => {
     setLoading(true);
@@ -656,10 +696,17 @@ function FindSuppliers() {
       .finally(() => setLoading(false));
   }, []);
 
+  const loadConns = useCallback(() => {
+    apiFetch("verified-suppliers/my-connections")
+      .then(d => setMyConns(d.connections || []))
+      .catch(() => setMyConns([]));
+  }, []);
+
   useEffect(() => {
     apiFetch("verified-suppliers/meta").then(setMeta).catch(() => {});
     load();
-  }, [load]);
+    loadConns();
+  }, [load, loadConns]);
 
   function search(e) { e.preventDefault(); load(product, state, stype); }
 
@@ -691,6 +738,8 @@ function FindSuppliers() {
         </form>
       </div>
 
+      <MyRequests items={myConns} onRate={setRating} />
+
       {loading ? (
         <p style={{ color: "var(--text-muted)" }}>Searching suppliers…</p>
       ) : suppliers.length === 0 ? (
@@ -710,7 +759,11 @@ function FindSuppliers() {
       )}
 
       {contacting && (
-        <ContactModal supplier={contacting} onClose={() => setContacting(null)} />
+        <ContactModal supplier={contacting} onClose={() => setContacting(null)} onSent={loadConns} />
+      )}
+      {rating && (
+        <RateModal conn={rating} onClose={() => setRating(null)}
+          onDone={() => { setRating(null); loadConns(); load(product, state, stype); }} />
       )}
     </>
   );
@@ -879,10 +932,13 @@ function SupplierProfileTab({ userPlan }) {
     finally { setBusy(false); }
   }
 
-  async function markRead(id) {
-    await apiFetch(`verified-suppliers/messages/${id}/read`, {}, { method: "PATCH" });
-    setInbox(prev => prev.map(m => m.id === id ? { ...m, status: "read" } : m));
-    setUnread(prev => Math.max(0, prev - 1));
+  async function respond(id, action) {
+    try {
+      await apiPost(`verified-suppliers/connections/${id}/respond`, { action });
+      const d = await apiFetch("verified-suppliers/inbox");
+      setInbox(d.messages || []);
+      setUnread(d.unread || 0);
+    } catch (e) { setErr(e.message); }
   }
 
   if (loading) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
@@ -933,14 +989,20 @@ function SupplierProfileTab({ userPlan }) {
             <p>No messages yet. Once retailers find your listing and reach out, they'll appear here.</p>
           </div>
         ) : (
-          inbox.map(m => (
+          inbox.map(m => {
+            const cs = m.connection_status || "forwarded";
+            const b = CONN_BADGE[cs] || CONN_BADGE.forwarded;
+            return (
             <div key={m.id} className="card" style={{
               marginBottom: 12, padding: 16,
-              borderLeft: `4px solid ${m.status === "unread" ? "var(--brand)" : "var(--border)"}`,
-            }} onClick={() => m.status === "unread" && markRead(m.id)}>
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              borderLeft: `4px solid ${cs === "forwarded" ? "var(--brand)" : "var(--border)"}`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                 <strong>{m.from_business_name}</strong>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{dateStr(m.created_at)}</span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: b.color, background: b.bg, borderRadius: 99, padding: "2px 9px" }}>{b.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{dateStr(m.created_at)}</span>
+                </div>
               </div>
               {m.product_interest && (
                 <p style={{ fontSize: 12, color: "var(--brand)", margin: "4px 0", fontWeight: 600 }}>
@@ -948,11 +1010,21 @@ function SupplierProfileTab({ userPlan }) {
                 </p>
               )}
               <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "6px 0 0" }}>{m.message}</p>
-              {m.status === "unread" && (
-                <span style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600 }}>Click to mark as read</span>
+              {cs === "forwarded" && (
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => respond(m.id, "accept")}>Accept &amp; share contact</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => respond(m.id, "decline")}>Decline</button>
+                </div>
+              )}
+              {cs === "accepted" && m.from_phone && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap", fontSize: 13 }}>
+                  <span>📞 <a href={`tel:${m.from_phone}`} style={{ fontWeight: 600 }}>{m.from_phone}</a></span>
+                  <a className="btn btn-secondary btn-sm" href={`https://wa.me/${(m.from_phone || "").replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer">WhatsApp</a>
+                </div>
               )}
             </div>
-          ))
+            );
+          })
         )}
       </>
     );

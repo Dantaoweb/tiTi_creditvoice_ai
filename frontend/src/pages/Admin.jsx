@@ -585,6 +585,85 @@ function ReferralSettingsTab() {
 }
 
 // ── supplier applications tab ────────────────────────────────────────────────
+function ConnectionRequests() {
+  const [conns, setConns]   = useState([]);
+  const [filter, setFilter] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy]     = useState(null);
+
+  function load(s) {
+    setLoading(true);
+    apiFetch(`admin/supplier-connections${s ? `?status=${s}` : ""}`)
+      .then(d => setConns(d.connections || []))
+      .catch(() => setConns([]))
+      .finally(() => setLoading(false));
+  }
+  useEffect(() => { load(filter); }, [filter]);
+
+  async function block(id) {
+    setBusy(id);
+    try {
+      await fetch(`/app/api/admin/supplier-connections/${id}/block`, { method: "POST", credentials: "include" });
+      load(filter);
+    } finally { setBusy(null); }
+  }
+
+  const CS = { forwarded: "#d97706", accepted: "#059669", declined: "#6b7280", blocked: "#dc2626" };
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 16, marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>Connection requests (auto-forwarded — block a bad actor)</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {["", "forwarded", "accepted", "declined", "blocked"].map(s => (
+            <button key={s || "all"} onClick={() => setFilter(s)} style={{
+              padding: "3px 10px", borderRadius: 99, border: "1px solid", cursor: "pointer", fontSize: 12,
+              background: filter === s ? "var(--brand)" : "transparent",
+              color: filter === s ? "#fff" : "var(--text-muted)",
+              borderColor: filter === s ? "var(--brand)" : "var(--border)",
+            }}>{s ? s.charAt(0).toUpperCase() + s.slice(1) : "All"}</button>
+          ))}
+        </div>
+      </div>
+      {loading ? <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading…</p> : conns.length === 0 ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No {filter || ""} requests.</p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12 }}>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>From</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>To supplier</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Interest</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Status</th>
+                <th style={{ padding: "4px 8px" }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {conns.map(c => (
+                <tr key={c.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 8px" }}>{c.from_business_name}<br /><span style={{ color: "var(--text-muted)", fontSize: 11 }}>{c.from_phone}</span></td>
+                  <td style={{ padding: "6px 8px" }}>{c.supplier_name}</td>
+                  <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{c.product_interest || "—"}</td>
+                  <td style={{ padding: "6px 8px", fontWeight: 700, color: CS[c.connection_status] || "#666" }}>{c.connection_status}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                    {c.connection_status !== "blocked" && (
+                      <button onClick={() => block(c.id)} disabled={busy === c.id} style={{
+                        padding: "3px 10px", borderRadius: 6, border: "1px solid #dc2626", background: "#fff",
+                        color: "#dc2626", cursor: "pointer", fontSize: 12,
+                      }}>{busy === c.id ? "…" : "Block"}</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SuppliersTab() {
   const [apps, setApps]       = useState([]);
   const [stats, setStats]     = useState(null);
@@ -675,6 +754,8 @@ function SuppliersTab() {
           </table>
         </div>
       )}
+
+      <ConnectionRequests />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {["pending","approved","rejected","all"].map(s => (

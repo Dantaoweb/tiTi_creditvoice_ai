@@ -1275,7 +1275,10 @@ class SupplierContactMessage(Base):
     from_business_name = Column(String, nullable=True)
     product_interest   = Column(String, nullable=True)
     message            = Column(Text, nullable=False)
-    status             = Column(String, default="unread")  # unread/read
+    status             = Column(String, default="unread")  # unread/read (supplier's inbox read-tracking)
+    # Handshake state: forwarded → accepted/declined, or blocked by admin.
+    # Contacts are revealed and rating unlocked only once accepted.
+    connection_status  = Column(String, default="forwarded")
     created_at         = Column(DateTime, default=utcnow)
 
 

@@ -998,6 +998,18 @@ def ensure_schema_updates(engine):
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE suppliers ADD COLUMN phone VARCHAR"))
 
+    # ── connection_status on supplier_contact_messages (handshake state) ─────
+    # Enquiries move forwarded → accepted/declined/blocked. Contacts are only
+    # revealed (and rating unlocked) once a supplier accepts.
+    if "supplier_contact_messages" in inspector.get_table_names():
+        _scm_cols = {c["name"] for c in inspector.get_columns("supplier_contact_messages")}
+        if "connection_status" not in _scm_cols:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "ALTER TABLE supplier_contact_messages "
+                    "ADD COLUMN connection_status VARCHAR DEFAULT 'forwarded'"
+                ))
+
     # ── billing_period on subscription_payments (monthly vs yearly) ──────────
     if "subscription_payments" in inspector.get_table_names():
         _sp_cols = {c["name"] for c in inspector.get_columns("subscription_payments")}
