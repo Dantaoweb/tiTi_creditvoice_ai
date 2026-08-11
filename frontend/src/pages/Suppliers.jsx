@@ -124,10 +124,10 @@ function MySupplyChain() {
           rowClass={r => r.has_overdue ? "low-stock" : ""}
           columns={[
             { key: "name",         label: "Supplier",        render: r => (
-              <button type="button" className="supplier-name-chip" onClick={() => setDetailId(r.id)}
+              <button type="button" className="name-chip" onClick={() => setDetailId(r.id)}
                 title="Click to view, edit & set due dates">
                 <span>{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</span>
-                <ChevronRight size={14} className="supplier-name-chip__chev" />
+                <ChevronRight size={14} className="name-chip__chev" />
               </button>
             ), sortKey: "name" },
             { key: "purchases",    label: "Purchases",       render: r => r.purchases, sortKey: "purchases" },

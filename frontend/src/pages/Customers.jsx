@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Wallet, History, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText } from "lucide-react";
+import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText, ChevronRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, dateStr, dateTimeStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
+import MetricCard from "../components/MetricCard";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
 
@@ -128,95 +129,10 @@ function PaymentModal({ customer, onClose, onSaved }) {
   );
 }
 
-// ── Customer profile / measurements modal ────────────────────────────────────
+// Long-text profile keys render as a full-width textarea in the detail modal.
 const _LONG_KEYS = new Set(["notes", "style_notes", "fault"]);
 
-function ProfileModal({ customer, onClose, onSaved }) {
-  const [fields, setFields] = useState([]);
-  const [values, setValues] = useState({});
-  const [name, setName] = useState(customer.name || "");
-  const [phone, setPhone] = useState(customer.phone || "");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    apiFetch(`customers/${customer.id}/profile`)
-      .then(d => { setFields(d.fields || []); setValues(d.values || {}); })
-      .catch(e => setErr(e.message))
-      .finally(() => setLoading(false));
-  }, [customer.id]);
-
-  function set(k, v) { setValues(prev => ({ ...prev, [k]: v })); setSaved(false); }
-
-  async function save() {
-    setSaving(true); setErr("");
-    try {
-      // Rename / phone update (only if changed) then structured profile values.
-      if (name.trim() !== (customer.name || "") || (phone || "") !== (customer.phone || "")) {
-        await apiPut(`customers/${customer.id}`, { name: name.trim(), phone });
-      }
-      await apiPost(`customers/${customer.id}/profile`, { values });
-      setSaved(true);
-      if (onSaved) onSaved();
-    } catch (e) { setErr(e.message); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <Modal title={`Details — ${customer.name}`} onClose={onClose}>
-      <div className="modal-body" style={{ maxHeight: "60vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-          <div className="form-group" style={{ flex: "1 1 55%", minWidth: 0 }}>
-            <label className="form-label">Customer name</label>
-            <input value={name} onChange={e => { setName(e.target.value); setSaved(false); }} />
-          </div>
-          <div className="form-group" style={{ flex: "1 1 40%", minWidth: 0 }}>
-            <label className="form-label">Phone</label>
-            <input inputMode="tel" value={phone}
-              onChange={e => { setPhone(e.target.value); setSaved(false); }} />
-          </div>
-        </div>
-        {loading ? (
-          <div className="td-muted">Loading…</div>
-        ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {fields.map(f => {
-              const long = _LONG_KEYS.has(f.key);
-              return (
-                <div className="form-group" key={f.key}
-                  style={{ flex: long ? "1 1 100%" : "1 1 45%", minWidth: 0 }}>
-                  <label className="form-label">{f.label}</label>
-                  {long ? (
-                    <textarea rows={2} value={values[f.key] || ""}
-                      onChange={e => set(f.key, e.target.value)} />
-                  ) : (
-                    <input
-                      inputMode={f.type === "number" ? "decimal" : "text"}
-                      value={values[f.key] || ""}
-                      onChange={e => set(f.key, e.target.value)}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {err && <div className="modal-error">{err}</div>}
-        {saved && <div style={{ color: "var(--brand)", fontSize: 13, marginTop: 8 }}>✓ Saved</div>}
-      </div>
-      <div className="modal-footer">
-        <button className="btn btn-ghost" onClick={onClose}>Close</button>
-        <button className="btn btn-primary" onClick={save} disabled={saving || loading}>
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-// ── History modal ────────────────────────────────────────────────────────────
+// ── Editable due-date cell (used inside the customer detail modal) ────────────
 function DueDateCell({ tx, onUpdated }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(tx.due_date ? tx.due_date.slice(0, 10) : "");
@@ -276,87 +192,140 @@ function DueDateCell({ tx, onUpdated }) {
   );
 }
 
-function HistoryModal({ customer, onClose }) {
+// One place for a customer: identity + inline edit (name/phone/profile),
+// balance, a Record-payment action (delegated to PaymentModal), and full
+// transaction history. Mirrors the Suppliers detail-modal pattern.
+function CustomerDetailModal({ customer, onClose, onPay, onSaved }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(customer.name || "");
+  const [phone, setPhone] = useState(customer.phone || "");
+  const [fields, setFields] = useState([]);
+  const [values, setValues] = useState({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiFetch(`customers/${customer.id}/history`)
-      .then(setData)
-      .catch(e => setErr(e.message))
-      .finally(() => setLoading(false));
+    apiFetch(`customers/${customer.id}/history`).then(setData).catch(e => setErr(e.message));
+    apiFetch(`customers/${customer.id}/profile`)
+      .then(d => { setFields(d.fields || []); setValues(d.values || {}); })
+      .catch(() => {});
   }, [customer.id]);
+
+  function set(k, v) { setValues(prev => ({ ...prev, [k]: v })); }
+  function startEdit() { setName(customer.name || ""); setPhone(customer.phone || ""); setErr(""); setEditing(true); }
+
+  async function saveEdit() {
+    if (!name.trim()) { setErr("Enter a name."); return; }
+    setSaving(true); setErr("");
+    try {
+      if (name.trim() !== (customer.name || "") || (phone || "") !== (customer.phone || "")) {
+        await apiPut(`customers/${customer.id}`, { name: name.trim(), phone });
+      }
+      await apiPost(`customers/${customer.id}/profile`, { values });
+      setEditing(false);
+      if (onSaved) onSaved();
+    } catch (e) { setErr(e.message); } finally { setSaving(false); }
+  }
 
   function handleDueDateUpdated(txId, newDueDate) {
     setData(prev => ({
       ...prev,
-      transactions: prev.transactions.map(tx =>
-        tx.id === txId ? { ...tx, due_date: newDueDate } : tx
-      ),
+      transactions: prev.transactions.map(tx => tx.id === txId ? { ...tx, due_date: newDueDate } : tx),
     }));
   }
 
+  const balance = data?.customer?.balance ?? customer.balance ?? 0;
   const TX_COLORS = { BUY: "var(--rose)", PAY: "var(--brand)", SALE: "var(--blue)" };
+  const title = (customer.name || "Customer").replace(/\b\w/g, c => c.toUpperCase());
 
   return (
-    <Modal title={`${customer.name} — Transaction History`} onClose={onClose} wide>
+    <Modal title={title} onClose={onClose} wide>
       <div className="modal-body">
-        {loading && <div className="td-muted">Loading…</div>}
         {err && <div className="modal-error">{err}</div>}
-        {data && (
-          <>
-            <div className="history-balance">
-              Balance: <strong className={data.customer.balance > 0 ? "text-rose" : "text-brand"}>
-                {nairaFull(data.customer.balance)}
-              </strong>
+
+        {!editing ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, fontSize: 13 }}>
+            <span className="td-muted">{(phone || customer.phone) ? `☎ ${phone || customer.phone}` : "No phone on file"}</span>
+            <button type="button" className="link-btn" onClick={startEdit}>Edit</button>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="form-group" style={{ margin: 0, flex: "1 1 55%", minWidth: 0 }}>
+                <label className="form-label">Name *</label>
+                <input value={name} onChange={e => setName(e.target.value)} autoFocus />
+              </div>
+              <div className="form-group" style={{ margin: 0, flex: "1 1 40%", minWidth: 0 }}>
+                <label className="form-label">Phone</label>
+                <input inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} />
+              </div>
             </div>
-            {data.transactions.length === 0 ? (
-              <div className="td-muted" style={{ textAlign: "center", padding: "24px 0" }}>No transactions yet.</div>
-            ) : (
-              <table className="history-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Amount</th>
-                    <th>Description</th>
-                    <th>Due Date</th>
-                    <th>Staff</th>
-                    <th>Invoice</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.transactions.map(tx => (
-                    <tr key={tx.id}>
-                      <td className="td-muted">{dateTimeStr(tx.created_at)}</td>
-                      <td>
-                        <span className="badge" style={{ background: TX_COLORS[tx.type] + "1a", color: TX_COLORS[tx.type] }}>
-                          {tx.type}
-                        </span>
-                      </td>
-                      <td><strong>{nairaFull(tx.amount)}</strong></td>
-                      <td>{tx.product || "—"}</td>
-                      <DueDateCell tx={tx} onUpdated={handleDueDateUpdated} />
-                      <td className="td-muted">{tx.recorded_by || "—"}</td>
-                      <td>
-                        {tx.type === "BUY" ? (
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            title="View or create invoice"
-                            onClick={() => navigate(`/pos/receipt/${tx.id}?doc=invoice`)}
-                          >
-                            <FileText size={13} /> Invoice
-                          </button>
-                        ) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {fields.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {fields.map(f => {
+                  const long = _LONG_KEYS.has(f.key);
+                  return (
+                    <div className="form-group" key={f.key} style={{ margin: 0, flex: long ? "1 1 100%" : "1 1 45%", minWidth: 0 }}>
+                      <label className="form-label">{f.label}</label>
+                      {long
+                        ? <textarea rows={2} value={values[f.key] || ""} onChange={e => set(f.key, e.target.value)} />
+                        : <input inputMode={f.type === "number" ? "decimal" : "text"} value={values[f.key] || ""} onChange={e => set(f.key, e.target.value)} />}
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={saveEdit}>{saving ? "Saving…" : "Save"}</button>
+            </div>
+          </div>
+        )}
+
+        <div className="metrics-grid" style={{ gridTemplateColumns: "1fr", marginBottom: 14 }}>
+          <MetricCard label="Balance owed" value={nairaFull(balance)} color={balance > 0 ? "rose" : "green"} />
+        </div>
+
+        {balance > 0 && (
+          <button className="btn btn-primary" style={{ width: "100%", marginBottom: 16 }}
+            onClick={() => onPay({ id: customer.id, name: customer.name, balance })}>
+            Record payment
+          </button>
+        )}
+
+        <div className="card-title" style={{ marginBottom: 6 }}>Transaction history</div>
+        {!data ? (
+          <p className="td-muted">Loading…</p>
+        ) : data.transactions.length === 0 ? (
+          <p className="td-muted">No transactions yet.</p>
+        ) : (
+          <table className="history-table">
+            <thead>
+              <tr><th>Date</th><th>Type</th><th>Amount</th><th>Description</th><th>Due Date</th><th>Staff</th><th>Invoice</th></tr>
+            </thead>
+            <tbody>
+              {data.transactions.map(tx => (
+                <tr key={tx.id}>
+                  <td className="td-muted">{dateTimeStr(tx.created_at)}</td>
+                  <td><span className="badge" style={{ background: TX_COLORS[tx.type] + "1a", color: TX_COLORS[tx.type] }}>{tx.type}</span></td>
+                  <td><strong>{nairaFull(tx.amount)}</strong></td>
+                  <td>{tx.product || "—"}</td>
+                  <DueDateCell tx={tx} onUpdated={handleDueDateUpdated} />
+                  <td className="td-muted">{tx.recorded_by || "—"}</td>
+                  <td>
+                    {tx.type === "BUY" ? (
+                      <button className="btn btn-ghost btn-sm" title="View or create invoice"
+                        onClick={() => navigate(`/pos/receipt/${tx.id}?doc=invoice`)}>
+                        <FileText size={13} /> Invoice
+                      </button>
+                    ) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
       <div className="modal-footer">
@@ -453,7 +422,7 @@ function ReminderPreviewModal({ reminders, onClose, onSent }) {
 }
 
 // ── Debtors tab ──────────────────────────────────────────────────────────────
-function DebtorsTab({ debtors, onPay, onHistory, onBalanceUpdate }) {
+function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
   const [mode, setMode] = useState(null);   // "review" | "auto" | null (loading)
   const [reminders, setReminders] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -637,8 +606,11 @@ function DebtorsTab({ debtors, onPay, onHistory, onBalanceUpdate }) {
                   <tr key={d.id} className={isOverdue ? "row-overdue" : ""}>
                     <td className="td-muted" style={{ fontWeight: 700 }}>{i + 1}</td>
                     <td>
-                      <strong className="td-strong">{(d.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>
-                      {d.phone && <div className="td-muted" style={{ fontSize: 11 }}>{d.phone}</div>}
+                      <button type="button" className="name-chip" onClick={() => onDetail(d)} title="Click to view, edit & pay">
+                        <span>{(d.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</span>
+                        <ChevronRight size={14} className="name-chip__chev" />
+                      </button>
+                      {d.phone && <div className="td-muted" style={{ fontSize: 11, marginTop: 2 }}>{d.phone}</div>}
                     </td>
                     <td>
                       <span className="text-rose" style={{ fontWeight: 700 }}>{nairaFull(d.balance)}</span>
@@ -663,22 +635,13 @@ function DebtorsTab({ debtors, onPay, onHistory, onBalanceUpdate }) {
                       )}
                     </td>
                     <td>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          className="btn btn-ghost btn-xs"
-                          title="View history"
-                          onClick={() => onHistory(d)}
-                        >
-                          <History size={13} />
-                        </button>
-                        <button
-                          className="btn btn-primary btn-xs"
-                          title="Record payment"
-                          onClick={() => onPay(d)}
-                        >
-                          <Wallet size={13} /> Pay
-                        </button>
-                      </div>
+                      <button
+                        className="btn btn-primary btn-xs"
+                        title="Record payment"
+                        onClick={() => onPay(d)}
+                      >
+                        <Wallet size={13} /> Pay
+                      </button>
                     </td>
                   </tr>
                 );
@@ -714,8 +677,7 @@ export default function Customers() {
   const [activeTab, setActiveTab] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
   const [payCustomer, setPayCustomer] = useState(null);
-  const [histCustomer, setHistCustomer] = useState(null);
-  const [profileCustomer, setProfileCustomer] = useState(null);
+  const [detailCustomer, setDetailCustomer] = useState(null);
 
   function load() {
     setLoading(true);
@@ -802,7 +764,13 @@ export default function Customers() {
             columns={[
               {
                 key: "name", label: "Name", sortKey: "name",
-                render: r => <strong className="td-strong">{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</strong>,
+                render: r => (
+                  <button type="button" className="name-chip" onClick={() => setDetailCustomer(r)}
+                    title="Click to view, edit & pay">
+                    <span>{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</span>
+                    <ChevronRight size={14} className="name-chip__chev" />
+                  </button>
+                ),
               },
               { key: "phone", label: "Phone", render: r => <span className="td-mono">{r.phone || "—"}</span> },
               {
@@ -815,31 +783,15 @@ export default function Customers() {
               {
                 key: "actions", label: "",
                 render: r => (
-                  <div style={{ display: "flex", gap: 6 }}>
+                  r.balance > 0 ? (
                     <button
-                      className="btn btn-ghost btn-xs"
-                      title="Edit name & details"
-                      onClick={() => setProfileCustomer(r)}
+                      className="btn btn-primary btn-xs"
+                      title="Record payment"
+                      onClick={() => setPayCustomer(r)}
                     >
-                      <Pencil size={13} />
+                      <Wallet size={13} /> Pay
                     </button>
-                    <button
-                      className="btn btn-ghost btn-xs"
-                      title="View history"
-                      onClick={() => setHistCustomer(r)}
-                    >
-                      <History size={13} />
-                    </button>
-                    {r.balance > 0 && (
-                      <button
-                        className="btn btn-primary btn-xs"
-                        title="Record payment"
-                        onClick={() => setPayCustomer(r)}
-                      >
-                        <Wallet size={13} /> Pay
-                      </button>
-                    )}
-                  </div>
+                  ) : null
                 ),
               },
             ]}
@@ -849,7 +801,7 @@ export default function Customers() {
             <DebtorsTab
               debtors={debtors}
               onPay={c => setPayCustomer(c)}
-              onHistory={c => setHistCustomer(c)}
+              onDetail={c => setDetailCustomer(c)}
               onBalanceUpdate={updateBalance}
             />
           </div>
@@ -873,17 +825,11 @@ export default function Customers() {
         />
       )}
 
-      {histCustomer && (
-        <HistoryModal
-          customer={histCustomer}
-          onClose={() => setHistCustomer(null)}
-        />
-      )}
-
-      {profileCustomer && (
-        <ProfileModal
-          customer={profileCustomer}
-          onClose={() => setProfileCustomer(null)}
+      {detailCustomer && (
+        <CustomerDetailModal
+          customer={detailCustomer}
+          onClose={() => setDetailCustomer(null)}
+          onPay={c => { setDetailCustomer(null); setPayCustomer(c); }}
           onSaved={load}
         />
       )}
