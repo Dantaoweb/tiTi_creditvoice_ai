@@ -389,6 +389,31 @@ def test_supplier_detail_date_range_window():
     assert len(allt["purchases"]) == 2 and allt["total_bought"] == 15000 and allt["range"] is None
 
 
+def test_bought_vs_sold_report_pdf():
+    phone, cook = _owner()
+    sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Emeka"}).json()["id"]
+    client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Cocoa", "quantity": 100, "cost_per_unit": 800, "paid_now": 20000})
+    # Record a sale of the commodity so the report has a sold side to reconcile.
+    db = SessionLocal()
+    try:
+        from models import Transaction, User
+        uid = db.query(User).filter(User.phone == phone).first().id
+        db.add(Transaction(type="SALE", amount=90000, product="Cocoa", quantity=70,
+                           recorded_by_id=uid, is_voided=False))
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/app/api/reports/bought-vs-sold", cookies=cook)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/pdf")
+    assert r.content[:4] == b"%PDF" and len(r.content) > 800
+
+    r2 = client.get("/app/api/reports/bought-vs-sold?from=2020-01-01&to=2099-01-01", cookies=cook)
+    assert r2.status_code == 200 and r2.content[:4] == b"%PDF"
+
+
 def test_supplier_statement_pdf_downloads():
     phone, cook = _owner()
     sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Emeka Farms", "phone": "0803"}).json()["id"]

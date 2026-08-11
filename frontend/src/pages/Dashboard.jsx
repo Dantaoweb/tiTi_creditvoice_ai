@@ -336,6 +336,9 @@ export default function Dashboard() {
   const [isStale, setIsStale] = useState(false);
   const [exportingType, setExportingType]   = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const [bvsFrom, setBvsFrom]     = useState("");
+  const [bvsTo, setBvsTo]         = useState("");
+  const [bvsBusy, setBvsBusy]     = useState(false);
   const [branches, setBranches]   = useState([]);
   const [branchId, setBranchId]   = useState("");
 
@@ -360,6 +363,17 @@ export default function Dashboard() {
       toast(e.message, "error");
     } finally {
       setDownloadingPDF(false);
+    }
+  }
+
+  async function handleBoughtVsSold() {
+    setBvsBusy(true);
+    try {
+      await apiDownload("reports/bought-vs-sold", { from: bvsFrom || undefined, to: bvsTo || undefined });
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      setBvsBusy(false);
     }
   }
 
@@ -570,6 +584,27 @@ export default function Dashboard() {
           <Download size={14} />
           {downloadingPDF ? "Generating PDF…" : "Download Statement PDF"}
         </button>
+      </div>
+
+      <div className="stmt-banner">
+        <div className="stmt-banner-left">
+          <FileText size={18} className="stmt-banner-icon" />
+          <div>
+            <div className="stmt-banner-title">Bought vs Sold Report</div>
+            <div className="stmt-banner-sub">Who supplied what &amp; how much, what you sold and for how much, and the trading margin over a period.</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <input type="date" value={bvsFrom} onChange={e => setBvsFrom(e.target.value)}
+            title="From" style={{ padding: "4px 6px", fontSize: 12 }} />
+          <span className="text-subtle" style={{ fontSize: 12 }}>–</span>
+          <input type="date" value={bvsTo} onChange={e => setBvsTo(e.target.value)}
+            title="To" style={{ padding: "4px 6px", fontSize: 12 }} />
+          <button className="btn btn-primary btn-sm" onClick={handleBoughtVsSold} disabled={bvsBusy}>
+            <Download size={14} />
+            {bvsBusy ? "Generating PDF…" : "Download Report PDF"}
+          </button>
+        </div>
       </div>
 
       <InviteCard />

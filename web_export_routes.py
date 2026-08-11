@@ -238,3 +238,124 @@ def register_export_routes(app):
             )
         finally:
             db.close()
+
+    @app.get("/app/api/reports/bought-vs-sold")
+    def web_bought_vs_sold(
+        from_: Optional[str] = Query(default=None, alias="from"),
+        to: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        """Business-wide Bought-vs-Sold trading report PDF over a period: who
+        supplied what (per supplier), what was sold for how much (per product),
+        and the reconciliation between them."""
+        from datetime import datetime, timedelta
+        from models import Supplier, SupplierPurchase
+        from reports import get_owner_transaction_query
+        from bought_vs_sold_report import generate_bought_vs_sold
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            u = db.query(User).filter(User.phone == owner_phone).first()
+            if not u:
+                raise HTTPException(status_code=404, detail="Business not found.")
+            owner = {
+                "name": u.name or owner_phone,
+                "phone": owner_phone,
+                "business_type_label": u.business_type_label,
+                "business_category": u.business_category,
+            }
+
+            def _parse(s, end=False):
+                if not s:
+                    return None
+                try:
+                    d = datetime.strptime(s[:10], "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid date. Use YYYY-MM-DD.")
+                return d + timedelta(days=1) if end else d
+            from_dt = _parse(from_)
+            to_dt = _parse(to, end=True)
+
+            # ── Bought side: supplier purchases in the window ──────────────────
+            pq = db.query(SupplierPurchase).filter(SupplierPurchase.owner_phone == owner_phone)
+            if from_dt:
+                pq = pq.filter(SupplierPurchase.created_at >= from_dt)
+            if to_dt:
+                pq = pq.filter(SupplierPurchase.created_at < to_dt)
+            purchases = pq.all()
+            sup_names = {
+                s.id: s.name
+                for s in db.query(Supplier).filter(Supplier.owner_phone == owner_phone).all()
+            }
+
+            by_sup, bought_by_product = {}, {}
+            for p in purchases:
+                sname = (sup_names.get(p.supplier_id) or "-").title()
+                prod = (p.product or "-").title()
+                key = (sname, prod, p.unit or "")
+                row = by_sup.setdefault(key, {
+                    "supplier": sname, "product": prod, "unit": p.unit or "",
+                    "qty": 0, "spend": 0, "owed": 0,
+                })
+                row["qty"] += p.quantity or 0
+                row["spend"] += p.total or 0
+                row["owed"] += max(0, (p.total or 0) - (p.paid_amount or 0))
+                bp = bought_by_product.setdefault(prod, {"qty_bought": 0, "spend": 0})
+                bp["qty_bought"] += p.quantity or 0
+                bp["spend"] += p.total or 0
+
+            total_spend = sum(p.total or 0 for p in purchases)
+            total_paid_suppliers = sum(p.paid_amount or 0 for p in purchases)
+            owed_suppliers = sum(max(0, (p.total or 0) - (p.paid_amount or 0)) for p in purchases)
+
+            # ── Sold side: SALE / BUY transactions in the window ───────────────
+            sq = get_owner_transaction_query(db, owner_phone).filter(Transaction.type.in_(["SALE", "BUY"]))
+            if from_dt:
+                sq = sq.filter(Transaction.created_at >= from_dt)
+            if to_dt:
+                sq = sq.filter(Transaction.created_at < to_dt)
+            sold_by_product, total_revenue = {}, 0
+            for t in sq.all():
+                prod = (t.product or "-").title()
+                sp = sold_by_product.setdefault(prod, {"qty_sold": 0, "revenue": 0})
+                sp["qty_sold"] += t.quantity or 0
+                sp["revenue"] += t.amount or 0
+                total_revenue += t.amount or 0
+
+            products = sorted(set(list(bought_by_product) + list(sold_by_product)))
+            by_product = []
+            for prod in products:
+                b = bought_by_product.get(prod, {"qty_bought": 0, "spend": 0})
+                s = sold_by_product.get(prod, {"qty_sold": 0, "revenue": 0})
+                by_product.append({
+                    "product": prod,
+                    "qty_bought": b["qty_bought"], "spend": b["spend"],
+                    "qty_sold": s["qty_sold"], "revenue": s["revenue"],
+                    "margin": (s["revenue"] or 0) - (b["spend"] or 0),
+                })
+
+            by_supplier = sorted(by_sup.values(), key=lambda r: r["spend"], reverse=True)
+            summary = {
+                "total_spend": total_spend,
+                "total_paid_suppliers": total_paid_suppliers,
+                "owed_suppliers": owed_suppliers,
+                "total_revenue": total_revenue,
+                "trading_margin": total_revenue - total_spend,
+            }
+
+            def _lbl(s):
+                return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d %b %Y") if s else None
+            period_label = (
+                f"{_lbl(from_) or 'Start'} - {_lbl(to) or 'Today'}" if (from_ or to) else "All time"
+            )
+
+            pdf_bytes = generate_bought_vs_sold(owner, summary, by_supplier, by_product, period_label)
+            biz_slug = (u.name or "business").replace(" ", "_")[:20]
+            filename = f"CreditVoice_BoughtVsSold_{biz_slug}.pdf"
+            return StreamingResponse(
+                iter([pdf_bytes]),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{_safe_filename(filename)}"'},
+            )
+        finally:
+            db.close()
