@@ -404,6 +404,81 @@ def _check_delivery_due(db):
             print(f"[proactive] delivery reminder error for {owner_phone}: {e}", flush=True)
 
 
+# ── Supplier payment due ─────────────────────────────────────────────────────────
+
+def _check_supplier_due(db):
+    """Remind owners of supplier payments falling due (up to 3 days out) or
+    overdue, while the supplier still has an outstanding balance. Delivers via
+    in-app notification + web push + WhatsApp — so web-only owners get it, not
+    just the WhatsApp daily digest. Advance reminders fire once per day-bucket;
+    an overdue balance re-reminds at most once a week."""
+    from models import ProactiveLog, Supplier, SupplierPurchase, User
+    from inventory_suppliers import get_supplier_balance
+
+    today = _utcnow().date()
+    owners = db.query(User).filter(
+        # Web owners have role "owner", WhatsApp ones "user" — gate on parent_id.
+        User.parent_id == None,
+        User.phone != None,
+    ).all()
+
+    for owner in owners:
+        purchases = db.query(SupplierPurchase).filter(
+            SupplierPurchase.owner_phone == owner.phone,
+            SupplierPurchase.due_date != None,
+            SupplierPurchase.total > SupplierPurchase.paid_amount,
+        ).all()
+        if not purchases:
+            continue
+
+        bal_cache = {}   # supplier_id → net balance still owed
+        for p in purchases:
+            days_out = (p.due_date.date() - today).days
+            if days_out > 3:
+                continue   # too far out to remind yet
+
+            if p.supplier_id not in bal_cache:
+                bal_cache[p.supplier_id] = get_supplier_balance(db, p.supplier_id)
+            if bal_cache[p.supplier_id] <= 0:
+                continue   # already settled via later payments
+
+            if days_out < 0:
+                yr, wk, _ = today.isocalendar()
+                bucket = f"ov{yr}w{wk}"     # weekly overdue re-reminder
+            else:
+                bucket = str(days_out)      # once per remaining-day bucket
+            event_type = f"supplier_due_{p.id}_{bucket}"
+
+            already = db.query(ProactiveLog).filter(
+                ProactiveLog.owner_phone == owner.phone,
+                ProactiveLog.event_type == event_type,
+            ).first()
+            if already:
+                continue
+
+            sup = db.query(Supplier).filter(Supplier.id == p.supplier_id).first()
+            sup_name = (sup.name.title() if sup and sup.name else "a supplier")
+            owed = max(0, (p.total or 0) - (p.paid_amount or 0))
+            date_str = p.due_date.strftime("%d %b %Y")
+            when = (
+                "was due" if days_out < 0
+                else ("is due today" if days_out == 0
+                      else ("is due tomorrow" if days_out == 1 else f"is due in {days_out} days"))
+            )
+            body = (
+                f"Payment to {sup_name} for {(p.product or 'stock').title()} {when} ({date_str}).\n\n"
+                f"You owe {sup_name}: ₦{owed:,.0f}.\n"
+                "Open Suppliers to record a payment."
+            )
+            try:
+                _notify(db, owner.phone, event_type, "🧾 Supplier Payment Due", body)
+                db.add(ProactiveLog(owner_phone=owner.phone, event_type=event_type, sent_at=_utcnow()))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                print(f"[proactive] supplier_due error for {owner.phone}: {e}", flush=True)
+
+
 # ── Balance reconciliation ──────────────────────────────────────────────────────
 
 def _reconcile_balances(db):
@@ -521,6 +596,7 @@ async def run_proactive_scheduler():
             _check_inactivity(db)
             _check_reminder_automation(db)
             _check_delivery_due(db)
+            _check_supplier_due(db)
             _check_subscription_expiry(db)
             _reconcile_balances(db)
             _purge_old_logs(db)

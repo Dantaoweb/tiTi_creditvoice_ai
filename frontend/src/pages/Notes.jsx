@@ -6,7 +6,7 @@ import { nairaFull } from "../lib/format";
 import EmptyState from "../components/EmptyState";
 import Skeleton from "../components/Skeleton";
 
-const CATEGORIES = ["memo", "expense", "income", "decision", "goal", "other"];
+const CATEGORIES = ["memo", "expense", "income", "decision", "goal", "delivery", "stock", "other"];
 
 const VISIBILITY_OPTS = [
   { value: "owner_only", label: "Only me", icon: Lock },
@@ -21,6 +21,8 @@ const CAT_COLORS = {
   income: "badge-green",
   decision: "badge-amber",
   goal: "badge-brand",
+  delivery: "badge-amber",
+  stock: "badge-blue",
   other: "badge-gray",
 };
 

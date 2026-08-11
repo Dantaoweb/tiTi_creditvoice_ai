@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
-import { dateStr } from "../lib/format";
+import { dateStr, nairaFull } from "../lib/format";
 
 function fmtWhen(iso) {
   if (!iso) return { label: "—", tone: "muted" };
@@ -59,6 +60,7 @@ function NotifyModal({ delivery, onClose, onSent }) {
 
 export default function Deliveries() {
   const [rows, setRows] = useState([]);
+  const [incoming, setIncoming] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [notify, setNotify] = useState(null);
@@ -67,7 +69,7 @@ export default function Deliveries() {
   function load() {
     setLoading(true);
     apiFetch("deliveries")
-      .then(d => setRows(d.deliveries || []))
+      .then(d => { setRows(d.deliveries || []); setIncoming(d.incoming || []); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }
@@ -89,12 +91,18 @@ export default function Deliveries() {
       <div className="card-header"><span className="card-title">Deliveries</span></div>
       {err && <div className="pos-error" style={{ margin: 12 }}>{err}</div>}
       {toast && <div style={{ color: "var(--brand)", padding: "8px 16px", fontSize: 13 }}>✓ {toast}</div>}
-      {rows.length === 0 ? (
+      {rows.length === 0 && incoming.length === 0 ? (
         <div className="td-muted" style={{ padding: 16 }}>
-          No deliveries scheduled. Set a "Deliver / ready by" date when recording a sale.
+          No deliveries scheduled. Set a "Deliver / ready by" date when recording a sale,
+          or a payment-due date when recording stock received.
         </div>
       ) : (
         <div>
+          {rows.length > 0 && (
+            <div className="td-muted" style={{ padding: "10px 16px 4px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Outgoing · to customers
+            </div>
+          )}
           {rows.map(r => {
             const w = fmtWhen(r.service_date);
             const tone = w.tone === "rose" ? "#b91c1c" : w.tone === "amber" ? "#b45309" : "var(--muted)";
@@ -116,6 +124,33 @@ export default function Deliveries() {
                     style={{ fontSize: 12 }}
                   />
                   <button className="btn btn-secondary btn-sm" onClick={() => setNotify(r)}>Message</button>
+                </div>
+              </div>
+            );
+          })}
+
+          {incoming.length > 0 && (
+            <div className="td-muted" style={{ padding: "14px 16px 4px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Incoming · from suppliers
+            </div>
+          )}
+          {incoming.map(p => {
+            const w = fmtWhen(p.due_date);
+            const tone = w.tone === "rose" ? "#b91c1c" : w.tone === "amber" ? "#b45309" : "var(--muted)";
+            return (
+              <div key={`in-${p.id}`} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 10, flexWrap: "wrap", padding: "12px 16px", borderBottom: "1px solid var(--border)",
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong>{p.supplier || "—"}</strong>
+                  <div className="td-muted" style={{ fontSize: 12 }}>
+                    {p.product}{p.quantity ? ` · ${p.quantity}${p.unit || ""}` : ""} · owe {nairaFull(p.balance)}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: tone }}>{w.label}</span>
+                  <Link to="/suppliers" className="btn btn-secondary btn-sm">Pay</Link>
                 </div>
               </div>
             );

@@ -233,6 +233,35 @@ def test_edit_purchase_due_date():
     assert r2.status_code == 200 and r2.json()["due_date"] is None
 
 
+def test_stock_note_becomes_a_business_note():
+    phone, cook = _owner()
+    client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Sugar", "quantity": 8, "supplier": "Ade", "note": "Batch B12, half broken",
+    })
+    from models import BusinessNote
+    db = SessionLocal()
+    try:
+        n = db.query(BusinessNote).filter(
+            BusinessNote.owner_phone == phone, BusinessNote.category == "delivery"
+        ).first()
+        assert n is not None and "Batch B12" in n.body
+    finally:
+        db.close()
+    # It shows in the Notes menu under the delivery category.
+    notes = client.get("/app/api/notes?category=delivery", cookies=cook).json()["notes"]
+    assert any("Batch B12" in x["body"] for x in notes)
+
+
+def test_incoming_delivery_appears_in_deliveries():
+    _p, cook = _owner()
+    client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Flour", "quantity": 20, "cost_per_unit": 1500, "paid_now": 0,
+        "supplier": "Honeywell", "due_date": "2026-11-20",
+    })
+    inc = client.get("/app/api/deliveries", cookies=cook).json().get("incoming", [])
+    assert any(x["supplier"] == "Honeywell" and x["balance"] == 30000 for x in inc), inc
+
+
 def test_edit_purchase_quantity_and_cost_syncs_stock():
     phone, cook = _owner()
     # Receive 10 @ 1000 = 10000, unpaid.

@@ -422,6 +422,22 @@ def register_customer_routes(app):
                 .limit(100)
                 .all()
             )
+            # Incoming deliveries: supplier purchases carrying a payment/delivery
+            # due date that are still owing. Read-only here — payment is recorded
+            # in the Suppliers menu and reminders are sent by the scheduler.
+            from models import Supplier, SupplierPurchase
+            incoming_rows = (
+                db.query(SupplierPurchase, Supplier)
+                .join(Supplier, SupplierPurchase.supplier_id == Supplier.id)
+                .filter(
+                    SupplierPurchase.owner_phone == owner_phone,
+                    SupplierPurchase.due_date.isnot(None),
+                    SupplierPurchase.total > SupplierPurchase.paid_amount,
+                )
+                .order_by(SupplierPurchase.due_date.asc())
+                .limit(100)
+                .all()
+            )
             return {
                 "deliveries": [
                     {
@@ -433,7 +449,19 @@ def register_customer_routes(app):
                         "created_at": _iso(tx.created_at),
                     }
                     for tx, cust in rows
-                ]
+                ],
+                "incoming": [
+                    {
+                        "id": p.id,
+                        "supplier": (sup.name or "").title(),
+                        "product": (p.product or "").title(),
+                        "quantity": p.quantity,
+                        "unit": p.unit,
+                        "due_date": _iso(p.due_date),
+                        "balance": max(0, (p.total or 0) - (p.paid_amount or 0)),
+                    }
+                    for p, sup in incoming_rows
+                ],
             }
         finally:
             db.close()

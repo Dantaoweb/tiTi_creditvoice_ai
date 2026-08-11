@@ -39,6 +39,26 @@ def _load_attributes(item):
         return {}
 
 
+def _save_stock_note(db, owner_phone, user_id, category, note_text, context):
+    """Record a stock/delivery note as a BusinessNote so it surfaces in the
+    Notes menu (under `category`) instead of hiding in the movement log. No-op
+    when there is no note text. Added to the session; caller commits."""
+    note_text = (note_text or "").strip()
+    if not note_text:
+        return
+    from models import BusinessNote
+    body = f"{context} — {note_text}" if context else note_text
+    db.add(BusinessNote(
+        owner_phone=owner_phone,
+        body=body[:2000],
+        category=category,
+        visibility="all",
+        created_by_id=user_id,
+        created_at=utcnow(),
+        updated_at=utcnow(),
+    ))
+
+
 class AddInventoryRequest(BaseModel):
     owner_phone: str = Field(max_length=20)
     name: str = Field(max_length=120)
@@ -409,6 +429,11 @@ def register_inventory_routes(app):
                 recorded_by_id=session["user_id"],
                 note=payload.note or ("Stock added" if delta > 0 else "Stock removed"),
             ))
+            # Keep the reason visible in the Notes menu, not just the movement log.
+            _save_stock_note(
+                db, owner_phone, session["user_id"], "stock",
+                (payload.note or "").strip(), item.name.title(),
+            )
             db.commit()
             return {"id": item.id, "new_quantity": item.quantity}
         except HTTPException:
@@ -491,6 +516,13 @@ def register_inventory_routes(app):
                 db, owner_phone, product, qty, unit, cost,
                 "IN", "SUPPLIER_PURCHASE", purchase.id, session["user_id"],
                 (payload.note or "").strip() or f"Received from {supplier.name.title()}",
+            )
+            # A delivery note must not vanish into the movement log only — surface
+            # it in the Notes menu under the "delivery" category so it's findable.
+            _save_stock_note(
+                db, owner_phone, session["user_id"], "delivery",
+                (payload.note or "").strip(),
+                f"{product.title()} from {supplier.name.title()}",
             )
             db.commit()
             return {
