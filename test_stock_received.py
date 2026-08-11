@@ -353,6 +353,42 @@ def test_record_purchase_from_supplier_modal_grows_stock():
     assert any("Truck A" in n["body"] for n in notes)
 
 
+def test_supplier_detail_date_range_window():
+    """?from&to scopes rows + totals to the period; opening/closing balance
+    account for what was carried in; balance stays the current all-time owed."""
+    from datetime import datetime
+    from models import SupplierPurchase
+    phone, cook = _owner()
+    sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Seasonal"}).json()["id"]
+
+    # Two purchases in different months, both unpaid (owing).
+    client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Grain", "quantity": 10, "cost_per_unit": 1000, "paid_now": 0})
+    client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Grain", "quantity": 5, "cost_per_unit": 1000, "paid_now": 0})
+    # Backdate the first purchase into January.
+    db = SessionLocal()
+    try:
+        first = db.query(SupplierPurchase).filter(SupplierPurchase.owner_phone == phone).order_by(
+            SupplierPurchase.id.asc()).first()
+        first.created_at = datetime(2026, 1, 15)
+        db.commit()
+    finally:
+        db.close()
+
+    # Window over February onward: only the second purchase shows; opening
+    # balance carries the January debt (10000); closing = 10000 + 5000.
+    d = client.get(f"/app/api/suppliers/{sid}?from=2026-02-01&to=2099-01-01", cookies=cook).json()
+    assert len(d["purchases"]) == 1 and d["total_bought"] == 5000
+    assert d["opening_balance"] == 10000 and d["closing_balance"] == 15000
+    assert d["balance"] == 15000               # current all-time owed
+    assert d["range"]["from"] == "2026-02-01"
+
+    # No range → all-time, no opening carry.
+    allt = client.get(f"/app/api/suppliers/{sid}", cookies=cook).json()
+    assert len(allt["purchases"]) == 2 and allt["total_bought"] == 15000 and allt["range"] is None
+
+
 def test_record_purchase_rejects_other_owners_supplier():
     _p, cook = _owner()
     _p2, cook2 = _owner()

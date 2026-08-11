@@ -291,10 +291,24 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   const [bPaid, setBPaid]     = useState("");
   const [bDue, setBDue]       = useState("");
   const [bNote, setBNote]     = useState("");
+  const [range, setRange]     = useState({ key: "all", from: "", to: "" });
 
-  useEffect(() => {
-    apiFetch(`suppliers/${supplierId}`).then(setD).catch(e => setErr(e.message));
-  }, [supplierId]);
+  function load(r = range) {
+    return apiFetch(`suppliers/${supplierId}`, { from: r.from || undefined, to: r.to || undefined })
+      .then(setD).catch(e => setErr(e.message));
+  }
+  useEffect(() => { load(); /* on open */ /* eslint-disable-next-line */ }, [supplierId]);
+
+  const _fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function presetRange(key) {
+    const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+    if (key === "month")     return { key, from: _fmt(new Date(y, m, 1)),     to: _fmt(new Date(y, m + 1, 0)) };
+    if (key === "lastmonth") return { key, from: _fmt(new Date(y, m - 1, 1)), to: _fmt(new Date(y, m, 0)) };
+    if (key === "year")      return { key, from: _fmt(new Date(y, 0, 1)),     to: _fmt(new Date(y, 11, 31)) };
+    return { key: "all", from: "", to: "" };
+  }
+  function applyPreset(key) { const r = presetRange(key); setRange(r); load(r); }
+  function setCustom(field, val) { const r = { ...range, key: "custom", [field]: val }; setRange(r); load(r); }
 
   function startBuy() {
     // Commodity traders buy the same product repeatedly — pre-fill the last one.
@@ -317,8 +331,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
         due_date: bDue || null,
         note: bNote.trim() || null,
       });
-      const fresh = await apiFetch(`suppliers/${supplierId}`);
-      setD(fresh);
+      await load();
       setShowBuy(false);
     } catch (e) { setErr(e.message); } finally { setSaving(false); }
   }
@@ -371,8 +384,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
         body: JSON.stringify({ quantity: qty, unit_price: cost }),
       });
       // Reload so totals/paid/balance + running supplier balance all refresh.
-      const fresh = await apiFetch(`suppliers/${supplierId}`);
-      setD(fresh);
+      await load();
       setEditPid(null);
     } catch (e) { setErr(e.message); } finally { setSaving(false); }
   }
@@ -409,11 +421,28 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                   </div>
                 </div>
               )}
-              <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 14 }}>
-                <MetricCard label="Purchased" value={nairaFull(d.total_bought)} />
-                <MetricCard label="Paid"      value={nairaFull(d.total_paid)} color="green" />
-                <MetricCard label="Owed"      value={nairaFull(d.balance)} color={d.balance > 0 ? "rose" : "green"} />
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                {[["all", "All time"], ["month", "This month"], ["lastmonth", "Last month"], ["year", "This year"]].map(([k, label]) => (
+                  <button key={k} type="button"
+                    className={`btn btn-sm ${range.key === k ? "btn-primary" : "btn-ghost"}`}
+                    onClick={() => applyPreset(k)}>{label}</button>
+                ))}
+                <input type="date" value={range.from} onChange={e => setCustom("from", e.target.value)}
+                  style={{ padding: "3px 6px", fontSize: 12 }} title="From" />
+                <span className="td-muted" style={{ fontSize: 12 }}>–</span>
+                <input type="date" value={range.to} onChange={e => setCustom("to", e.target.value)}
+                  style={{ padding: "3px 6px", fontSize: 12 }} title="To" />
               </div>
+              <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: d.range ? 6 : 14 }}>
+                <MetricCard label={d.range ? "Purchased (period)" : "Purchased"} value={nairaFull(d.total_bought)} />
+                <MetricCard label={d.range ? "Paid (period)" : "Paid"}           value={nairaFull(d.total_paid)} color="green" />
+                <MetricCard label="Owed (now)"                                    value={nairaFull(d.balance)} color={d.balance > 0 ? "rose" : "green"} />
+              </div>
+              {d.range && (
+                <div className="td-muted" style={{ fontSize: 12, marginBottom: 14 }}>
+                  Opening balance {nairaFull(d.opening_balance)} · Closing {nairaFull(d.closing_balance)}
+                </div>
+              )}
               <button className="btn btn-primary" style={{ width: "100%", marginBottom: 10 }}
                 onClick={() => onPay({ id: d.id, name: d.name, balance: d.balance })}>
                 Pay this supplier

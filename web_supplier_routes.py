@@ -4,10 +4,10 @@ Supplier routes: list suppliers with balances + recent purchases.
 Split out of web_routes.py. Register with register_supplier_routes(app);
 shared helpers come from web_common.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
@@ -77,6 +77,59 @@ def _supplier_balance(db, supplier_id):
     total_bought = sum(p.total or 0 for p in purchases)
     total_paid = sum(p.paid_amount or 0 for p in purchases) + sum(p.amount or 0 for p in payments)
     return total_bought, total_paid, max(0, total_bought - total_paid)
+
+
+def _parse_day(s, end=False):
+    """'YYYY-MM-DD' → naive datetime. end=True returns the *next* midnight so the
+    whole day is an inclusive upper bound. None/blank → None (open-ended)."""
+    if not s:
+        return None
+    try:
+        d = datetime.strptime(s[:10], "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date. Use YYYY-MM-DD.")
+    return d + timedelta(days=1) if end else d
+
+
+def _supplier_window(db, supplier_id, from_dt, to_dt):
+    """Purchases/payments within [from_dt, to_dt) plus opening/closing balance.
+    from_dt/to_dt may be None for an open end. Reused by the detail view and the
+    PDF statement so the period maths never diverge between screen and paper."""
+    purchases = db.query(SupplierPurchase).filter(SupplierPurchase.supplier_id == supplier_id).all()
+    payments = db.query(SupplierPayment).filter(SupplierPayment.supplier_id == supplier_id).all()
+
+    def in_win(dt):
+        if dt is None:
+            return False if (from_dt or to_dt) else True
+        if from_dt and dt < from_dt:
+            return False
+        if to_dt and dt >= to_dt:
+            return False
+        return True
+
+    def before(dt):
+        return from_dt is not None and dt is not None and dt < from_dt
+
+    win_purch = [p for p in purchases if in_win(p.created_at)]
+    win_pays = [p for p in payments if in_win(p.created_at)]
+
+    opening = 0
+    if from_dt:
+        opening = (
+            sum((p.total or 0) - (p.paid_amount or 0) for p in purchases if before(p.created_at))
+            - sum(p.amount or 0 for p in payments if before(p.created_at))
+        )
+    window_bought = sum(p.total or 0 for p in win_purch)
+    window_paid = sum(p.paid_amount or 0 for p in win_purch) + sum(p.amount or 0 for p in win_pays)
+    _mn = datetime.min
+    return {
+        "purchases": sorted(win_purch, key=lambda p: p.created_at or _mn, reverse=True),
+        "payments": sorted(win_pays, key=lambda p: p.created_at or _mn, reverse=True),
+        "window_bought": window_bought,
+        "window_paid": window_paid,
+        "opening_balance": opening,
+        "closing_balance": opening + window_bought - window_paid,
+    }
 
 
 def register_supplier_routes(app):
@@ -191,8 +244,15 @@ def register_supplier_routes(app):
             db.close()
 
     @app.get("/app/api/suppliers/{supplier_id}")
-    def web_supplier_detail(supplier_id: int, session: dict = Depends(require_web_auth)):
-        """A supplier's purchase + payment history with a running balance."""
+    def web_supplier_detail(
+        supplier_id: int,
+        from_: Optional[str] = Query(default=None, alias="from"),
+        to: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        """A supplier's purchase + payment history with a running balance.
+        Optional ?from=&to= (YYYY-MM-DD) scope the rows + totals to a period;
+        `balance` always reflects the current, all-time amount still owed."""
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
@@ -202,21 +262,24 @@ def register_supplier_routes(app):
             if not sup:
                 raise HTTPException(status_code=404, detail="Supplier not found.")
 
-            purchases = db.query(SupplierPurchase).filter(
-                SupplierPurchase.supplier_id == sup.id
-            ).order_by(SupplierPurchase.created_at.desc()).all()
-            payments = db.query(SupplierPayment).filter(
-                SupplierPayment.supplier_id == sup.id
-            ).order_by(SupplierPayment.created_at.desc()).all()
-            total_bought, total_paid, balance = _supplier_balance(db, sup.id)
+            from_dt = _parse_day(from_)
+            to_dt = _parse_day(to, end=True)
+            win = _supplier_window(db, sup.id, from_dt, to_dt)
+            purchases = win["purchases"]
+            payments = win["payments"]
+            _bought, _paid, balance = _supplier_balance(db, sup.id)
+            ranged = bool(from_ or to)
 
             return {
                 "id": sup.id,
                 "name": sup.name,
                 "phone": sup.phone,
-                "total_bought": total_bought,
-                "total_paid": total_paid,
+                "total_bought": win["window_bought"],
+                "total_paid": win["window_paid"],
                 "balance": balance,
+                "opening_balance": win["opening_balance"],
+                "closing_balance": win["closing_balance"],
+                "range": {"from": from_, "to": to} if ranged else None,
                 "purchases": [
                     {
                         "id": p.id, "product": p.product, "quantity": p.quantity, "unit": p.unit,
