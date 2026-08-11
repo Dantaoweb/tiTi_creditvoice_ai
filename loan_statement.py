@@ -62,7 +62,8 @@ class StatementPDF(FPDF):
         self.cell(0, 5, f"Page {self.page_no()}", align="C")
 
 
-def _header_block(pdf: StatementPDF, owner: dict, period_label: str, ref: str):
+def _header_block(pdf: StatementPDF, owner: dict, period_label: str, ref: str,
+                  doc_title: str = "BUSINESS FINANCIAL STATEMENT"):
     """Dark top banner with business name + statement meta."""
     page_w = pdf.w - 2 * M
 
@@ -96,7 +97,7 @@ def _header_block(pdf: StatementPDF, owner: dict, period_label: str, ref: str):
     pdf.set_xy(right_x, 14)
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(*WHITE)
-    pdf.cell(page_w * 0.43, 5, "BUSINESS FINANCIAL STATEMENT", align="R")
+    pdf.cell(page_w * 0.43, 5, doc_title, align="R")
 
     now_str = datetime.now(timezone.utc).strftime("%d %b %Y")
     pdf.set_xy(right_x, 20)

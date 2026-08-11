@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiPost } from "../lib/api";
+import { apiFetch, apiPost, apiDownload } from "../lib/api";
 import { nairaFull, dateStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
-import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, Star } from "lucide-react";
+import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, Star, FileDown } from "lucide-react";
 
 // ── Star rating component ─────────────────────────────────────────────────────
 function StarRating({ value, onChange, size = 22 }) {
@@ -432,6 +432,11 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                 <span className="td-muted" style={{ fontSize: 12 }}>–</span>
                 <input type="date" value={range.to} onChange={e => setCustom("to", e.target.value)}
                   style={{ padding: "3px 6px", fontSize: 12 }} title="To" />
+                <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }}
+                  onClick={() => apiDownload(`suppliers/${supplierId}/statement`, { from: range.from || undefined, to: range.to || undefined })
+                    .catch(e => setErr(e.message))}>
+                  <FileDown size={14} /> Statement PDF
+                </button>
               </div>
               <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: d.range ? 6 : 14 }}>
                 <MetricCard label={d.range ? "Purchased (period)" : "Purchased"} value={nairaFull(d.total_bought)} />

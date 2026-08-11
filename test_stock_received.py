@@ -389,6 +389,28 @@ def test_supplier_detail_date_range_window():
     assert len(allt["purchases"]) == 2 and allt["total_bought"] == 15000 and allt["range"] is None
 
 
+def test_supplier_statement_pdf_downloads():
+    phone, cook = _owner()
+    sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Emeka Farms", "phone": "0803"}).json()["id"]
+    client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Cocoa", "quantity": 40, "cost_per_unit": 1000, "paid_now": 10000})
+    client.post(f"/app/api/suppliers/{sid}/pay", cookies=cook, json={"amount": 5000})
+
+    r = client.get(f"/app/api/suppliers/{sid}/statement", cookies=cook)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/pdf")
+    assert r.content[:4] == b"%PDF" and len(r.content) > 800
+    assert "statement_emeka_farms.pdf" in r.headers.get("content-disposition", "")
+
+    # A ranged statement also renders.
+    r2 = client.get(f"/app/api/suppliers/{sid}/statement?from=2026-01-01&to=2099-01-01", cookies=cook)
+    assert r2.status_code == 200 and r2.content[:4] == b"%PDF"
+
+    # Not this owner's supplier.
+    _p2, cook2 = _owner()
+    assert client.get(f"/app/api/suppliers/{sid}/statement", cookies=cook2).status_code == 404
+
+
 def test_record_purchase_rejects_other_owners_supplier():
     _p, cook = _owner()
     _p2, cook2 = _owner()

@@ -300,6 +300,75 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/suppliers/{supplier_id}/statement")
+    def web_supplier_statement(
+        supplier_id: int,
+        from_: Optional[str] = Query(default=None, alias="from"),
+        to: Optional[str] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        """Branded PDF statement of this supplier's account over a period —
+        opening balance, every supply + payment, closing balance, current owed.
+        Reuses the same StatementPDF toolkit as the loan statement."""
+        from fastapi.responses import StreamingResponse
+        from supplier_statement import generate_supplier_statement
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            sup = db.query(Supplier).filter(
+                Supplier.id == supplier_id, Supplier.owner_phone == owner_phone,
+            ).first()
+            if not sup:
+                raise HTTPException(status_code=404, detail="Supplier not found.")
+
+            u = db.query(User).filter(User.phone == owner_phone).first()
+            owner = {
+                "name": (u.name if u and u.name else "Business"),
+                "phone": owner_phone,
+                "business_type_label": getattr(u, "business_type_label", None) if u else None,
+                "business_category": getattr(u, "business_category", None) if u else None,
+            }
+
+            from_dt = _parse_day(from_)
+            to_dt = _parse_day(to, end=True)
+            win = _supplier_window(db, sup.id, from_dt, to_dt)
+            _b, _p, current_owed = _supplier_balance(db, sup.id)
+            summary = {
+                "opening_balance": win["opening_balance"],
+                "total_bought": win["window_bought"],
+                "total_paid": win["window_paid"],
+                "closing_balance": win["closing_balance"],
+                "current_owed": current_owed,
+            }
+            purchases = [{
+                "created_at": p.created_at, "product": p.product, "quantity": p.quantity,
+                "unit": p.unit, "unit_price": p.unit_price, "total": p.total,
+                "paid_amount": p.paid_amount, "due_date": p.due_date,
+            } for p in win["purchases"]]
+            payments = [{
+                "created_at": p.created_at, "amount": p.amount, "note": p.product,
+            } for p in win["payments"]]
+
+            def _lbl(s):
+                return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d %b %Y") if s else None
+            period_label = (
+                f"{_lbl(from_) or 'Start'} - {_lbl(to) or 'Today'}" if (from_ or to) else "All time"
+            )
+
+            pdf_bytes = generate_supplier_statement(
+                owner, {"name": sup.name, "phone": sup.phone},
+                summary, purchases, payments, period_label,
+            )
+            safe = "".join(c for c in (sup.name or "supplier") if c.isalnum() or c in " _-").strip()
+            safe = safe.replace(" ", "_") or "supplier"
+            return StreamingResponse(
+                iter([pdf_bytes]),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="statement_{safe}.pdf"'},
+            )
+        finally:
+            db.close()
+
     @app.post("/app/api/suppliers/{supplier_id}/pay")
     def web_supplier_pay(
         supplier_id: int,
