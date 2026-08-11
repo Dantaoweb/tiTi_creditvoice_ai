@@ -416,6 +416,7 @@ function StockForm({ ownerPhone, onSuccess }) {
   const [cost, setCost]         = useState("");
   const [paidNow, setPaidNow]   = useState("");
   const [supplier, setSupplier] = useState("");
+  const [dueDate, setDueDate]   = useState("");
   const [note, setNote]         = useState("");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
@@ -430,6 +431,7 @@ function StockForm({ ownerPhone, onSuccess }) {
       cost_per_unit: cost ? parseAmt(cost) : null,
       paid_now:      paidNow !== "" ? parseAmt(paidNow) : null,   // blank → fully paid
       supplier:      supplier.trim() || null,   // blank → "Others" server-side
+      due_date:      dueDate || null,           // when the balance owed is due
       note:          note.trim() || null,
     };
   }
@@ -442,14 +444,14 @@ function StockForm({ ownerPhone, onSuccess }) {
     try {
       const r = await apiPost("inventory/stock-received", _body());
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
-      setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setNote("");
+      setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote("");
       if (r?.purchase_id) { navigate(`/suppliers/receipt/purchase/${r.purchase_id}`); return; }
     } catch (e) {
       if (isNetworkError(e)) {
         enqueue("inventory/stock-received", _body(),
           `Stock +${qty} ${item.unit || "units"} of ${item.name}${who}`);
         onSuccess("No internet — stock entry saved offline. Will sync automatically when you reconnect.");
-        setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setNote("");
+        setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote("");
       } else {
         setError(e.message);
       }
@@ -484,9 +486,15 @@ function StockForm({ ownerPhone, onSuccess }) {
           <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(fmtAmt(e.target.value))} placeholder="full amount" />
         </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Delivery ref, batch…" />
+      <div className="qf-row qf-row--sm-lg">
+        <div className="form-group">
+          <label className="form-label">Payment due <span className="text-subtle">(if owing)</span></label>
+          <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Delivery ref, batch…" />
+        </div>
       </div>
       {error && <div className="modal-error">{error}</div>}
       <button type="submit" className="btn btn-primary qf-btn" disabled={loading || !item}>

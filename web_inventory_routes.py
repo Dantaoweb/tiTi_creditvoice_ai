@@ -82,6 +82,7 @@ class StockReceivedRequest(BaseModel):
     paid_now: Optional[int] = None   # None → fully paid; less than total → records supplier debt
     supplier: Optional[str] = Field(default=None, max_length=120)   # blank → "Others"
     note: Optional[str] = Field(default=None, max_length=500)
+    due_date: Optional[str] = None   # "YYYY-MM-DD" — when the supplier balance is due
 
 
 class BulkCatalogItem(BaseModel):
@@ -461,6 +462,13 @@ def register_inventory_routes(app):
             total = int(round(cost * qty)) if cost else 0
             # Default: fully paid (owned). A smaller paid_now records supplier debt.
             paid_amount = total if payload.paid_now is None else max(0, min(int(payload.paid_now), total))
+            due_dt = None
+            if payload.due_date:
+                from datetime import datetime as _dt
+                try:
+                    due_dt = _dt.strptime(payload.due_date[:10], "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid due date. Use YYYY-MM-DD.")
             purchase = SupplierPurchase(
                 supplier_id=supplier.id,
                 owner_phone=owner_phone,
@@ -470,6 +478,7 @@ def register_inventory_routes(app):
                 unit_price=cost,
                 total=total,
                 paid_amount=paid_amount,
+                due_date=due_dt,
                 recorded_by_id=session["user_id"],
                 created_at=utcnow(),
             )

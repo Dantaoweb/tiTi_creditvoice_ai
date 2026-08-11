@@ -53,6 +53,11 @@ class SupplierPurchaseDueRequest(BaseModel):
     due_date: Optional[str] = None   # "YYYY-MM-DD", or null to clear
 
 
+class SupplierPurchaseEditRequest(BaseModel):
+    quantity: Optional[float] = None
+    unit_price: Optional[int] = None   # cost per unit; recomputes total
+
+
 def _supplier_balance(db, supplier_id):
     """(total_bought, total_paid, balance) for a supplier."""
     purchases = db.query(SupplierPurchase).filter(SupplierPurchase.supplier_id == supplier_id).all()
@@ -201,6 +206,7 @@ def register_supplier_routes(app):
                 "purchases": [
                     {
                         "id": p.id, "product": p.product, "quantity": p.quantity, "unit": p.unit,
+                        "unit_price": _money(p.unit_price),
                         "total": _money(p.total), "paid_amount": _money(p.paid_amount),
                         "due_date": _iso(p.due_date), "created_at": _iso(p.created_at),
                     }
@@ -334,6 +340,69 @@ def register_supplier_routes(app):
                 p.due_date = None
             db.commit()
             return {"ok": True, "due_date": _iso(p.due_date)}
+        finally:
+            db.close()
+
+    @app.put("/app/api/suppliers/purchases/{purchase_id}")
+    def web_edit_purchase(
+        purchase_id: int,
+        payload: SupplierPurchaseEditRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Correct a purchase's quantity and/or cost. Recomputes the total,
+        keeps paid_amount within it, and syncs the physical stock + the linked
+        stock movement by the quantity delta so the two never drift apart."""
+        from models import InventoryItem, InventoryMovement
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            p = db.query(SupplierPurchase).filter(
+                SupplierPurchase.id == purchase_id,
+                SupplierPurchase.owner_phone == owner_phone,
+            ).first()
+            if not p:
+                raise HTTPException(status_code=404, detail="Purchase not found.")
+
+            old_qty = p.quantity or 0
+            new_qty = old_qty if payload.quantity is None else payload.quantity
+            if new_qty is not None and new_qty <= 0:
+                raise HTTPException(status_code=400, detail="Quantity must be greater than zero.")
+            if payload.unit_price is not None:
+                p.unit_price = max(0, int(payload.unit_price))
+            p.quantity = new_qty
+
+            # Recompute total from cost × qty; never let paid exceed the new total.
+            p.total = int(round((p.unit_price or 0) * (new_qty or 0)))
+            p.paid_amount = max(0, min(p.paid_amount or 0, p.total))
+
+            # Keep physical stock in step with the corrected quantity.
+            delta = (new_qty or 0) - old_qty
+            if delta:
+                mv = db.query(InventoryMovement).filter(
+                    InventoryMovement.source_type == "SUPPLIER_PURCHASE",
+                    InventoryMovement.source_id == p.id,
+                    InventoryMovement.owner_phone == owner_phone,
+                ).first()
+                if mv:
+                    item = db.query(InventoryItem).filter(InventoryItem.id == mv.item_id).first()
+                    if item:
+                        item.quantity = (item.quantity or 0) + delta
+                        item.updated_at = utcnow()
+                    mv.quantity = new_qty
+            db.commit()
+            balance = max(0, (p.total or 0) - (p.paid_amount or 0))
+            return {
+                "ok": True,
+                "quantity": p.quantity, "unit_price": p.unit_price,
+                "total": p.total, "paid_amount": p.paid_amount, "balance": balance,
+            }
+        except HTTPException:
+            raise
+        except Exception:
+            import traceback; traceback.print_exc()
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Could not update purchase. Please try again.")
         finally:
             db.close()
 

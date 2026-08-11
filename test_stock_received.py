@@ -83,6 +83,28 @@ def test_stock_received_new_product_creates_item_supplier_and_purchase():
     assert sup is not None and n == 1
 
 
+def test_stock_received_captures_due_date():
+    phone, cook = _owner()
+    r = client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Palm Oil", "quantity": 30, "cost_per_unit": 2000,
+        "paid_now": 0, "supplier": "Emeka", "due_date": "2026-10-01",
+    })
+    assert r.status_code == 200, r.text
+    db = SessionLocal()
+    try:
+        sup_id = db.query(Supplier).filter(Supplier.owner_phone == phone, Supplier.name == "emeka").first().id
+    finally:
+        db.close()
+    p = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()["purchases"][0]
+    assert p["due_date"][:10] == "2026-10-01"
+
+    # Bad date is rejected.
+    bad = client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Salt", "quantity": 5, "due_date": "not-a-date",
+    })
+    assert bad.status_code == 400
+
+
 def test_stock_received_existing_product_adds_quantity():
     phone, cook = _owner()
     # Create an existing priced product with opening stock 10.
@@ -209,6 +231,49 @@ def test_edit_purchase_due_date():
     # Clear it.
     r2 = client.put(f"/app/api/suppliers/purchases/{pid}/due-date", cookies=cook, json={"due_date": None})
     assert r2.status_code == 200 and r2.json()["due_date"] is None
+
+
+def test_edit_purchase_quantity_and_cost_syncs_stock():
+    phone, cook = _owner()
+    # Receive 10 @ 1000 = 10000, unpaid.
+    client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Yam", "quantity": 10, "cost_per_unit": 1000, "paid_now": 0, "supplier": "Ibro",
+    })
+    assert _item_qty(phone, "yam") == 10
+    db = SessionLocal()
+    try:
+        sup_id = db.query(Supplier).filter(Supplier.owner_phone == phone, Supplier.name == "ibro").first().id
+    finally:
+        db.close()
+    pid = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()["purchases"][0]["id"]
+
+    # Correct to 15 @ 1200 = 18000; physical stock rises by +5 (10 → 15).
+    r = client.put(f"/app/api/suppliers/purchases/{pid}", cookies=cook, json={"quantity": 15, "unit_price": 1200})
+    assert r.status_code == 200, r.text
+    assert r.json()["total"] == 18000 and r.json()["balance"] == 18000
+    assert _item_qty(phone, "yam") == 15
+
+    d = client.get(f"/app/api/suppliers/{sup_id}", cookies=cook).json()
+    assert d["total_bought"] == 18000 and d["purchases"][0]["quantity"] == 15
+
+    # Zero/negative quantity is rejected.
+    bad = client.put(f"/app/api/suppliers/purchases/{pid}", cookies=cook, json={"quantity": 0})
+    assert bad.status_code == 400
+
+
+def test_edit_purchase_rejects_other_owner():
+    _p, cook = _owner()
+    _p2, cook2 = _owner()
+    client.post("/app/api/inventory/stock-received", cookies=cook2, json={
+        "product": "Gari", "quantity": 4, "supplier": "Theirs",
+    })
+    db = SessionLocal()
+    try:
+        pid = db.query(SupplierPurchase).join(Supplier).filter(Supplier.name == "theirs").first().id
+    finally:
+        db.close()
+    r = client.put(f"/app/api/suppliers/purchases/{pid}", cookies=cook, json={"quantity": 2})
+    assert r.status_code == 404
 
 
 def test_pay_rejects_other_owners_supplier():

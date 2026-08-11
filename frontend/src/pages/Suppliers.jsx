@@ -279,6 +279,9 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   const [ename, setEname]     = useState("");
   const [ephone, setEphone]   = useState("");
   const [saving, setSaving]   = useState(false);
+  const [editPid, setEditPid] = useState(null);   // purchase being edited
+  const [pqty, setPqty]       = useState("");
+  const [pcost, setPcost]     = useState("");
 
   useEffect(() => {
     apiFetch(`suppliers/${supplierId}`).then(setD).catch(e => setErr(e.message));
@@ -312,6 +315,30 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
           x.id === pid ? { ...x, due_date: val ? new Date(val).toISOString() : null } : x),
       }));
     } catch (e) { setErr(e.message); }
+  }
+
+  function startPurchaseEdit(p) {
+    setEditPid(p.id);
+    setPqty(p.quantity != null ? String(p.quantity) : "");
+    setPcost(p.unit_price != null ? String(p.unit_price) : "");
+    setErr("");
+  }
+
+  async function savePurchase(pid) {
+    const qty = pqty === "" ? null : parseAmt(pqty);
+    const cost = pcost === "" ? null : parseAmt(pcost);
+    if (qty != null && qty <= 0) { setErr("Quantity must be greater than zero."); return; }
+    setSaving(true); setErr("");
+    try {
+      const r = await apiFetch(`suppliers/purchases/${pid}`, {}, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: qty, unit_price: cost }),
+      });
+      // Reload so totals/paid/balance + running supplier balance all refresh.
+      const fresh = await apiFetch(`suppliers/${supplierId}`);
+      setD(fresh);
+      setEditPid(null);
+    } catch (e) { setErr(e.message); } finally { setSaving(false); }
   }
 
   return (
@@ -367,7 +394,25 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                           <span>{(p.product || "—")}{p.quantity ? ` · ${p.quantity}${p.unit || ""}` : ""}<br /><span className="td-muted" style={{ fontSize: 11 }}>{dateStr(p.created_at)}</span></span>
                           <span style={{ textAlign: "right" }}>{nairaFull(p.total)}<br /><span className="td-muted" style={{ fontSize: 11 }}>paid {nairaFull(p.paid_amount)}</span></span>
                         </div>
-                        {owed > 0 && (
+                        {editPid === p.id ? (
+                          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                            <div className="form-group" style={{ margin: 0 }}>
+                              <label className="form-label" style={{ fontSize: 11 }}>Qty{p.unit ? ` (${p.unit})` : ""}</label>
+                              <input inputMode="numeric" value={pqty} onChange={e => setPqty(e.target.value)}
+                                style={{ width: 90, padding: "3px 6px", fontSize: 12 }} />
+                            </div>
+                            <div className="form-group" style={{ margin: 0 }}>
+                              <label className="form-label" style={{ fontSize: 11 }}>Cost/unit (₦)</label>
+                              <input inputMode="numeric" value={pcost} onChange={e => setPcost(e.target.value)}
+                                style={{ width: 110, padding: "3px 6px", fontSize: 12 }} />
+                            </div>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditPid(null)}>Cancel</button>
+                            <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => savePurchase(p.id)}>{saving ? "…" : "Save"}</button>
+                          </div>
+                        ) : (
+                          <button type="button" className="link-btn" style={{ fontSize: 12, marginTop: 4 }} onClick={() => startPurchaseEdit(p)}>Edit qty / cost</button>
+                        )}
+                        {owed > 0 && editPid !== p.id && (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 12 }}>
                             <span className="td-muted">Due date:</span>
                             <input type="date" value={p.due_date ? p.due_date.slice(0, 10) : ""}

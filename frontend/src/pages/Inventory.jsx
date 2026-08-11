@@ -544,6 +544,8 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
 // ── Adjust stock modal (only for physical stock items) ───────────────────────
 function AdjustModal({ item, onClose, onSaved }) {
   const [delta, setDelta] = useState("");
+  const [supplier, setSupplier] = useState("");
+  const [cost, setCost] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -553,10 +555,23 @@ function AdjustModal({ item, onClose, onSaved }) {
     if (!qty || qty <= 0) { setErr("Enter a quantity greater than 0."); return; }
     setSaving(true); setErr("");
     try {
-      await apiPost(`inventory/${item.id}/adjust`, {
-        qty_delta: direction === "in" ? qty : -qty,
-        note: note.trim() || null,
-      });
+      if (direction === "in") {
+        // Adding stock is receiving goods: record against a supplier (defaults
+        // to "Others" server-side) so it shows in the supplier ledger, and add
+        // to physical stock — the same path as Quick Record → Stock Received.
+        await apiPost("inventory/stock-received", {
+          item_id: item.id,
+          quantity: qty,
+          cost_per_unit: cost ? parseAmt(cost) : null,
+          supplier: supplier.trim() || null,
+          note: note.trim() || null,
+        });
+      } else {
+        await apiPost(`inventory/${item.id}/adjust`, {
+          qty_delta: -qty,
+          note: note.trim() || null,
+        });
+      }
       onSaved();
       onClose();
     } catch (e) { setErr(e.message); }
@@ -576,6 +591,14 @@ function AdjustModal({ item, onClose, onSaved }) {
             onChange={v => setDelta(v)}
             placeholder="How many?"
           />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Supplier <span className="text-subtle">(when adding)</span></label>
+          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Leave blank for “Others”" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Cost per unit (₦) <span className="text-subtle">(when adding)</span></label>
+          <input inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} placeholder="0" />
         </div>
         <div className="form-group">
           <label className="form-label">Note (optional)</label>
