@@ -92,7 +92,9 @@ def register_supplier_routes(app):
                 total_paid = paid_via_purchase + paid_via_payment
                 balance = max(0, total_bought - total_paid)
 
-                now = datetime.now(timezone.utc)
+                # Stored due_date values are naive UTC (from strptime), so compare
+                # against a naive now — mixing naive/aware raises TypeError → 500.
+                now = utcnow()
                 due_dates = [
                     p.due_date for p in purchases
                     if p.due_date and (p.total or 0) > (p.paid_amount or 0)

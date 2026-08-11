@@ -105,6 +105,21 @@ def test_stock_received_captures_due_date():
     assert bad.status_code == 400
 
 
+def test_supplier_list_with_due_date_does_not_500():
+    """A purchase with a due date + outstanding balance must not crash the
+    My Supply Chain list on the naive/aware datetime comparison."""
+    phone, cook = _owner()
+    # Overdue credit purchase (past due date, still owing).
+    client.post("/app/api/inventory/stock-received", cookies=cook, json={
+        "product": "Yam", "quantity": 40, "cost_per_unit": 500,
+        "paid_now": 0, "supplier": "Ibrahim", "due_date": "2020-01-01",
+    })
+    r = client.get("/app/api/suppliers", cookies=cook)
+    assert r.status_code == 200, r.text
+    sup = next(s for s in r.json()["suppliers"] if s["name"] == "ibrahim")
+    assert sup["has_overdue"] is True and sup["balance"] == 20000
+
+
 def test_stock_received_existing_product_adds_quantity():
     phone, cook = _owner()
     # Create an existing priced product with opening stock 10.
