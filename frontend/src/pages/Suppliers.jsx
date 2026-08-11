@@ -6,7 +6,7 @@ import { nairaFull, dateStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
-import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { Search, Send, CheckCircle, Clock, XCircle, Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, Star } from "lucide-react";
 
 // ── Star rating component ─────────────────────────────────────────────────────
 function StarRating({ value, onChange, size = 22 }) {
@@ -124,8 +124,10 @@ function MySupplyChain() {
           rowClass={r => r.has_overdue ? "low-stock" : ""}
           columns={[
             { key: "name",         label: "Supplier",        render: r => (
-              <button type="button" className="link-btn td-strong" style={{ textAlign: "left" }} onClick={() => setDetailId(r.id)}>
-                {(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}
+              <button type="button" className="supplier-name-chip" onClick={() => setDetailId(r.id)}
+                title="Click to view, edit & set due dates">
+                <span>{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</span>
+                <ChevronRight size={14} className="supplier-name-chip__chev" />
               </button>
             ), sortKey: "name" },
             { key: "purchases",    label: "Purchases",       render: r => r.purchases, sortKey: "purchases" },

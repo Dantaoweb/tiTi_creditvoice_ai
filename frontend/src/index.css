@@ -3668,6 +3668,38 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 }
 .receipt-list-row:hover { background: var(--surface, #f8fafc); }
 
+/* Supplier name: a card that lifts on hover so it's clearly clickable
+   (clicking it opens the detail popup where name/qty/cost/due-date are edited). */
+.supplier-name-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, color .12s ease;
+}
+.supplier-name-chip:hover,
+.supplier-name-chip:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--brand);
+  color: var(--brand);
+  outline: none;
+}
+.supplier-name-chip__chev { opacity: .45; transition: opacity .12s ease, transform .12s ease; }
+.supplier-name-chip:hover .supplier-name-chip__chev,
+.supplier-name-chip:focus-visible .supplier-name-chip__chev { opacity: 1; transform: translateX(2px); }
+@media (prefers-color-scheme: dark) {
+  .supplier-name-chip { background: var(--surface-2, #122459); }
+}
+
 /* Inventory: selling-below-cost warning */
 .inv-below-cost-warning {
   margin: 2px 0 8px;
