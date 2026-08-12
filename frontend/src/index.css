@@ -3702,6 +3702,51 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .name-chip:hover .name-chip__chev,
 .name-chip:focus-visible .name-chip__chev { opacity: 1; transform: translateX(2px); }
 
+/* App-wide subscription notice (grace / expired) */
+.sub-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  border: 1px solid;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.sub-banner-icon { flex-shrink: 0; }
+.sub-banner-text { flex: 1; min-width: 0; }
+.sub-banner-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+  color: #fff;
+}
+.sub-banner-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+.sub-banner--grace   { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.sub-banner--grace   .sub-banner-btn   { background: #b45309; }
+.sub-banner--grace   .sub-banner-close { color: #92400e; }
+.sub-banner--expired { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+.sub-banner--expired .sub-banner-btn   { background: #dc2626; }
+.sub-banner--expired .sub-banner-close { color: #991b1b; }
+@media (max-width: 480px) {
+  .sub-banner { flex-wrap: wrap; }
+  .sub-banner-text { flex: 1 1 100%; order: 3; }
+}
+
 /* Inventory: selling-below-cost warning */
 .inv-below-cost-warning {
   margin: 2px 0 8px;

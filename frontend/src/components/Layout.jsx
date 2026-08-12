@@ -16,6 +16,7 @@ import NotificationBell from "./NotificationBell";
 import WelcomeGuide from "./WelcomeGuide";
 import InstallPrompt from "./InstallPrompt";
 import InstallMenuItem from "./InstallMenuItem";
+import SubscriptionBanner from "./SubscriptionBanner";
 
 function buildNav(L, group) {
   // Businesses that don't sell products (savings/ajo, dues collection) get the
@@ -334,6 +335,7 @@ export default function Layout() {
 
         <main className="page-content">
           <InstallPrompt />
+          <SubscriptionBanner />
           <Outlet />
         </main>
       </div>

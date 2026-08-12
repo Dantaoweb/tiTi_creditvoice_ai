@@ -333,6 +333,7 @@ def register_auth_routes(app):
                 "is_app_admin": bool(is_app_admin(user.phone, db)),
                 "plan": sub["plan"],
                 "subscription_plan": sub["plan"],
+                "subscription_status": sub["status"],   # ACTIVE | TRIAL | GRACE | EXPIRED
                 "subscription_expires_at": sub["expires_at"].isoformat() if sub["expires_at"] else None,
                 "examples": examples,
                 "business_category": user.business_category,

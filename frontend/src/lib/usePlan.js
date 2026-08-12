@@ -24,12 +24,13 @@ export function usePlan() {
   const { user } = useAuth();
   const raw  = (user?.subscription_plan || "BASIC").toUpperCase();
 
-  // Treat as BASIC if subscription has expired client-side
-  const expired = user?.subscription_expires_at
-    ? new Date(user.subscription_expires_at) < new Date()
-    : false;
-
-  const plan = (ORDER[raw] && !expired) ? raw : "BASIC";
+  // Trust the backend-resolved plan. get_business_subscription is the authority:
+  // during the grace window it KEEPS the paid plan (e.g. "PRO") so paying users
+  // aren't cut off early, and only AFTER grace does it downgrade to BASIC and
+  // persist it. Re-deriving expiry on the client (a past expires_at during
+  // grace) wrongly dropped paying users to BASIC. Expiry is communicated to the
+  // user by the SubscriptionBanner (grace = renew soon, expired = upgrade).
+  const plan = ORDER[raw] ? raw : "BASIC";
   const tier = ORDER[plan];
 
   function allows(feature) {
