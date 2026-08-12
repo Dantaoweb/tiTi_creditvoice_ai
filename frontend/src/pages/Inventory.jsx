@@ -13,6 +13,26 @@ import StaleDataBanner from "../components/StaleDataBanner";
 import { LimitBar } from "../components/UpgradeGate";
 import { usePlan } from "../lib/usePlan";
 
+// Error box that turns a plan-limit message into an actionable upsell — the
+// same text plus a clickable "Upgrade to Go" button when the Basic cap is hit.
+function ErrorNote({ msg }) {
+  if (!msg) return null;
+  const isLimit = /Basic plan limit|Upgrade to Go/i.test(msg);
+  return (
+    <div className="modal-error">
+      {msg}
+      {isLimit && (
+        <div style={{ marginTop: 8 }}>
+          <button type="button" className="btn btn-primary btn-sm"
+            onClick={() => { window.location.href = "/app/upgrade"; }}>
+            Upgrade to Go →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Modal wrapper ────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
   return (
@@ -154,7 +174,7 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
                 </div>
               ))
             )}
-            {err && <div className="modal-error">{err}</div>}
+            <ErrorNote msg={err} />
           </>
         )}
       </div>
@@ -225,7 +245,7 @@ function BulkAddModal({ ownerPhone, onClose, onSaved }) {
                 style={{ resize: "vertical", fontFamily: "inherit" }}
               />
             </div>
-            {err && <div className="modal-error">{err}</div>}
+            <ErrorNote msg={err} />
           </>
         )}
       </div>
@@ -393,7 +413,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
           </div>
         )}
 
-        {err && <div className="modal-error">{err}</div>}
+        <ErrorNote msg={err} />
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
@@ -535,7 +555,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
             </div>
           </div>
         )}
-        {err && <div className="modal-error">{err}</div>}
+        <ErrorNote msg={err} />
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
@@ -637,7 +657,7 @@ function AdjustModal({ item, onClose, onSaved }) {
           <label className="form-label">Note (optional)</label>
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. New delivery, damage, etc." />
         </div>
-        {err && <div className="modal-error">{err}</div>}
+        <ErrorNote msg={err} />
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
@@ -672,7 +692,7 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
   return (
     <Modal title={title} onClose={onClose}>
       <div className="modal-body">
-        {err && <div className="modal-error">{err}</div>}
+        <ErrorNote msg={err} />
         {item.is_service && <div style={{ marginBottom: 10 }}><span className="svc-chip">service</span></div>}
         {attrLine && <div className="td-attr-line" style={{ marginBottom: 10 }}>{attrLine}</div>}
 
