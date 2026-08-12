@@ -219,9 +219,13 @@ function SaleForm({ ownerPhone, onSuccess }) {
   const [paid, setPaid]         = useState("");
   const [customer, setCustomer] = useState(null);
   const [custQuery, setCustQuery] = useState("");   // typed-but-unselected search text
+  const [settleDebt, setSettleDebt] = useState(true);   // fold prior debt into this sale
   const [branchId, setBranchId] = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
+
+  const prevDebt = (customer && customer.balance > 0) ? customer.balance : 0;
+  const debtDue  = settleDebt ? prevDebt : 0;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -241,6 +245,8 @@ function SaleForm({ ownerPhone, onSuccess }) {
       const qtyNum = Math.max(1, parseAmt(qty) || 1);
       const total  = parseAmt(amount);
       const paidNum = customer ? Math.min(parseAmt(paid) || 0, total) : total;
+      // Surplus beyond the sale clears the customer's prior debt (up to what's owed).
+      const debtPaid = customer ? Math.min(Math.max(0, (parseAmt(paid) || 0) - total), debtDue) : 0;
       const body   = {
         owner_phone:    ownerPhone,
         customer_id:    customer?.id || null,
@@ -248,13 +254,14 @@ function SaleForm({ ownerPhone, onSuccess }) {
         customer_phone: (customer && !customer.id) ? (customer.phone?.trim() || null) : null,
         items:          [{ name: product.trim(), qty: qtyNum, unit: unit || null, unit_price: Math.round(total / qtyNum) }],
         payment_amount: paidNum,
+        debt_payment:   debtPaid,
         branch_id:      branchId || null,
       };
       const result = await apiPost("pos/save", body);
       const bal = total - paidNum;
       onSuccess(
         customer
-          ? `Sale of ${nairaFull(total)} to ${customer.name} — paid ${nairaFull(paidNum)}${bal > 0 ? `, balance ${nairaFull(bal)}` : " (fully paid)"}.`
+          ? `Sale of ${nairaFull(total)} to ${customer.name} — paid ${nairaFull(paidNum)}${bal > 0 ? `, balance ${nairaFull(bal)}` : " (fully paid)"}${debtPaid > 0 ? ` · cleared ${nairaFull(debtPaid)} old debt` : ""}.`
           : `Cash sale of ${nairaFull(total)} recorded.`,
         result?.receipt_id ? `/pos/receipt/${result.receipt_id}` : null,
       );
@@ -264,12 +271,14 @@ function SaleForm({ ownerPhone, onSuccess }) {
         const qtyNum2 = Math.max(1, parseAmt(qty) || 1);
         const total2  = parseAmt(amount);
         const paidNum2 = customer ? Math.min(parseAmt(paid) || 0, total2) : total2;
+        const debtPaid2 = customer ? Math.min(Math.max(0, (parseAmt(paid) || 0) - total2), debtDue) : 0;
         enqueue("pos/save", {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
           customer_name: (customer && !customer.id) ? customer.name : null,
           customer_phone: (customer && !customer.id) ? (customer.phone?.trim() || null) : null,
           items: [{ name: product.trim(), qty: qtyNum2, unit: unit || null, unit_price: Math.round(total2 / qtyNum2) }],
           payment_amount: paidNum2,
+          debt_payment: debtPaid2,
           branch_id: branchId || null,
         }, `Sale ${nairaFull(total2)}${customer ? ` — ${customer.name}` : " (cash)"}`);
         onSuccess(`No internet — sale saved offline. Will sync automatically when you reconnect.`);
@@ -310,7 +319,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
           ownerPhone={ownerPhone}
           placeholder={`Search ${L.customerName.toLowerCase()}…`}
           allowNew
-          onSelect={setCustomer}
+          onSelect={c => { setCustomer(c); setSettleDebt(true); }}
           value={customer}
           onQueryChange={setCustQuery}
         />
@@ -321,14 +330,30 @@ function SaleForm({ ownerPhone, onSuccess }) {
           <MoneyInput value={paid} onChange={v => setPaid(v)} placeholder="0" />
         </div>
       )}
+      {prevDebt > 0 && (
+        <label className="form-group" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", marginBottom: 8 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={settleDebt} onChange={e => setSettleDebt(e.target.checked)} style={{ width: "auto" }} />
+            Settle previous debt
+          </span>
+          <span style={{ fontWeight: 600, color: settleDebt ? "var(--rose)" : "var(--muted)" }}>+{nairaFull(prevDebt)}</span>
+        </label>
+      )}
       <BranchSelector ownerPhone={ownerPhone} value={branchId} onChange={setBranchId} />
       <div className="qf-type-hint">
         {customer
           ? (() => {
               const t = parseAmt(amount), p = Math.min(parseAmt(paid) || 0, t), b = t - p;
-              return b > 0
+              const dPaid = Math.min(Math.max(0, (parseAmt(paid) || 0) - t), debtDue);
+              const base = b > 0
                 ? `${p > 0 ? "Part-paid" : "Credit"} sale → ${customer.name} will owe ${nairaFull(b)}`
-                : `Paid in full → no debt for ${customer.name}`;
+                : `Paid in full → no new debt`;
+              if (debtDue > 0) {
+                return dPaid >= debtDue
+                  ? `${base} · clears ${nairaFull(debtDue)} old debt (due ${nairaFull(t + debtDue)})`
+                  : `${base} · amount due ${nairaFull(t + debtDue)} incl. ${nairaFull(debtDue)} old debt`;
+              }
+              return base;
             })()
           : "Cash sale → no customer debt"}
       </div>
