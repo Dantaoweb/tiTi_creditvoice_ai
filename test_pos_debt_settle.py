@@ -81,6 +81,11 @@ def test_pos_settles_prior_debt_at_checkout():
     assert r2.status_code == 200, r2.text
     assert _balance(cid) == 0
 
+    # The sale receipt must reflect the debt cleared in the same checkout.
+    rec = client.get(f"/app/api/pos/receipt/{r2.json()['receipt_id']}", cookies=cook).json()
+    assert rec["prior_debt_paid"] == 1000
+    assert rec["grand_total_collected"] == 1500   # 500 goods + 1000 old debt
+
 
 def test_pos_debt_payment_never_overpays():
     phone, cook = _owner()

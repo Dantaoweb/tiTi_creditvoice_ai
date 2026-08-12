@@ -56,6 +56,7 @@ export default function Receipt() {
   const isPayment = receipt.type === "PAY";
   const paid      = receipt.paid ?? receipt.total;
   const owed      = receipt.balance_owed ?? 0;
+  const priorDebt = receipt.prior_debt_paid ?? 0;   // old debt cleared in this checkout
   const typeLabel = isPayment ? "Payment" : (isCredit ? "Credit Sale" : "Cash Sale");
 
   // ── Invoice mode ────────────────────────────────────────────────────────────
@@ -109,6 +110,10 @@ export default function Receipt() {
       L.push("--------------------");
       L.push(`Total: ${nairaFull(receipt.total)}`);
       if (owed > 0) L.push(`${isInvoice ? "Amount due" : "Balance"}: ${nairaFull(owed)}`);
+      if (priorDebt > 0) {
+        L.push(`Previous debt settled: ${nairaFull(priorDebt)}`);
+        L.push(`Total received: ${nairaFull(receipt.grand_total_collected ?? (paid + priorDebt))}`);
+      }
     }
     L.push("--------------------");
     L.push(isInvoice ? invoiceFooter : receiptFooter);
@@ -278,6 +283,18 @@ export default function Receipt() {
                 <tr style={{ fontWeight: 700, color: owed > 0 ? "#b91c1c" : "#166534" }}>
                   <td colSpan={3}>Balance owed</td>
                   <td className="receipt-right">{nairaFull(owed)}</td>
+                </tr>
+              </>
+            )}
+            {priorDebt > 0 && (
+              <>
+                <tr>
+                  <td colSpan={3}>Previous debt settled</td>
+                  <td className="receipt-right">{nairaFull(priorDebt)}</td>
+                </tr>
+                <tr className="receipt-total-row">
+                  <td colSpan={3}>Total received</td>
+                  <td className="receipt-right">{nairaFull(receipt.grand_total_collected ?? (paid + priorDebt))}</td>
                 </tr>
               </>
             )}

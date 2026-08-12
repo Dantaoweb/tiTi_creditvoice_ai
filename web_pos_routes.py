@@ -180,11 +180,14 @@ def register_pos_routes(app):
                     owed_now = max(0, int(cust.balance or 0))   # never overpay the debt
                     amt = min(int(payload.debt_payment), owed_now)
                     if amt > 0:
+                        # Tag the PAY with the sale's id so the sale receipt can show
+                        # the prior debt that was cleared in the same checkout.
+                        sale_tx_id = result.get("receipt_id")
                         db.add(Transaction(
                             customer_id=cust.id,
                             type="PAY",
                             amount=amt,
-                            product="Debt settled at checkout",
+                            product=f"Prior debt — POS #{sale_tx_id}",
                             recorded_by_id=session["user_id"],
                             message_id=f"web-pos-debt-{_uuid.uuid4()}",
                             branch_id=eff_branch,

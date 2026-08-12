@@ -283,6 +283,19 @@ def get_pos_receipt(db, tx_id, user=None):
 
     balance_owed = max(0, tx.amount - paid_amount) if customer else 0
 
+    # A prior debt cleared in the same checkout (POS "Settle previous debt"): its
+    # PAY is tagged with this sale's id. Surface it so the receipt shows the sale
+    # total, the old debt settled, and the grand total collected.
+    prior_debt_paid = 0
+    if customer:
+        _debt_pay = db.query(Transaction).filter(
+            Transaction.product == f"Prior debt — POS #{tx_id}",
+            Transaction.customer_id == tx.customer_id,
+            Transaction.type == "PAY",
+        ).first()
+        if _debt_pay:
+            prior_debt_paid = int(_debt_pay.amount or 0)
+
     # Business-specific receipt config
     from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG, inventory_fields_for_user
     config = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
@@ -310,6 +323,8 @@ def get_pos_receipt(db, tx_id, user=None):
         "total": tx.amount,
         "paid": paid_amount,
         "balance_owed": balance_owed,
+        "prior_debt_paid": prior_debt_paid,
+        "grand_total_collected": paid_amount + prior_debt_paid,
         "due_date": tx.due_date.isoformat() if tx.due_date else None,
         "service_date": tx.service_date.isoformat() if tx.service_date else None,
         "created_at": tx.created_at.isoformat() if tx.created_at else None,
