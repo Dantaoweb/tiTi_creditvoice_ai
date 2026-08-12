@@ -2613,6 +2613,14 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 }
 .qf-sub-tab:hover:not(.active) { color: var(--ink); }
 
+/* On narrow phones drop the decorative icon and tighten spacing so all three
+   tab labels fit in full rather than truncating ("Record Paymen…"). */
+@media (max-width: 480px) {
+  .qf-sub-tabs { padding: 0 8px; }
+  .qf-sub-tab { padding: 10px 4px; font-size: 12px; gap: 4px; }
+  .qf-tab-icon { display: none; }
+}
+
 /* ── Quick Form success banner ───────────────────────────────────────── */
 .qf-success {
   display: flex;
@@ -2649,25 +2657,22 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   font-weight: 600;
 }
 
-/* Proportional 2-column rows — mobile only */
 .qf-row {
   display: grid;
   gap: 8px;
 }
 .qf-row .form-group { min-width: 0; }
 
-/* Product|Qty  — product wide, qty narrow */
-.qf-row--lg-sm { grid-template-columns: 1.8fr 1fr; }
-/* Unit|Amount  — unit narrow, amount wide */
-.qf-row--sm-lg { grid-template-columns: 1fr 1.8fr; }
-/* Amount|Note  — amount narrow, note wide */
-.qf-row--sm-xl { grid-template-columns: 1fr 2fr; }
+/* Single column on phones so long labels / placeholders never clip; pair into
+   two proportional columns only when there's room (≥ 560px). */
+.qf-row--lg-sm,
+.qf-row--sm-lg,
+.qf-row--sm-xl { grid-template-columns: 1fr; }
 
-/* On desktop collapse back to single column */
-@media (min-width: 600px) {
-  .qf-row--lg-sm,
-  .qf-row--sm-lg,
-  .qf-row--sm-xl { grid-template-columns: 1fr; }
+@media (min-width: 560px) {
+  .qf-row--lg-sm { grid-template-columns: 1.8fr 1fr; }  /* product wide, qty narrow */
+  .qf-row--sm-lg { grid-template-columns: 1fr 1.8fr; }  /* unit narrow, amount wide */
+  .qf-row--sm-xl { grid-template-columns: 1fr 2fr; }
 }
 
 /* Submit button — centered on mobile, full-width on desktop */

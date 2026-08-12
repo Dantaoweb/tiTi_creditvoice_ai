@@ -504,7 +504,7 @@ function StockForm({ ownerPhone, onSuccess }) {
       <div className="qf-row qf-row--sm-lg">
         <div className="form-group">
           <label className="form-label">Supplier</label>
-          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Leave blank for “Others”" />
+          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Others (default)" />
         </div>
         <div className="form-group">
           <label className="form-label">Paid now (₦)</label>
@@ -560,7 +560,7 @@ function QuickFormPanel({ ownerPhone }) {
             className={`qf-sub-tab${formTab === key ? " active" : ""}`}
             onClick={() => { setFormTab(key); setSuccess(null); }}
           >
-            <Icon size={14} />
+            <span className="qf-tab-icon" style={{ display: "inline-flex" }}><Icon size={14} /></span>
             {label}
           </button>
         ))}
