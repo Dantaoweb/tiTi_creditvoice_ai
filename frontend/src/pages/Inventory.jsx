@@ -547,6 +547,8 @@ function AdjustModal({ item, onClose, onSaved }) {
   const [delta, setDelta] = useState("");
   const [supplier, setSupplier] = useState("");
   const [cost, setCost] = useState("");
+  const [paidNow, setPaidNow] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -565,6 +567,8 @@ function AdjustModal({ item, onClose, onSaved }) {
           quantity: qty,
           cost_per_unit: cost ? parseAmt(cost) : null,
           supplier: supplier.trim() || null,
+          paid_now: paidNow !== "" ? parseAmt(paidNow) : null,   // blank → fully paid
+          due_date: dueDate || null,
           note: note.trim() || null,
         });
       } else {
@@ -578,6 +582,12 @@ function AdjustModal({ item, onClose, onSaved }) {
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   }
+
+  const _qty  = parseAmt(delta) || 0;
+  const _cost = parseAmt(cost) || 0;
+  const totalCost = Math.round(_qty * _cost);
+  const _paid = paidNow === "" ? totalCost : (parseAmt(paidNow) || 0);
+  const oweBal = Math.max(0, totalCost - _paid);
 
   return (
     <Modal title={`Adjust Stock: ${item.name}`} onClose={onClose}>
@@ -595,12 +605,29 @@ function AdjustModal({ item, onClose, onSaved }) {
         </div>
         <div className="form-group">
           <label className="form-label">Supplier <span className="text-subtle">(when adding)</span></label>
-          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Leave blank for “Others”" />
+          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Others (default)" />
         </div>
         <div className="form-group">
           <label className="form-label">Cost per unit (₦) <span className="text-subtle">(when adding)</span></label>
           <input inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} placeholder="0" />
         </div>
+        <div className="form-group">
+          <label className="form-label">Paid now (₦) <span className="text-subtle">(when adding)</span></label>
+          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(e.target.value)} placeholder="full amount" />
+          {totalCost > 0 && (
+            <span className="form-hint">
+              {oweBal > 0
+                ? `Total ₦${totalCost.toLocaleString()} — you'll owe ${supplier.trim() || "the supplier"} ₦${oweBal.toLocaleString()}`
+                : `Total ₦${totalCost.toLocaleString()} — paid in full`}
+            </span>
+          )}
+        </div>
+        {oweBal > 0 && (
+          <div className="form-group">
+            <label className="form-label">Payment due <span className="text-subtle">(if owing)</span></label>
+            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+          </div>
+        )}
         <div className="form-group">
           <label className="form-label">Note (optional)</label>
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. New delivery, damage, etc." />
