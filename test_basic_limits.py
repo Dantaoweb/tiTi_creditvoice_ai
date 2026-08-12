@@ -150,3 +150,44 @@ def test_bulk_add_caps_active_products():
         assert active == 5
     finally:
         db.close()
+
+
+def test_basic_can_swap_which_items_are_priced():
+    """A Basic service business that filled its 5 priced slots can deactivate one
+    (clear its price → draft) to free a slot and price a different item."""
+    phone, uid, cook = _owner()  # Basic, 5 priced max
+    ids = []
+    for i in range(5):
+        r = client.post("/app/api/inventory", cookies=cook, json={
+            "owner_phone": phone, "name": f"svc{i}", "selling_price": 1000, "is_service": True})
+        assert r.status_code == 200, r.text
+        ids.append(r.json()["id"])
+
+    # A 6th service can be added as an unpriced draft.
+    draft_id = client.post("/app/api/inventory", cookies=cook, json={
+        "owner_phone": phone, "name": "svc6", "is_service": True}).json()["id"]
+
+    # Pricing it now is blocked — 5 priced already.
+    assert client.put(f"/app/api/inventory/{draft_id}", cookies=cook,
+                      json={"selling_price": 1500}).status_code == 403
+
+    # Remove the price from one of the five (0 = deactivate → draft) to free a slot.
+    assert client.put(f"/app/api/inventory/{ids[0]}", cookies=cook, json={"selling_price": 0}).status_code == 200
+    db = SessionLocal()
+    try:
+        assert db.query(InventoryItem).filter(InventoryItem.id == ids[0]).first().selling_price is None
+    finally:
+        db.close()
+
+    # Now the 6th can be priced.
+    ok = client.put(f"/app/api/inventory/{draft_id}", cookies=cook, json={"selling_price": 1500})
+    assert ok.status_code == 200 and ok.json()["selling_price"] == 1500
+
+    # Still exactly 5 priced items (swapped, not added).
+    db = SessionLocal()
+    try:
+        active = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == phone, InventoryItem.selling_price != None).count()
+        assert active == 5
+    finally:
+        db.close()

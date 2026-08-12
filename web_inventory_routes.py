@@ -372,15 +372,21 @@ def register_inventory_routes(app):
             if payload.cost_price is not None:
                 item.cost_price = payload.cost_price
             if payload.selling_price is not None:
-                # Only enforce limit when activating a previously draft item
-                if item.selling_price is None:
-                    from subscriptions import get_business_subscription
-                    owner = db.query(User).filter(User.phone == owner_phone).first()
-                    sub = get_business_subscription(db, owner) if owner else None
-                    err = _check_inventory_limit(db, owner_phone, sub)
-                    if err:
-                        raise HTTPException(status_code=403, detail=err)
-                item.selling_price = payload.selling_price
+                if payload.selling_price == 0:
+                    # Explicit 0 = remove the price → unlimited draft. This frees an
+                    # active slot on Basic so a service business can choose which of
+                    # its items stay priced (swap without upgrading).
+                    item.selling_price = None
+                else:
+                    # Only enforce the cap when activating a previously-draft item.
+                    if item.selling_price is None:
+                        from subscriptions import get_business_subscription
+                        owner = db.query(User).filter(User.phone == owner_phone).first()
+                        sub = get_business_subscription(db, owner) if owner else None
+                        err = _check_inventory_limit(db, owner_phone, sub)
+                        if err:
+                            raise HTTPException(status_code=403, detail=err)
+                    item.selling_price = payload.selling_price
             if payload.low_stock_alert is not None:
                 item.low_stock_alert = payload.low_stock_alert
             if payload.is_available is not None:

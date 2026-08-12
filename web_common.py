@@ -169,9 +169,10 @@ def _check_inventory_limit(db, owner_phone: str, subscription) -> "str | None":
     count = _active_inventory_count(db, owner_phone)
     if count >= limit:
         return (
-            f"You have reached the Basic plan limit of {limit} active products. "
-            f"Draft items (no price set) are unlimited. "
-            f"Upgrade to Go to add unlimited active products."
+            f"You have reached the Basic plan limit of {limit} priced items. "
+            f"To price a different item, remove the price from one you've already "
+            f"priced (it stays as an unlimited draft). Upgrade to Go for unlimited "
+            f"priced items."
         )
     return None
 

@@ -433,7 +433,9 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
         name: form.name.trim() || null,
         unit: form.unit.trim() || null,
         cost_price: (!isService && form.cost_price !== "") ? parseAmt(form.cost_price) : null,
-        selling_price: form.selling_price !== "" ? parseAmt(form.selling_price) : null,
+        // Empty price = remove it (0 tells the backend to deactivate → draft),
+        // which frees a Basic active slot so you can price a different item.
+        selling_price: form.selling_price !== "" ? parseAmt(form.selling_price) : 0,
         low_stock_alert: (!isService && form.low_stock_alert !== "") ? parseAmt(form.low_stock_alert) : null,
         is_available: form.is_available,
         retail_unit: form.retail_unit.trim() || null,
@@ -474,6 +476,9 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
           <div className="form-group">
             <label className="form-label">{isService ? "Price (₦)" : "Selling price (₦)"}</label>
             <MoneyInput value={form.selling_price} onChange={v => set("selling_price", v)} />
+            {isService && (
+              <span className="form-hint">Clear the price to keep it as a draft — unpriced items are unlimited and don't count toward the Basic limit.</span>
+            )}
           </div>
           {!isService && (
             <div className="form-group">
