@@ -35,7 +35,11 @@ def register_dashboard_routes(app):
     # ── Dashboard ────────────────────────────────────────────────────────
     @app.get("/app/api/dashboard")
     def web_dashboard(
-        period: Optional[str] = Query(default="TODAY"),
+        # Default to all-time (None), like every other period endpoint. The web
+        # client sends "" for All Time, which apiFetch drops — so an absent
+        # period MUST mean all-time, not today (a "TODAY" default made All Time
+        # silently show today's figures).
+        period: Optional[str] = Query(default=None),
         branch_id: Optional[int] = Query(default=None),
         session: dict = Depends(require_web_auth),
     ):
