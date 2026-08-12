@@ -258,6 +258,7 @@ export default function POS() {
   const [customer, setCustomer] = useState(null);
   const [custQuery, setCustQuery] = useState("");   // typed-but-unselected search text
   const [payment, setPayment] = useState("");
+  const [settleDebt, setSettleDebt] = useState(true);   // fold prior debt into checkout
   const [dueDate, setDueDate] = useState("");
   const [serviceDate, setServiceDate] = useState("");
   const [showDelivery, setShowDelivery] = useState(false);
@@ -286,10 +287,15 @@ export default function POS() {
       .catch(() => {});
   }, [isOwner]);
 
-  const total  = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
-  const paid   = Math.min(parseAmt(payment), total);
-  const change = Math.max(0, parseAmt(payment) - total);
-  const owed   = customer ? total - paid : 0;
+  const total    = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
+  const prevDebt = (customer && customer.balance > 0) ? customer.balance : 0;
+  const debtDue  = settleDebt ? prevDebt : 0;      // debt folded into this checkout
+  const amountDue = total + debtDue;
+  const payNum   = parseAmt(payment);
+  const paid     = Math.min(payNum, total);                             // sale portion
+  const debtPaid = Math.min(Math.max(0, payNum - total), debtDue);      // toward prior debt
+  const change   = Math.max(0, payNum - amountDue);
+  const owed     = customer ? total - paid : 0;                         // new credit on this sale
   const showCredit = customer && owed > 0;
 
   // Scroll the credit section into view the first time it appears
@@ -384,6 +390,7 @@ export default function POS() {
         fraction:   it.fraction || 1.0,
       })),
       payment_amount: paid,
+      debt_payment: debtPaid,
       branch_id: branchId,
       due_date: (customer && owed > 0 && dueDate) ? dueDate : null,
       service_date: serviceDate || null,
@@ -538,7 +545,7 @@ export default function POS() {
             <CustomerSearch
               ownerPhone={ownerPhone}
               customer={customer}
-              onSelect={setCustomer}
+              onSelect={c => { setCustomer(c); setSettleDebt(true); }}
               onClear={() => setCustomer(null)}
               onQueryChange={setCustQuery}
             />
@@ -556,6 +563,26 @@ export default function POS() {
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, fontStyle: "italic" }}>
                 {nairaInWords(total)}
               </div>
+            )}
+            {prevDebt > 0 && (
+              <>
+                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10, fontSize: 13, cursor: "pointer" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="checkbox" checked={settleDebt}
+                      onChange={e => setSettleDebt(e.target.checked)} style={{ width: "auto" }} />
+                    Settle previous debt
+                  </span>
+                  <span style={{ fontWeight: 600, color: settleDebt ? "var(--rose)" : "var(--muted)" }}>
+                    +{nairaFull(prevDebt)}
+                  </span>
+                </label>
+                {settleDebt && (
+                  <div className="pos-total-row" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                    <span>Amount due</span>
+                    <span>{nairaFull(amountDue)}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -641,7 +668,7 @@ export default function POS() {
             onClick={handleSave}
             disabled={saving || cart.length === 0}
           >
-            {saving ? "Saving…" : `Save Sale · ${nairaFull(total)}`}
+            {saving ? "Saving…" : `Save Sale · ${nairaFull(amountDue)}`}
           </button>
         </div>
       </div>

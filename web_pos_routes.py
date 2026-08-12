@@ -39,6 +39,7 @@ class PosSaveRequest(BaseModel):
     customer_phone: Optional[str] = Field(default=None, max_length=20)   # optional, not required
     items: list[PosCartItem] = Field(max_length=200)  # max 200 line items per sale
     payment_amount: int = 0
+    debt_payment: int = 0   # extra collected at checkout to clear the customer's prior debt
     branch_id: Optional[int] = None
     due_date: Optional[datetime] = None
     service_date: Optional[datetime] = None   # promised delivery / ready-by date
@@ -165,6 +166,32 @@ def register_pos_routes(app):
                 customer_phone=payload.customer_phone,
                 service_date=payload.service_date,
             )
+            # Settle the customer's prior debt in the same checkout, when they paid
+            # extra to clear it (POS "Settle previous debt" line). Recorded as a
+            # normal PAY so it reduces their balance exactly like a manual payment.
+            if payload.debt_payment and payload.debt_payment > 0 and payload.customer_id:
+                import uuid as _uuid
+                from web_pos import next_receipt_number
+                cust = db.query(Customer).filter(
+                    Customer.id == payload.customer_id,
+                    Customer.owner_phone == owner_phone,
+                ).first()
+                if cust:
+                    owed_now = max(0, int(cust.balance or 0))   # never overpay the debt
+                    amt = min(int(payload.debt_payment), owed_now)
+                    if amt > 0:
+                        db.add(Transaction(
+                            customer_id=cust.id,
+                            type="PAY",
+                            amount=amt,
+                            product="Debt settled at checkout",
+                            recorded_by_id=session["user_id"],
+                            message_id=f"web-pos-debt-{_uuid.uuid4()}",
+                            branch_id=eff_branch,
+                            receipt_number=next_receipt_number(db, owner_phone),
+                        ))
+                        db.commit()
+
             # Send the customer their receipt on WhatsApp (like the WhatsApp flow)
             _send_web_receipt(db, owner_phone, result.get("receipt_id"))
             return result
