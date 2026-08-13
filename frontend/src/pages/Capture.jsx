@@ -25,7 +25,7 @@ async function blobToBase64(blob) {
 
 // ── Shared search inputs ─────────────────────────────────────────────────────
 
-function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, allowNew = false, onSelect, value, onQueryChange }) {
+export function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, allowNew = false, onSelect, value, onQueryChange }) {
   const [customers, setCustomers] = useState([]);
   const [search, setSearch]       = useState("");
   const [open, setOpen]           = useState(false);
@@ -112,7 +112,7 @@ function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, allowN
   );
 }
 
-function InventorySearch({ ownerPhone, onSelect, value, allowNew = false }) {
+export function InventorySearch({ ownerPhone, onSelect, value, allowNew = false }) {
   const [items, setItems]   = useState([]);
   const [search, setSearch] = useState("");
   const [open, setOpen]     = useState(false);

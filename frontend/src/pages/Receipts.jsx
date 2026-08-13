@@ -27,6 +27,7 @@ export default function Receipts() {
     <div className="card" style={{ maxWidth: 640 }}>
       <div className="card-header">
         <span className="card-title">Receipts</span>
+        <button className="btn btn-primary btn-sm" onClick={() => navigate("/receipts/new")}>+ New receipt</button>
       </div>
 
       {/* Sales | Supplier tabs */}

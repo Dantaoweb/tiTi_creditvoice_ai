@@ -22,6 +22,7 @@ import POS          from "./pages/POS";
 import Receipt      from "./pages/Receipt";
 import SupplierReceipt from "./pages/SupplierReceipt";
 import Receipts     from "./pages/Receipts";
+import NewReceipt   from "./pages/NewReceipt";
 import Invoices     from "./pages/Invoices";
 import Deliveries   from "./pages/Deliveries";
 import Wallet       from "./pages/Wallet";
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="pos/receipt/:id" element={<Receipt />}   />
           <Route path="suppliers/receipt/:kind/:id" element={<SupplierReceipt />} />
           <Route path="receipts"     element={<Receipts />}     />
+          <Route path="receipts/new" element={<NewReceipt />}   />
           <Route path="invoices"     element={<Invoices />}     />
           <Route path="deliveries"   element={<Deliveries />}   />
           <Route path="customers"    element={<Customers />}    />
