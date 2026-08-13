@@ -22,7 +22,7 @@ export default function Terms() {
         <section>
           <h2>2. What CreditVoice Does</h2>
           <p>
-            CreditVoice provides small and informal business owners with tools to record sales, track customer debts, manage inventory, and receive business insights via WhatsApp (tiTi) and a web application. It is not a banking, lending, or financial advice service.
+            CreditVoice provides small and medium scale enterprises (SMEs) with tools to record sales, track customer debts, manage inventory, and receive business insights via WhatsApp (tiTi) and a web application. It is not a banking, lending, or financial advice service.
           </p>
         </section>
 

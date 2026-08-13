@@ -190,7 +190,7 @@ def process_incoming_payment(
 def _auto_match(db, owner_phone: str, sender_name: str, narration: str, amount: int):
     """
     Try to find a customer from sender name or narration.
-    Simple word-overlap match — good enough for informal business names.
+    Simple word-overlap match — good enough for loosely-formatted business names.
     """
     if not sender_name and not narration:
         return None
