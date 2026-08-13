@@ -155,6 +155,31 @@ def test_stock_received_defaults_supplier_to_others():
     assert sup is not None and n == 1
 
 
+def test_stock_in_matches_existing_item_despite_unit_mismatch():
+    """Receiving stock must not create a duplicate when the incoming unit differs
+    from how the item was stored (normalisation drift) — otherwise one row keeps
+    the price and a twin carries the quantity, and both show in POS."""
+    from inventory_suppliers import add_inventory_movement
+    phone, cook = _owner()
+    r = client.post("/app/api/inventory", cookies=cook, json={
+        "owner_phone": phone, "name": "coke", "unit": "bottle",
+        "quantity": 5, "selling_price": 200, "cost_price": 150})
+    assert r.status_code == 200, r.text
+
+    db = SessionLocal()
+    try:
+        # Same product, different unit string → must fold into the existing row.
+        add_inventory_movement(db, phone, "coke", 10, "carton", 160, "IN", "TEST", None)
+        db.commit()
+        matches = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == phone, InventoryItem.name == "coke").all()
+        assert len(matches) == 1, [(m.id, m.unit, m.selling_price, m.quantity) for m in matches]
+        assert matches[0].selling_price == 200   # kept its price
+        assert matches[0].quantity == 15         # grew its quantity
+    finally:
+        db.close()
+
+
 def test_stock_received_rejects_zero_quantity():
     _p, cook = _owner()
     r = client.post("/app/api/inventory/stock-received", cookies=cook, json={

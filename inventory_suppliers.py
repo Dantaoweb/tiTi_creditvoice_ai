@@ -189,14 +189,18 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
             if item:
                 return item
 
-    # 3. Any item with matching name, ignoring unit (when no unit given)
-    if not unit:
-        product_matches = db.query(InventoryItem).filter(
-            InventoryItem.owner_phone == owner_phone,
-            func.lower(InventoryItem.name) == product.lower()
-        ).all()
-        if len(product_matches) == 1:
-            return product_matches[0]
+    # 3. Single item with this name, regardless of unit. Runs even when a unit is
+    #    given so a stock-in doesn't create a DUPLICATE when the received unit
+    #    normalises differently from how the item was stored (e.g. "bottles" vs
+    #    "bottle") — the cause of one row holding the price and a twin holding the
+    #    quantity. Guarded on exactly one match, so deliberate multi-unit variants
+    #    of the same name still require an exact unit match.
+    product_matches = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        func.lower(InventoryItem.name) == product.lower()
+    ).all()
+    if len(product_matches) == 1:
+        return product_matches[0]
 
     # 4. Legacy "unit of product" composite name
     if unit:
