@@ -313,18 +313,37 @@ export default function POS() {
     return it ? it.qty : 0;
   }
 
+  // Effective unit price for a line at a given qty. Auto-applies the wholesale
+  // (bulk) price when qty reaches the threshold, unless the cashier has hand-
+  // edited the price or is selling a retail sub-unit — never forced.
+  function effUnitPrice(line, q) {
+    if (line.priceEdited || line.sold_unit) return line.unit_price;
+    if (line.wholesale_price && line.wholesale_min_qty && q >= line.wholesale_min_qty) {
+      return line.wholesale_price;
+    }
+    return line.base_price ?? line.unit_price;
+  }
+
   // Set the qty straight from the picker's stepper: add / update / remove.
   function setProductQty(p, newQty) {
     setCart(prev => {
       const idx = prev.findIndex(it => it.inventory_item_id === p.id && it.name === p.name);
       if (newQty <= 0) return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev;
       if (idx >= 0) {
-        const u = [...prev]; u[idx] = { ...u[idx], qty: newQty }; return u;
+        const u = [...prev];
+        const line = { ...u[idx], qty: newQty };
+        line.unit_price = effUnitPrice(line, newQty);
+        u[idx] = line;
+        return u;
       }
-      return [...prev, {
+      const line = {
         inventory_item_id: p.id,
         name: p.name,
         unit: p.unit,
+        base_price: p.selling_price,             // retail (single-unit) price
+        wholesale_price: p.wholesale_price || null,
+        wholesale_min_qty: p.wholesale_min_qty || null,
+        priceEdited: false,
         unit_price: p.selling_price,
         qty: newQty,
         stock: p.quantity,
@@ -334,7 +353,9 @@ export default function POS() {
         retail_price: p.retail_price || null,
         sold_unit: null,
         fraction: 1.0,
-      }];
+      };
+      line.unit_price = effUnitPrice(line, newQty);
+      return [...prev, line];
     });
   }
 
@@ -351,7 +372,12 @@ export default function POS() {
   function updateItem(idx, field, value) {
     setCart(prev => {
       const updated = [...prev];
-      updated[idx] = { ...updated[idx], [field]: value };
+      const line = { ...updated[idx], [field]: value };
+      // A hand-typed price wins from then on; a qty change re-checks the
+      // wholesale threshold.
+      if (field === "unit_price") line.priceEdited = true;
+      else if (field === "qty") line.unit_price = effUnitPrice(line, value);
+      updated[idx] = line;
       return updated;
     });
   }
@@ -527,6 +553,11 @@ export default function POS() {
                     </div>
                     <span className="pos-line-total">{nairaFull(it.qty * it.unit_price)}</span>
                   </div>
+                  {(!it.priceEdited && !it.sold_unit && it.wholesale_price && it.wholesale_min_qty && it.qty >= it.wholesale_min_qty) && (
+                    <div style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, marginTop: 2 }}>
+                      🏷 wholesale price (from {it.wholesale_min_qty})
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -185,6 +185,8 @@ def ensure_schema_updates(engine):
         "retail_unit": "VARCHAR",
         "retail_per_base": "INTEGER",
         "retail_price": "INTEGER",
+        "wholesale_price": "INTEGER",
+        "wholesale_min_qty": "INTEGER",
         "branch_id": "INTEGER",
         "attributes_json": "VARCHAR",
     }

@@ -268,6 +268,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
     name: "", unit: "", quantity: "",
     cost_price: "", selling_price: "", low_stock_alert: "",
     retail_unit: "", retail_per_base: "", retail_price: "",
+    wholesale_price: "", wholesale_min_qty: "",
   });
   const [attrs, setAttrs] = useState({});
   const [saving, setSaving] = useState(false);
@@ -295,6 +296,8 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
         retail_unit: !isService ? (form.retail_unit.trim() || null) : null,
         retail_per_base: (!isService && form.retail_per_base !== "") ? parseAmt(form.retail_per_base) : null,
         retail_price: (!isService && form.retail_price !== "") ? parseAmt(form.retail_price) : null,
+        wholesale_price: (!isService && form.wholesale_price !== "") ? parseAmt(form.wholesale_price) : null,
+        wholesale_min_qty: (!isService && form.wholesale_min_qty !== "") ? parseAmt(form.wholesale_min_qty) : null,
         attributes: isService ? {} : attrs,
       });
       onSaved(item);
@@ -413,6 +416,26 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
           </div>
         )}
 
+        {!isService && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 4 }}>
+            <div className="form-label" style={{ marginBottom: 8, color: "var(--text-muted)", fontSize: 12 }}>
+              Wholesale / bulk price (optional) — a lower unit price when a buyer takes a bulk quantity
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Wholesale price (₦)</label>
+                <MoneyInput value={form.wholesale_price}
+                  onChange={v => set("wholesale_price", v)} placeholder="e.g. 180" />
+              </div>
+              <div className="form-group" style={{ width: 150 }}>
+                <label className="form-label">From qty (buy ≥)</label>
+                <MoneyInput value={form.wholesale_min_qty}
+                  onChange={v => set("wholesale_min_qty", v)} placeholder="e.g. 12" />
+              </div>
+            </div>
+          </div>
+        )}
+
         <ErrorNote msg={err} />
       </div>
       <div className="modal-footer">
@@ -438,6 +461,8 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
     retail_unit: item.retail_unit || "",
     retail_per_base: item.retail_per_base || "",
     retail_price: item.retail_price || "",
+    wholesale_price: item.wholesale_price || "",
+    wholesale_min_qty: item.wholesale_min_qty || "",
   });
   const [attrs, setAttrs] = useState(item.attributes || {});
   const [saving, setSaving] = useState(false);
@@ -461,6 +486,8 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
         retail_unit: form.retail_unit.trim() || null,
         retail_per_base: form.retail_per_base !== "" ? parseAmt(form.retail_per_base) : null,
         retail_price: form.retail_price !== "" ? parseAmt(form.retail_price) : null,
+        wholesale_price: (!isService && form.wholesale_price !== "") ? parseAmt(form.wholesale_price) : 0,
+        wholesale_min_qty: (!isService && form.wholesale_min_qty !== "") ? parseAmt(form.wholesale_min_qty) : 0,
         ...(fields.length > 0 && !isService ? { attributes: attrs } : {}),
       });
       onSaved();
@@ -522,6 +549,23 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
             <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 20 }}>
               <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
               <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Available for sale</label>
+            </div>
+          </div>
+        )}
+        {!isService && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 4 }}>
+            <div className="form-label" style={{ marginBottom: 8, color: "var(--text-muted)", fontSize: 12 }}>
+              Wholesale / bulk price (optional) — a lower unit price when a buyer takes a bulk quantity
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Wholesale price (₦)</label>
+                <MoneyInput value={form.wholesale_price} onChange={v => set("wholesale_price", v)} placeholder="e.g. 180" />
+              </div>
+              <div className="form-group" style={{ width: 150 }}>
+                <label className="form-label">From qty (buy ≥)</label>
+                <MoneyInput value={form.wholesale_min_qty} onChange={v => set("wholesale_min_qty", v)} placeholder="e.g. 12" />
+              </div>
             </div>
           </div>
         )}

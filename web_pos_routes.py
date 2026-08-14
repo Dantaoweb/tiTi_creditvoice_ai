@@ -104,6 +104,8 @@ def register_pos_routes(app):
                         "retail_unit": item.retail_unit,
                         "retail_per_base": item.retail_per_base,
                         "retail_price": _money(item.retail_price) if item.retail_price else None,
+                        "wholesale_price": _money(item.wholesale_price) if item.wholesale_price else None,
+                        "wholesale_min_qty": item.wholesale_min_qty or None,
                     }
                     for item in rows
                 ],

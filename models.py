@@ -368,6 +368,13 @@ class InventoryItem(Base):
 
     retail_price = Column(Integer, nullable=True)    # selling price per 1 retail unit
 
+    # Wholesale (quantity-break) pricing on the BASE unit: when a sale's quantity
+    # reaches wholesale_min_qty, each unit is priced at wholesale_price instead of
+    # selling_price. Both NULL = no wholesale tier (behaves exactly as before).
+    wholesale_price = Column(Integer, nullable=True)
+
+    wholesale_min_qty = Column(Integer, nullable=True)
+
     size = Column(String, nullable=True)
 
     color = Column(String, nullable=True)

@@ -71,6 +71,8 @@ class AddInventoryRequest(BaseModel):
     retail_unit: Optional[str] = Field(default=None, max_length=30)
     retail_per_base: Optional[int] = None
     retail_price: Optional[int] = None
+    wholesale_price: Optional[int] = None
+    wholesale_min_qty: Optional[int] = None
     attributes: dict = Field(default_factory=dict)   # per-business custom stock fields
 
 
@@ -84,6 +86,8 @@ class EditInventoryRequest(BaseModel):
     retail_unit: Optional[str] = Field(default=None, max_length=30)
     retail_per_base: Optional[int] = None
     retail_price: Optional[int] = None
+    wholesale_price: Optional[int] = None
+    wholesale_min_qty: Optional[int] = None
     attributes: Optional[dict] = None
 
 
@@ -159,6 +163,8 @@ def register_inventory_routes(app):
                         "retail_unit": item.retail_unit,
                         "retail_per_base": item.retail_per_base,
                         "retail_price": item.retail_price,
+                        "wholesale_price": item.wholesale_price,
+                        "wholesale_min_qty": item.wholesale_min_qty,
                         "attributes": _load_attributes(item),
                         "updated_at": _iso(item.updated_at),
                     }
@@ -204,6 +210,8 @@ def register_inventory_routes(app):
                 retail_unit=payload.retail_unit.strip().lower() if payload.retail_unit else None,
                 retail_per_base=payload.retail_per_base,
                 retail_price=payload.retail_price,
+                wholesale_price=None if payload.is_service else payload.wholesale_price,
+                wholesale_min_qty=None if payload.is_service else payload.wholesale_min_qty,
                 attributes_json=_clean_attributes(owner_user, payload.attributes),
             )
             db.add(item)
@@ -397,6 +405,10 @@ def register_inventory_routes(app):
                 item.retail_per_base = payload.retail_per_base or None
             if payload.retail_price is not None:
                 item.retail_price = payload.retail_price or None
+            if payload.wholesale_price is not None:
+                item.wholesale_price = payload.wholesale_price or None
+            if payload.wholesale_min_qty is not None:
+                item.wholesale_min_qty = payload.wholesale_min_qty or None
             if payload.attributes is not None:
                 owner_user = db.query(User).filter(User.phone == owner_phone).first()
                 item.attributes_json = _clean_attributes(owner_user, payload.attributes)
