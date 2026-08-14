@@ -520,8 +520,9 @@ function StockForm({ ownerPhone, onSuccess }) {
           </datalist>
         </div>
         <div className="form-group">
-          <label className="form-label">Paid now (₦)</label>
-          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(fmtAmt(e.target.value))} placeholder="full amount" />
+          <label className="form-label">Amount paid now (₦)</label>
+          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(fmtAmt(e.target.value))} placeholder="0" />
+          <span className="form-hint">Enter what you paid the supplier. Leave blank if paid in full.</span>
         </div>
       </div>
       <div className="qf-row qf-row--sm-lg">

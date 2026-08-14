@@ -476,8 +476,8 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
-                      <label className="form-label">Paid now (₦)</label>
-                      <input inputMode="numeric" value={bPaid} onChange={e => setBPaid(fmtAmt(e.target.value))} placeholder="full amount" />
+                      <label className="form-label">Amount paid now (₦)</label>
+                      <input inputMode="numeric" value={bPaid} onChange={e => setBPaid(fmtAmt(e.target.value))} placeholder="0" />
                     </div>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
                       <label className="form-label">Payment due</label>

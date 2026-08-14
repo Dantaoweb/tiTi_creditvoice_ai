@@ -637,8 +637,8 @@ function AdjustModal({ item, onClose, onSaved }) {
           <input inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} placeholder="0" />
         </div>
         <div className="form-group">
-          <label className="form-label">Paid now (₦) <span className="text-subtle">(when adding)</span></label>
-          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(e.target.value)} placeholder="full amount" />
+          <label className="form-label">Amount paid now (₦) <span className="text-subtle">(when adding)</span></label>
+          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(e.target.value)} placeholder="0" />
           {totalCost > 0 && (
             <span className="form-hint">
               {oweBal > 0
