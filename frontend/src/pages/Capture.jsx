@@ -441,11 +441,18 @@ function StockForm({ ownerPhone, onSuccess }) {
   const [cost, setCost]         = useState("");
   const [paidNow, setPaidNow]   = useState("");
   const [supplier, setSupplier] = useState("");
+  const [supplierNames, setSupplierNames] = useState([]);   // existing suppliers, for autocomplete
   const [dueDate, setDueDate]   = useState("");
   const [note, setNote]         = useState("");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    apiFetch("suppliers")
+      .then(d => setSupplierNames((d.suppliers || []).map(s => s.name)))
+      .catch(() => {});
+  }, []);
 
   function _body() {
     return {
@@ -504,7 +511,13 @@ function StockForm({ ownerPhone, onSuccess }) {
       <div className="qf-row qf-row--sm-lg">
         <div className="form-group">
           <label className="form-label">Supplier</label>
-          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Others (default)" />
+          <input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Search or type a supplier…"
+            list="stock-supplier-list" autoComplete="off" />
+          <datalist id="stock-supplier-list">
+            {supplierNames.map(n => (
+              <option key={n} value={n.replace(/\b\w/g, c => c.toUpperCase())} />
+            ))}
+          </datalist>
         </div>
         <div className="form-group">
           <label className="form-label">Paid now (₦)</label>

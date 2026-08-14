@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiDownload } from "../lib/api";
-import { nairaFull, dateStr, parseAmt } from "../lib/format";
+import { nairaFull, dateStr, parseAmt, fmtAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
@@ -471,13 +471,13 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                     </div>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
                       <label className="form-label">Cost/unit (₦)</label>
-                      <input inputMode="numeric" value={bCost} onChange={e => setBCost(e.target.value)} placeholder="0" />
+                      <input inputMode="numeric" value={bCost} onChange={e => setBCost(fmtAmt(e.target.value))} placeholder="0" />
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
                       <label className="form-label">Paid now (₦)</label>
-                      <input inputMode="numeric" value={bPaid} onChange={e => setBPaid(e.target.value)} placeholder="full amount" />
+                      <input inputMode="numeric" value={bPaid} onChange={e => setBPaid(fmtAmt(e.target.value))} placeholder="full amount" />
                     </div>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
                       <label className="form-label">Payment due</label>
@@ -510,12 +510,12 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                           <div style={{ display: "flex", alignItems: "flex-end", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                             <div className="form-group" style={{ margin: 0 }}>
                               <label className="form-label" style={{ fontSize: 11 }}>Qty{p.unit ? ` (${p.unit})` : ""}</label>
-                              <input inputMode="numeric" value={pqty} onChange={e => setPqty(e.target.value)}
+                              <input inputMode="numeric" value={pqty} onChange={e => setPqty(fmtAmt(e.target.value))}
                                 style={{ width: 90, padding: "3px 6px", fontSize: 12 }} />
                             </div>
                             <div className="form-group" style={{ margin: 0 }}>
                               <label className="form-label" style={{ fontSize: 11 }}>Cost/unit (₦)</label>
-                              <input inputMode="numeric" value={pcost} onChange={e => setPcost(e.target.value)}
+                              <input inputMode="numeric" value={pcost} onChange={e => setPcost(fmtAmt(e.target.value))}
                                 style={{ width: 110, padding: "3px 6px", fontSize: 12 }} />
                             </div>
                             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditPid(null)}>Cancel</button>
