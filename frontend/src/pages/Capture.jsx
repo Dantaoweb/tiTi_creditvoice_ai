@@ -440,6 +440,7 @@ function StockForm({ ownerPhone, onSuccess }) {
   const [qty, setQty]           = useState("");
   const [cost, setCost]         = useState("");
   const [paidNow, setPaidNow]   = useState("");
+  const [paidTouched, setPaidTouched] = useState(false);   // stop auto-fill once edited
   const [supplier, setSupplier] = useState("");
   const [supplierNames, setSupplierNames] = useState([]);   // existing suppliers, for autocomplete
   const [dueDate, setDueDate]   = useState("");
@@ -454,6 +455,14 @@ function StockForm({ ownerPhone, onSuccess }) {
       .catch(() => {});
   }, []);
 
+  // Pre-fill "Amount paid now" with the running total so traders see the figure
+  // and can reduce it for a part payment (defaults to paying in full). Stops
+  // auto-filling the moment they type their own amount.
+  const stockTotal = Math.round((parseAmt(qty) || 0) * (cost ? parseAmt(cost) : 0));
+  useEffect(() => {
+    if (!paidTouched) setPaidNow(stockTotal > 0 ? fmtAmt(String(stockTotal)) : "");
+  }, [stockTotal, paidTouched]);
+
   function _body() {
     return {
       item_id:       item?.id || null,
@@ -461,7 +470,7 @@ function StockForm({ ownerPhone, onSuccess }) {
       unit:          item?.unit || null,
       quantity:      parseAmt(qty),
       cost_per_unit: cost ? parseAmt(cost) : null,
-      paid_now:      paidNow !== "" ? parseAmt(paidNow) : null,   // blank → fully paid
+      paid_now:      parseAmt(paidNow),   // pre-filled with the total; reduce for part payment
       supplier:      supplier.trim() || null,   // blank → "Others" server-side
       due_date:      dueDate || null,           // when the balance owed is due
       note:          note.trim() || null,
@@ -476,14 +485,14 @@ function StockForm({ ownerPhone, onSuccess }) {
     try {
       const r = await apiPost("inventory/stock-received", _body());
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
-      setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote("");
+      setItem(null); setQty(""); setCost(""); setPaidNow(""); setPaidTouched(false); setSupplier(""); setDueDate(""); setNote("");
       if (r?.purchase_id) { navigate(`/suppliers/receipt/purchase/${r.purchase_id}`); return; }
     } catch (e) {
       if (isNetworkError(e)) {
         enqueue("inventory/stock-received", _body(),
           `Stock +${qty} ${item.unit || "units"} of ${item.name}${who}`);
         onSuccess("No internet — stock entry saved offline. Will sync automatically when you reconnect.");
-        setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote("");
+        setItem(null); setQty(""); setCost(""); setPaidNow(""); setPaidTouched(false); setSupplier(""); setDueDate(""); setNote("");
       } else {
         setError(e.message);
       }
@@ -521,8 +530,9 @@ function StockForm({ ownerPhone, onSuccess }) {
         </div>
         <div className="form-group">
           <label className="form-label">Amount paid now (₦)</label>
-          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(fmtAmt(e.target.value))} placeholder="0" />
-          <span className="form-hint">Enter what you paid the supplier. Leave blank if paid in full.</span>
+          <input inputMode="numeric" value={paidNow}
+            onChange={e => { setPaidNow(fmtAmt(e.target.value)); setPaidTouched(true); }} placeholder="0" />
+          <span className="form-hint">Filled in as the full amount — reduce it if you only paid part now.</span>
         </div>
       </div>
       <div className="qf-row qf-row--sm-lg">
