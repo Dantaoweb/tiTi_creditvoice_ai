@@ -4,7 +4,7 @@ import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
-import { nairaFull, dateStr, dateTimeStr, parseAmt } from "../lib/format";
+import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
@@ -573,10 +573,19 @@ function AdjustModal({ item, onClose, onSaved }) {
   const [supplier, setSupplier] = useState("");
   const [cost, setCost] = useState("");
   const [paidNow, setPaidNow] = useState("");
+  const [paidTouched, setPaidTouched] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+  // Pre-fill "Amount paid now" with the running total so the figure is visible
+  // and editable (defaults to paying in full). Stops once the user edits it.
+  useEffect(() => {
+    if (paidTouched) return;
+    const t = Math.round((parseAmt(delta) || 0) * (cost ? parseAmt(cost) : 0));
+    setPaidNow(t > 0 ? fmtAmt(String(t)) : "");
+  }, [delta, cost, paidTouched]);
 
   async function save(direction) {
     const qty = parseAmt(delta);
@@ -592,7 +601,7 @@ function AdjustModal({ item, onClose, onSaved }) {
           quantity: qty,
           cost_per_unit: cost ? parseAmt(cost) : null,
           supplier: supplier.trim() || null,
-          paid_now: paidNow !== "" ? parseAmt(paidNow) : null,   // blank → fully paid
+          paid_now: parseAmt(paidNow),   // pre-filled with the total; reduce for part payment
           due_date: dueDate || null,
           note: note.trim() || null,
         });
@@ -611,7 +620,7 @@ function AdjustModal({ item, onClose, onSaved }) {
   const _qty  = parseAmt(delta) || 0;
   const _cost = parseAmt(cost) || 0;
   const totalCost = Math.round(_qty * _cost);
-  const _paid = paidNow === "" ? totalCost : (parseAmt(paidNow) || 0);
+  const _paid = parseAmt(paidNow) || 0;   // pre-filled with the total
   const oweBal = Math.max(0, totalCost - _paid);
 
   return (
@@ -634,11 +643,12 @@ function AdjustModal({ item, onClose, onSaved }) {
         </div>
         <div className="form-group">
           <label className="form-label">Cost per unit (₦) <span className="text-subtle">(when adding)</span></label>
-          <input inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} placeholder="0" />
+          <input inputMode="numeric" value={cost} onChange={e => setCost(fmtAmt(e.target.value))} placeholder="0" />
         </div>
         <div className="form-group">
           <label className="form-label">Amount paid now (₦) <span className="text-subtle">(when adding)</span></label>
-          <input inputMode="numeric" value={paidNow} onChange={e => setPaidNow(e.target.value)} placeholder="0" />
+          <input inputMode="numeric" value={paidNow}
+            onChange={e => { setPaidNow(fmtAmt(e.target.value)); setPaidTouched(true); }} placeholder="0" />
           {totalCost > 0 && (
             <span className="form-hint">
               {oweBal > 0

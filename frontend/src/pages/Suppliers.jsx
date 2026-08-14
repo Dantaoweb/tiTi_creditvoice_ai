@@ -289,6 +289,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   const [bQty, setBQty]       = useState("");
   const [bCost, setBCost]     = useState("");
   const [bPaid, setBPaid]     = useState("");
+  const [bPaidTouched, setBPaidTouched] = useState(false);
   const [bDue, setBDue]       = useState("");
   const [bNote, setBNote]     = useState("");
   const [range, setRange]     = useState({ key: "all", from: "", to: "" });
@@ -298,6 +299,13 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
       .then(setD).catch(e => setErr(e.message));
   }
   useEffect(() => { load(); /* on open */ /* eslint-disable-next-line */ }, [supplierId]);
+
+  // Pre-fill "Amount paid now" with the running total (defaults to full), editable.
+  useEffect(() => {
+    if (bPaidTouched) return;
+    const t = Math.round((parseAmt(bQty) || 0) * (bCost ? parseAmt(bCost) : 0));
+    setBPaid(t > 0 ? fmtAmt(String(t)) : "");
+  }, [bQty, bCost, bPaidTouched]);
 
   const _fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   function presetRange(key) {
@@ -313,7 +321,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   function startBuy() {
     // Commodity traders buy the same product repeatedly — pre-fill the last one.
     setBProd(d?.purchases?.[0]?.product || "");
-    setBQty(""); setBCost(""); setBPaid(""); setBDue(""); setBNote("");
+    setBQty(""); setBCost(""); setBPaid(""); setBPaidTouched(false); setBDue(""); setBNote("");
     setErr(""); setShowBuy(true);
   }
 
@@ -327,7 +335,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
         product: bProd.trim(),
         quantity: qty,
         cost_per_unit: bCost ? parseAmt(bCost) : null,
-        paid_now: bPaid !== "" ? parseAmt(bPaid) : null,
+        paid_now: parseAmt(bPaid),   // pre-filled with the total; reduce for part payment
         due_date: bDue || null,
         note: bNote.trim() || null,
       });
@@ -477,7 +485,8 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                   <div style={{ display: "flex", gap: 8 }}>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
                       <label className="form-label">Amount paid now (₦)</label>
-                      <input inputMode="numeric" value={bPaid} onChange={e => setBPaid(fmtAmt(e.target.value))} placeholder="0" />
+                      <input inputMode="numeric" value={bPaid}
+                        onChange={e => { setBPaid(fmtAmt(e.target.value)); setBPaidTouched(true); }} placeholder="0" />
                     </div>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
                       <label className="form-label">Payment due</label>
