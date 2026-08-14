@@ -284,6 +284,22 @@ function CustomerDetailModal({ customer, onClose, onPay, onSaved }) {
           </div>
         )}
 
+        {/* Read-only details (e.g. a tailor's measurements) — visible at a glance
+            without entering edit mode, which the old profile modal used to show. */}
+        {!editing && fields.length > 0 && fields.some(f => values[f.key]) && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="form-label" style={{ marginBottom: 6, color: "var(--text-muted)" }}>Details</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {fields.filter(f => values[f.key]).map(f => (
+                <div key={f.key} className="parsed-cell" style={{ flex: _LONG_KEYS.has(f.key) ? "1 1 100%" : "1 1 45%", minWidth: 0 }}>
+                  <span>{f.label}</span>
+                  <strong>{values[f.key]}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="metrics-grid" style={{ gridTemplateColumns: "1fr", marginBottom: 14 }}>
           <MetricCard label="Balance owed" value={nairaFull(balance)} color={balance > 0 ? "rose" : "green"} />
         </div>
