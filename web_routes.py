@@ -63,6 +63,45 @@ def _read_index():
     return "<h1>Frontend not built. Run: cd frontend && npm run build</h1>"
 
 
+# The whole SPA is served from one shell, so without this every /app/* URL would
+# return byte-identical HTML — which is why Search Console flagged "Duplicate
+# without user-selected canonical". _render_index makes the shell path-aware:
+#   • a self-referencing <link rel="canonical"> on every page;
+#   • a distinct <title>/<description> for the public legal pages (so they are
+#     indexable and not seen as duplicates of each other);
+#   • <meta robots="noindex,follow"> on every app screen (login/dashboard/etc.)
+#     — those are an application, not content, and must not be indexed.
+_SITE_ORIGIN = "https://creditvoiceai.com"
+
+_SEO_PAGES = {
+    "/app/terms": (
+        "Terms of Service — CreditVoice",
+        "The terms governing your use of CreditVoice and tiTi.",
+    ),
+    "/app/privacy": (
+        "Privacy Policy — CreditVoice",
+        "How CreditVoice collects, uses, and protects your data under the Nigeria Data Protection Act (NDPA).",
+    ),
+}
+
+
+def _render_index(path="/app"):
+    import re
+    html = _read_index()
+    clean = "/" + path.strip("/") if path.strip("/") else "/app"
+    canonical = f'<link rel="canonical" href="{_SITE_ORIGIN}{clean}" />'
+    seo = _SEO_PAGES.get(clean)
+    head_extra = canonical
+    if seo:
+        title, desc = seo
+        html = re.sub(r"<title>.*?</title>", f"<title>{title}</title>", html, count=1, flags=re.S)
+        html = re.sub(r'<meta name="description"[^>]*>',
+                      f'<meta name="description" content="{desc}" />', html, count=1)
+    else:
+        head_extra += '\n    <meta name="robots" content="noindex,follow" />'
+    return html.replace("</head>", f"    {head_extra}\n  </head>", 1)
+
+
 # ── Pydantic request models ──────────────────────────────────────────────────
 
 # Auth/account request models live in web_auth_routes now.
@@ -161,7 +200,7 @@ def register_web_routes(app):
     # ── SPA root (exact) ─────────────────────────────────────────────────
     @app.get("/app", response_class=HTMLResponse)
     def web_app_root():
-        return _read_index()
+        return _render_index("/app")
 
     # ── Auth + account (NDPR, me) — split into web_auth_routes ────────────────
     from web_auth_routes import register_auth_routes
@@ -309,4 +348,4 @@ def register_web_routes(app):
     # ── SPA catch-all (MUST be last — catches all /app/* client-side routes) ──
     @app.get("/app/{full_path:path}", response_class=HTMLResponse)
     def web_app_spa(full_path: str):
-        return _read_index()
+        return _render_index(f"/app/{full_path}")

@@ -237,9 +237,11 @@ def robots_txt():
 def sitemap_xml():
     from datetime import date
     today = date.today().isoformat()
+    # Only publicly indexable content pages belong here. The app screens under
+    # /app are served noindex (they are an application, not content), so listing
+    # them would contradict their robots meta.
     pages = [
         (f"{_SITE_URL}/", today, "1.0"),
-        (f"{_SITE_URL}/app", None, "0.8"),
         (f"{_SITE_URL}/app/terms", None, "0.3"),
         (f"{_SITE_URL}/app/privacy", None, "0.3"),
     ]
