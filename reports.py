@@ -318,6 +318,128 @@ def build_margin_summary_message(summary, period=None):
     return "\n".join(lines)
 
 
+def get_inventory_insights(db, owner_phone, period=None, branch_id=None):
+    """Inventory Insights report over a period, tracking cost/price/stock so the
+    web report screen can surface: (A) a margin snapshot from current cost vs
+    selling price, (B) the price-change log, and (C) stock received. Everything
+    is scoped to the owner (and branch when given)."""
+    from models import InventoryItem, InventoryMovement, ItemPriceChange
+
+    start, end = get_period_range(period)  # (None, None) = all time
+
+    items_q = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone)
+    if branch_id is not None:
+        items_q = items_q.filter(InventoryItem.branch_id == branch_id)
+    items = items_q.all()
+    item_names = {it.id: it.name for it in items}
+    item_ids = list(item_names.keys())
+
+    # ── A. Margin snapshot (current cost vs current selling price) ──────────
+    margin = []
+    for it in items:
+        if it.selling_price is None:
+            continue  # unpriced draft — nothing to measure
+        is_service = it.quantity is None or it.category == "service"
+        cost, sell = it.cost_price, it.selling_price
+        m = (sell - cost) if cost is not None else None
+        pct = round(m / sell * 100) if (m is not None and sell) else None
+        if cost is None:
+            flag = "no_cost"
+        elif m < 0:
+            flag = "loss"
+        elif pct is not None and pct < 10:
+            flag = "thin"
+        else:
+            flag = None
+        margin.append({
+            "id": it.id, "name": it.name, "unit": it.unit, "is_service": is_service,
+            "cost_price": cost, "selling_price": sell,
+            "margin": m, "margin_pct": pct, "flag": flag,
+        })
+    # Worst first (loss/thin/no-cost surface at the top).
+    _rank = {"loss": 0, "thin": 1, "no_cost": 2}
+    margin.sort(key=lambda r: (
+        _rank.get(r["flag"], 3),
+        r["margin_pct"] if r["margin_pct"] is not None else 9999,
+    ))
+
+    # ── B. Price changes in period ─────────────────────────────────────────
+    price_changes, price_up, price_down = [], 0, 0
+    if item_ids:
+        pc_q = db.query(ItemPriceChange).filter(
+            ItemPriceChange.owner_phone == owner_phone,
+            ItemPriceChange.item_id.in_(item_ids),
+        )
+        if start is not None:
+            pc_q = pc_q.filter(ItemPriceChange.created_at >= start,
+                               ItemPriceChange.created_at < end)
+        pcs = pc_q.order_by(ItemPriceChange.id.desc()).limit(200).all()
+        changer_ids = {c.changed_by_id for c in pcs if c.changed_by_id}
+        changer_names = {}
+        if changer_ids:
+            for u in db.query(User).filter(User.id.in_(changer_ids)).all():
+                changer_names[u.id] = u.name
+        for c in pcs:
+            if c.old_price is not None and c.new_price is not None:
+                if c.new_price > c.old_price:
+                    price_up += 1
+                elif c.new_price < c.old_price:
+                    price_down += 1
+            price_changes.append({
+                "id": c.id, "item_id": c.item_id,
+                "name": item_names.get(c.item_id, "—"),
+                "field": c.field, "old_price": c.old_price, "new_price": c.new_price,
+                "changed_by": changer_names.get(c.changed_by_id),
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+            })
+
+    # ── C. Stock received in period (IN movements) ─────────────────────────
+    stock_received, purchasing_spend = [], 0
+    if item_ids:
+        mv_q = db.query(InventoryMovement).filter(
+            InventoryMovement.owner_phone == owner_phone,
+            InventoryMovement.item_id.in_(item_ids),
+            InventoryMovement.movement_type == "IN",
+        )
+        if start is not None:
+            mv_q = mv_q.filter(InventoryMovement.created_at >= start,
+                               InventoryMovement.created_at < end)
+        agg = {}
+        for m in mv_q.order_by(InventoryMovement.id.asc()).all():
+            qty = m.quantity or 0
+            up = m.unit_price or 0
+            purchasing_spend += qty * up
+            a = agg.setdefault(m.item_id, {"qty": 0.0, "spent": 0, "first": None, "last": None})
+            a["qty"] += qty
+            a["spent"] += qty * up
+            if up:
+                if a["first"] is None:
+                    a["first"] = up
+                a["last"] = up
+        for iid, a in agg.items():
+            avg = round(a["spent"] / a["qty"]) if a["qty"] else None
+            trend = None
+            if a["first"] and a["last"]:
+                trend = "up" if a["last"] > a["first"] else ("down" if a["last"] < a["first"] else None)
+            stock_received.append({
+                "item_id": iid, "name": item_names.get(iid, "—"),
+                "qty": a["qty"], "spent": a["spent"], "avg_cost": avg,
+                "first_cost": a["first"], "last_cost": a["last"], "trend": trend,
+            })
+        stock_received.sort(key=lambda r: r["spent"], reverse=True)
+
+    return {
+        "period": period,
+        "purchasing_spend": purchasing_spend,
+        "price_edits": len(price_changes),
+        "price_up": price_up,
+        "price_down": price_down,
+        "margin": margin,
+        "price_changes": price_changes,
+        "stock_received": stock_received,
+    }
+
+
 def build_dashboard_menu_message():
     return (
         "Dashboard\n\n"

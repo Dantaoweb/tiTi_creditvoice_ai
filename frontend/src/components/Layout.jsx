@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -33,6 +33,7 @@ function buildNav(L, group) {
     { to: "/thrift",       label: "Thrift / Ajo",     icon: Activity,        tab: isThrift },
     { to: "/reminders",    label: L.reminders,        icon: Bell            },
     { to: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
+    { to: "/insights",     label: "Insights",         icon: BarChart2 },
     { to: "/receipts",     label: "Receipts",         icon: Receipt },
     { to: "/invoices",     label: "Invoices",         icon: ScrollText },
     { to: "/deliveries",   label: "Deliveries",       icon: PackageCheck },
@@ -114,6 +115,7 @@ export default function Layout() {
     "/customers":    L.navCustomers,
     "/reminders":    L.reminders,
     "/dashboard":    "Dashboard",
+    "/insights":     "Insights",
     "/transactions": "Transactions",
     "/suppliers":    "Suppliers",
     "/staff":        "Staff",

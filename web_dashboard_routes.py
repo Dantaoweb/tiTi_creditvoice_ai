@@ -14,7 +14,7 @@ from database import SessionLocal
 from models import User, InventoryItem, FastCaptureSettings
 from reports import (
     get_dashboard_summary, get_unpaid_debtors, get_product_sales_by_period,
-    get_margin_summary, dashboard_period_label,
+    get_margin_summary, dashboard_period_label, get_inventory_insights,
 )
 from web_auth import require_web_auth
 from web_common import _session_owner_phone, _scoped_read
@@ -90,6 +90,22 @@ def register_dashboard_routes(app):
                     "below_cost_products": margin["below_cost_products"],
                 },
             }
+        finally:
+            db.close()
+
+    # ── Inventory Insights (margin snapshot, price changes, stock received) ──
+    @app.get("/app/api/reports/inventory-insights")
+    def web_inventory_insights(
+        period: Optional[str] = Query(default=None),
+        branch_id: Optional[int] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            period_key = period.upper() if period else None
+            eff_branch, _rec = _scoped_read(db, session, branch_id)
+            return get_inventory_insights(db, owner_phone, period_key, branch_id=eff_branch)
         finally:
             db.close()
 
