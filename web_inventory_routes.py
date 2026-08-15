@@ -12,7 +12,7 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from database import SessionLocal
-from models import User, InventoryItem, InventoryMovement, utcnow
+from models import User, InventoryItem, InventoryMovement, ItemPriceChange, utcnow
 from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
@@ -373,6 +373,10 @@ def register_inventory_routes(app):
             ).first()
             if not item:
                 raise HTTPException(status_code=404, detail="Item not found.")
+            # Remember the pre-edit prices so we can log any change (old -> new).
+            _old_cost = item.cost_price
+            _old_sell = item.selling_price
+            _price_logs = []
             if payload.name is not None:
                 item.name = payload.name.strip().lower()
             if payload.unit is not None:
@@ -412,6 +416,20 @@ def register_inventory_routes(app):
             if payload.attributes is not None:
                 owner_user = db.query(User).filter(User.phone == owner_phone).first()
                 item.attributes_json = _clean_attributes(owner_user, payload.attributes)
+            # Log price changes (old -> new) so they can be tracked over time.
+            if item.cost_price != _old_cost:
+                _price_logs.append(("cost_price", _old_cost, item.cost_price))
+            if item.selling_price != _old_sell:
+                _price_logs.append(("selling_price", _old_sell, item.selling_price))
+            for _field, _old, _new in _price_logs:
+                db.add(ItemPriceChange(
+                    owner_phone=owner_phone,
+                    item_id=item.id,
+                    field=_field,
+                    old_price=_old,
+                    new_price=_new,
+                    changed_by_id=session.get("user_id"),
+                ))
             item.updated_at = utcnow()
             db.commit()
             return {"id": item.id, "name": item.name, "selling_price": _money(item.selling_price)}
@@ -490,6 +508,44 @@ def register_inventory_routes(app):
                     "created_at": _iso(m.created_at),
                 }
                 for m in movs
+            ]}
+        finally:
+            db.close()
+
+    @app.get("/app/api/inventory/{item_id}/price-history")
+    def web_inventory_price_history(item_id: int, session: dict = Depends(require_web_auth)):
+        """Audit trail of selling/cost price edits for one item (old -> new,
+        when, who) — surfaced in the item detail modal so price changes are
+        tracked over time."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            item = db.query(InventoryItem).filter(
+                InventoryItem.id == item_id,
+                InventoryItem.owner_phone == owner_phone,
+            ).first()
+            if not item:
+                raise HTTPException(status_code=404, detail="Item not found.")
+            changes = db.query(ItemPriceChange).filter(
+                ItemPriceChange.item_id == item.id,
+                ItemPriceChange.owner_phone == owner_phone,
+            ).order_by(ItemPriceChange.id.desc()).limit(100).all()
+            # Resolve changer names in one query.
+            ids = {c.changed_by_id for c in changes if c.changed_by_id}
+            names = {}
+            if ids:
+                for u in db.query(User).filter(User.id.in_(ids)).all():
+                    names[u.id] = u.name
+            return {"changes": [
+                {
+                    "id": c.id,
+                    "field": c.field,
+                    "old_price": _money(c.old_price),
+                    "new_price": _money(c.new_price),
+                    "changed_by": names.get(c.changed_by_id),
+                    "created_at": _iso(c.created_at),
+                }
+                for c in changes
             ]}
         finally:
             db.close()

@@ -731,13 +731,19 @@ function AdjustModal({ item, onClose, onSaved }) {
 // Adjust actions (delegated to the existing modals). Mirrors Suppliers/Customers.
 function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust }) {
   const [movs, setMovs] = useState(null);
+  const [changes, setChanges] = useState(null);
   const [err, setErr] = useState("");
 
   useEffect(() => {
     apiFetch(`inventory/${item.id}/movements`)
       .then(d => setMovs(d.movements || []))
       .catch(e => setErr(e.message));
+    apiFetch(`inventory/${item.id}/price-history`)
+      .then(d => setChanges(d.changes || []))
+      .catch(() => setChanges([]));
   }, [item.id]);
+
+  const priceLabel = f => f === "cost_price" ? "Cost price" : "Selling price";
 
   const title = (item.name || "Item").replace(/\b\w/g, c => c.toUpperCase());
   const attrLine = (fields || [])
@@ -778,7 +784,7 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
             ) : (
               <table className="history-table">
                 <thead>
-                  <tr><th>Date</th><th>Type</th><th>Qty</th><th>Note</th></tr>
+                  <tr><th>Date</th><th>Type</th><th>Qty</th><th>Cost/unit</th><th>Note</th></tr>
                 </thead>
                 <tbody>
                   {movs.map(m => (
@@ -791,12 +797,38 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
                         }}>{m.type === "IN" ? "+ In" : "− Out"}</span>
                       </td>
                       <td><strong>{(m.quantity ?? 0).toLocaleString()}</strong></td>
+                      <td className="td-muted">{m.unit_price ? nairaFull(m.unit_price) : "—"}</td>
                       <td className="td-muted">{m.note || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
+          </>
+        )}
+
+        {changes && changes.length > 0 && (
+          <>
+            <div className="card-title" style={{ margin: "16px 0 6px" }}>Price changes</div>
+            <table className="history-table">
+              <thead>
+                <tr><th>Date</th><th>What</th><th>From → To</th><th>By</th></tr>
+              </thead>
+              <tbody>
+                {changes.map(c => (
+                  <tr key={c.id}>
+                    <td className="td-muted">{dateTimeStr(c.created_at)}</td>
+                    <td>{priceLabel(c.field)}</td>
+                    <td>
+                      <span className="td-muted">{c.old_price ? nairaFull(c.old_price) : "—"}</span>
+                      {" → "}
+                      <strong>{c.new_price ? nairaFull(c.new_price) : "—"}</strong>
+                    </td>
+                    <td className="td-muted">{c.changed_by || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </>
         )}
       </div>

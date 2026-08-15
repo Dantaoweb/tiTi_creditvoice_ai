@@ -436,6 +436,30 @@ class InventoryMovement(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class ItemPriceChange(Base):
+    """Audit trail of manual price edits on a product: every time an owner/staff
+    changes the selling price or cost price we record old -> new, when, and who,
+    so the change can be tracked over time in the item history and reports."""
+
+    __tablename__ = "item_price_changes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    owner_phone = Column(String, index=True)
+
+    item_id = Column(Integer, ForeignKey("inventory_items.id"), index=True)
+
+    field = Column(String)  # "selling_price" or "cost_price"
+
+    old_price = Column(Integer, nullable=True)
+
+    new_price = Column(Integer, nullable=True)
+
+    changed_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_at = Column(DateTime, default=utcnow)
+
+
 class AutomationSettings(Base):
 
     __tablename__ = "automation_settings"
