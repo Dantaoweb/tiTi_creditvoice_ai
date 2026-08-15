@@ -32,8 +32,19 @@ def _owner_header(db, owner_phone):
         "biz_name": business_display_name(u) if u else "Your business",
         "biz_address": getattr(u, "address", None) if u else None,
         "biz_phone": owner_phone,
-        "recorded_by": (u.name if u else None),
+        "recorded_by": (u.name if u else None),   # default; overridden per-receipt
     }
+
+
+def _recorder_name(db, recorded_by_id, fallback):
+    """The staff (or owner) who actually recorded this, for the receipt footer —
+    so an owner can see which of their staff issued it. Falls back to the owner
+    when there's no recorder (older records / owner-recorded)."""
+    if recorded_by_id:
+        rec = db.query(User).filter(User.id == recorded_by_id).first()
+        if rec and rec.name:
+            return rec.name
+    return fallback
 
 
 class SupplierPayRequest(BaseModel):
@@ -678,6 +689,7 @@ def register_supplier_routes(app):
                     }],
                     "total": total, "paid": paid, "balance": max(0, total - paid),
                     "due_date": _iso(p.due_date),
+                    "recorded_by": _recorder_name(db, p.recorded_by_id, header["recorded_by"]),
                 }
 
             if kind == "payment":
@@ -698,6 +710,7 @@ def register_supplier_routes(app):
                     "amount": _money(pay.amount),
                     "balance": balance,
                     "note": pay.product,
+                    "recorded_by": _recorder_name(db, pay.recorded_by_id, header["recorded_by"]),
                 }
 
             raise HTTPException(status_code=400, detail="Unknown receipt kind.")

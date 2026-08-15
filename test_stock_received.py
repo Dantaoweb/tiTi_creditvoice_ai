@@ -496,6 +496,35 @@ def test_record_purchase_rejects_other_owners_supplier():
     assert r.status_code == 404
 
 
+def test_supplier_receipt_shows_the_actual_recorder():
+    """The supplier receipt footer must credit the staff who recorded it, so an
+    owner can see which of their staff issued it (owner by default)."""
+    from models import SupplierPurchase
+    phone, cook = _owner()
+    sid = client.post("/app/api/suppliers", cookies=cook, json={"name": "Emeka"}).json()["id"]
+    pid = client.post(f"/app/api/suppliers/{sid}/purchase", cookies=cook, json={
+        "product": "Cocoa", "quantity": 10, "cost_per_unit": 800}).json()["purchase_id"]
+
+    # Owner recorded it → shows the owner.
+    rec = client.get(f"/app/api/suppliers/receipt/purchase/{pid}", cookies=cook).json()
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.phone == phone).first()
+        assert rec["recorded_by"] == owner.name
+
+        # Re-attribute the purchase to a different (staff) user → footer follows.
+        staff_phone, _c = _owner()
+        staff = db.query(User).filter(User.phone == staff_phone).first()
+        staff.name = "Staff Musa"
+        db.query(SupplierPurchase).filter(SupplierPurchase.id == pid).first().recorded_by_id = staff.id
+        db.commit()
+    finally:
+        db.close()
+
+    rec2 = client.get(f"/app/api/suppliers/receipt/purchase/{pid}", cookies=cook).json()
+    assert rec2["recorded_by"] == "Staff Musa"
+
+
 def test_pay_rejects_other_owners_supplier():
     _p, cook = _owner()
     # A supplier that belongs to a different owner.
