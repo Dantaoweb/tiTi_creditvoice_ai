@@ -211,12 +211,25 @@ def register_pos_routes(app):
 
     @app.get("/app/api/pos/receipts")
     def web_pos_receipts(session: dict = Depends(require_web_auth)):
-        """List past receipts (SALE / credit BUY) for this business, newest first."""
+        """List past receipts for this business, newest first: sales (SALE / credit
+        BUY) and standalone debt payments (PAY). Payments that are internal to a
+        sale — a POS part-payment, a checkout debt-settle, or a WhatsApp buy+pay —
+        are excluded, since the sale itself already appears as its own receipt."""
+        from sqlalchemy import or_, and_
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
             q = get_owner_transaction_query(db, owner_phone, None, include_voided=False)
-            rows = q.filter(Transaction.type.in_(["SALE", "BUY"])).order_by(
+            rows = q.filter(
+                or_(
+                    Transaction.type.in_(["SALE", "BUY"]),
+                    and_(
+                        Transaction.type == "PAY",
+                        or_(Transaction.product.is_(None), ~Transaction.product.like("%POS #%")),
+                        or_(Transaction.message_id.is_(None), ~Transaction.message_id.like("%_pay")),
+                    ),
+                )
+            ).order_by(
                 Transaction.created_at.desc()
             ).limit(100).all()
             cust_ids = [r.customer_id for r in rows if r.customer_id]

@@ -57,12 +57,12 @@ export default function Receipts() {
           {sales.map(r => (
             <button key={r.id} onClick={() => navigate(`/pos/receipt/${r.id}`)} className="receipt-list-row">
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                <strong>#{r.id} · {r.customer || "Cash sale"}</strong>
+                <strong>#{r.id} · {r.customer || (r.type === "PAY" ? "Payment" : "Cash sale")}</strong>
                 <span className="td-muted" style={{ fontSize: 12 }}>
-                  {dateStr(r.created_at)}{r.type === "BUY" ? " · Credit" : ""}
+                  {dateStr(r.created_at)}{r.type === "BUY" ? " · Credit" : r.type === "PAY" ? " · Payment" : ""}
                 </span>
               </div>
-              <strong style={{ color: r.type === "BUY" ? "#b45309" : "var(--ink)" }}>{nairaFull(r.total)}</strong>
+              <strong style={{ color: r.type === "BUY" ? "#b45309" : r.type === "PAY" ? "#16a34a" : "var(--ink)" }}>{nairaFull(r.total)}</strong>
             </button>
           ))}
         </div>

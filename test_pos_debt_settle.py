@@ -87,6 +87,35 @@ def test_pos_settles_prior_debt_at_checkout():
     assert rec["grand_total_collected"] == 1500   # 500 goods + 1000 old debt
 
 
+def test_standalone_payment_appears_in_receipts():
+    """A customer debt payment produces a receipt that shows in the Receipts menu."""
+    phone, cook = _owner()
+    cid = _customer(phone, "Ada")
+    client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": cid,
+        "items": [{"name": "x", "qty": 1, "unit_price": 1000}], "payment_amount": 0})
+    pay = client.post(f"/app/api/customers/{cid}/pay", cookies=cook, json={"amount": 1000})
+    assert pay.status_code == 200, pay.text
+    receipts = client.get("/app/api/pos/receipts", cookies=cook).json()["receipts"]
+    assert any(r["id"] == pay.json()["id"] and r["type"] == "PAY" for r in receipts)
+
+
+def test_sale_linked_payment_not_listed_separately():
+    """A debt settled inside a checkout must NOT appear as its own PAY receipt —
+    the sale already lists as a receipt."""
+    phone, cook = _owner()
+    cid = _customer(phone, "Bola")
+    client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": cid,
+        "items": [{"name": "a", "qty": 1, "unit_price": 500}], "payment_amount": 0})
+    client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": cid,
+        "items": [{"name": "b", "qty": 1, "unit_price": 300}],
+        "payment_amount": 300, "debt_payment": 500})
+    receipts = client.get("/app/api/pos/receipts", cookies=cook).json()["receipts"]
+    assert [r for r in receipts if r["type"] == "PAY"] == []   # debt-settle PAY is internal
+
+
 def test_pos_debt_payment_never_overpays():
     phone, cook = _owner()
     cid = _customer(phone, "Small Debt")
