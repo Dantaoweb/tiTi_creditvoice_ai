@@ -896,6 +896,12 @@ function FindSuppliers() {
 
 const EMPTY_PRODUCT = { product_name: "", category: "", available_sizes: [], min_order_qty: "", min_order_unit: "", price_range: "", quality_notes: "" };
 
+// Comma-format each number group in a free-text price range (e.g.
+// "45000-48000/bag" → "45,000-48,000/bag"), leaving currency/units/dashes.
+function fmtPriceRange(s) {
+  return String(s || "").replace(/,/g, "").replace(/\d{4,}/g, m => Number(m).toLocaleString("en-US"));
+}
+
 function ProductRow({ p, onChange, onRemove, index }) {
   const [sizeInput, setSizeInput] = useState("");
 
@@ -932,7 +938,7 @@ function ProductRow({ p, onChange, onRemove, index }) {
         </div>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label className="form-label">Price range (optional)</label>
-          <input value={p.price_range} onChange={e => onChange(index, { ...p, price_range: e.target.value })} placeholder="e.g. ₦45,000–₦48,000/bag" />
+          <input value={p.price_range} onChange={e => onChange(index, { ...p, price_range: fmtPriceRange(e.target.value) })} placeholder="e.g. ₦45,000–₦48,000/bag" />
         </div>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label className="form-label">Quality notes (optional)</label>
