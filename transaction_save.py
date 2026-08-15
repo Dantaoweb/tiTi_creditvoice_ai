@@ -167,6 +167,10 @@ def _notify_customer_payment_receipt(db, customer, pay_tx, balance, user, busine
             if getattr(pay_tx, "receipt_number", None)
             else f"Ref: PAY-{pay_tx.id}"
         )
+        # Who issued it, so an owner can see which staff (owner by default).
+        recorded_by = getattr(user, "name", None) or (owner.name if owner else None)
+        if recorded_by:
+            lines.append(f"Recorded by: {recorded_by}")
         lines.append(footer)
         receipt = "\n".join(lines)
 

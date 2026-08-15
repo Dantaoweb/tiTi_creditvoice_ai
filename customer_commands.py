@@ -64,6 +64,13 @@ def _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx
         lines.append("Settled:  Fully paid")
     lines.append("--------------------")
     lines.append(f"Receipt #{tx.receipt_number}" if getattr(tx, "receipt_number", None) else f"Ref: TXN-{tx.id}")
+    # Who issued it — the staff who recorded it, so an owner can see which of
+    # their staff. Falls back to the business owner when there is no recorder.
+    if getattr(tx, "recorded_by_id", None):
+        from models import User as _RU
+        _rec = db.query(_RU).filter(_RU.id == tx.recorded_by_id).first()
+        if _rec and _rec.name:
+            lines.append(f"Recorded by: {_rec.name}")
     lines.append(cfg["footer"])
     return "\n".join(lines)
 
