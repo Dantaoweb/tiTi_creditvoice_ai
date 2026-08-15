@@ -18,16 +18,18 @@ from web_common import _session_owner_phone, _owner_filter, _iso, _money, _requi
 
 
 def _biz_name(db, owner_phone):
+    from business_templates import business_display_name
     u = db.query(User).filter(User.phone == owner_phone).first()
-    return (u.business_type_label or u.name or "Your business") if u else "Your business"
+    return business_display_name(u) if u else "Your business"
 
 
 def _owner_header(db, owner_phone):
     """Business header block shared by supplier receipts (same fields the sale
-    receipt uses)."""
+    receipt uses). Uses the real business name, never the generic type label."""
+    from business_templates import business_display_name
     u = db.query(User).filter(User.phone == owner_phone).first()
     return {
-        "biz_name": (u.business_type_label or u.name) if u else "Your business",
+        "biz_name": business_display_name(u) if u else "Your business",
         "biz_address": getattr(u, "address", None) if u else None,
         "biz_phone": owner_phone,
         "recorded_by": (u.name if u else None),

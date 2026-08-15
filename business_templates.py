@@ -1935,6 +1935,32 @@ DEFAULT_RECEIPT_CONFIG = {
 }
 
 
+def _generic_type_label(business_type):
+    """The generic display label for a business_type key (e.g. 'produce_trader'
+    → 'Crop Produce Trader'), or None if the key is unknown."""
+    if not business_type:
+        return None
+    for cat in BUSINESS_CATEGORIES:
+        for key, label in cat.get("businesses", []):
+            if key == business_type:
+                return label
+    return None
+
+
+def business_display_name(user):
+    """The business name to print on receipts. Prefers the owner's custom business
+    label, but never prints the generic business-type label (e.g. 'Crop Produce
+    Trader', 'Pharmacy') as if it were the business's name — it falls back to the
+    owner's name for that. Keeps every receipt path consistent."""
+    if not user:
+        return "Your business"
+    label = (getattr(user, "business_type_label", None) or "").strip()
+    generic = _generic_type_label(getattr(user, "business_type", None))
+    if label and (not generic or label.lower() != generic.strip().lower()):
+        return label
+    return (getattr(user, "name", None) or label or "Your business")
+
+
 def receipt_config_for_user(user):
     """Return the niche-specific receipt config for a business owner."""
     key = template_key_for_user(user)

@@ -113,9 +113,10 @@ def _notify_customer_receipt(db, customer, tx, balance, user, business_owner_pho
         from business_templates import receipt_config_for_user
         from customer_commands import _build_reprint_receipt
         from models import User as _U
+        from business_templates import business_display_name
         owner = db.query(_U).filter(_U.phone == business_owner_phone).first()
         cfg = receipt_config_for_user(owner) if owner else None
-        business_name = (owner.name if owner else user.name) or ""
+        business_name = business_display_name(owner or user)
         receipt = _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx, balance, cfg)
         send_message(customer.customer_phone, receipt)
     except Exception:
@@ -133,11 +134,11 @@ def _notify_customer_payment_receipt(db, customer, pay_tx, balance, user, busine
     if not pay_tx:
         return
     try:
-        from business_templates import receipt_config_for_user
+        from business_templates import receipt_config_for_user, business_display_name
         from models import User as _U
         owner = db.query(_U).filter(_U.phone == business_owner_phone).first()
         cfg = receipt_config_for_user(owner) if owner else {}
-        business_name = (owner.name if owner else (user.name if user else "")) or ""
+        business_name = business_display_name(owner or user)
         customer_label = cfg.get("customer_label", "Customer")
         footer = cfg.get("footer", "Thank you.")
         cust_name = (customer.name.title() if customer and customer.name else "Customer")

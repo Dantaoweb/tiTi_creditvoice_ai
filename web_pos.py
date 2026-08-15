@@ -235,10 +235,10 @@ def get_pos_receipt(db, tx_id, user=None):
 
     # Payment receipt (standalone PAY transaction) — amount paid + current balance
     if tx.type == "PAY":
-        from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG
+        from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG, business_display_name
         from reports import get_balance
         cfg = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
-        bname = (getattr(user, "business_name", None) or getattr(user, "name", None)) if user else None
+        bname = business_display_name(owner_user) if owner_user else None
         bal = get_balance(db, tx.customer_id) if tx.customer_id else 0
         return {
             "id": tx.id,
@@ -297,16 +297,16 @@ def get_pos_receipt(db, tx_id, user=None):
             prior_debt_paid = int(_debt_pay.amount or 0)
 
     # Business-specific receipt config
-    from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG, inventory_fields_for_user
+    from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG, inventory_fields_for_user, business_display_name
     config = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
     _field_labels = {f["key"]: f["label"] for f in inventory_fields_for_user(user)} if user else {}
 
-    # Business name + address from the owner record
+    # Business name + address from the owner record (never the generic type label)
     biz_name = None
     biz_address = None
-    if user:
-        biz_name = getattr(user, "business_name", None) or getattr(user, "name", None)
-        biz_address = getattr(user, "address", None)
+    if owner_user:
+        biz_name = business_display_name(owner_user)
+        biz_address = getattr(owner_user, "address", None)
 
     # Branch this sale belongs to (its own name/address print on the receipt)
     branch_name = branch_address = None
