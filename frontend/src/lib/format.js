@@ -31,6 +31,14 @@ export function nairaFull(value) {
   return `₦${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 }
 
+// A customer balance: positive = they owe you; negative = they have credit with
+// you (e.g. overpaid). Never render a bare minus — it reads as an error. Returns
+// the amount plus a "Credit " prefix when negative.
+export function fmtBalance(value) {
+  const n = Math.round(Number(value || 0));
+  return n < 0 ? `Credit ${nairaFull(-n)}` : nairaFull(n);
+}
+
 const _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
   "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
   "Seventeen", "Eighteen", "Nineteen"];

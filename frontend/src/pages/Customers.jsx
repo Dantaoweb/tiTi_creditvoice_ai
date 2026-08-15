@@ -4,7 +4,7 @@ import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
-import { nairaFull, dateStr, dateTimeStr, parseAmt } from "../lib/format";
+import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtBalance } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
@@ -301,7 +301,8 @@ function CustomerDetailModal({ customer, onClose, onPay, onSaved }) {
         )}
 
         <div className="metrics-grid" style={{ gridTemplateColumns: "1fr", marginBottom: 14 }}>
-          <MetricCard label="Balance owed" value={nairaFull(balance)} color={balance > 0 ? "rose" : "green"} />
+          <MetricCard label={balance < 0 ? "Customer credit" : "Balance owed"}
+            value={nairaFull(Math.abs(balance))} color={balance > 0 ? "rose" : balance < 0 ? "green" : undefined} />
         </div>
 
         {balance > 0 && (
@@ -793,7 +794,9 @@ export default function Customers() {
                 key: "balance", label: "Balance", sortKey: "balance",
                 render: r => r.balance > 0
                   ? <span className="text-rose font-bold">{nairaFull(r.balance)}</span>
-                  : <span className="text-subtle">{nairaFull(r.balance)}</span>,
+                  : r.balance < 0
+                    ? <span className="text-green" style={{ fontWeight: 600 }}>{fmtBalance(r.balance)}</span>
+                    : <span className="text-subtle">{nairaFull(0)}</span>,
               },
               { key: "created_at", label: "Joined", render: r => <span className="td-muted">{dateStr(r.created_at)}</span> },
               {
