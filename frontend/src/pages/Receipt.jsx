@@ -109,7 +109,9 @@ export default function Receipt() {
       });
       L.push("--------------------");
       L.push(`Total: ${nairaFull(receipt.total)}`);
+      if (!isInvoice) L.push(`Paid: ${nairaFull(paid)}`);
       if (owed > 0) L.push(`${isInvoice ? "Amount due" : "Balance"}: ${nairaFull(owed)}`);
+      else if (!isInvoice) L.push("Status: Paid in full");
       if (priorDebt > 0) {
         L.push(`Previous debt settled: ${nairaFull(priorDebt)}`);
         L.push(`Total received: ${nairaFull(receipt.grand_total_collected ?? (paid + priorDebt))}`);
@@ -274,15 +276,15 @@ export default function Receipt() {
               <td colSpan={3}>Total</td>
               <td className="receipt-right">{nairaFull(receipt.total)}</td>
             </tr>
-            {isCredit && (
+            {(isCredit || isCash) && (
               <>
                 <tr>
                   <td colSpan={3}>Paid</td>
                   <td className="receipt-right">{nairaFull(paid)}</td>
                 </tr>
                 <tr style={{ fontWeight: 700, color: owed > 0 ? "#b91c1c" : "#166534" }}>
-                  <td colSpan={3}>Balance owed</td>
-                  <td className="receipt-right">{nairaFull(owed)}</td>
+                  <td colSpan={3}>{owed > 0 ? "Balance owed" : "Paid in full"}</td>
+                  <td className="receipt-right">{owed > 0 ? nairaFull(owed) : "✓"}</td>
                 </tr>
               </>
             )}
