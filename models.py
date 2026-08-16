@@ -1045,6 +1045,69 @@ class BusinessNote(Base):
     updated_at = Column(DateTime, default=utcnow)
 
 
+class ThriftGroup(Base):
+    """A rotating savings group (ajo / esusu). Members contribute a fixed amount
+    each round and the pot rotates to one member per round in turn order."""
+
+    __tablename__ = "thrift_groups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)         # creator / group admin
+    name = Column(String)
+    contribution_amount = Column(Integer)            # fixed amount per member per round
+    frequency = Column(String, default="weekly")     # daily | weekly | monthly | custom
+    current_round = Column(Integer, default=1)
+    invite_token = Column(String, index=True)        # shareable join link
+    require_approval = Column(Boolean, default=True)  # join via link needs approval
+    status = Column(String, default="active")        # active | completed
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ThriftMember(Base):
+    """A participant in a ThriftGroup."""
+
+    __tablename__ = "thrift_members"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("thrift_groups.id"), index=True)
+    name = Column(String)
+    phone = Column(String, nullable=True)            # contact phone
+    user_phone = Column(String, nullable=True, index=True)  # linked tiTi account (join link)
+    role = Column(String, default="member")          # admin | approver | member
+    status = Column(String, default="active")        # pending | active | declined | removed
+    turn_order = Column(Integer, nullable=True)      # rotation position (assigned when active)
+    joined_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ThriftContribution(Base):
+    """One member's contribution in one round."""
+
+    __tablename__ = "thrift_contributions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("thrift_groups.id"), index=True)
+    member_id = Column(Integer, ForeignKey("thrift_members.id"), index=True)
+    round_number = Column(Integer, default=1)
+    amount = Column(Integer)
+    recorded_by_phone = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ThriftPayout(Base):
+    """The pot paid out to a member for one round."""
+
+    __tablename__ = "thrift_payouts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("thrift_groups.id"), index=True)
+    member_id = Column(Integer, ForeignKey("thrift_members.id"), index=True)
+    round_number = Column(Integer)
+    amount = Column(Integer)
+    recorded_by_phone = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
 class ProactiveLog(Base):
     """Tracks proactive messages tiTi has sent so we don't spam users."""
 

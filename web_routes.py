@@ -264,6 +264,10 @@ def register_web_routes(app):
     from web_thrift_routes import register_thrift_routes
     register_thrift_routes(app)
 
+    # ── Thrift / Ajo groups (rotating savings engine) ─────────────────────────
+    from web_thrift_group_routes import register_thrift_group_routes
+    register_thrift_group_routes(app)
+
     # ── Subscription / Upgrade — split into web_subscription_routes ───────────
     from web_subscription_routes import register_subscription_routes
     register_subscription_routes(app)

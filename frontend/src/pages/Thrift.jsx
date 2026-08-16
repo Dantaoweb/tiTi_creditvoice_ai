@@ -8,6 +8,7 @@ import MetricCard from "../components/MetricCard";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import DataTable from "../components/DataTable";
+import ThriftGroups from "./ThriftGroups";
 import { useNavigate } from "react-router-dom";
 
 // ── Collapsible explainer ──────────────────────────────────────────────────────
@@ -361,9 +362,7 @@ export default function Thrift() {
         </button>
       </div>
 
-      {mode === "group" && (
-        <GroupThrift data={data?.group} loading={loading} reload={load} />
-      )}
+      {mode === "group" && <ThriftGroups />}
       {mode === "personal" && (
         <PersonalSavings data={data?.personal} loading={loading} reload={load} />
       )}

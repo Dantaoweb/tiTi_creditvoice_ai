@@ -3,6 +3,7 @@ import { ToastProvider } from "./components/Toast";
 import { useAuth } from "./context/AuthContext";
 import Layout       from "./components/Layout";
 import JoinPartner  from "./pages/JoinPartner";
+import JoinThrift   from "./pages/JoinThrift";
 import Landing      from "./pages/Landing";
 import Login        from "./pages/Login";
 import Chat         from "./pages/Chat";
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="reminders"    element={<Reminders />}    />
           <Route path="wallet"       element={<Wallet />}       />
           <Route path="thrift"       element={<Thrift />}       />
+          <Route path="thrift/join/:token" element={<JoinThrift />} />
           <Route path="branches"     element={<Branches />}     />
           <Route path="automation"     element={<Automation />}     />
           <Route path="opportunities" element={<Opportunities />} />
