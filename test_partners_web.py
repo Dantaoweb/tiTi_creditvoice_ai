@@ -58,19 +58,19 @@ def _pending_invite(owner_phone, partner_phone, token):
 def test_invite_link_can_be_opened_and_accepted():
     owner_phone, _ = _user("Owner")
     inv_phone, inv_cook = _user("Investor")
-    bp_id = _pending_invite(owner_phone, "234800000000", "tok-abc-123")
+    bp_id = _pending_invite(owner_phone, inv_phone, "tok-abc-123")
 
     info = client.get("/app/api/partners/join/tok-abc-123", cookies=inv_cook).json()
     assert info["role_label"] == "Investor"
     assert info["investment_amount"] == 500000
     assert info["status"] == "pending"
     assert info["is_own_invite"] is False
+    assert info["is_for_me"] is True   # link is locked to the invited number
 
     r = client.post("/app/api/partners/join/tok-abc-123/accept", cookies=inv_cook)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "active"
 
-    # Bound to the accepting account, now active.
     db = SessionLocal()
     try:
         bp = db.query(BusinessPartner).filter(BusinessPartner.id == bp_id).one()
@@ -78,6 +78,19 @@ def test_invite_link_can_be_opened_and_accepted():
         assert bp.partner_phone == inv_phone
     finally:
         db.close()
+
+
+def test_link_is_locked_to_the_invited_phone():
+    owner_phone, _ = _user("Owner")
+    inv_phone, _ = _user("Intended")
+    _, stranger_cook = _user("Stranger")
+    _pending_invite(owner_phone, inv_phone, "tok-locked")
+
+    # A different logged-in account may open it but cannot accept it.
+    info = client.get("/app/api/partners/join/tok-locked", cookies=stranger_cook).json()
+    assert info["is_for_me"] is False
+    r = client.post("/app/api/partners/join/tok-locked/accept", cookies=stranger_cook)
+    assert r.status_code == 403
 
 
 def test_owner_cannot_accept_own_invite():
@@ -90,7 +103,7 @@ def test_owner_cannot_accept_own_invite():
 def test_scoped_overview_after_accept():
     owner_phone, _ = _user("Owner")
     inv_phone, inv_cook = _user("Investor")
-    bp_id = _pending_invite(owner_phone, "234800000002", "tok-ov")
+    bp_id = _pending_invite(owner_phone, inv_phone, "tok-ov")
     client.post("/app/api/partners/join/tok-ov/accept", cookies=inv_cook)
 
     ov = client.get(f"/app/api/partners/overview/{bp_id}", cookies=inv_cook).json()

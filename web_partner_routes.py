@@ -20,6 +20,21 @@ def _new_invite_token():
     return secrets.token_urlsafe(24)
 
 
+def _mask_phone(phone):
+    """Show only the last 4 digits so the invitee knows which number to use
+    without exposing the full number to anyone holding the link."""
+    p = str(phone or "")
+    return ("•••• " + p[-4:]) if len(p) >= 4 else "••••"
+
+
+def _phone_matches(target_phone, my_phone):
+    """True when my_phone is the same number as target_phone, tolerant of the
+    different stored formats (e.g. 0803… vs 234803…)."""
+    if not target_phone or not my_phone:
+        return False
+    return target_phone in phone_candidates(my_phone) or my_phone in phone_candidates(target_phone)
+
+
 class PartnerInviteRequest(BaseModel):
     partner_phone: str = Field(max_length=20)
     role: str = Field(default="partner", max_length=20)
@@ -249,6 +264,8 @@ def register_partner_routes(app):
                 "investment_amount": bp.investment_amount,
                 "status": bp.status,
                 "is_own_invite": bool(me and me.phone == bp.owner_phone),
+                "is_for_me": bool(me and _phone_matches(bp.partner_phone, me.phone)),
+                "invited_phone_masked": _mask_phone(bp.partner_phone),
                 "partner_id": bp.id,
             }
         finally:
@@ -256,12 +273,11 @@ def register_partner_routes(app):
 
     @app.post("/app/api/partners/join/{token}/accept")
     def web_partner_join_accept(token: str, session: dict = Depends(require_web_auth)):
-        """Accept an invite link: bind the current account as the partner."""
+        """Accept an invite link — only the account with the invited phone may."""
         db = SessionLocal()
         try:
             from models import BusinessPartner
             from partner_commands import _utcnow
-            from parser import normalize_phone
             bp = db.query(BusinessPartner).filter(
                 BusinessPartner.invite_token == token
             ).first()
@@ -272,11 +288,17 @@ def register_partner_routes(app):
                 raise HTTPException(status_code=403, detail="Not found.")
             if me.phone == bp.owner_phone:
                 raise HTTPException(status_code=400, detail="You cannot accept your own invitation.")
+            # The link is locked to the invited number: only the account with the
+            # phone the owner entered may accept it.
+            if not _phone_matches(bp.partner_phone, me.phone):
+                raise HTTPException(
+                    status_code=403,
+                    detail=(f"This invitation was sent to a different phone number "
+                            f"({_mask_phone(bp.partner_phone)}). Please log in with that "
+                            f"number to accept."),
+                )
             if bp.status == "active":
                 return {"ok": True, "status": "active", "id": bp.id, "already": True}
-            # Bind this account as the partner (the owner may not have known the
-            # exact phone/format) and activate.
-            bp.partner_phone = normalize_phone(me.phone) or me.phone
             bp.status = "active"
             bp.accepted_at = _utcnow()
             db.commit()

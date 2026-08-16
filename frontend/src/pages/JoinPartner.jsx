@@ -3,10 +3,18 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Handshake, Check, AlertCircle, Loader2 } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull } from "../lib/format";
+import { useAuth } from "../context/AuthContext";
 
 export default function JoinPartner() {
   const { token } = useParams();
   const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  function switchAccount() {
+    const next = encodeURIComponent(`/partners/join/${token}`);
+    logout();
+    navigate(`/login?next=${next}`, { replace: true });
+  }
   const [invite, setInvite] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,6 +115,16 @@ export default function JoinPartner() {
             You've already accepted this invitation.
             <br /><button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => navigate("/partners")}>View businesses I'm in</button>
           </p>
+        ) : !invite.is_for_me ? (
+          <div style={{ marginTop: 18 }}>
+            <p className="text-subtle">
+              This invitation was sent to <strong>{invite.invited_phone_masked}</strong>.
+              Log in with that number to accept it.
+            </p>
+            <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={switchAccount}>
+              Log in with that number
+            </button>
+          </div>
         ) : (
           <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 20 }}>
             <button className="btn btn-primary" disabled={busy} onClick={accept}>
