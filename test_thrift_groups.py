@@ -109,6 +109,36 @@ def test_promoted_approver_can_add_and_approve():
     assert r.json()["active_count"] == 3
 
 
+def test_member_cap_blocks_extra_joins():
+    _, admin = _user("Capped")
+    g = client.post("/app/api/thrift/groups", cookies=admin,
+                    json={"name": "Small Ajo", "contribution_amount": 1000, "max_members": 2}).json()
+    gid = g["id"]
+    assert g["max_members"] == 2
+    # admin is member #1; add member #2 → full.
+    g = client.post(f"/app/api/thrift/groups/{gid}/members", cookies=admin, json={"name": "Two"}).json()
+    assert g["accepting"] is False
+    token = g["invite_token"]
+    _, third = _user("Third")
+    r = client.post(f"/app/api/thrift/join/{token}", cookies=third, json={})
+    assert r.status_code == 400
+
+
+def test_admin_can_lock_and_unlock():
+    _, admin = _user("Locker")
+    g = _make_group(admin, name="Lockable", amount=1000)
+    gid, token = g["id"], g["invite_token"]
+
+    g = client.post(f"/app/api/thrift/groups/{gid}/settings", cookies=admin, json={"locked": True}).json()
+    assert g["locked"] is True and g["accepting"] is False
+    _, joiner = _user("Joiner")
+    assert client.post(f"/app/api/thrift/join/{token}", cookies=joiner, json={}).status_code == 400
+
+    g = client.post(f"/app/api/thrift/groups/{gid}/settings", cookies=admin, json={"locked": False}).json()
+    assert g["locked"] is False
+    assert client.post(f"/app/api/thrift/join/{token}", cookies=joiner, json={}).json()["status"] in ("pending", "active")
+
+
 def test_many_groups_and_unique_names_and_access():
     _, cook = _user("Multi")
     _make_group(cook, name="Group A", amount=5000)

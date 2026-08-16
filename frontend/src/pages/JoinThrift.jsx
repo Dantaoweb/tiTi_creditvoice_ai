@@ -70,7 +70,7 @@ export default function JoinThrift() {
         <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", marginTop: 16 }}>
           <div className="parsed-cell"><span>Contribution</span><strong>{nairaFull(info.contribution_amount)}</strong></div>
           <div className="parsed-cell"><span>How often</span><strong>{cap(info.frequency)}</strong></div>
-          <div className="parsed-cell"><span>Members</span><strong>{info.member_count}</strong></div>
+          <div className="parsed-cell"><span>Members</span><strong>{info.member_count}{info.max_members ? `/${info.max_members}` : ""}</strong></div>
         </div>
 
         {error && (
@@ -83,6 +83,10 @@ export default function JoinThrift() {
           <p className="text-subtle" style={{ marginTop: 18 }}>
             You're {info.my_status === "pending" ? "awaiting approval" : "already a member"} of this group.
             <br /><button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={() => navigate("/thrift")}>View my groups</button>
+          </p>
+        ) : !info.accepting ? (
+          <p className="text-subtle" style={{ marginTop: 18 }}>
+            {info.closed_reason || "This group is not accepting new members."}
           </p>
         ) : (
           <div style={{ marginTop: 20 }}>

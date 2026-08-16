@@ -18,6 +18,12 @@ class CreateGroupRequest(BaseModel):
     contribution_amount: int
     frequency: Optional[str] = Field(default="weekly", max_length=20)
     require_approval: Optional[bool] = True
+    max_members: Optional[int] = None
+
+
+class GroupSettingsRequest(BaseModel):
+    locked: Optional[bool] = None
+    max_members: Optional[int] = None
 
 
 class AddMemberRequest(BaseModel):
@@ -73,10 +79,13 @@ def register_thrift_group_routes(app):
             ).first()
             if dup:
                 raise HTTPException(status_code=409, detail="You already have a group with that name.")
+            if payload.max_members is not None and payload.max_members < 2:
+                raise HTTPException(status_code=400, detail="A group needs room for at least 2 members.")
             g = tg.create_group(
                 db, session["phone"], name, payload.contribution_amount,
                 frequency=payload.frequency, admin_name=getattr(me, "name", None),
                 require_approval=payload.require_approval,
+                max_members=payload.max_members,
             )
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
@@ -120,6 +129,9 @@ def register_thrift_group_routes(app):
             _require(db, g, session["phone"], approve=True)
             if not payload.name.strip():
                 raise HTTPException(status_code=400, detail="Member name is required.")
+            ok, reason = tg.can_accept_members(db, g)
+            if not ok:
+                raise HTTPException(status_code=400, detail=reason)
             tg.add_member(db, g, payload.name, payload.phone)
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
@@ -152,6 +164,25 @@ def register_thrift_group_routes(app):
             payout = tg.record_payout(db, g, recorded_by_phone=session["phone"])
             if not payout:
                 raise HTTPException(status_code=400, detail="No member is due a payout this round.")
+            return tg.serialize_group(db, g, session["phone"], detail=True)
+        finally:
+            db.close()
+
+    @app.post("/app/api/thrift/groups/{group_id}/settings")
+    def group_settings(group_id: int, payload: GroupSettingsRequest, session: dict = Depends(require_web_auth)):
+        """Admin locks/unlocks the group or adjusts the member cap."""
+        db = SessionLocal()
+        try:
+            g = _load_group(db, group_id)
+            _require(db, g, session["phone"], admin=True)
+            if payload.locked is not None:
+                g.locked = bool(payload.locked)
+            if payload.max_members is not None:
+                cap = int(payload.max_members)
+                if cap and cap < tg.member_slots(db, g.id):
+                    raise HTTPException(status_code=400, detail="The cap can't be below the current member count.")
+                g.max_members = cap or None
+            db.commit()
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
             db.close()
@@ -239,6 +270,7 @@ def register_thrift_group_routes(app):
             admin = db.query(User).filter(User.phone == g.owner_phone).first()
             mine = tg.member_for_user(db, g.id, session["phone"])
             active = tg.active_members(db, g.id)
+            accepting, reason = tg.can_accept_members(db, g)
             return {
                 "id": g.id,
                 "name": g.name,
@@ -246,8 +278,11 @@ def register_thrift_group_routes(app):
                 "frequency": g.frequency,
                 "admin_name": (admin.name if admin else g.owner_phone),
                 "member_count": len(active),
+                "max_members": g.max_members,
                 "require_approval": g.require_approval,
                 "status": g.status,
+                "accepting": accepting and g.status == "active",
+                "closed_reason": None if (accepting and g.status == "active") else (reason or "This group is closed."),
                 "my_status": mine.status if mine else None,
             }
         finally:
@@ -263,6 +298,12 @@ def register_thrift_group_routes(app):
             if g.status != "active":
                 raise HTTPException(status_code=400, detail="This group is no longer accepting members.")
             me = _me(db, session)
+            # New joiners are gated by lock/cap; someone already in the group
+            # (e.g. re-opening the link) always passes through.
+            if not tg.member_for_user(db, g.id, me.phone):
+                ok, reason = tg.can_accept_members(db, g)
+                if not ok:
+                    raise HTTPException(status_code=400, detail=reason)
             member, created = tg.join_via_link(db, g, me, payload.name)
             return {
                 "ok": True,

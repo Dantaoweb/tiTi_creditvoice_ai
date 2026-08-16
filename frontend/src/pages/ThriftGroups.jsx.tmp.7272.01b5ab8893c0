@@ -356,10 +356,11 @@ export default function ThriftGroups() {
               <div className="text-subtle text-sm" style={{ marginTop: 6 }}>
                 {nairaFull(g.contribution_amount)} · {cap(g.frequency)}
               </div>
-              <div style={{ display: "flex", gap: 12, marginTop: 10, fontSize: 13 }}>
-                <span><strong>{g.active_count}</strong> members</span>
+              <div style={{ display: "flex", gap: 12, marginTop: 10, fontSize: 13, flexWrap: "wrap" }}>
+                <span><strong>{g.active_count}</strong>{g.max_members ? `/${g.max_members}` : ""} members</span>
                 <span className="text-subtle">{g.status === "completed" ? "Completed" : `Round ${g.current_round}`}</span>
                 {g.pending_count > 0 && <span className="badge badge-amber">{g.pending_count} pending</span>}
+                {g.locked && <span className="badge badge-gray">Locked</span>}
               </div>
             </button>
           ))}

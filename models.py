@@ -1059,6 +1059,8 @@ class ThriftGroup(Base):
     current_round = Column(Integer, default=1)
     invite_token = Column(String, index=True)        # shareable join link
     require_approval = Column(Boolean, default=True)  # join via link needs approval
+    max_members = Column(Integer, nullable=True)      # membership cap; null = unlimited
+    locked = Column(Boolean, default=False)           # admin closed the group to new members
     status = Column(String, default="active")        # active | completed
     created_at = Column(DateTime, default=utcnow)
 

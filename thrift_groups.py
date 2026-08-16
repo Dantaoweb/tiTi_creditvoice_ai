@@ -76,8 +76,26 @@ def can_approve(role):
     return role in ("admin", "approver")
 
 
+def member_slots(db, group_id):
+    """Members that count against the cap: active + still-pending requests."""
+    return db.query(ThriftMember).filter(
+        ThriftMember.group_id == group_id,
+        ThriftMember.status.in_(["active", "pending"]),
+    ).count()
+
+
+def can_accept_members(db, group):
+    """(ok, reason) — whether the group can take another member right now."""
+    if getattr(group, "locked", False):
+        return False, "This group is locked — no new members can join."
+    cap = getattr(group, "max_members", None)
+    if cap and member_slots(db, group.id) >= cap:
+        return False, "This group is full."
+    return True, None
+
+
 def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
-                 admin_name=None, require_approval=True):
+                 admin_name=None, require_approval=True, max_members=None):
     group = ThriftGroup(
         owner_phone=owner_phone,
         name=(name or "").strip(),
@@ -86,6 +104,8 @@ def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
         current_round=1,
         invite_token=new_token(),
         require_approval=bool(require_approval),
+        max_members=int(max_members) if max_members else None,
+        locked=False,
         status="active",
     )
     db.add(group)
@@ -201,6 +221,10 @@ def serialize_group(db, group, viewer_phone, detail=False):
         "pending_count": len(pending),
         "pot": int(group.contribution_amount or 0) * len(active),
         "total_rounds": len(active),
+        "max_members": getattr(group, "max_members", None),
+        "locked": bool(getattr(group, "locked", False)),
+        "slots_taken": member_slots(db, group.id),
+        "accepting": can_accept_members(db, group)[0] and group.status == "active",
         # The invite link is only handed to people who can bring members in.
         "invite_token": group.invite_token if approver else None,
     }
