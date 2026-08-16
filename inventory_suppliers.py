@@ -253,7 +253,11 @@ def find_matching_inventory_item(db, owner_phone, product, unit=None):
             # Skip items with a different unit when caller specified a unit
             if unit and _inv.unit and _inv.unit.lower() != unit.lower():
                 continue
-            _iwords = set(re.split(r"\W+", _inv.name.lower()))
+            # Drop empty tokens: a name like "egg (sorted)" splits to
+            # {"egg","sorted",""}, and qw.startswith("") is always true — which
+            # would fuzzily match ANY query word against the empty token and
+            # merge unrelated products (e.g. "layer mash" into "egg (sorted)").
+            _iwords = set(w for w in re.split(r"\W+", _inv.name.lower()) if w)
             if all(_word_matches(qw, _iwords) for qw in _qwords):
                 _candidates.append(_inv)
         if len(_candidates) == 1:

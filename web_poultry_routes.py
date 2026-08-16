@@ -90,6 +90,17 @@ def register_poultry_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/poultry/report")
+    def poultry_report(period: Optional[str] = Query(default=None),
+                       session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            period_key = period.upper() if period else None
+            return poultry.egg_production_report(db, owner_phone, period_key)
+        finally:
+            db.close()
+
     @app.get("/app/api/poultry/egg-history")
     def poultry_egg_history(days: int = Query(default=30, ge=1, le=180),
                             session: dict = Depends(require_web_auth)):

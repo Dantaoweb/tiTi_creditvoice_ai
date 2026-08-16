@@ -197,6 +197,97 @@ def _today_total(db, owner_phone, source):
     ).with_entities(InventoryMovement.quantity).all()
 
 
+def _grade_label_from_name(name):
+    grade = _PRODUCT_GRADE.get(name)
+    if grade:
+        return _GRADE_LABEL[grade]
+    return (name or "").replace("egg (", "").replace(")", "").strip().title()
+
+
+def egg_production_report(db, owner_phone, period=None):
+    """Period report tying the poultry workflow together:
+      • per grade — crates collected vs sold, and current stock;
+      • egg income (revenue from egg sales in the period);
+      • feed bought vs feed used (valued at cost);
+      • margin over feed = egg income − feed cost used.
+
+    Feed cost used is valued at each feed's cost price (COGS-style) and is kept
+    separate from cash spend so it is not double-counted; it is feed-only, not a
+    full profit figure."""
+    from reports import get_period_range
+    start, end = get_period_range(period)
+
+    def _in_period(q):
+        if start is not None:
+            q = q.filter(InventoryMovement.created_at >= start,
+                         InventoryMovement.created_at < end)
+        return q
+
+    def _movements(item_ids, direction, source=None):
+        if not item_ids:
+            return []
+        q = db.query(InventoryMovement).filter(
+            InventoryMovement.owner_phone == owner_phone,
+            InventoryMovement.item_id.in_(item_ids),
+            InventoryMovement.movement_type == direction,
+        )
+        if source:
+            q = q.filter(InventoryMovement.source_type == source)
+        return _in_period(q).all()
+
+    # ── Eggs: collected (production IN) vs sold (OUT) per grade ──
+    egg_items = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.name.like("egg (%"),
+    ).all()
+    egg_ids = [it.id for it in egg_items]
+    collected, sold, income = {}, {}, {}
+    for m in _movements(egg_ids, "IN", EGG_COLLECTION_SOURCE):
+        collected[m.item_id] = collected.get(m.item_id, 0) + (m.quantity or 0)
+    for m in _movements(egg_ids, "OUT"):   # eggs only leave via a sale
+        sold[m.item_id] = sold.get(m.item_id, 0) + (m.quantity or 0)
+        income[m.item_id] = income.get(m.item_id, 0) + (m.quantity or 0) * (m.unit_price or 0)
+
+    rows = []
+    for it in egg_items:
+        rows.append({
+            "label": _grade_label_from_name(it.name),
+            "collected": collected.get(it.id, 0),
+            "sold": sold.get(it.id, 0),
+            "in_stock": it.quantity or 0,
+            "income": income.get(it.id, 0),
+        })
+    order = {EGG_PRODUCT[k]: i for i, (k, _) in enumerate(EGG_GRADES)}
+    rows.sort(key=lambda r: order.get(f"egg ({r['label'].lower()})", 99))
+    egg_income = sum(r["income"] for r in rows)
+    eggs_total = {
+        "collected": sum(r["collected"] for r in rows),
+        "sold": sum(r["sold"] for r in rows),
+        "in_stock": sum(r["in_stock"] for r in rows),
+    }
+
+    # ── Feed: bought (IN, at cost) vs used (FEED_USE OUT, valued at cost) ──
+    feed_items = list_feed_items(db, owner_phone)
+    feed_ids = [f.id for f in feed_items]
+    cost_of = {f.id: (f.cost_price or 0) for f in feed_items}
+    feed_bought = sum((m.quantity or 0) * (m.unit_price or 0)
+                      for m in _movements(feed_ids, "IN"))
+    used_movs = _movements(feed_ids, "OUT", FEED_USE_SOURCE)
+    feed_used_qty = sum((m.quantity or 0) for m in used_movs)
+    feed_cost_used = sum((m.quantity or 0) * cost_of.get(m.item_id, 0) for m in used_movs)
+
+    return {
+        "period": period,
+        "eggs": rows,
+        "eggs_total": eggs_total,
+        "egg_income": egg_income,
+        "feed_bought": feed_bought,
+        "feed_used_qty": feed_used_qty,
+        "feed_cost_used": feed_cost_used,
+        "margin_over_feed": egg_income - feed_cost_used,
+    }
+
+
 def poultry_summary(db, owner_phone):
     """Header numbers for the poultry screen: today's eggs, today's feed, and
     current egg + feed stock on hand."""

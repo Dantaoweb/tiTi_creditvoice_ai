@@ -113,6 +113,44 @@ def test_feed_usage_deducts_stock_without_a_sale():
         db.close()
 
 
+def test_production_report_ties_eggs_and_feed():
+    phone, cook = _poultry_owner()
+
+    # Collect 10 crates sorted; buy 10 bags feed, use 3.
+    client.post("/app/api/poultry/egg-collection", cookies=cook,
+                json={"rows": [{"grade": "sorted", "crates": 10}]})
+    client.post("/app/api/inventory/stock-received", cookies=cook,
+                json={"product": "layer mash", "quantity": 10, "cost_per_unit": 9000})
+    feed_id = client.get("/app/api/poultry/config", cookies=cook).json()["feeds"][0]["id"]
+    client.post("/app/api/poultry/feed-usage", cookies=cook,
+                json={"rows": [{"item_id": feed_id, "quantity": 3}]})
+
+    # Simulate selling 3 crates of sorted eggs at 4,500 (an OUT movement).
+    db = SessionLocal()
+    try:
+        egg = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == phone,
+            InventoryItem.name == "egg (sorted / big)",
+        ).first()
+        egg.quantity = (egg.quantity or 0) - 3
+        db.add(InventoryMovement(owner_phone=phone, item_id=egg.id, movement_type="OUT",
+                                 quantity=3, unit_price=4500, source_type="POS"))
+        db.commit()
+    finally:
+        db.close()
+
+    rep = client.get("/app/api/poultry/report", cookies=cook).json()
+    row = next(r for r in rep["eggs"] if r["label"] == "Sorted / Big")
+    assert row["collected"] == 10
+    assert row["sold"] == 3
+    assert row["in_stock"] == 7
+    assert rep["egg_income"] == 13500          # 3 × 4,500
+    assert rep["feed_bought"] == 90000         # 10 × 9,000
+    assert rep["feed_used_qty"] == 3
+    assert rep["feed_cost_used"] == 27000      # 3 × 9,000 (at cost)
+    assert rep["margin_over_feed"] == 13500 - 27000
+
+
 def test_history_groups_by_day():
     phone, cook = _poultry_owner()
     client.post("/app/api/poultry/egg-collection", cookies=cook,
