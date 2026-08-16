@@ -1,7 +1,8 @@
-import { Navigate, Routes, Route } from "react-router-dom";
+import { Navigate, Routes, Route, useLocation } from "react-router-dom";
 import { ToastProvider } from "./components/Toast";
 import { useAuth } from "./context/AuthContext";
 import Layout       from "./components/Layout";
+import JoinPartner  from "./pages/JoinPartner";
 import Landing      from "./pages/Landing";
 import Login        from "./pages/Login";
 import Chat         from "./pages/Chat";
@@ -38,7 +39,10 @@ import Profile      from "./pages/Profile";
 
 function RequireAuth({ children }) {
   const { isAuthed } = useAuth();
-  return isAuthed ? children : <Navigate to="/login" replace />;
+  const location = useLocation();
+  // Preserve deep links (e.g. a partner invite) through the login round-trip.
+  const next = encodeURIComponent(location.pathname + location.search);
+  return isAuthed ? children : <Navigate to={`/login?next=${next}`} replace />;
 }
 
 export default function App() {
@@ -78,6 +82,7 @@ export default function App() {
           <Route path="suppliers"    element={<Suppliers />}    />
           <Route path="staff"        element={<Staff />}        />
           <Route path="partners"     element={<Partners />}     />
+          <Route path="partners/join/:token" element={<JoinPartner />} />
           <Route path="notes"        element={<Notes />}        />
           <Route path="reminders"    element={<Reminders />}    />
           <Route path="wallet"       element={<Wallet />}       />

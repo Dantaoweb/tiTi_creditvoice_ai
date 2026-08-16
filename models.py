@@ -1011,6 +1011,11 @@ class BusinessPartner(Base):
 
     status = Column(String, default="pending")      # pending | active | suspended
 
+    # Shareable single-invite token: the owner copies a link carrying this token
+    # and sends it; whoever opens it (logged in) can accept and gets bound as the
+    # partner. Null for legacy rows created before invite links existed.
+    invite_token = Column(String, nullable=True, index=True)
+
     invited_at = Column(DateTime, default=utcnow)
     accepted_at = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)             # internal memo on this partnership

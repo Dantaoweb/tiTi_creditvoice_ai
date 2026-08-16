@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Trash2, Eye, TrendingUp, Users, Briefcase, Lock } from "lucide-react";
+import { UserPlus, Trash2, Eye, TrendingUp, Users, Briefcase, Lock, Copy, Check, X, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
 import { usePlan } from "../lib/usePlan";
 import { nairaFull, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
+import MetricCard from "../components/MetricCard";
 import EmptyState from "../components/EmptyState";
 import Skeleton from "../components/Skeleton";
 
@@ -117,6 +118,26 @@ export default function Partners() {
   const [showInvite, setShowInvite] = useState(false);
   const [removing, setRemoving] = useState(null);
   const [tab, setTab] = useState("my_partners");
+  const [copiedId, setCopiedId] = useState(null);
+  const [overview, setOverview] = useState(null);   // scoped business view (partner)
+  const [ovLoading, setOvLoading] = useState(false);
+
+  function inviteLink(p) {
+    return `${window.location.origin}/app/partners/join/${p.invite_token}`;
+  }
+  function copyInviteLink(p) {
+    navigator.clipboard.writeText(inviteLink(p)).then(() => {
+      setCopiedId(p.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  }
+  function viewBusiness(p) {
+    setOvLoading(true); setOverview(null);
+    apiFetch(`partners/overview/${p.id}`)
+      .then(d => setOverview(d))
+      .catch(() => {})
+      .finally(() => setOvLoading(false));
+  }
 
   function load() {
     setLoading(true);
@@ -281,6 +302,19 @@ export default function Partners() {
                     </div>
                   )}
 
+                  {p.status === "pending" && p.invite_token && (
+                    <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                      <div className="form-label" style={{ marginBottom: 6 }}>Invite link — share it to let them join</div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <input readOnly value={inviteLink(p)} onFocus={e => e.target.select()}
+                          style={{ flex: 1, minWidth: 200, fontSize: 12 }} />
+                        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={() => copyInviteLink(p)}>
+                          {copiedId === p.id ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy link</>}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ marginTop: 10 }}>
                     <button className="btn btn-secondary"
                       style={{ fontSize: 12, color: "var(--rose)" }}
@@ -331,7 +365,7 @@ export default function Partners() {
                       <strong style={{ fontSize: 12 }}>{p.access_level?.replace("_", " ")}</strong>
                     </div>
                   </div>
-                  {p.status === "pending" && (
+                  {p.status === "pending" ? (
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                       <button className="btn btn-primary" style={{ fontSize: 12 }}
                         onClick={() => respondToInvite(p.id, "accept")}>
@@ -342,6 +376,13 @@ export default function Partners() {
                         Decline
                       </button>
                     </div>
+                  ) : (
+                    <div style={{ marginTop: 12 }}>
+                      <button className="btn btn-secondary" style={{ fontSize: 12 }}
+                        onClick={() => viewBusiness(p)}>
+                        <Eye size={13} /> View business
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -349,6 +390,71 @@ export default function Partners() {
           )}
         </>
       )}
+
+      {(overview || ovLoading) && (
+        <OverviewModal data={overview} loading={ovLoading} onClose={() => { setOverview(null); setOvLoading(false); }} />
+      )}
     </>
+  );
+}
+
+function OverviewModal({ data, loading, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <div className="modal-header">
+          <span className="card-title">{loading ? "Loading…" : data?.business_name}</span>
+          <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+        </div>
+        {loading || !data ? (
+          <div className="card-body" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Loader2 size={16} className="spin" /> Loading business overview…
+          </div>
+        ) : (
+          <div className="card-body" style={{ display: "grid", gap: 12 }}>
+            <div className="text-subtle text-sm">
+              {data.role_label} · {data.access_label}
+              <br />Owner: {data.owner_name}
+            </div>
+
+            {data.show_sales && (
+              <div className="metrics-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <MetricCard label="Sales (30 days)" value={nairaFull(data.sales_30d)} color="green" small />
+                <MetricCard label="Payments (30 days)" value={nairaFull(data.payments_30d)} color="blue" small />
+              </div>
+            )}
+
+            {data.show_investment && (data.investment_amount != null || data.equity_percent != null) && (
+              <div className="metrics-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                {data.investment_amount != null && (
+                  <MetricCard label="Your capital" value={nairaFull(data.investment_amount)} color="brand" small />
+                )}
+                {data.equity_percent != null && (
+                  <MetricCard label="Your equity" value={`${data.equity_percent}%`} color="amber" small />
+                )}
+              </div>
+            )}
+
+            {data.show_customers && (
+              <MetricCard label="Customers" value={Number(data.customers || 0).toLocaleString()} color="rose" small />
+            )}
+
+            {data.notes?.length > 0 && (
+              <div>
+                <div className="form-label" style={{ marginBottom: 6 }}>Shared notes</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {data.notes.map((n, i) => (
+                    <div key={i} className="parsed-cell" style={{ textAlign: "left" }}>
+                      <span style={{ textTransform: "capitalize" }}>{n.category}{n.amount != null ? ` · ${nairaFull(n.amount)}` : ""}</span>
+                      <strong style={{ fontWeight: 500, fontSize: 13 }}>{n.title ? `${n.title}: ` : ""}{n.body}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

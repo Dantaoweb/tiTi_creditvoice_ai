@@ -479,6 +479,70 @@ def _send_partner_overview(db, phone, bp, send_message):
     send_message(phone, "\n".join(lines))
 
 
+def get_partner_overview(db, bp):
+    """Structured, access-scoped overview of a business for one of its partners —
+    the web equivalent of _send_partner_overview. Includes the metrics the
+    partner's access level permits plus any shared notes at or below their tier."""
+    from datetime import timedelta
+    from sqlalchemy import func
+    from models import Customer
+    from business_templates import business_display_name
+
+    owner = db.query(User).filter(User.phone == bp.owner_phone).first()
+    access = bp.access_level
+    out = {
+        "id": bp.id,
+        "business_name": business_display_name(owner) if owner else bp.owner_phone,
+        "owner_name": owner.name.title() if owner and owner.name else bp.owner_phone,
+        "owner_phone": bp.owner_phone,
+        "role": bp.role,
+        "role_label": ROLE_LABELS.get(bp.role, bp.role),
+        "access_level": access,
+        "access_label": ACCESS_LABELS.get(access, access),
+        "equity_percent": bp.equity_percent,
+        "investment_amount": bp.investment_amount,
+        "show_sales": access in ("full", "operations", "financial"),
+        "show_investment": access in ("full", "financial", "investment_only"),
+        "show_customers": access == "full",
+    }
+
+    if out["show_sales"]:
+        from reports import get_owner_transaction_query
+        since = _utcnow() - timedelta(days=30)
+        txs = get_owner_transaction_query(db, bp.owner_phone).filter(
+            Transaction.created_at >= since,
+            Transaction.is_voided != True,
+        ).all()
+        out["sales_30d"] = sum(t.amount for t in txs if t.type in ("BUY", "SALE"))
+        out["payments_30d"] = sum(t.amount for t in txs if t.type == "PAY")
+
+    if out["show_customers"]:
+        out["customers"] = db.query(func.count(Customer.id)).filter(
+            Customer.owner_phone == bp.owner_phone
+        ).scalar() or 0
+
+    # Shared notes visible to this partner's tier (never owner_only).
+    partner_rank = PARTNER_VISIBILITY_RANK.get(bp.role, 0)
+    allowed = [v for v, rank in NOTE_VISIBILITY_RANK.items()
+               if rank <= partner_rank and v != "owner_only"]
+    notes = []
+    if allowed:
+        rows = db.query(BusinessNote).filter(
+            BusinessNote.owner_phone == bp.owner_phone,
+            BusinessNote.visibility.in_(allowed),
+        ).order_by(BusinessNote.created_at.desc()).limit(20).all()
+        notes = [{
+            "title": n.title,
+            "body": n.body,
+            "category": n.category,
+            "amount": n.amount,
+            "visibility": n.visibility,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        } for n in rows]
+    out["notes"] = notes
+    return out
+
+
 # ── Shared notes ─────────────────────────────────────────────────────────────
 
 def handle_add_note(db, phone, parsed, user, business_owner_phone, send_message):

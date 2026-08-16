@@ -60,6 +60,11 @@ export default function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
+  // Where to land after auth. Deep links (e.g. a partner invite link) redirect
+  // through /login?next=<path>; honour it when it's a safe internal path.
+  const nextParam = params.get("next") || "";
+  const dest = (nextParam.startsWith("/") && !nextParam.startsWith("//")) ? nextParam : "/home";
+
   // A staff invite link (/app/login?invite=CODE&phone=...) opens the accept
   // form pre-filled so the staff member just confirms.
   const inviteFromUrl = params.get("invite") || "";
@@ -129,7 +134,7 @@ export default function Login() {
     if (!pin.trim())   { setErr("Enter your PIN."); return; }
     try {
       await login(phone.trim(), pin.trim());
-      navigate("/home", { replace: true });
+      navigate(dest, { replace: true });
     } catch (e) { setErr(e.message); }
   }
 
@@ -157,7 +162,7 @@ export default function Login() {
       });
       persistSession(data.user);
       setMode("registered");
-      setTimeout(() => navigate("/home", { replace: true }), 3000);
+      setTimeout(() => navigate(dest, { replace: true }), 3000);
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -215,7 +220,7 @@ export default function Login() {
         new_pin: newPin.trim(),
       });
       persistSession(data.user);
-      navigate("/home", { replace: true });
+      navigate(dest, { replace: true });
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -243,7 +248,7 @@ export default function Login() {
       if (data.signed_in) {
         // PIN set + signed in during accept — no OTP round trip.
         persistSession(data.user);
-        navigate("/home", { replace: true });
+        navigate(dest, { replace: true });
       } else if (data.has_pin) {
         setInfo(`Welcome, ${(data.name || "").split(" ")[0] || "there"}! You can now sign in with your phone and PIN.`);
         goMode("login");

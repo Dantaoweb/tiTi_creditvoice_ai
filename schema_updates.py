@@ -627,6 +627,7 @@ def ensure_schema_updates(engine):
                     equity_percent REAL,
                     investment_amount INTEGER,
                     status VARCHAR DEFAULT 'pending',
+                    invite_token VARCHAR,
                     invited_at TIMESTAMP,
                     accepted_at TIMESTAMP,
                     notes TEXT
@@ -639,6 +640,7 @@ def ensure_schema_updates(engine):
             "investment_amount": "INTEGER",
             "access_level": "VARCHAR DEFAULT 'operations'",
             "notes": "TEXT",
+            "invite_token": "VARCHAR",
         }
         with engine.begin() as connection:
             for col, typ in _bp_updates.items():

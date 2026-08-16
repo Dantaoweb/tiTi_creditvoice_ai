@@ -4,6 +4,7 @@ Partners & investors routes: list, invite, remove, accept, decline.
 Split out of web_routes.py. Register with register_partner_routes(app);
 shared helpers come from web_common.
 """
+import secrets
 from typing import Optional
 
 from fastapi import Depends, HTTPException
@@ -13,6 +14,10 @@ from database import SessionLocal
 from models import User
 from web_auth import require_web_auth, phone_candidates
 from web_common import _iso
+
+
+def _new_invite_token():
+    return secrets.token_urlsafe(24)
 
 
 class PartnerInviteRequest(BaseModel):
@@ -37,6 +42,16 @@ def register_partner_routes(app):
             my_partners = db.query(BusinessPartner).filter(
                 BusinessPartner.owner_phone == owner.phone
             ).all()
+            # Backfill invite tokens for pending rows (incl. those created over
+            # WhatsApp or before invite links existed) so every pending invite
+            # has a copyable link.
+            _dirty = False
+            for p in my_partners:
+                if p.status == "pending" and not p.invite_token:
+                    p.invite_token = _new_invite_token()
+                    _dirty = True
+            if _dirty:
+                db.commit()
             # Businesses I am a partner in (active + pending so they can accept).
             # Match both phone formats — the inviter may have stored my number in
             # a different format from the one on my account.
@@ -55,6 +70,7 @@ def register_partner_routes(app):
                     "equity_percent": p.equity_percent,
                     "investment_amount": p.investment_amount,
                     "status": p.status,
+                    "invite_token": p.invite_token if p.status == "pending" else None,
                     "invited_at": _iso(p.invited_at),
                     "accepted_at": _iso(p.accepted_at),
                     "notes": p.notes,
@@ -129,12 +145,13 @@ def register_partner_routes(app):
                 investment_amount=payload.investment_amount,
                 notes=payload.notes,
                 status="pending",
+                invite_token=_new_invite_token(),
                 invited_at=_utcnow(),
             )
             db.add(bp)
             db.commit()
             db.refresh(bp)
-            return {"ok": True, "id": bp.id, "status": "pending"}
+            return {"ok": True, "id": bp.id, "status": "pending", "invite_token": bp.invite_token}
         finally:
             db.close()
 
@@ -202,5 +219,105 @@ def register_partner_routes(app):
             db.delete(bp)
             db.commit()
             return {"ok": True, "status": "declined"}
+        finally:
+            db.close()
+
+    # ── Invite-link flow: open a shared token, then accept/decline ────────────
+    @app.get("/app/api/partners/join/{token}")
+    def web_partner_join_info(token: str, session: dict = Depends(require_web_auth)):
+        """Details for an invite link so the invitee can review before accepting."""
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            from partner_commands import ROLE_LABELS, ACCESS_LABELS
+            from business_templates import business_display_name
+            bp = db.query(BusinessPartner).filter(
+                BusinessPartner.invite_token == token
+            ).first()
+            if not bp:
+                raise HTTPException(status_code=404, detail="This invitation link is no longer valid.")
+            owner = db.query(User).filter(User.phone == bp.owner_phone).first()
+            me = db.query(User).filter(User.phone == session["phone"]).first()
+            return {
+                "business_name": business_display_name(owner) if owner else bp.owner_phone,
+                "owner_name": owner.name if owner else bp.owner_phone,
+                "role": bp.role,
+                "role_label": ROLE_LABELS.get(bp.role, bp.role),
+                "access_level": bp.access_level,
+                "access_label": ACCESS_LABELS.get(bp.access_level, bp.access_level),
+                "equity_percent": bp.equity_percent,
+                "investment_amount": bp.investment_amount,
+                "status": bp.status,
+                "is_own_invite": bool(me and me.phone == bp.owner_phone),
+                "partner_id": bp.id,
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/partners/join/{token}/accept")
+    def web_partner_join_accept(token: str, session: dict = Depends(require_web_auth)):
+        """Accept an invite link: bind the current account as the partner."""
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            from partner_commands import _utcnow
+            from parser import normalize_phone
+            bp = db.query(BusinessPartner).filter(
+                BusinessPartner.invite_token == token
+            ).first()
+            if not bp:
+                raise HTTPException(status_code=404, detail="This invitation link is no longer valid.")
+            me = db.query(User).filter(User.phone == session["phone"]).first()
+            if not me:
+                raise HTTPException(status_code=403, detail="Not found.")
+            if me.phone == bp.owner_phone:
+                raise HTTPException(status_code=400, detail="You cannot accept your own invitation.")
+            if bp.status == "active":
+                return {"ok": True, "status": "active", "id": bp.id, "already": True}
+            # Bind this account as the partner (the owner may not have known the
+            # exact phone/format) and activate.
+            bp.partner_phone = normalize_phone(me.phone) or me.phone
+            bp.status = "active"
+            bp.accepted_at = _utcnow()
+            db.commit()
+            return {"ok": True, "status": "active", "id": bp.id}
+        finally:
+            db.close()
+
+    @app.post("/app/api/partners/join/{token}/decline")
+    def web_partner_join_decline(token: str, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            bp = db.query(BusinessPartner).filter(
+                BusinessPartner.invite_token == token,
+                BusinessPartner.status == "pending",
+            ).first()
+            if not bp:
+                raise HTTPException(status_code=404, detail="This invitation is no longer valid.")
+            db.delete(bp)
+            db.commit()
+            return {"ok": True, "status": "declined"}
+        finally:
+            db.close()
+
+    # ── Partner's scoped web view of a business they belong to ────────────────
+    @app.get("/app/api/partners/overview/{partner_id}")
+    def web_partner_overview(partner_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            from models import BusinessPartner
+            from partner_commands import get_partner_overview
+            me = db.query(User).filter(User.phone == session["phone"]).first()
+            if not me:
+                raise HTTPException(status_code=403, detail="Not found.")
+            bp = db.query(BusinessPartner).filter(
+                BusinessPartner.id == partner_id,
+                BusinessPartner.partner_phone.in_(phone_candidates(me.phone)),
+                BusinessPartner.status == "active",
+            ).first()
+            if not bp:
+                raise HTTPException(status_code=404, detail="Not found.")
+            return get_partner_overview(db, bp)
         finally:
             db.close()
