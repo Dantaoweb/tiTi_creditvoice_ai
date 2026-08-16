@@ -237,6 +237,11 @@ PARTIAL_SUPPORT_TYPES = {
 }
 
 INDUSTRY_EXAMPLES = {
+    "poultry_farm": [
+        "Ada bought 5 crates of eggs at 4500 each",
+        "I sold 20 broilers at 6500 each",
+        "Musa supplied 15 bags layer mash at 9000 each",
+    ],
     "phone_accessories": [
         "Musa bought iPhone charger 3500",
         "I sold 2 power banks at 8000 each",

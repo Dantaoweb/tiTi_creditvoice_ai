@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -27,6 +27,7 @@ function buildNav(L, group) {
   return [
     { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare,   tab: true  },
     { to: "/capture",      label: L.record,           icon: PlusCircle,      tab: true  },
+    { to: "/poultry",      label: "Egg & Feed",       icon: Egg,             poultryOnly: true },
     { to: "/pos",          label: L.pos,              icon: ShoppingCart,    tab: !noProducts },
     { to: "/inventory",    label: L.stock,            icon: Package,         tab: !noProducts },
     { to: "/customers",    label: L.navCustomers,     icon: Users,           tab: true  },
@@ -69,7 +70,7 @@ export default function Layout() {
   }
   // Dashboard joins the always-visible primary set (checked daily), on top of
   // the mobile tab-bar items — without adding it to the bottom bar itself.
-  const isPrimary = (item) => item.tab || item.to === "/dashboard";
+  const isPrimary = (item) => item.tab || item.to === "/dashboard" || item.to === "/poultry";
 
   useEffect(() => {
     apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
@@ -100,8 +101,9 @@ export default function Layout() {
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
   const FUEL_TYPES = ["filling_station", "fuel_marketer", "kerosene_diesel", "lpg_gas", "lubricants", "other_energy"];
   const isFuel = user?.business_category === "energy_fuel" || FUEL_TYPES.includes(user?.business_type);
+  const isPoultry = user?.business_type === "poultry_farm";
   const NAV = buildNav(L, user?.menu_group).filter(item =>
-    (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel));
+    (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel) && (!item.poultryOnly || isPoultry));
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {
@@ -116,6 +118,7 @@ export default function Layout() {
     "/reminders":    L.reminders,
     "/dashboard":    "Dashboard",
     "/insights":     "Insights",
+    "/poultry":      "Egg & Feed",
     "/transactions": "Transactions",
     "/suppliers":    "Suppliers",
     "/staff":        "Staff",

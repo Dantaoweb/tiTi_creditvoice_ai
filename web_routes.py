@@ -246,6 +246,10 @@ def register_web_routes(app):
     from web_school_routes import register_school_routes
     register_school_routes(app)
 
+    # ── Poultry farm (daily egg collection + feed usage) ──────────────────────
+    from web_poultry_routes import register_poultry_routes
+    register_poultry_routes(app)
+
     # ── Filling-station operations (fuel businesses) ──────────────────────────
     from web_fuel_routes import register_fuel_routes
     register_fuel_routes(app)

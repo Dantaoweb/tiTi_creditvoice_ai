@@ -320,7 +320,7 @@ def _auto_category(db, owner_phone, product):
     )
 
 
-def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None):
+def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None, created_at=None):
     if not product or not quantity:
         return None
     product, unit = normalize_item(product, unit)
@@ -347,7 +347,7 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
         item.quantity = (item.quantity or 0) + quantity
     item.updated_at = _utcnow()
 
-    movement = InventoryMovement(
+    mv_kwargs = dict(
         owner_phone=owner_phone,
         item_id=item.id,
         movement_type=movement_type,
@@ -356,8 +356,13 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
         source_type=source_type,
         source_id=source_id,
         recorded_by_id=recorded_by_id,
-        note=note
+        note=note,
     )
+    # Let callers backdate a movement (e.g. logging yesterday's egg collection);
+    # when omitted, the column default (utcnow) applies.
+    if created_at is not None:
+        mv_kwargs["created_at"] = created_at
+    movement = InventoryMovement(**mv_kwargs)
     db.add(movement)
     return item
 
