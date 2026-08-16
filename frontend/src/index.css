@@ -108,6 +108,16 @@ body {
 .nav-link.active svg { opacity: 1; }
 
 .nav-link-disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+
+/* Small heading above the adaptive "Frequent" group in the sidebar. */
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(255,255,255,0.38);
+  padding: 10px 10px 3px;
+}
 .nav-badge {
   margin-left: auto;
   font-size: 9px;

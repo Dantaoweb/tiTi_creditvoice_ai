@@ -18,6 +18,27 @@ import InstallPrompt from "./InstallPrompt";
 import InstallMenuItem from "./InstallMenuItem";
 import SubscriptionBanner from "./SubscriptionBanner";
 
+// ── Adaptive sidebar: per-device usage of nav destinations ──────────────────
+// Frequently-used features rise to a "Frequent" group at the top and the "More"
+// list sorts by usage — so what you reach for is easy to get to, while the
+// primary essentials stay fixed (no muscle-memory-breaking full reshuffle).
+const NAV_USAGE_KEY = "cv_nav_usage";
+
+function readNavUsage() {
+  try { return JSON.parse(localStorage.getItem(NAV_USAGE_KEY)) || {}; }
+  catch { return {}; }
+}
+function writeNavUsage(u) {
+  try { localStorage.setItem(NAV_USAGE_KEY, JSON.stringify(u)); } catch { /* quota/private mode */ }
+}
+// Frequency weighted by recency (14-day half-life) so the order tracks current
+// habits instead of getting permanently stuck on long-ago usage.
+function navScore(entry) {
+  if (!entry) return 0;
+  const days = (Date.now() - (entry.last || 0)) / 86400000;
+  return (entry.count || 0) * Math.pow(0.5, days / 14);
+}
+
 function buildNav(L, group) {
   // Businesses that don't sell products (savings/ajo, dues collection) get the
   // product-centric items deprioritized off the primary tab bar — mirroring the
@@ -65,6 +86,7 @@ export default function Layout() {
   const [oppsUnread, setOppsUnread] = useState(0);
   // Remember whether "More" was expanded, per device.
   const [moreOpen, setMoreOpen] = useState(() => localStorage.getItem("cv_more_open") === "1");
+  const [navUsage, setNavUsage] = useState(readNavUsage);
   function toggleMore() {
     setMoreOpen(o => { const n = !o; localStorage.setItem("cv_more_open", n ? "1" : "0"); return n; });
   }
@@ -138,6 +160,34 @@ export default function Layout() {
   const title = TITLES[path] || "CreditVoice";
 
   const tabItems = NAV.filter(item => item.tab);
+
+  // Count a visit whenever the user lands on a real nav destination (ignore
+  // detail pages like /pos/receipt/:id that aren't in the menu).
+  useEffect(() => {
+    const known = new Set(NAV.map(i => i.to).filter(Boolean));
+    if (!known.has(location.pathname)) return;
+    setNavUsage(prev => {
+      const u = { ...prev };
+      const e = u[location.pathname] || { count: 0, last: 0 };
+      u[location.pathname] = { count: e.count + 1, last: Date.now() };
+      writeNavUsage(u);
+      return u;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // Adaptive ordering, computed from usage. Primary items stay fixed; the top 4
+  // used secondary features form a "Frequent" group, and the rest of "More"
+  // sorts by usage. An item needs 2+ visits to earn a Frequent slot.
+  const secondaryItems = NAV.filter(i => i.to && !isPrimary(i));
+  const frequentItems = secondaryItems
+    .filter(i => (navUsage[i.to]?.count || 0) >= 2)
+    .sort((a, b) => navScore(navUsage[b.to]) - navScore(navUsage[a.to]))
+    .slice(0, 4);
+  const frequentSet = new Set(frequentItems.map(i => i.to));
+  const moreItems = secondaryItems
+    .filter(i => !frequentSet.has(i.to))
+    .sort((a, b) => navScore(navUsage[b.to]) - navScore(navUsage[a.to]));
 
   function handleLogout() {
     logout();
@@ -213,7 +263,15 @@ export default function Layout() {
               sidebar stays short and the essentials are always in view. */}
           {NAV.filter(i => i.to && isPrimary(i)).map(renderNavItem)}
 
-          {NAV.some(i => i.to && !isPrimary(i)) && (
+          {/* Frequently-used features float up here for quick reach. */}
+          {frequentItems.length > 0 && (
+            <>
+              <div className="nav-section-label">Frequent</div>
+              {frequentItems.map(renderNavItem)}
+            </>
+          )}
+
+          {moreItems.length > 0 && (
             <button
               type="button"
               className={`nav-link nav-more-btn${moreOpen ? " active" : ""}`}
@@ -221,8 +279,9 @@ export default function Layout() {
             >
               <MoreHorizontal size={16} />
               <span className="nav-label">{moreOpen ? "Less" : "More"}</span>
-              {/* When collapsed, surface the opportunities alert on More itself */}
-              {!moreOpen && oppsUnread > 0 && (
+              {/* When collapsed, surface the opportunities alert on More — but
+                  only while Opportunities is actually hidden under it. */}
+              {!moreOpen && oppsUnread > 0 && moreItems.some(i => i.to === "/opportunities") && (
                 <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
               )}
               <ChevronDown
@@ -233,7 +292,7 @@ export default function Layout() {
             </button>
           )}
 
-          {moreOpen && NAV.filter(i => i.to && !isPrimary(i)).map(renderNavItem)}
+          {moreOpen && moreItems.map(renderNavItem)}
 
           {/* Always-available way to install the app to the home screen */}
           <InstallMenuItem onNavigate={closeDrawer} />
