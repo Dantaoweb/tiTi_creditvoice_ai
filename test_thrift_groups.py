@@ -14,6 +14,8 @@ from fastapi.testclient import TestClient
 
 from main import app
 import web_auth
+from database import SessionLocal
+from models import ThriftGroup
 
 client = TestClient(app)
 _seq = iter(range(7500, 7999))
@@ -137,6 +139,45 @@ def test_admin_can_lock_and_unlock():
     g = client.post(f"/app/api/thrift/groups/{gid}/settings", cookies=admin, json={"locked": False}).json()
     assert g["locked"] is False
     assert client.post(f"/app/api/thrift/join/{token}", cookies=joiner, json={}).json()["status"] in ("pending", "active")
+
+
+def test_capped_group_stays_open_until_full():
+    """A 3-member cap must not 'complete' after one member pays out — it keeps
+    accepting members until it is full (the reported bug)."""
+    _, admin = _user("Boss")
+    g = client.post("/app/api/thrift/groups", cookies=admin,
+                    json={"name": "Cycle", "contribution_amount": 1000, "max_members": 3}).json()
+    gid = g["id"]
+    admin_id = g["members"][0]["id"]
+    client.post(f"/app/api/thrift/groups/{gid}/contributions", cookies=admin, json={"member_id": admin_id})
+    g = client.post(f"/app/api/thrift/groups/{gid}/payout", cookies=admin).json()
+    assert g["status"] == "active"
+    assert g["current_round"] == 2
+    assert g["accepting"] is True
+
+
+def test_payout_blocked_without_contributions():
+    _, admin = _user("Boss2")
+    g = _make_group(admin, name="NoPay", amount=1000)   # uncapped, admin only
+    r = client.post(f"/app/api/thrift/groups/{g['id']}/payout", cookies=admin)
+    assert r.status_code == 400
+
+
+def test_prematurely_completed_group_self_heals():
+    _, admin = _user("Heal")
+    g = client.post("/app/api/thrift/groups", cookies=admin,
+                    json={"name": "Stuck", "contribution_amount": 1000, "max_members": 3}).json()
+    gid = g["id"]
+    db = SessionLocal()
+    try:  # simulate the old bug: completed while still below the cap
+        grp = db.query(ThriftGroup).filter(ThriftGroup.id == gid).first()
+        grp.status = "completed"
+        db.commit()
+    finally:
+        db.close()
+    g = client.get(f"/app/api/thrift/groups/{gid}", cookies=admin).json()
+    assert g["status"] == "active"
+    assert g["accepting"] is True
 
 
 def test_many_groups_and_unique_names_and_access():

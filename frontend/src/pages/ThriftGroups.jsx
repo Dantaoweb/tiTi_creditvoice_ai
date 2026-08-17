@@ -177,7 +177,7 @@ function GroupDetail({ groupId, onBack }) {
       {isAdmin && (
         <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div>
-            <strong>{g.locked ? "Group is locked" : (!g.accepting ? "Group is full" : "Group is open")}</strong>
+            <strong>{g.locked ? "Group is locked" : (completed ? "Group is completed" : (!g.accepting ? "Group is full" : "Group is open"))}</strong>
             <div className="text-subtle text-sm">
               {g.slots_taken}{g.max_members ? ` of ${g.max_members}` : ""} members{g.max_members ? "" : " · no limit"}
             </div>
@@ -202,7 +202,7 @@ function GroupDetail({ groupId, onBack }) {
           </div>
           {!g.accepting && (
             <div className="text-subtle text-sm" style={{ marginTop: 6 }}>
-              New members can't join right now — the group is {g.locked ? "locked" : "full"}.
+              New members can't join right now — the group is {g.locked ? "locked" : (completed ? "completed" : "full")}.
             </div>
           )}
         </div>

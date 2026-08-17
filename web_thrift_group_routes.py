@@ -49,7 +49,7 @@ def register_thrift_group_routes(app):
         g = db.query(ThriftGroup).filter(ThriftGroup.id == group_id).first()
         if not g:
             raise HTTPException(status_code=404, detail="Group not found.")
-        return g
+        return tg.heal_group(db, g)
 
     def _require(db, group, phone, approve=False, admin=False):
         role = tg.viewer_role(db, group, phone)
@@ -107,6 +107,8 @@ def register_thrift_group_routes(app):
                 ThriftGroup.id.in_(joined_ids - owned_ids)
             ).all() if (joined_ids - owned_ids) else []
             groups = owned + joined
+            for g in groups:
+                tg.heal_group(db, g)
             return {"groups": [tg.serialize_group(db, g, phone) for g in groups]}
         finally:
             db.close()
@@ -161,9 +163,10 @@ def register_thrift_group_routes(app):
         try:
             g = _load_group(db, group_id)
             _require(db, g, session["phone"], approve=True)
-            payout = tg.record_payout(db, g, recorded_by_phone=session["phone"])
-            if not payout:
-                raise HTTPException(status_code=400, detail="No member is due a payout this round.")
+            try:
+                tg.record_payout(db, g, recorded_by_phone=session["phone"])
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
             db.close()
@@ -267,10 +270,13 @@ def register_thrift_group_routes(app):
             g = db.query(ThriftGroup).filter(ThriftGroup.invite_token == token).first()
             if not g:
                 raise HTTPException(status_code=404, detail="This group link is no longer valid.")
+            tg.heal_group(db, g)
             admin = db.query(User).filter(User.phone == g.owner_phone).first()
             mine = tg.member_for_user(db, g.id, session["phone"])
             active = tg.active_members(db, g.id)
             accepting, reason = tg.can_accept_members(db, g)
+            if g.status != "active":
+                accepting, reason = False, "This ajo cycle has ended."
             return {
                 "id": g.id,
                 "name": g.name,

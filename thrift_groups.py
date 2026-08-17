@@ -176,24 +176,52 @@ def record_contribution(db, group, member, amount=None, recorded_by_phone=None):
 
 def record_payout(db, group, recorded_by_phone=None):
     """Pay the pot to the member whose turn it is (turn_order == current_round),
-    then advance to the next round. Completes the group after the last member."""
+    then advance to the next round. Raises ValueError with a clear message when
+    it isn't valid yet. A capped group runs for max_members rounds and only
+    completes once it is full — so it keeps accepting members until then."""
     members = active_members(db, group.id)
     recipient = next((m for m in members if m.turn_order == group.current_round), None)
     if not recipient:
-        return None
+        raise ValueError("No member is due the pot this round yet.")
+    # Everyone must have contributed for this round before the pot is paid out.
+    paid_ids = {c.member_id for c in db.query(ThriftContribution).filter(
+        ThriftContribution.group_id == group.id,
+        ThriftContribution.round_number == group.current_round,
+    ).all()}
+    owing = [m for m in members if m.id not in paid_ids]
+    if owing:
+        raise ValueError(
+            f"Record everyone's contribution for round {group.current_round} first "
+            f"— {len(owing)} still owing."
+        )
     pot = int(group.contribution_amount or 0) * len(members)
-    payout = ThriftPayout(
+    db.add(ThriftPayout(
         group_id=group.id, member_id=recipient.id,
         round_number=group.current_round, amount=pot,
         recorded_by_phone=recorded_by_phone,
-    )
-    db.add(payout)
-    if group.current_round >= len(members):
+    ))
+    total_rounds = group.max_members or len(members)
+    is_full = (not group.max_members) or (len(members) >= group.max_members)
+    if group.current_round >= total_rounds and is_full:
         group.status = "completed"
     else:
         group.current_round += 1
     db.commit()
-    return payout
+    return True
+
+
+def heal_group(db, group):
+    """Repair a group wrongly marked 'completed' under the old rule: a capped
+    group that still has open slots must stay active and keep accepting members."""
+    if group.status == "completed" and group.max_members:
+        active = db.query(ThriftMember).filter(
+            ThriftMember.group_id == group.id,
+            ThriftMember.status == "active",
+        ).count()
+        if active < group.max_members:
+            group.status = "active"
+            db.commit()
+    return group
 
 
 def serialize_group(db, group, viewer_phone, detail=False):
