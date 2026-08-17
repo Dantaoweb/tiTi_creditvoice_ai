@@ -688,12 +688,24 @@ def ensure_schema_updates(engine):
     if "thrift_groups" in inspector.get_table_names():
         _tg_cols = {c["name"] for c in inspector.get_columns("thrift_groups")}
         _tg_updates = {"max_members": "INTEGER", "locked": "BOOLEAN",
-                       "spillover": "BOOLEAN", "series_key": "VARCHAR"}
+                       "spillover": "BOOLEAN", "series_key": "VARCHAR",
+                       "payout_method": "VARCHAR"}
         with engine.begin() as connection:
             for col, typ in _tg_updates.items():
                 if col not in _tg_cols:
                     connection.execute(text(
                         f"ALTER TABLE thrift_groups ADD COLUMN {col} {typ}"
+                    ))
+
+    if "thrift_payouts" in inspector.get_table_names():
+        _tp_cols = {c["name"] for c in inspector.get_columns("thrift_payouts")}
+        _tp_updates = {"status": "VARCHAR", "confirmed_at": "TIMESTAMP",
+                       "confirmed_by_phone": "VARCHAR"}
+        with engine.begin() as connection:
+            for col, typ in _tp_updates.items():
+                if col not in _tp_cols:
+                    connection.execute(text(
+                        f"ALTER TABLE thrift_payouts ADD COLUMN {col} {typ}"
                     ))
 
     # ── app_notifications table ──────────────────────────────────────────────

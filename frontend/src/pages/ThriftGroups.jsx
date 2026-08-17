@@ -16,7 +16,7 @@ const ROLE_LABEL = { admin: "Admin", approver: "Approver", member: "Member" };
 
 // ── Create-group form ──────────────────────────────────────────────────────────
 function CreateGroup({ onDone, onCancel }) {
-  const [form, setForm] = useState({ name: "", amount: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false });
+  const [form, setForm] = useState({ name: "", amount: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false, payout_method: "order" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -33,7 +33,7 @@ function CreateGroup({ onDone, onCancel }) {
         name: form.name.trim(), contribution_amount: amount,
         frequency: form.frequency, require_approval: form.require_approval,
         max_members: form.max_members && cap >= 2 ? cap : null,
-        spillover: form.spillover,
+        spillover: form.spillover, payout_method: form.payout_method,
       });
       onDone(g);
     } catch (e) { setErr(e.message); }
@@ -63,11 +63,20 @@ function CreateGroup({ onDone, onCancel }) {
             </select>
           </div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Member limit (optional)</label>
-          <input type="number" min="2" value={form.max_members}
-            onChange={e => set("max_members", e.target.value)} placeholder="e.g. 10" disabled={busy} />
-          <span className="form-hint">Leave blank for no limit. You can also lock the group later.</span>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">Member limit (optional)</label>
+            <input type="number" min="2" value={form.max_members}
+              onChange={e => set("max_members", e.target.value)} placeholder="e.g. 10" disabled={busy} />
+            <span className="form-hint">Blank = no limit.</span>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Who collects the pot?</label>
+            <select value={form.payout_method} onChange={e => set("payout_method", e.target.value)} disabled={busy}>
+              <option value="order">In join order (rotate)</option>
+              <option value="choice">Admin picks each round</option>
+            </select>
+          </div>
         </div>
         <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5 }}>
           <input type="checkbox" checked={form.require_approval}
@@ -98,6 +107,9 @@ function GroupDetail({ groupId, onBack }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [payMember, setPayMember] = useState("");   // choice-payout picker
+  const [recId, setRecId] = useState(null);         // member whose amount is being entered
+  const [recAmt, setRecAmt] = useState("");
 
   function load() {
     apiFetch(`thrift/groups/${groupId}`).then(setG).catch(e => setErr(e.message));
@@ -161,38 +173,63 @@ function GroupDetail({ groupId, onBack }) {
         <MetricCard label="Collected" value={nairaFull(g.collected_this_round)} color="amber" small />
       </div>
 
-      {/* Whose turn */}
-      {!completed && g.current_turn && (
+      {/* Pot this round — order rotates automatically, choice lets admin pick */}
+      {!completed && (g.eligible_recipients || []).length > 0 && (
         <div className="card" style={{ borderLeft: "3px solid var(--brand)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <CircleDollarSign size={18} color="var(--brand)" />
             <div style={{ flex: 1 }}>
-              <strong>{g.current_turn.name}</strong> collects the pot this round
+              {g.payout_method === "choice"
+                ? <><strong>Admin picks</strong> who collects the pot this round</>
+                : g.current_turn
+                  ? <><strong>{g.current_turn.name}</strong> collects the pot this round</>
+                  : <span className="text-subtle">Waiting…</span>}
               <div className="text-subtle text-sm">Round {g.current_round} · {nairaFull(g.pot)}</div>
             </div>
-            {canApprove && (
+            {canApprove && g.payout_method === "choice" ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <select value={payMember} onChange={e => setPayMember(e.target.value)} style={{ maxWidth: 150 }}>
+                  <option value="">Choose member…</option>
+                  {g.eligible_recipients.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <button className="btn btn-primary btn-sm" disabled={busy || !payMember}
+                  onClick={async () => { await act(`thrift/groups/${groupId}/payout`, { member_id: Number(payMember) }); setPayMember(""); }}>
+                  <ArrowUpCircle size={13} /> Pay
+                </button>
+              </div>
+            ) : canApprove && g.current_turn ? (
               <button className="btn btn-primary btn-sm" disabled={busy}
                 onClick={() => act(`thrift/groups/${groupId}/payout`)}>
                 <ArrowUpCircle size={13} /> Record payout
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       )}
 
-      {/* Admin: lock / membership status */}
+      {/* Admin: lock / membership status / pot method */}
       {isAdmin && (
-        <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div>
-            <strong>{g.locked ? "Group is locked" : (completed ? "Group is completed" : (!g.accepting ? "Group is full" : "Group is open"))}</strong>
-            <div className="text-subtle text-sm">
-              {g.slots_taken}{g.max_members ? ` of ${g.max_members}` : ""} members{g.max_members ? "" : " · no limit"}
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div>
+              <strong>{g.locked ? "Group is locked" : (completed ? "Group is completed" : (!g.accepting ? "Group is full" : "Group is open"))}</strong>
+              <div className="text-subtle text-sm">
+                {g.slots_taken}{g.max_members ? ` of ${g.max_members}` : ""} members{g.max_members ? "" : " · no limit"}
+              </div>
             </div>
+            <button className="btn btn-secondary btn-sm" disabled={busy}
+              onClick={() => act(`thrift/groups/${groupId}/settings`, { locked: !g.locked })}>
+              {g.locked ? <><Unlock size={13} /> Unlock</> : <><Lock size={13} /> Lock group</>}
+            </button>
           </div>
-          <button className="btn btn-secondary btn-sm" disabled={busy}
-            onClick={() => act(`thrift/groups/${groupId}/settings`, { locked: !g.locked })}>
-            {g.locked ? <><Unlock size={13} /> Unlock</> : <><Lock size={13} /> Lock group</>}
-          </button>
+          <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} className="text-sm">
+            <span className="text-subtle">Pot collector:</span>
+            <select value={g.payout_method} disabled={busy}
+              onChange={e => act(`thrift/groups/${groupId}/settings`, { payout_method: e.target.value })}>
+              <option value="order">In join order (rotate)</option>
+              <option value="choice">Admin picks each round</option>
+            </select>
+          </div>
         </div>
       )}
 
@@ -274,10 +311,18 @@ function GroupDetail({ groupId, onBack }) {
                     {m.paid_current_round
                       ? <span className="badge badge-green"><Check size={11} /> Paid</span>
                       : canApprove && !completed
-                        ? <button className="btn btn-secondary btn-sm" disabled={busy}
-                            onClick={() => act(`thrift/groups/${groupId}/contributions`, { member_id: m.id })}>
-                            <Coins size={12} /> Record
-                          </button>
+                        ? (recId === m.id
+                            ? <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                                <input inputMode="numeric" value={recAmt} onChange={e => setRecAmt(e.target.value)}
+                                  style={{ width: 84 }} autoFocus />
+                                <button className="btn btn-primary btn-sm" disabled={busy}
+                                  onClick={async () => { await act(`thrift/groups/${groupId}/contributions`, { member_id: m.id, amount: parseAmt(recAmt) || g.contribution_amount }); setRecId(null); }}>Save</button>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setRecId(null)}>✕</button>
+                              </span>
+                            : <button className="btn btn-secondary btn-sm" disabled={busy}
+                                onClick={() => { setRecId(m.id); setRecAmt(String(g.contribution_amount || "")); }}>
+                                <Coins size={12} /> Record
+                              </button>)
                         : <span className="td-muted">—</span>}
                   </td>
                   <td style={{ textAlign: "right" }}>
@@ -306,13 +351,21 @@ function GroupDetail({ groupId, onBack }) {
           <div className="card-title" style={{ marginBottom: 8 }}>Payout history</div>
           <div style={{ overflowX: "auto" }}>
             <table className="history-table">
-              <thead><tr><th>Round</th><th>Collected by</th><th>Amount</th></tr></thead>
+              <thead><tr><th>Round</th><th>Collected by</th><th>Amount</th><th>Confirmed</th></tr></thead>
               <tbody>
-                {g.payouts.map((p, i) => (
-                  <tr key={i}>
+                {g.payouts.map(p => (
+                  <tr key={p.id}>
                     <td className="td-muted">{p.round_number}</td>
                     <td>{p.member_name}</td>
                     <td><strong>{nairaFull(p.amount)}</strong></td>
+                    <td>
+                      {p.confirmed
+                        ? <span className="badge badge-green"><Check size={11} /> Confirmed by recipient</span>
+                        : p.can_confirm
+                          ? <button className="btn btn-primary btn-sm" disabled={busy}
+                              onClick={() => act(`thrift/payouts/${p.id}/confirm`)}>I received it</button>
+                          : <span className="badge badge-amber">Awaiting recipient</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

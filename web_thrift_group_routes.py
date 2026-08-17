@@ -20,11 +20,17 @@ class CreateGroupRequest(BaseModel):
     require_approval: Optional[bool] = True
     max_members: Optional[int] = None
     spillover: Optional[bool] = False
+    payout_method: Optional[str] = "order"
 
 
 class GroupSettingsRequest(BaseModel):
     locked: Optional[bool] = None
     max_members: Optional[int] = None
+    payout_method: Optional[str] = None
+
+
+class PayoutRequest(BaseModel):
+    member_id: Optional[int] = None   # required when payout_method == "choice"
 
 
 class AddMemberRequest(BaseModel):
@@ -87,6 +93,7 @@ def register_thrift_group_routes(app):
                 frequency=payload.frequency, admin_name=getattr(me, "name", None),
                 require_approval=payload.require_approval,
                 max_members=payload.max_members, spillover=payload.spillover,
+                payout_method=payload.payout_method,
             )
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
@@ -159,15 +166,37 @@ def register_thrift_group_routes(app):
             db.close()
 
     @app.post("/app/api/thrift/groups/{group_id}/payout")
-    def record_payout(group_id: int, session: dict = Depends(require_web_auth)):
+    def record_payout(group_id: int, payload: PayoutRequest = PayoutRequest(),
+                      session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
             g = _load_group(db, group_id)
             _require(db, g, session["phone"], approve=True)
             try:
-                tg.record_payout(db, g, recorded_by_phone=session["phone"])
+                tg.record_payout(db, g, recorded_by_phone=session["phone"],
+                                 recipient_member_id=payload.member_id)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e))
+            return tg.serialize_group(db, g, session["phone"], detail=True)
+        finally:
+            db.close()
+
+    @app.post("/app/api/thrift/payouts/{payout_id}/confirm")
+    def confirm_payout(payout_id: int, session: dict = Depends(require_web_auth)):
+        """The pot recipient confirms they received it — visible to all members."""
+        db = SessionLocal()
+        try:
+            from models import ThriftPayout
+            p = db.query(ThriftPayout).filter(ThriftPayout.id == payout_id).first()
+            if not p:
+                raise HTTPException(status_code=404, detail="Payout not found.")
+            g = _load_group(db, p.group_id)
+            member = db.query(ThriftMember).filter(ThriftMember.id == p.member_id).first()
+            is_recipient = member and member.user_phone in phone_candidates(session["phone"])
+            if not is_recipient:
+                raise HTTPException(status_code=403, detail="Only the member who received the pot can confirm it.")
+            if p.status != "confirmed":
+                tg.confirm_payout(db, p, session["phone"])
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
             db.close()
@@ -186,6 +215,8 @@ def register_thrift_group_routes(app):
                 if cap and cap < tg.member_slots(db, g.id):
                     raise HTTPException(status_code=400, detail="The cap can't be below the current member count.")
                 g.max_members = cap or None
+            if payload.payout_method in ("order", "choice"):
+                g.payout_method = payload.payout_method
             db.commit()
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:

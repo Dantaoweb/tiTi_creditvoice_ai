@@ -216,6 +216,50 @@ def test_existing_member_is_not_spilled_by_the_link():
     assert len(client.get("/app/api/thrift/groups", cookies=admin).json()["groups"]) == 1
 
 
+def test_admin_choice_payout_and_recipient_confirmation():
+    _, admin = _user("Boss")
+    g = client.post("/app/api/thrift/groups", cookies=admin, json={
+        "name": "Choice", "contribution_amount": 1000, "max_members": 3,
+        "payout_method": "choice", "require_approval": False}).json()
+    gid, token = g["id"], g["invite_token"]
+    admin_id = g["members"][0]["id"]
+
+    _, joiner = _user("Joiner")
+    client.post(f"/app/api/thrift/join/{token}", cookies=joiner, json={})
+    g = client.get(f"/app/api/thrift/groups/{gid}", cookies=admin).json()
+    joiner_id = next(m["id"] for m in g["members"] if m["role"] == "member")
+
+    # Everyone contributes this round.
+    client.post(f"/app/api/thrift/groups/{gid}/contributions", cookies=admin, json={"member_id": admin_id})
+    client.post(f"/app/api/thrift/groups/{gid}/contributions", cookies=admin, json={"member_id": joiner_id})
+
+    # Choice payout requires picking a member.
+    assert client.post(f"/app/api/thrift/groups/{gid}/payout", cookies=admin, json={}).status_code == 400
+
+    g = client.post(f"/app/api/thrift/groups/{gid}/payout", cookies=admin,
+                    json={"member_id": joiner_id}).json()
+    assert next(m for m in g["members"] if m["id"] == joiner_id)["has_collected"] is True
+    payout = g["payouts"][0]
+    assert payout["status"] == "pending"
+    pid = payout["id"]
+
+    # Only the recipient can confirm — not the admin.
+    assert client.post(f"/app/api/thrift/payouts/{pid}/confirm", cookies=admin).status_code == 403
+    g = client.post(f"/app/api/thrift/payouts/{pid}/confirm", cookies=joiner).json()
+    assert g["payouts"][0]["status"] == "confirmed"
+
+
+def test_manual_partial_contribution_amount():
+    _, admin = _user("Boss2")
+    g = _make_group(admin, name="Manual", amount=5000)
+    gid = g["id"]
+    admin_id = g["members"][0]["id"]
+    g = client.post(f"/app/api/thrift/groups/{gid}/contributions", cookies=admin,
+                    json={"member_id": admin_id, "amount": 2000}).json()
+    assert next(m for m in g["members"] if m["id"] == admin_id)["total_contributed"] == 2000
+    assert g["collected_this_round"] == 2000
+
+
 def test_many_groups_and_unique_names_and_access():
     _, cook = _user("Multi")
     _make_group(cook, name="Group A", amount=5000)

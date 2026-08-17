@@ -1065,6 +1065,9 @@ class ThriftGroup(Base):
     # the next open group in the same series, creating one if none has space.
     spillover = Column(Boolean, default=False)
     series_key = Column(String, nullable=True, index=True)  # shared across sibling groups
+    # How the pot recipient each round is chosen: order (join/turn order) | choice
+    # (admin picks). More methods (performance, referrals) can extend this later.
+    payout_method = Column(String, default="order")
     status = Column(String, default="active")        # active | completed
     created_at = Column(DateTime, default=utcnow)
 
@@ -1111,6 +1114,10 @@ class ThriftPayout(Base):
     round_number = Column(Integer)
     amount = Column(Integer)
     recorded_by_phone = Column(String, nullable=True)
+    # Recipient confirms they received the pot — visible to every member.
+    status = Column(String, default="pending")       # pending | confirmed
+    confirmed_at = Column(DateTime, nullable=True)
+    confirmed_by_phone = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
 

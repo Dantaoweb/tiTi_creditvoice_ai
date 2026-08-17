@@ -154,7 +154,7 @@ def resolve_join_target(db, group):
 
 def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
                  admin_name=None, require_approval=True, max_members=None,
-                 spillover=False, series_key=None):
+                 spillover=False, series_key=None, payout_method="order"):
     group = ThriftGroup(
         owner_phone=owner_phone,
         name=(name or "").strip(),
@@ -168,6 +168,7 @@ def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
         spillover=bool(spillover),
         # A spillover group anchors a series (its own key) unless it inherits one.
         series_key=series_key or (new_token() if spillover else None),
+        payout_method=payout_method if payout_method in ("order", "choice") else "order",
         status="active",
     )
     db.add(group)
@@ -236,15 +237,34 @@ def record_contribution(db, group, member, amount=None, recorded_by_phone=None):
     return c
 
 
-def record_payout(db, group, recorded_by_phone=None):
-    """Pay the pot to the member whose turn it is (turn_order == current_round),
-    then advance to the next round. Raises ValueError with a clear message when
-    it isn't valid yet. A capped group runs for max_members rounds and only
-    completes once it is full — so it keeps accepting members until then."""
+def _collected_member_ids(db, group_id):
+    return {p.member_id for p in db.query(ThriftPayout).filter(
+        ThriftPayout.group_id == group_id).all()}
+
+
+def record_payout(db, group, recorded_by_phone=None, recipient_member_id=None):
+    """Pay the pot to a member who hasn't collected yet, then advance. The
+    recipient is chosen by the group's payout_method: 'order' uses turn order,
+    'choice' lets the admin pass recipient_member_id. Requires the round to be
+    fully contributed first. Completes once every member has collected (and the
+    group is full, for capped groups). Raises ValueError with a clear message."""
     members = active_members(db, group.id)
-    recipient = next((m for m in members if m.turn_order == group.current_round), None)
-    if not recipient:
-        raise ValueError("No member is due the pot this round yet.")
+    collected = _collected_member_ids(db, group.id)
+    eligible = [m for m in members if m.id not in collected]
+    if not eligible:
+        raise ValueError("Every member has already collected the pot.")
+
+    if group.payout_method == "choice":
+        if not recipient_member_id:
+            raise ValueError("Choose which member collects the pot this round.")
+        recipient = next((m for m in eligible if m.id == recipient_member_id), None)
+        if not recipient:
+            raise ValueError("That member can't collect (not active, or already collected).")
+    else:  # order
+        recipient = next((m for m in eligible if m.turn_order == group.current_round), None)
+        if not recipient:
+            recipient = eligible[0]  # skip past anyone who already collected out of order
+
     # Everyone must have contributed for this round before the pot is paid out.
     paid_ids = {c.member_id for c in db.query(ThriftContribution).filter(
         ThriftContribution.group_id == group.id,
@@ -256,20 +276,28 @@ def record_payout(db, group, recorded_by_phone=None):
             f"Record everyone's contribution for round {group.current_round} first "
             f"— {len(owing)} still owing."
         )
+
     pot = int(group.contribution_amount or 0) * len(members)
     db.add(ThriftPayout(
         group_id=group.id, member_id=recipient.id,
         round_number=group.current_round, amount=pot,
-        recorded_by_phone=recorded_by_phone,
+        recorded_by_phone=recorded_by_phone, status="pending",
     ))
     total_rounds = group.max_members or len(members)
     is_full = (not group.max_members) or (len(members) >= group.max_members)
-    if group.current_round >= total_rounds and is_full:
+    if (len(collected) + 1) >= total_rounds and is_full:
         group.status = "completed"
     else:
         group.current_round += 1
     db.commit()
     return True
+
+
+def confirm_payout(db, payout, by_phone):
+    payout.status = "confirmed"
+    payout.confirmed_at = _utcnow()
+    payout.confirmed_by_phone = by_phone
+    db.commit()
 
 
 def heal_group(db, group):
@@ -314,6 +342,7 @@ def serialize_group(db, group, viewer_phone, detail=False):
         "max_members": getattr(group, "max_members", None),
         "locked": bool(getattr(group, "locked", False)),
         "spillover": bool(getattr(group, "spillover", False)),
+        "payout_method": getattr(group, "payout_method", None) or "order",
         "slots_taken": member_slots(db, group.id),
         "accepting": can_accept_members(db, group)[0] and group.status == "active",
         # The invite link is only handed to people who can bring members in.
@@ -335,6 +364,7 @@ def serialize_group(db, group, viewer_phone, detail=False):
 
     my_member = member_for_user(db, group.id, viewer_phone)
     my_id = my_member.id if my_member else None
+    collected = _collected_member_ids(db, group.id)
 
     out["members"] = [{
         "id": m.id,
@@ -344,11 +374,20 @@ def serialize_group(db, group, viewer_phone, detail=False):
         "turn_order": m.turn_order,
         "total_contributed": total_by.get(m.id, 0),
         "paid_current_round": m.id in paid_this_round,
+        "has_collected": m.id in collected,
         "is_me": m.id == my_id,
     } for m in members]
+    # Members still eligible to collect the pot (for the admin's 'choice' picker).
+    out["eligible_recipients"] = [
+        {"id": m.id, "name": _cap(m.name)}
+        for m in active if m.id not in collected
+    ]
 
-    turn = next((m for m in active if m.turn_order == group.current_round), None)
-    out["current_turn"] = {"member_id": turn.id, "name": _cap(turn.name)} if turn else None
+    if group.payout_method == "choice":
+        out["current_turn"] = None
+    else:
+        turn = next((m for m in active if m.turn_order == group.current_round and m.id not in collected), None)
+        out["current_turn"] = {"member_id": turn.id, "name": _cap(turn.name)} if turn else None
     out["paid_count"] = len(paid_this_round & {m.id for m in active})
     out["collected_this_round"] = sum(c.amount or 0 for c in contribs
                                       if c.round_number == group.current_round)
@@ -356,11 +395,21 @@ def serialize_group(db, group, viewer_phone, detail=False):
     payouts = db.query(ThriftPayout).filter(
         ThriftPayout.group_id == group.id
     ).order_by(ThriftPayout.round_number.desc()).all()
-    id_to_name = {m.id: _cap(m.name) for m in members}
+    id_to_member = {m.id: m for m in members}
+    my_cands = phone_candidates(viewer_phone)
     out["payouts"] = [{
-        "member_name": id_to_name.get(p.member_id, "—"),
+        "id": p.id,
+        "member_name": _cap(id_to_member[p.member_id].name) if p.member_id in id_to_member else "—",
         "round_number": p.round_number,
         "amount": p.amount,
+        # Legacy rows (status NULL) are treated as already confirmed.
+        "status": p.status or "confirmed",
+        "confirmed": (p.status or "confirmed") == "confirmed",
+        # The recipient (if a linked account) can confirm they received it.
+        "can_confirm": (p.status == "pending") and bool(
+            p.member_id in id_to_member
+            and id_to_member[p.member_id].user_phone in my_cands
+        ),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     } for p in payouts]
     return out
