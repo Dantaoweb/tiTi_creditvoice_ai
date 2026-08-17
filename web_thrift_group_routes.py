@@ -15,7 +15,10 @@ import thrift_groups as tg
 
 class CreateGroupRequest(BaseModel):
     name: str = Field(max_length=80)
-    contribution_amount: int
+    group_type: Optional[str] = "rotating"          # rotating | target
+    contribution_amount: Optional[int] = 0
+    goal_amount: Optional[int] = None               # target groups
+    target_date: Optional[str] = None               # target groups (YYYY-MM-DD)
     frequency: Optional[str] = Field(default="weekly", max_length=20)
     require_approval: Optional[bool] = True
     max_members: Optional[int] = None
@@ -77,8 +80,19 @@ def register_thrift_group_routes(app):
             name = payload.name.strip()
             if not name:
                 raise HTTPException(status_code=400, detail="Group name is required.")
-            if payload.contribution_amount <= 0:
+            is_target = payload.group_type == "target"
+            if is_target:
+                if not payload.goal_amount or payload.goal_amount <= 0:
+                    raise HTTPException(status_code=400, detail="Set a goal amount for the group.")
+            elif (payload.contribution_amount or 0) <= 0:
                 raise HTTPException(status_code=400, detail="Contribution amount must be greater than zero.")
+            target_dt = None
+            if payload.target_date:
+                from datetime import datetime as _dt
+                try:
+                    target_dt = _dt.strptime(payload.target_date[:10], "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid target date.")
             dup = db.query(ThriftGroup).filter(
                 ThriftGroup.owner_phone == session["phone"],
                 ThriftGroup.name == name,
@@ -91,6 +105,7 @@ def register_thrift_group_routes(app):
             g = tg.create_group(
                 db, session["phone"], name, payload.contribution_amount,
                 frequency=payload.frequency, admin_name=getattr(me, "name", None),
+                group_type=payload.group_type, goal_amount=payload.goal_amount, target_date=target_dt,
                 require_approval=payload.require_approval,
                 max_members=payload.max_members, spillover=payload.spillover,
                 payout_method=payload.payout_method,
@@ -152,7 +167,10 @@ def register_thrift_group_routes(app):
         db = SessionLocal()
         try:
             g = _load_group(db, group_id)
-            _require(db, g, session["phone"], approve=True)
+            # Approvers can record for anyone; in a target group a member may
+            # record their own saving.
+            if not tg.can_record_contribution(db, g, session["phone"], payload.member_id):
+                raise HTTPException(status_code=403, detail="You can't record this contribution.")
             m = db.query(ThriftMember).filter(
                 ThriftMember.id == payload.member_id,
                 ThriftMember.group_id == g.id,
@@ -172,6 +190,8 @@ def register_thrift_group_routes(app):
         try:
             g = _load_group(db, group_id)
             _require(db, g, session["phone"], approve=True)
+            if getattr(g, "group_type", "rotating") == "target":
+                raise HTTPException(status_code=400, detail="Target-savings groups don't rotate a pot.")
             try:
                 tg.record_payout(db, g, recorded_by_phone=session["phone"],
                                  recipient_member_id=payload.member_id)
@@ -322,7 +342,10 @@ def register_thrift_group_routes(app):
             return {
                 "id": g.id,
                 "name": g.name,
+                "group_type": getattr(g, "group_type", "rotating"),
                 "contribution_amount": g.contribution_amount,
+                "goal_amount": getattr(g, "goal_amount", None),
+                "target_date": g.target_date.isoformat() if getattr(g, "target_date", None) else None,
                 "frequency": g.frequency,
                 "admin_name": (admin.name if admin else g.owner_phone),
                 "member_count": len(active),

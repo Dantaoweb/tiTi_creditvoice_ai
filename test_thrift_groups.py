@@ -260,6 +260,40 @@ def test_manual_partial_contribution_amount():
     assert g["collected_this_round"] == 2000
 
 
+def test_target_group_shared_goal_and_self_saving():
+    """A shared-goal (Eid) group: members save flexible amounts any time toward
+    one goal; a member can record their own saving; no pot rotation."""
+    _, admin = _user("Host")
+    g = client.post("/app/api/thrift/groups", cookies=admin, json={
+        "name": "Eid Savings", "group_type": "target", "goal_amount": 100000,
+        "target_date": "2026-04-20", "require_approval": False}).json()
+    gid, token = g["id"], g["invite_token"]
+    assert g["group_type"] == "target"
+    assert g["goal_amount"] == 100000
+    assert g["total_saved"] == 0
+
+    _, member = _user("Amina")
+    client.post(f"/app/api/thrift/join/{token}", cookies=member, json={})
+    g = client.get(f"/app/api/thrift/groups/{gid}", cookies=admin).json()
+    member_id = next(m["id"] for m in g["members"] if m["role"] == "member")
+    admin_id = next(m["id"] for m in g["members"] if m["role"] == "admin")
+
+    # Admin saves 30k, the member saves their own 20k (self-service).
+    client.post(f"/app/api/thrift/groups/{gid}/contributions", cookies=admin, json={"member_id": admin_id, "amount": 30000})
+    r = client.post(f"/app/api/thrift/groups/{gid}/contributions", cookies=member, json={"member_id": member_id, "amount": 20000})
+    assert r.status_code == 200, r.text
+    g = r.json()
+    assert g["total_saved"] == 50000
+    assert g["goal_pct"] == 50
+
+    # No pot rotation on a target group.
+    assert client.post(f"/app/api/thrift/groups/{gid}/payout", cookies=admin, json={}).status_code == 400
+
+    # A member cannot record someone else's saving.
+    assert client.post(f"/app/api/thrift/groups/{gid}/contributions", cookies=member,
+                       json={"member_id": admin_id, "amount": 5000}).status_code == 403
+
+
 def test_many_groups_and_unique_names_and_access():
     _, cook = _user("Multi")
     _make_group(cook, name="Group A", amount=5000)

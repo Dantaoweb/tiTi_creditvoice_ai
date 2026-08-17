@@ -1054,7 +1054,12 @@ class ThriftGroup(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     owner_phone = Column(String, index=True)         # creator / group admin
     name = Column(String)
-    contribution_amount = Column(Integer)            # fixed amount per member per round
+    # rotating = classic ajo (pot rotates each round); target = shared-goal pool
+    # (e.g. saving for Eid) — flexible amounts/dates toward one common goal.
+    group_type = Column(String, default="rotating")
+    contribution_amount = Column(Integer)            # rotating: fixed amount per round
+    goal_amount = Column(Integer, nullable=True)     # target: the common goal
+    target_date = Column(DateTime, nullable=True)    # target: when the goal is for
     frequency = Column(String, default="weekly")     # daily | weekly | monthly | custom
     current_round = Column(Integer, default=1)
     invite_token = Column(String, index=True)        # shareable join link

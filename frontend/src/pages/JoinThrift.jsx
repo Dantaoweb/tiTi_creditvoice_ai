@@ -73,8 +73,17 @@ export default function JoinThrift() {
         )}
 
         <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", marginTop: 16 }}>
-          <div className="parsed-cell"><span>Contribution</span><strong>{nairaFull(info.contribution_amount)}</strong></div>
-          <div className="parsed-cell"><span>How often</span><strong>{cap(info.frequency)}</strong></div>
+          {info.group_type === "target" ? (
+            <>
+              <div className="parsed-cell"><span>Goal</span><strong>{nairaFull(info.goal_amount)}</strong></div>
+              <div className="parsed-cell"><span>Save</span><strong>any amount, anytime</strong></div>
+            </>
+          ) : (
+            <>
+              <div className="parsed-cell"><span>Contribution</span><strong>{nairaFull(info.contribution_amount)}</strong></div>
+              <div className="parsed-cell"><span>How often</span><strong>{cap(info.frequency)}</strong></div>
+            </>
+          )}
           <div className="parsed-cell"><span>Members</span><strong>{info.member_count}{info.max_members ? `/${info.max_members}` : ""}</strong></div>
         </div>
 

@@ -16,24 +16,31 @@ const ROLE_LABEL = { admin: "Admin", approver: "Approver", member: "Member" };
 
 // ── Create-group form ──────────────────────────────────────────────────────────
 function CreateGroup({ onDone, onCancel }) {
-  const [form, setForm] = useState({ name: "", amount: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false, payout_method: "order" });
+  const [form, setForm] = useState({ name: "", type: "rotating", amount: "", goal: "", target_date: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false, payout_method: "order" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const isTarget = form.type === "target";
 
   async function submit(e) {
     e.preventDefault();
-    const amount = parseAmt(form.amount);
     if (!form.name.trim()) { setErr("Give the group a name."); return; }
-    if (!amount || amount <= 0) { setErr("Enter a contribution amount."); return; }
+    const amount = parseAmt(form.amount);
+    const goal = parseAmt(form.goal);
+    if (isTarget) { if (!goal || goal <= 0) { setErr("Set a goal amount."); return; } }
+    else if (!amount || amount <= 0) { setErr("Enter a contribution amount."); return; }
     setBusy(true); setErr("");
     try {
       const cap = parseInt(form.max_members, 10);
       const g = await apiPost("thrift/groups", {
-        name: form.name.trim(), contribution_amount: amount,
+        name: form.name.trim(), group_type: form.type,
+        contribution_amount: amount || 0,
+        goal_amount: isTarget ? goal : null,
+        target_date: isTarget && form.target_date ? form.target_date : null,
         frequency: form.frequency, require_approval: form.require_approval,
         max_members: form.max_members && cap >= 2 ? cap : null,
-        spillover: form.spillover, payout_method: form.payout_method,
+        spillover: isTarget ? false : form.spillover,
+        payout_method: form.payout_method,
       });
       onDone(g);
     } catch (e) { setErr(e.message); }
@@ -42,27 +49,55 @@ function CreateGroup({ onDone, onCancel }) {
 
   return (
     <div className="card">
-      <div className="card-title" style={{ marginBottom: 10 }}>New Ajo / Thrift group</div>
+      <div className="card-title" style={{ marginBottom: 10 }}>New savings group</div>
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
+        <div className="form-group">
+          <label className="form-label">Type</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className={`btn btn-sm ${!isTarget ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => set("type", "rotating")} disabled={busy}>Rotating (ajo)</button>
+            <button type="button" className={`btn btn-sm ${isTarget ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => set("type", "target")} disabled={busy}>Target (shared goal)</button>
+          </div>
+          <span className="form-hint">{isTarget
+            ? "Everyone saves flexible amounts, any time, toward one goal (e.g. Eid)."
+            : "A fixed amount each round; the pot rotates to one member per round."}</span>
+        </div>
         <div className="form-group">
           <label className="form-label">Group name *</label>
           <input value={form.name} onChange={e => set("name", e.target.value)}
-            placeholder="e.g. Market Women Ajo" disabled={busy} autoFocus />
+            placeholder={isTarget ? "e.g. Eid Savings 2026" : "e.g. Market Women Ajo"} disabled={busy} autoFocus />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div className="form-group">
-            <label className="form-label">Contribution per round *</label>
-            <MoneyInput value={form.amount} onChange={v => set("amount", v)} placeholder="e.g. 5,000" disabled={busy} />
+
+        {isTarget ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Goal amount *</label>
+              <MoneyInput value={form.goal} onChange={v => set("goal", v)} placeholder="e.g. 500,000" disabled={busy} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Target date (optional)</label>
+              <input type="date" value={form.target_date} min={new Date().toISOString().slice(0, 10)}
+                onChange={e => set("target_date", e.target.value)} disabled={busy} />
+            </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">Frequency</label>
-            <select value={form.frequency} onChange={e => set("frequency", e.target.value)} disabled={busy}>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Contribution per round *</label>
+              <MoneyInput value={form.amount} onChange={v => set("amount", v)} placeholder="e.g. 5,000" disabled={busy} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Frequency</label>
+              <select value={form.frequency} onChange={e => set("frequency", e.target.value)} disabled={busy}>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
           </div>
-        </div>
+        )}
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div className="form-group">
             <label className="form-label">Member limit (optional)</label>
@@ -70,25 +105,29 @@ function CreateGroup({ onDone, onCancel }) {
               onChange={e => set("max_members", e.target.value)} placeholder="e.g. 10" disabled={busy} />
             <span className="form-hint">Blank = no limit.</span>
           </div>
-          <div className="form-group">
-            <label className="form-label">Who collects the pot?</label>
-            <select value={form.payout_method} onChange={e => set("payout_method", e.target.value)} disabled={busy}>
-              <option value="order">In join order (rotate)</option>
-              <option value="choice">Admin picks each round</option>
-            </select>
-          </div>
+          {!isTarget && (
+            <div className="form-group">
+              <label className="form-label">Who collects the pot?</label>
+              <select value={form.payout_method} onChange={e => set("payout_method", e.target.value)} disabled={busy}>
+                <option value="order">In join order (rotate)</option>
+                <option value="choice">Admin picks each round</option>
+              </select>
+            </div>
+          )}
         </div>
         <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5 }}>
           <input type="checkbox" checked={form.require_approval}
             onChange={e => set("require_approval", e.target.checked)} style={{ width: "auto" }} />
           People who join via the link need approval first
         </label>
-        <label style={{ display: "flex", gap: 8, alignItems: "start", fontSize: 13.5 }}>
-          <input type="checkbox" checked={form.spillover}
-            onChange={e => set("spillover", e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
-          <span>Auto-continue — when this group fills, the same invite link starts and fills the next group automatically.
-            <span className="text-subtle"> One link serves many groups.</span></span>
-        </label>
+        {!isTarget && (
+          <label style={{ display: "flex", gap: 8, alignItems: "start", fontSize: 13.5 }}>
+            <input type="checkbox" checked={form.spillover}
+              onChange={e => set("spillover", e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
+            <span>Auto-continue — when this group fills, the same invite link starts and fills the next group automatically.
+              <span className="text-subtle"> One link serves many groups.</span></span>
+          </label>
+        )}
         {err && <div className="login-error">{err}</div>}
         <div style={{ display: "flex", gap: 10 }}>
           <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Creating…" : "Create group"}</button>
@@ -150,6 +189,7 @@ function GroupDetail({ groupId, onBack }) {
   const canApprove = g.can_approve;
   const isAdmin = g.is_admin;
   const completed = g.status === "completed";
+  const isTarget = g.group_type === "target";
 
   return (
     <>
@@ -160,21 +200,45 @@ function GroupDetail({ groupId, onBack }) {
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>{g.name}</h2>
         <span className="text-subtle text-sm">
-          {nairaFull(g.contribution_amount)} · {cap(g.frequency)} · {completed ? "Completed" : `Round ${g.current_round} of ${g.total_rounds}`}
+          {isTarget
+            ? <>Target: {nairaFull(g.goal_amount)}{g.target_date ? ` · by ${dateStr(g.target_date)}` : ""}</>
+            : <>{nairaFull(g.contribution_amount)} · {cap(g.frequency)} · {completed ? "Completed" : `Round ${g.current_round} of ${g.total_rounds}`}</>}
         </span>
       </div>
 
       {err && <div className="card card-body" style={{ color: "var(--rose)", marginBottom: 8 }}>{err}</div>}
 
+      {isTarget ? (
+        <>
+          <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
+            <MetricCard label="Saved so far" value={nairaFull(g.total_saved)} color="green" />
+            <MetricCard label="Goal" value={nairaFull(g.goal_amount)} color="brand" />
+            <MetricCard label="Members" value={g.max_members ? `${g.active_count}/${g.max_members}` : g.active_count} color="blue" small />
+            <MetricCard label={g.days_to_target != null ? "Days left" : "Progress"}
+              value={g.days_to_target != null ? Math.max(0, g.days_to_target) : `${g.goal_pct ?? 0}%`} color="amber" small />
+          </div>
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+              <span>{nairaFull(g.total_saved)} of {nairaFull(g.goal_amount)}</span>
+              <strong>{g.goal_pct ?? 0}%</strong>
+            </div>
+            <div style={{ height: 10, background: "var(--line)", borderRadius: 99, overflow: "hidden" }}>
+              <div style={{ width: `${g.goal_pct ?? 0}%`, height: "100%", background: g.goal_reached ? "#166534" : "var(--brand)" }} />
+            </div>
+            {g.goal_reached && <div className="text-sm" style={{ color: "#166534", marginTop: 6 }}>🎉 Goal reached!</div>}
+          </div>
+        </>
+      ) : (
       <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
         <MetricCard label="Pot per round" value={nairaFull(g.pot)} color="green" />
         <MetricCard label="Members" value={g.max_members ? `${g.active_count}/${g.max_members}` : g.active_count} color="blue" />
         <MetricCard label="Paid this round" value={`${g.paid_count || 0}/${g.active_count}`} color="brand" />
         <MetricCard label="Collected" value={nairaFull(g.collected_this_round)} color="amber" small />
       </div>
+      )}
 
       {/* Pot this round — order rotates automatically, choice lets admin pick */}
-      {!completed && (g.eligible_recipients || []).length > 0 && (
+      {!isTarget && !completed && (g.eligible_recipients || []).length > 0 && (
         <div className="card" style={{ borderLeft: "3px solid var(--brand)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <CircleDollarSign size={18} color="var(--brand)" />
@@ -222,14 +286,16 @@ function GroupDetail({ groupId, onBack }) {
               {g.locked ? <><Unlock size={13} /> Unlock</> : <><Lock size={13} /> Lock group</>}
             </button>
           </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} className="text-sm">
-            <span className="text-subtle">Pot collector:</span>
-            <select value={g.payout_method} disabled={busy}
-              onChange={e => act(`thrift/groups/${groupId}/settings`, { payout_method: e.target.value })}>
-              <option value="order">In join order (rotate)</option>
-              <option value="choice">Admin picks each round</option>
-            </select>
-          </div>
+          {!isTarget && (
+            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} className="text-sm">
+              <span className="text-subtle">Pot collector:</span>
+              <select value={g.payout_method} disabled={busy}
+                onChange={e => act(`thrift/groups/${groupId}/settings`, { payout_method: e.target.value })}>
+                <option value="order">In join order (rotate)</option>
+                <option value="choice">Admin picks each round</option>
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -296,11 +362,11 @@ function GroupDetail({ groupId, onBack }) {
         )}
         <div style={{ overflowX: "auto" }}>
           <table className="history-table">
-            <thead><tr><th>#</th><th>Member</th><th>Contributed</th><th>This round</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Member</th><th>{isTarget ? "Saved" : "Contributed"}</th><th>{isTarget ? "" : "This round"}</th><th></th></tr></thead>
             <tbody>
               {active.map(m => (
-                <tr key={m.id} style={m.turn_order === g.current_round && !completed ? { background: "rgba(26,86,219,0.06)" } : undefined}>
-                  <td className="td-muted">{m.turn_order ?? "—"}</td>
+                <tr key={m.id} style={!isTarget && m.turn_order === g.current_round && !completed ? { background: "rgba(26,86,219,0.06)" } : undefined}>
+                  <td className="td-muted">{isTarget ? "•" : (m.turn_order ?? "—")}</td>
                   <td>
                     {m.name}{m.is_me ? " (you)" : ""}
                     {m.role === "admin" && <Crown size={12} color="var(--brand)" style={{ marginLeft: 6 }} />}
@@ -308,22 +374,24 @@ function GroupDetail({ groupId, onBack }) {
                   </td>
                   <td>{nairaFull(m.total_contributed)}</td>
                   <td>
-                    {m.paid_current_round
-                      ? <span className="badge badge-green"><Check size={11} /> Paid</span>
-                      : canApprove && !completed
-                        ? (recId === m.id
-                            ? <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                                <input inputMode="numeric" value={recAmt} onChange={e => setRecAmt(e.target.value)}
-                                  style={{ width: 84 }} autoFocus />
-                                <button className="btn btn-primary btn-sm" disabled={busy}
-                                  onClick={async () => { await act(`thrift/groups/${groupId}/contributions`, { member_id: m.id, amount: parseAmt(recAmt) || g.contribution_amount }); setRecId(null); }}>Save</button>
-                                <button className="btn btn-secondary btn-sm" onClick={() => setRecId(null)}>✕</button>
-                              </span>
-                            : <button className="btn btn-secondary btn-sm" disabled={busy}
-                                onClick={() => { setRecId(m.id); setRecAmt(String(g.contribution_amount || "")); }}>
-                                <Coins size={12} /> Record
-                              </button>)
-                        : <span className="td-muted">—</span>}
+                    {(() => {
+                      const mayRecord = (canApprove || (isTarget && m.is_me)) && !completed;
+                      if (!isTarget && m.paid_current_round)
+                        return <span className="badge badge-green"><Check size={11} /> Paid</span>;
+                      if (!mayRecord) return <span className="td-muted">—</span>;
+                      if (recId === m.id)
+                        return <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                          <input inputMode="numeric" value={recAmt} onChange={e => setRecAmt(e.target.value)}
+                            placeholder={isTarget ? "amount" : ""} style={{ width: 84 }} autoFocus />
+                          <button className="btn btn-primary btn-sm" disabled={busy}
+                            onClick={async () => { const amt = parseAmt(recAmt) || (isTarget ? 0 : g.contribution_amount); if (!amt) return; await act(`thrift/groups/${groupId}/contributions`, { member_id: m.id, amount: amt }); setRecId(null); }}>Save</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setRecId(null)}>✕</button>
+                        </span>;
+                      return <button className="btn btn-secondary btn-sm" disabled={busy}
+                        onClick={() => { setRecId(m.id); setRecAmt(isTarget ? "" : String(g.contribution_amount || "")); }}>
+                        <Coins size={12} /> {isTarget ? (m.is_me ? "Add saving" : "Record") : "Record"}
+                      </button>;
+                    })()}
                   </td>
                   <td style={{ textAlign: "right" }}>
                     {isAdmin && m.role !== "admin" && (
@@ -346,7 +414,7 @@ function GroupDetail({ groupId, onBack }) {
       </div>
 
       {/* Payout history */}
-      {g.payouts?.length > 0 && (
+      {!isTarget && g.payouts?.length > 0 && (
         <div className="card">
           <div className="card-title" style={{ marginBottom: 8 }}>Payout history</div>
           <div style={{ overflowX: "auto" }}>
@@ -419,11 +487,22 @@ export default function ThriftGroups() {
                 <span className={`badge ${ROLE_BADGE[g.my_role] || "badge-gray"}`}>{ROLE_LABEL[g.my_role] || g.my_role}</span>
               </div>
               <div className="text-subtle text-sm" style={{ marginTop: 6 }}>
-                {nairaFull(g.contribution_amount)} · {cap(g.frequency)}
+                {g.group_type === "target"
+                  ? <>🎯 Goal {nairaFull(g.goal_amount)}</>
+                  : <>{nairaFull(g.contribution_amount)} · {cap(g.frequency)}</>}
               </div>
+              {g.group_type === "target" && (
+                <div style={{ height: 6, background: "var(--line)", borderRadius: 99, overflow: "hidden", marginTop: 8 }}>
+                  <div style={{ width: `${g.goal_pct ?? 0}%`, height: "100%", background: g.goal_reached ? "#166534" : "var(--brand)" }} />
+                </div>
+              )}
               <div style={{ display: "flex", gap: 12, marginTop: 10, fontSize: 13 }}>
                 <span><strong>{g.active_count}</strong> members</span>
-                <span className="text-subtle">{g.status === "completed" ? "Completed" : `Round ${g.current_round}`}</span>
+                <span className="text-subtle">
+                  {g.group_type === "target"
+                    ? `${nairaFull(g.total_saved)} saved (${g.goal_pct ?? 0}%)`
+                    : (g.status === "completed" ? "Completed" : `Round ${g.current_round}`)}
+                </span>
                 {g.pending_count > 0 && <span className="badge badge-amber">{g.pending_count} pending</span>}
               </div>
             </button>

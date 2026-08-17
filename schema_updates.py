@@ -689,7 +689,8 @@ def ensure_schema_updates(engine):
         _tg_cols = {c["name"] for c in inspector.get_columns("thrift_groups")}
         _tg_updates = {"max_members": "INTEGER", "locked": "BOOLEAN",
                        "spillover": "BOOLEAN", "series_key": "VARCHAR",
-                       "payout_method": "VARCHAR"}
+                       "payout_method": "VARCHAR", "group_type": "VARCHAR",
+                       "goal_amount": "INTEGER", "target_date": "TIMESTAMP"}
         with engine.begin() as connection:
             for col, typ in _tg_updates.items():
                 if col not in _tg_cols:

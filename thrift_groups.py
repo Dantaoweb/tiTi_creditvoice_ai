@@ -12,6 +12,8 @@ import re
 import secrets
 from datetime import datetime, timezone
 
+from sqlalchemy import func
+
 from models import (
     ThriftGroup, ThriftMember, ThriftContribution, ThriftPayout, User,
 )
@@ -75,6 +77,19 @@ def viewer_role(db, group, viewer_phone):
 
 def can_approve(role):
     return role in ("admin", "approver")
+
+
+def can_record_contribution(db, group, viewer_phone, target_member_id):
+    """Who may log a contribution: approvers always; in a target (shared-goal)
+    group a member may also record their OWN saving."""
+    role = viewer_role(db, group, viewer_phone)
+    if can_approve(role):
+        return True
+    if getattr(group, "group_type", "rotating") == "target":
+        m = member_for_user(db, group.id, viewer_phone)
+        if m and m.status == "active" and m.id == target_member_id:
+            return True
+    return False
 
 
 def member_slots(db, group_id):
@@ -154,11 +169,15 @@ def resolve_join_target(db, group):
 
 def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
                  admin_name=None, require_approval=True, max_members=None,
-                 spillover=False, series_key=None, payout_method="order"):
+                 spillover=False, series_key=None, payout_method="order",
+                 group_type="rotating", goal_amount=None, target_date=None):
     group = ThriftGroup(
         owner_phone=owner_phone,
         name=(name or "").strip(),
+        group_type="target" if group_type == "target" else "rotating",
         contribution_amount=int(contribution_amount or 0),
+        goal_amount=int(goal_amount) if goal_amount else None,
+        target_date=target_date,
         frequency=frequency or "weekly",
         current_round=1,
         invite_token=new_token(),
@@ -325,10 +344,14 @@ def serialize_group(db, group, viewer_phone, detail=False):
     active = [m for m in members if m.status == "active"]
     pending = [m for m in members if m.status == "pending"]
 
+    gtype = getattr(group, "group_type", None) or "rotating"
     out = {
         "id": group.id,
         "name": group.name,
+        "group_type": gtype,
         "contribution_amount": group.contribution_amount,
+        "goal_amount": getattr(group, "goal_amount", None),
+        "target_date": group.target_date.isoformat() if getattr(group, "target_date", None) else None,
         "frequency": group.frequency,
         "current_round": group.current_round,
         "status": group.status,
@@ -348,6 +371,15 @@ def serialize_group(db, group, viewer_phone, detail=False):
         # The invite link is only handed to people who can bring members in.
         "invite_token": group.invite_token if approver else None,
     }
+    if gtype == "target":
+        total = db.query(func.coalesce(func.sum(ThriftContribution.amount), 0)).filter(
+            ThriftContribution.group_id == group.id).scalar() or 0
+        goal = group.goal_amount or 0
+        out["total_saved"] = int(total)
+        out["goal_pct"] = min(100, round(total / goal * 100)) if goal else None
+        out["goal_reached"] = bool(goal and total >= goal)
+        out["days_to_target"] = ((group.target_date.date() - _utcnow().date()).days
+                                 if group.target_date else None)
     if not detail:
         return out
 
