@@ -2560,6 +2560,11 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   color: rgba(255,255,255,0.72);
   line-height: 1.45;
 }
+/* On narrow screens the date pickers + button squeeze the text to one word per
+   line — stack the controls below the description instead. */
+@media (max-width: 640px) {
+  .stmt-banner { flex-direction: column; align-items: stretch; }
+}
 
 /* ── Capture mode bar ────────────────────────────────────────────────── */
 .capture-mode-bar {
