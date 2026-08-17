@@ -209,6 +209,9 @@ input, select, textarea {
   height: 36px;
   outline: none;
   transition: border-color 0.15s;
+  /* Allow inputs to shrink inside flex/grid cells so multi-column form rows
+     never force horizontal overflow on narrow (mobile) screens. */
+  min-width: 0;
 }
 
 input:focus, select:focus, textarea:focus { border-color: var(--brand); }
@@ -406,7 +409,7 @@ tr.low-stock td { background: #fffbeb; }
 .skeleton-block { border-radius: var(--radius); }
 
 /* ── Form helpers ───────────────────────────────────────────────────── */
-.form-group { display: grid; gap: 6px; }
+.form-group { display: grid; gap: 6px; min-width: 0; }
 .form-label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .form-row   { display: flex; gap: 10px; flex-wrap: wrap; }
 .form-full  { width: 100%; min-width: 0; }

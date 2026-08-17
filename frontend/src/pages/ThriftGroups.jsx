@@ -75,11 +75,11 @@ function CreateGroup({ onDone, onCancel }) {
         <div className="form-group">
           <label className="form-label">Group name *</label>
           <input value={form.name} onChange={e => set("name", e.target.value)}
-            placeholder={isTarget ? "e.g. Eid Savings 2026" : "e.g. Market Women Ajo"} disabled={busy} autoFocus />
+            placeholder={isTarget ? "e.g. Eid Savings 2027" : "e.g. Market Women Ajo"} disabled={busy} autoFocus />
         </div>
 
         {isTarget ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <div className="form-group">
               <label className="form-label">Goal amount *</label>
               <MoneyInput value={form.goal} onChange={v => set("goal", v)} placeholder="e.g. 500,000" disabled={busy} />
@@ -91,7 +91,7 @@ function CreateGroup({ onDone, onCancel }) {
             </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <div className="form-group">
               <label className="form-label">Contribution per round *</label>
               <MoneyInput value={form.amount} onChange={v => set("amount", v)} placeholder="e.g. 5,000" disabled={busy} />
@@ -107,7 +107,7 @@ function CreateGroup({ onDone, onCancel }) {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
           <div className="form-group">
             <label className="form-label">Member limit *</label>
             <input type="number" min="2" value={form.max_members}
