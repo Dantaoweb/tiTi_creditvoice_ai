@@ -30,10 +30,19 @@ def _reset():
         web_auth._auth_attempts.clear()
 
 
-def _user(name):
+def _user(name, plan=None):
     n = next(_seq)
     phone = f"234823{n:06d}"
     client.post("/app/api/auth/register", json={"name": name, "phone": phone, "pin": "9753"})
+    if plan:
+        db = SessionLocal()
+        try:
+            from models import User
+            u = db.query(User).filter(User.phone == phone).first()
+            u.subscription_plan = plan
+            db.commit()
+        finally:
+            db.close()
     cook = client.post("/app/api/auth/login", json={"phone": phone, "pin": "9753"}).cookies
     return phone, cook
 
@@ -50,9 +59,9 @@ def _notifs(phone, prefix):
 
 
 def test_members_get_a_savings_nudge_and_no_spam():
-    admin_phone, admin = _user("Host")
+    admin_phone, admin = _user("Host", plan="PRO")
     g = client.post("/app/api/thrift/groups", cookies=admin, json={
-        "name": "Eid Fund", "group_type": "target", "goal_amount": 100000,
+        "name": "Eid Fund", "group_type": "target", "goal_amount": 100000, "max_members": 10,
         "require_approval": False}).json()
     member_phone, member = _user("Amina")
     client.post(f"/app/api/thrift/join/{g['invite_token']}", cookies=member, json={})
@@ -77,9 +86,9 @@ def test_members_get_a_savings_nudge_and_no_spam():
 
 
 def test_goal_reached_celebration():
-    admin_phone, admin = _user("Host2")
+    admin_phone, admin = _user("Host2", plan="PRO")
     g = client.post("/app/api/thrift/groups", cookies=admin, json={
-        "name": "Sallah Pool", "group_type": "target", "goal_amount": 10000,
+        "name": "Sallah Pool", "group_type": "target", "goal_amount": 10000, "max_members": 10,
         "require_approval": False}).json()
     gid = g["id"]
     admin_id = g["members"][0]["id"]

@@ -40,6 +40,7 @@ PLAN_LIMITS = {
         "monthly_transactions":   100,
         "monthly_invoice_uses":   5,    # multi-item invoice sessions per month
         "thrift_participants":    10,
+        "thrift_groups":          3,    # rotating/target savings groups you can run
         "active_inventory_items": 5,    # items with selling_price set
         "active_suppliers":       5,    # suppliers with cost-price items
         "staff":                  0,    # no app-access staff on Basic
@@ -53,6 +54,7 @@ PLAN_LIMITS = {
         "monthly_transactions":   None,
         "monthly_invoice_uses":   None,
         "thrift_participants":    None,
+        "thrift_groups":          None,
         "active_inventory_items": None,
         "active_suppliers":       None,
         "staff":                  0,    # Go = sole proprietor, no staff
@@ -66,6 +68,7 @@ PLAN_LIMITS = {
         "monthly_transactions":   None,
         "monthly_invoice_uses":   None,
         "thrift_participants":    None,
+        "thrift_groups":          None,
         "active_inventory_items": None,
         "active_suppliers":       None,
         "staff":                  None, # unlimited app-access staff
@@ -79,6 +82,7 @@ PLAN_LIMITS = {
         "monthly_transactions":   None,
         "monthly_invoice_uses":   None,
         "thrift_participants":    None,
+        "thrift_groups":          None,
         "active_inventory_items": None,
         "active_suppliers":       None,
         "staff":                  None, # unlimited app-access staff
@@ -124,6 +128,7 @@ FEATURE_MIN_PLAN = {
     "VOICE_REPLY":            PLAN_PRO,
     "DELIVERY_AUTOMATION":    PLAN_PRO,
     "PARTNERS":               PLAN_PRO,
+    "THRIFT_TARGET_GROUPS":   PLAN_PRO,   # goal/target savings groups (e.g. Eid)
 }
 
 FEATURE_VALUE_BY_TEMPLATE = {

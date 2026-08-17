@@ -30,17 +30,27 @@ def _reset():
         web_auth._auth_attempts.clear()
 
 
-def _user(name):
+def _user(name, plan=None):
     n = next(_seq)
     phone = f"234819{n:06d}"
     client.post("/app/api/auth/register", json={"name": name, "phone": phone, "pin": "1357"})
+    if plan:
+        db = SessionLocal()
+        try:
+            from models import User
+            u = db.query(User).filter(User.phone == phone).first()
+            u.subscription_plan = plan
+            db.commit()
+        finally:
+            db.close()
     cook = client.post("/app/api/auth/login", json={"phone": phone, "pin": "1357"}).cookies
     return phone, cook
 
 
-def _make_group(cook, name="Market Women Ajo", amount=5000):
+def _make_group(cook, name="Market Women Ajo", amount=5000, max_members=10):
     return client.post("/app/api/thrift/groups", cookies=cook,
-                       json={"name": name, "contribution_amount": amount, "frequency": "weekly"}).json()
+                       json={"name": name, "contribution_amount": amount, "frequency": "weekly",
+                             "max_members": max_members}).json()
 
 
 def test_full_rotation_flow():
@@ -263,10 +273,10 @@ def test_manual_partial_contribution_amount():
 def test_target_group_shared_goal_and_self_saving():
     """A shared-goal (Eid) group: members save flexible amounts any time toward
     one goal; a member can record their own saving; no pot rotation."""
-    _, admin = _user("Host")
+    _, admin = _user("Host", plan="PRO")   # target groups are Pro+
     g = client.post("/app/api/thrift/groups", cookies=admin, json={
         "name": "Eid Savings", "group_type": "target", "goal_amount": 100000,
-        "target_date": "2026-04-20", "require_approval": False}).json()
+        "target_date": "2026-04-20", "max_members": 10, "require_approval": False}).json()
     gid, token = g["id"], g["invite_token"]
     assert g["group_type"] == "target"
     assert g["goal_amount"] == 100000
@@ -304,10 +314,32 @@ def test_many_groups_and_unique_names_and_access():
 
     # Duplicate active name is rejected.
     dup = client.post("/app/api/thrift/groups", cookies=cook,
-                      json={"name": "Group A", "contribution_amount": 500})
+                      json={"name": "Group A", "contribution_amount": 500, "max_members": 5})
     assert dup.status_code == 409
 
     # A non-member cannot view someone else's group.
     gid = groups[0]["id"]
     _, stranger = _user("Stranger")
     assert client.get(f"/app/api/thrift/groups/{gid}", cookies=stranger).status_code == 403
+
+
+def test_gating_cap_required_group_limit_and_target_pro_only():
+    _, basic = _user("Basic")
+    # Cap is required at creation.
+    r = client.post("/app/api/thrift/groups", cookies=basic,
+                    json={"name": "Uncapped", "contribution_amount": 1000})
+    assert r.status_code == 400
+
+    # Basic allows 3 groups; the 4th is blocked.
+    for i in range(3):
+        assert client.post("/app/api/thrift/groups", cookies=basic,
+                           json={"name": f"G{i}", "contribution_amount": 1000, "max_members": 5}).status_code == 200
+    over = client.post("/app/api/thrift/groups", cookies=basic,
+                       json={"name": "G4", "contribution_amount": 1000, "max_members": 5})
+    assert over.status_code == 403
+
+    # Target/goal groups are Pro+ — blocked on Basic.
+    _, basic2 = _user("Basic2")
+    t = client.post("/app/api/thrift/groups", cookies=basic2, json={
+        "name": "Eid", "group_type": "target", "goal_amount": 50000, "max_members": 5})
+    assert t.status_code == 403

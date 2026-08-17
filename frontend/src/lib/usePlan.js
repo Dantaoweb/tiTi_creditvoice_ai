@@ -3,10 +3,10 @@ import { useAuth } from "../context/AuthContext";
 const ORDER = { BASIC: 1, GO: 2, PRO: 3, PREMIUM: 4 };
 
 const LIMITS = {
-  BASIC:   { active_inventory_items: 5, school_teachers: 3, branches: 0, partners: 0, investors: 0 },
-  GO:      { active_inventory_items: null, school_teachers: null, branches: 0, partners: 0, investors: 0 },
-  PRO:     { active_inventory_items: null, school_teachers: null, branches: 1, partners: 1, investors: 1 },
-  PREMIUM: { active_inventory_items: null, school_teachers: null, branches: null, partners: null, investors: null },
+  BASIC:   { active_inventory_items: 5, school_teachers: 3, branches: 0, partners: 0, investors: 0, thrift_groups: 3 },
+  GO:      { active_inventory_items: null, school_teachers: null, branches: 0, partners: 0, investors: 0, thrift_groups: null },
+  PRO:     { active_inventory_items: null, school_teachers: null, branches: 1, partners: 1, investors: 1, thrift_groups: null },
+  PREMIUM: { active_inventory_items: null, school_teachers: null, branches: null, partners: null, investors: null, thrift_groups: null },
 };
 
 const FEATURE_MIN = {
@@ -18,6 +18,7 @@ const FEATURE_MIN = {
   PARTNERS:          "PRO",
   INVOICE:           "GO",
   VOICE_TEXT:        "GO",
+  THRIFT_TARGET_GROUPS: "PRO",
 };
 
 export function usePlan() {

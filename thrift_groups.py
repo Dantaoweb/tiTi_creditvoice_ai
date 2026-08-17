@@ -128,9 +128,25 @@ def member_in_series(db, group, user_phone):
     ).first()
 
 
+def _at_group_limit(db, owner_phone):
+    """True when the owner has hit their plan's active-group cap (so spillover
+    must not auto-create another group)."""
+    from models import User
+    from subscriptions import get_business_subscription, check_thrift_group_limit
+    owner = db.query(User).filter(User.phone == owner_phone).first()
+    if not owner:
+        return False
+    sub = get_business_subscription(db, owner)
+    within, _ = check_thrift_group_limit(db, owner_phone, sub)
+    return not within
+
+
 def _create_next_sibling(db, group):
     """Start the next group in a spillover series, copying its settings and
-    numbering the name (e.g. 'Aje oloja' → 'Aje oloja 2')."""
+    numbering the name (e.g. 'Aje oloja' → 'Aje oloja 2'). Returns None when the
+    owner is at their plan's group cap."""
+    if _at_group_limit(db, group.owner_phone):
+        return None
     base = re.sub(r"\s+\d+$", "", group.name or "").strip() or "Group"
     count = db.query(ThriftGroup).filter(ThriftGroup.series_key == group.series_key).count()
     owner = db.query(User).filter(User.phone == group.owner_phone).first()
@@ -164,7 +180,8 @@ def resolve_join_target(db, group):
         return group
     if not group.spillover or not group.series_key:
         return group
-    return open_sibling(db, group) or _create_next_sibling(db, group)
+    # Falls back to the (full) original group when the plan cap blocks a new one.
+    return open_sibling(db, group) or _create_next_sibling(db, group) or group
 
 
 def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",

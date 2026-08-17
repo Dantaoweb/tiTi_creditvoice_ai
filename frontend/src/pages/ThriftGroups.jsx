@@ -9,6 +9,7 @@ import MoneyInput from "../components/MoneyInput";
 import MetricCard from "../components/MetricCard";
 import EmptyState from "../components/EmptyState";
 import Skeleton from "../components/Skeleton";
+import { usePlan } from "../lib/usePlan";
 
 const cap = s => (s || "—").replace(/\b\w/g, c => c.toUpperCase());
 const ROLE_BADGE = { admin: "badge-blue", approver: "badge-amber", member: "badge-gray" };
@@ -16,6 +17,8 @@ const ROLE_LABEL = { admin: "Admin", approver: "Approver", member: "Member" };
 
 // ── Create-group form ──────────────────────────────────────────────────────────
 function CreateGroup({ onDone, onCancel }) {
+  const { allows } = usePlan();
+  const canTarget = allows("THRIFT_TARGET_GROUPS");
   const [form, setForm] = useState({ name: "", type: "rotating", amount: "", goal: "", target_date: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false, payout_method: "order" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -27,18 +30,19 @@ function CreateGroup({ onDone, onCancel }) {
     if (!form.name.trim()) { setErr("Give the group a name."); return; }
     const amount = parseAmt(form.amount);
     const goal = parseAmt(form.goal);
+    const cap = parseInt(form.max_members, 10);
+    if (!cap || cap < 2) { setErr("Set a member limit (at least 2) — every group must be capped."); return; }
     if (isTarget) { if (!goal || goal <= 0) { setErr("Set a goal amount."); return; } }
     else if (!amount || amount <= 0) { setErr("Enter a contribution amount."); return; }
     setBusy(true); setErr("");
     try {
-      const cap = parseInt(form.max_members, 10);
       const g = await apiPost("thrift/groups", {
         name: form.name.trim(), group_type: form.type,
         contribution_amount: amount || 0,
         goal_amount: isTarget ? goal : null,
         target_date: isTarget && form.target_date ? form.target_date : null,
         frequency: form.frequency, require_approval: form.require_approval,
-        max_members: form.max_members && cap >= 2 ? cap : null,
+        max_members: cap,
         spillover: isTarget ? false : form.spillover,
         payout_method: form.payout_method,
       });
@@ -57,11 +61,16 @@ function CreateGroup({ onDone, onCancel }) {
             <button type="button" className={`btn btn-sm ${!isTarget ? "btn-primary" : "btn-secondary"}`}
               onClick={() => set("type", "rotating")} disabled={busy}>Rotating (ajo)</button>
             <button type="button" className={`btn btn-sm ${isTarget ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => set("type", "target")} disabled={busy}>Target (shared goal)</button>
+              onClick={() => canTarget && set("type", "target")} disabled={busy || !canTarget}
+              title={canTarget ? "" : "Target/goal groups are a Pro feature"}>
+              Target (shared goal){!canTarget && " 🔒"}
+            </button>
           </div>
-          <span className="form-hint">{isTarget
-            ? "Everyone saves flexible amounts, any time, toward one goal (e.g. Eid)."
-            : "A fixed amount each round; the pot rotates to one member per round."}</span>
+          <span className="form-hint">{!canTarget
+            ? "Target/goal savings (e.g. Eid) is available on Pro. Rotating ajo works on your plan."
+            : isTarget
+              ? "Everyone saves flexible amounts, any time, toward one goal (e.g. Eid)."
+              : "A fixed amount each round; the pot rotates to one member per round."}</span>
         </div>
         <div className="form-group">
           <label className="form-label">Group name *</label>
@@ -100,10 +109,10 @@ function CreateGroup({ onDone, onCancel }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div className="form-group">
-            <label className="form-label">Member limit (optional)</label>
+            <label className="form-label">Member limit *</label>
             <input type="number" min="2" value={form.max_members}
               onChange={e => set("max_members", e.target.value)} placeholder="e.g. 10" disabled={busy} />
-            <span className="form-hint">Blank = no limit.</span>
+            <span className="form-hint">Every group must be capped.</span>
           </div>
           {!isTarget && (
             <div className="form-group">

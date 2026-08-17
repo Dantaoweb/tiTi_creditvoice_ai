@@ -180,6 +180,25 @@ def check_customer_limit(db, owner_phone, subscription):
     )
 
 
+def check_thrift_group_limit(db, owner_phone, subscription):
+    """Whether the user can create/keep another savings group under their plan.
+    Only ACTIVE groups count, so a completed group frees a slot."""
+    from models import ThriftGroup
+    limit = subscription["limits"].get("thrift_groups")
+    if limit is None:
+        return True, None
+    count = db.query(ThriftGroup).filter(
+        ThriftGroup.owner_phone == owner_phone,
+        ThriftGroup.status == "active",
+    ).count()
+    if count < limit:
+        return True, None
+    return False, (
+        f"Your {subscription['plan']} plan allows {limit} savings groups.\n\n"
+        "Upgrade to run more groups (and unlock target/goal groups)."
+    )
+
+
 def check_thrift_participant_limit(db, owner_phone, subscription):
     limit = subscription["limits"].get("thrift_participants")
     if limit is None:

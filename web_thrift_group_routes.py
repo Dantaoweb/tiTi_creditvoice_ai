@@ -81,6 +81,26 @@ def register_thrift_group_routes(app):
             if not name:
                 raise HTTPException(status_code=400, detail="Group name is required.")
             is_target = payload.group_type == "target"
+
+            # ── Plan gating ──────────────────────────────────────────────────
+            from subscriptions import (
+                get_business_subscription, ensure_feature_allowed, check_thrift_group_limit,
+            )
+            sub = get_business_subscription(db, me) if me else None
+            # Target/goal groups are a Pro+ feature.
+            if is_target:
+                allowed, upgrade = ensure_feature_allowed(db, me, "THRIFT_TARGET_GROUPS", "Target savings groups")
+                if not allowed:
+                    raise HTTPException(status_code=403, detail=upgrade)
+            # Every group must be capped at creation (all plans).
+            if not payload.max_members or payload.max_members < 2:
+                raise HTTPException(status_code=400, detail="Set a member limit (at least 2) — every group must be capped.")
+            # Limited number of groups per plan (Basic: 3).
+            if sub:
+                within, msg = check_thrift_group_limit(db, session["phone"], sub)
+                if not within:
+                    raise HTTPException(status_code=403, detail=msg)
+
             if is_target:
                 if not payload.goal_amount or payload.goal_amount <= 0:
                     raise HTTPException(status_code=400, detail="Set a goal amount for the group.")
@@ -100,8 +120,6 @@ def register_thrift_group_routes(app):
             ).first()
             if dup:
                 raise HTTPException(status_code=409, detail="You already have a group with that name.")
-            if payload.max_members is not None and payload.max_members < 2:
-                raise HTTPException(status_code=400, detail="A group needs room for at least 2 members.")
             g = tg.create_group(
                 db, session["phone"], name, payload.contribution_amount,
                 frequency=payload.frequency, admin_name=getattr(me, "name", None),
