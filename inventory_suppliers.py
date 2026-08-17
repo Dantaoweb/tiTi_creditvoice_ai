@@ -84,20 +84,34 @@ def _resolve_deduction(db, owner_phone, product, quantity, unit):
     """
     # 1. Fraction prefix check: "half bag" → 0.5 × (match on "bag")
     fraction, base_unit = _parse_fraction_unit(unit or "")
-    item = find_matching_inventory_item(db, owner_phone, product, base_unit or unit)
-    if item:
+    eff_unit = base_unit or unit
+    item = find_matching_inventory_item(db, owner_phone, product, eff_unit)
+
+    # A direct match in the SAME unit (or a fraction like "half bag") wins. When
+    # the sale unit differs from how the item is stocked (e.g. selling a carton
+    # of a product held in pieces), fall through to a unit conversion first — the
+    # name matcher matches by name regardless of unit, so it must not short the
+    # carton→piece / retail-sub-unit conversion below.
+    same_unit = item and (not eff_unit or not item.unit
+                          or item.unit.lower() == eff_unit.lower())
+    if item and (same_unit or fraction != 1.0):
         return item, quantity * fraction
 
     # 2. Retail sub-unit: "3 congo" → match rice whose retail_unit="congo"
     if unit:
-        item = _find_by_retail_unit(db, owner_phone, product, unit)
-        if item and item.retail_per_base:
-            return item, quantity / item.retail_per_base
+        retail_item = _find_by_retail_unit(db, owner_phone, product, unit)
+        if retail_item and retail_item.retail_per_base:
+            return retail_item, quantity / retail_item.retail_per_base
 
-    # 3. Legacy purchase-history conversion (existing behaviour)
-    item, converted = find_converted_inventory_for_sale(db, owner_phone, product, unit, quantity)
+    # 3. Legacy purchase-history conversion (carton→piece via the buy record)
+    conv_item, converted = find_converted_inventory_for_sale(db, owner_phone, product, unit, quantity)
+    if conv_item:
+        return conv_item, float(converted)
+
+    # 4. No conversion available — use the name match as-is (units are close
+    #    enough, e.g. "bottle" vs "bottles").
     if item:
-        return item, float(converted)
+        return item, quantity * fraction
 
     return None, None
 
