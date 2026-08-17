@@ -436,6 +436,69 @@ def _check_savings_due(db):
         db.commit()
 
 
+def _check_target_savings(db):
+    """Notify members of a target (shared-goal) thrift group: a gentle nudge to
+    keep saving (weekly, or every 2 days once the target date is within a week),
+    and a one-off celebration when the goal is reached. Delivered per member (in
+    the app + web push + WhatsApp). Only members with a linked account are reached."""
+    from sqlalchemy import func
+    from models import ThriftGroup, ThriftMember, ThriftContribution, ProactiveLog
+
+    today = _utcnow().date()
+    groups = db.query(ThriftGroup).filter(
+        ThriftGroup.group_type == "target",
+        ThriftGroup.status == "active",
+    ).all()
+
+    for g in groups:
+        goal = g.goal_amount or 0
+        if not goal:
+            continue
+        total = db.query(func.coalesce(func.sum(ThriftContribution.amount), 0)).filter(
+            ThriftContribution.group_id == g.id).scalar() or 0
+        members = db.query(ThriftMember).filter(
+            ThriftMember.group_id == g.id,
+            ThriftMember.status == "active",
+            ThriftMember.user_phone != None,
+        ).all()
+        if not members:
+            continue
+
+        reached = total >= goal
+        days = (g.target_date.date() - today).days if g.target_date else None
+        pct = round(total / goal * 100) if goal else 0
+
+        if reached:
+            event = f"target_reached:{g.id}"
+            interval = 3650   # effectively once
+            title = "Goal reached 🎉"
+            body = f"*{g.name}* hit its ₦{goal:,} goal. Well done to everyone!"
+        else:
+            event = f"target_nudge:{g.id}"
+            near = days is not None and 0 <= days <= 7
+            interval = 2 if near else 7
+            if near:
+                when = f"Target date is in {days} day{'s' if days != 1 else ''}."
+            elif days is not None and days < 0:
+                when = "The target date has passed — let's close the gap."
+            else:
+                when = "Keep saving toward the goal."
+            title = "Saving toward a goal 🎯"
+            body = f"*{g.name}*: ₦{total:,} of ₦{goal:,} saved ({pct}%). {when} Add your bit."
+
+        for m in members:
+            phone = m.user_phone
+            last = db.query(ProactiveLog).filter(
+                ProactiveLog.owner_phone == phone,
+                ProactiveLog.event_type == event,
+            ).order_by(ProactiveLog.sent_at.desc()).first()
+            if last and (_utcnow() - last.sent_at).days < interval:
+                continue
+            _notify(db, phone, event, title, body)
+            db.add(ProactiveLog(owner_phone=phone, event_type=event, sent_at=_utcnow()))
+            db.commit()
+
+
 def _check_supplier_due(db):
     """Remind owners of supplier payments falling due (up to 3 days out) or
     overdue, while the supplier still has an outstanding balance. Delivers via
@@ -628,6 +691,7 @@ async def run_proactive_scheduler():
             _check_delivery_due(db)
             _check_supplier_due(db)
             _check_savings_due(db)
+            _check_target_savings(db)
             _check_subscription_expiry(db)
             _reconcile_balances(db)
             _purge_old_logs(db)
