@@ -406,6 +406,36 @@ def _check_delivery_due(db):
 
 # ── Supplier payment due ─────────────────────────────────────────────────────────
 
+def _check_savings_due(db):
+    """Remind savers when their next personal-savings deposit is due, per their
+    plan frequency. Re-reminds at most once per that frequency's interval."""
+    from models import SavingsPlan, ProactiveLog
+    import savings as _sv
+
+    for plan in db.query(SavingsPlan).all():
+        s = _sv.savings_summary(db, plan.owner_phone)
+        if not s["due"]:
+            continue
+        interval_days = _sv._INTERVAL_DAYS.get(plan.frequency, 7)
+        last = db.query(ProactiveLog).filter(
+            ProactiveLog.owner_phone == plan.owner_phone,
+            ProactiveLog.event_type == "savings_due",
+        ).order_by(ProactiveLog.sent_at.desc()).first()
+        if last and (_utcnow() - last.sent_at).days < interval_days:
+            continue
+
+        goal_line = ""
+        if plan.goal_amount:
+            goal_line = f"\nProgress: ₦{s['total_saved']:,} of ₦{plan.goal_amount:,} ({s['goal_pct']}%)."
+        _notify(
+            db, plan.owner_phone, "savings_due",
+            "Time to save 💰",
+            f"You committed to save {plan.frequency}. Record today's deposit to stay on track.{goal_line}",
+        )
+        db.add(ProactiveLog(owner_phone=plan.owner_phone, event_type="savings_due", sent_at=_utcnow()))
+        db.commit()
+
+
 def _check_supplier_due(db):
     """Remind owners of supplier payments falling due (up to 3 days out) or
     overdue, while the supplier still has an outstanding balance. Delivers via
@@ -597,6 +627,7 @@ async def run_proactive_scheduler():
             _check_reminder_automation(db)
             _check_delivery_due(db)
             _check_supplier_due(db)
+            _check_savings_due(db)
             _check_subscription_expiry(db)
             _reconcile_balances(db)
             _purge_old_logs(db)

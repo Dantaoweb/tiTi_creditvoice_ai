@@ -1121,6 +1121,20 @@ class ThriftPayout(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class SavingsPlan(Base):
+    """A personal-savings commitment: a frequency to stick to, an optional goal
+    amount to reach, and the basis for save reminders."""
+
+    __tablename__ = "savings_plans"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, unique=True, index=True)
+    frequency = Column(String, default="weekly")   # daily | weekly | monthly
+    goal_amount = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow)
+
+
 class ProactiveLog(Base):
     """Tracks proactive messages tiTi has sent so we don't spam users."""
 

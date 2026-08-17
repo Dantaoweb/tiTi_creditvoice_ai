@@ -27,6 +27,11 @@ class ThriftParticipantRequest(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=20)
 
 
+class SavingsPlanRequest(BaseModel):
+    frequency: str = Field(max_length=20)
+    goal_amount: Optional[int] = None
+
+
 def register_thrift_routes(app):
 
     @app.get("/app/api/thrift/summary")
@@ -147,6 +152,32 @@ def register_thrift_routes(app):
             db.add(tx)
             db.commit()
             return {"ok": True, "id": tx.id, "amount": _money(payload.amount)}
+        finally:
+            db.close()
+
+    @app.get("/app/api/savings/plan")
+    def web_savings_plan(session: dict = Depends(require_web_auth)):
+        """The personal-savings plan: frequency, goal, progress and next-due."""
+        import savings
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            return savings.savings_summary(db, owner_phone)
+        finally:
+            db.close()
+
+    @app.post("/app/api/savings/plan")
+    def web_set_savings_plan(payload: SavingsPlanRequest, session: dict = Depends(require_web_auth)):
+        import savings
+        db = SessionLocal()
+        try:
+            if payload.frequency not in savings.FREQUENCIES:
+                raise HTTPException(status_code=400, detail="Pick a frequency: daily, weekly or monthly.")
+            if payload.goal_amount is not None and payload.goal_amount < 0:
+                raise HTTPException(status_code=400, detail="Goal amount can't be negative.")
+            owner_phone = _session_owner_phone(db, session)
+            savings.set_plan(db, owner_phone, payload.frequency, payload.goal_amount)
+            return savings.savings_summary(db, owner_phone)
         finally:
             db.close()
 

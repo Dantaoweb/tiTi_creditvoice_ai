@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Activity, Users, TrendingUp, Plus, Info, Landmark, ChevronDown, ChevronUp, UserPlus } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
-import { nairaFull, dateTimeStr, parseAmt } from "../lib/format";
+import { nairaFull, dateTimeStr, dateStr, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import MetricCard from "../components/MetricCard";
 import Skeleton from "../components/Skeleton";
@@ -261,6 +261,88 @@ function GroupThrift({ data, loading, reload }) {
   );
 }
 
+// ── Savings plan (frequency + goal + reminders) ─────────────────────────────────
+
+function SavingsPlanCard({ refreshKey }) {
+  const [plan, setPlan]   = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [freq, setFreq]   = useState("weekly");
+  const [goal, setGoal]   = useState("");
+  const [busy, setBusy]   = useState(false);
+
+  function load() { apiFetch("savings/plan").then(setPlan).catch(() => {}); }
+  useEffect(load, [refreshKey]);
+  useEffect(() => {
+    if (plan?.has_plan) { setFreq(plan.frequency); setGoal(plan.goal_amount ? String(plan.goal_amount) : ""); }
+  }, [plan?.has_plan]);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const p = await apiPost("savings/plan", { frequency: freq, goal_amount: goal ? parseAmt(goal) : null });
+      setPlan(p); setEditing(false);
+    } catch (_) {} finally { setBusy(false); }
+  }
+
+  if (!plan) return null;
+
+  if (!plan.has_plan || editing) {
+    return (
+      <div className="card" style={{ borderLeft: "3px solid #6d28d9" }}>
+        <div className="card-title" style={{ marginBottom: 8 }}>Your savings plan</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="form-group">
+            <label className="form-label">How often do you save? *</label>
+            <select value={freq} onChange={e => setFreq(e.target.value)} disabled={busy}>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Goal amount (optional)</label>
+            <MoneyInput value={goal} onChange={setGoal} placeholder="e.g. 100,000" disabled={busy} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button className="btn btn-primary btn-sm" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save plan"}</button>
+          {plan.has_plan && <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}>Cancel</button>}
+        </div>
+        <div className="text-subtle text-sm" style={{ marginTop: 8 }}>tiTi will remind you to save on schedule.</div>
+      </div>
+    );
+  }
+
+  const pct = plan.goal_pct ?? 0;
+  return (
+    <div className="card" style={{ borderLeft: "3px solid #6d28d9" }}>
+      <div className="card-header">
+        <span className="card-title">Saving {plan.frequency}</span>
+        <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>Edit plan</button>
+      </div>
+      {plan.goal_amount ? (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span>{nairaFull(plan.total_saved)} of {nairaFull(plan.goal_amount)}</span>
+            <strong>{pct}%</strong>
+          </div>
+          <div style={{ height: 8, background: "var(--line)", borderRadius: 99, overflow: "hidden", marginTop: 4 }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: plan.goal_reached ? "#166534" : "#6d28d9" }} />
+          </div>
+          {plan.goal_reached && <div className="text-sm" style={{ color: "#166534", marginTop: 4 }}>🎉 Goal reached!</div>}
+        </div>
+      ) : (
+        <div className="text-sm" style={{ marginTop: 6 }}>{nairaFull(plan.total_saved)} saved so far</div>
+      )}
+      <div className="text-sm" style={{ marginTop: 8, color: plan.due ? "var(--rose)" : "var(--muted)", fontWeight: plan.due ? 600 : 400 }}>
+        {plan.due
+          ? (plan.overdue_days > 0 ? `⏰ Save overdue by ${plan.overdue_days} day${plan.overdue_days === 1 ? "" : "s"}` : "⏰ Time to save today")
+          : (plan.next_due_at ? `Next save due ${dateStr(plan.next_due_at)}` : "")}
+      </div>
+    </div>
+  );
+}
+
 // ── Personal Savings tab ───────────────────────────────────────────────────────
 
 function PersonalSavings({ data, loading, reload }) {
@@ -276,6 +358,8 @@ function PersonalSavings({ data, loading, reload }) {
         <MetricCard loading={loading} label="Total saved" value={nairaFull(total)} color="green" />
         <MetricCard loading={loading} label="Deposits"    value={count.toLocaleString()} color="brand" />
       </div>
+
+      <SavingsPlanCard refreshKey={count} />
 
       <ThriftExplainer mode="personal" />
 
