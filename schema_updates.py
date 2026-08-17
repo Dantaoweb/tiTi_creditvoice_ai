@@ -687,7 +687,8 @@ def ensure_schema_updates(engine):
     # ── thrift_groups added columns (membership cap + lock) ───────────────────
     if "thrift_groups" in inspector.get_table_names():
         _tg_cols = {c["name"] for c in inspector.get_columns("thrift_groups")}
-        _tg_updates = {"max_members": "INTEGER", "locked": "BOOLEAN"}
+        _tg_updates = {"max_members": "INTEGER", "locked": "BOOLEAN",
+                       "spillover": "BOOLEAN", "series_key": "VARCHAR"}
         with engine.begin() as connection:
             for col, typ in _tg_updates.items():
                 if col not in _tg_cols:

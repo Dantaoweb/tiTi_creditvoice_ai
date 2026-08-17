@@ -19,6 +19,7 @@ class CreateGroupRequest(BaseModel):
     frequency: Optional[str] = Field(default="weekly", max_length=20)
     require_approval: Optional[bool] = True
     max_members: Optional[int] = None
+    spillover: Optional[bool] = False
 
 
 class GroupSettingsRequest(BaseModel):
@@ -85,7 +86,7 @@ def register_thrift_group_routes(app):
                 db, session["phone"], name, payload.contribution_amount,
                 frequency=payload.frequency, admin_name=getattr(me, "name", None),
                 require_approval=payload.require_approval,
-                max_members=payload.max_members,
+                max_members=payload.max_members, spillover=payload.spillover,
             )
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
@@ -267,16 +268,26 @@ def register_thrift_group_routes(app):
     def join_info(token: str, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
-            g = db.query(ThriftGroup).filter(ThriftGroup.invite_token == token).first()
-            if not g:
+            link_group = db.query(ThriftGroup).filter(ThriftGroup.invite_token == token).first()
+            if not link_group:
                 raise HTTPException(status_code=404, detail="This group link is no longer valid.")
-            tg.heal_group(db, g)
+            tg.heal_group(db, link_group)
+            # If already in the series, show that group; otherwise show the group
+            # this link would route the viewer into (spillover-aware, no creation).
+            mine = tg.member_in_series(db, link_group, session["phone"])
+            if mine:
+                g = db.query(ThriftGroup).filter(ThriftGroup.id == mine.group_id).first()
+            elif link_group.spillover and (link_group.status != "active" or not tg.can_accept_members(db, link_group)[0]):
+                g = tg.open_sibling(db, link_group) or link_group
+            else:
+                g = link_group
             admin = db.query(User).filter(User.phone == g.owner_phone).first()
-            mine = tg.member_for_user(db, g.id, session["phone"])
             active = tg.active_members(db, g.id)
             accepting, reason = tg.can_accept_members(db, g)
             if g.status != "active":
                 accepting, reason = False, "This ajo cycle has ended."
+            # With spillover, a full group isn't really "closed" — a new one starts.
+            spill_open = link_group.spillover and not (mine and mine.status)
             return {
                 "id": g.id,
                 "name": g.name,
@@ -287,8 +298,10 @@ def register_thrift_group_routes(app):
                 "max_members": g.max_members,
                 "require_approval": g.require_approval,
                 "status": g.status,
-                "accepting": accepting and g.status == "active",
-                "closed_reason": None if (accepting and g.status == "active") else (reason or "This group is closed."),
+                "spillover": link_group.spillover,
+                "spilled": g.id != link_group.id,
+                "accepting": (accepting and g.status == "active") or spill_open,
+                "closed_reason": None if ((accepting and g.status == "active") or spill_open) else (reason or "This group is closed."),
                 "my_status": mine.status if mine else None,
             }
         finally:
@@ -301,19 +314,21 @@ def register_thrift_group_routes(app):
             g = db.query(ThriftGroup).filter(ThriftGroup.invite_token == token).first()
             if not g:
                 raise HTTPException(status_code=404, detail="This group link is no longer valid.")
-            if g.status != "active":
-                raise HTTPException(status_code=400, detail="This group is no longer accepting members.")
             me = _me(db, session)
-            # New joiners are gated by lock/cap; someone already in the group
-            # (e.g. re-opening the link) always passes through.
-            if not tg.member_for_user(db, g.id, me.phone):
-                ok, reason = tg.can_accept_members(db, g)
-                if not ok:
-                    raise HTTPException(status_code=400, detail=reason)
-            member, created = tg.join_via_link(db, g, me, payload.name)
+            # Already in this group (or a sibling of a spillover series)? Pass through.
+            existing = tg.member_in_series(db, g, me.phone)
+            if existing:
+                return {"ok": True, "group_id": existing.group_id, "status": existing.status, "already": True}
+            # Route to the group that can actually take them (spillover picks the
+            # next open sibling, or starts a new one when all are full).
+            target = tg.resolve_join_target(db, g)
+            ok, reason = tg.can_accept_members(db, target)
+            if not ok or target.status != "active":
+                raise HTTPException(status_code=400, detail=reason or "This group is no longer accepting members.")
+            member, created = tg.join_via_link(db, target, me, payload.name)
             return {
                 "ok": True,
-                "group_id": g.id,
+                "group_id": target.id,
                 "status": member.status,
                 "already": not created,
             }

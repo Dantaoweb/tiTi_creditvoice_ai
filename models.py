@@ -1061,6 +1061,10 @@ class ThriftGroup(Base):
     require_approval = Column(Boolean, default=True)  # join via link needs approval
     max_members = Column(Integer, nullable=True)      # membership cap; null = unlimited
     locked = Column(Boolean, default=False)           # admin closed the group to new members
+    # Auto-continue: when this group fills, the invite link routes new joiners to
+    # the next open group in the same series, creating one if none has space.
+    spillover = Column(Boolean, default=False)
+    series_key = Column(String, nullable=True, index=True)  # shared across sibling groups
     status = Column(String, default="active")        # active | completed
     created_at = Column(DateTime, default=utcnow)
 

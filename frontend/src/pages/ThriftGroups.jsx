@@ -16,7 +16,7 @@ const ROLE_LABEL = { admin: "Admin", approver: "Approver", member: "Member" };
 
 // ── Create-group form ──────────────────────────────────────────────────────────
 function CreateGroup({ onDone, onCancel }) {
-  const [form, setForm] = useState({ name: "", amount: "", frequency: "weekly", require_approval: true, max_members: "" });
+  const [form, setForm] = useState({ name: "", amount: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -33,6 +33,7 @@ function CreateGroup({ onDone, onCancel }) {
         name: form.name.trim(), contribution_amount: amount,
         frequency: form.frequency, require_approval: form.require_approval,
         max_members: form.max_members && cap >= 2 ? cap : null,
+        spillover: form.spillover,
       });
       onDone(g);
     } catch (e) { setErr(e.message); }
@@ -72,6 +73,12 @@ function CreateGroup({ onDone, onCancel }) {
           <input type="checkbox" checked={form.require_approval}
             onChange={e => set("require_approval", e.target.checked)} style={{ width: "auto" }} />
           People who join via the link need approval first
+        </label>
+        <label style={{ display: "flex", gap: 8, alignItems: "start", fontSize: 13.5 }}>
+          <input type="checkbox" checked={form.spillover}
+            onChange={e => set("spillover", e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
+          <span>Auto-continue — when this group fills, the same invite link starts and fills the next group automatically.
+            <span className="text-subtle"> One link serves many groups.</span></span>
         </label>
         {err && <div className="login-error">{err}</div>}
         <div style={{ display: "flex", gap: 10 }}>
@@ -200,7 +207,12 @@ function GroupDetail({ groupId, onBack }) {
               {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
             </button>
           </div>
-          {!g.accepting && (
+          {g.spillover && !g.locked && !completed && (
+            <div className="text-subtle text-sm" style={{ marginTop: 6 }}>
+              ♻ Auto-continue is on — when this group fills, this link starts and fills the next group automatically.
+            </div>
+          )}
+          {!g.accepting && !(g.spillover && !g.locked && !completed) && (
             <div className="text-subtle text-sm" style={{ marginTop: 6 }}>
               New members can't join right now — the group is {g.locked ? "locked" : (completed ? "completed" : "full")}.
             </div>

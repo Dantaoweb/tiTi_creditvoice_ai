@@ -66,6 +66,11 @@ export default function JoinThrift() {
         <p className="text-subtle" style={{ marginTop: 4 }}>
           {cap(info.admin_name)} invited you to join this ajo / thrift group
         </p>
+        {info.spilled && (
+          <p className="text-sm" style={{ marginTop: 6, color: "var(--brand)" }}>
+            ♻ The earlier group filled up — you'll join <strong>{info.name}</strong>.
+          </p>
+        )}
 
         <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", marginTop: 16 }}>
           <div className="parsed-cell"><span>Contribution</span><strong>{nairaFull(info.contribution_amount)}</strong></div>

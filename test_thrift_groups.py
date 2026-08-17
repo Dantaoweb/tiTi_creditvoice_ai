@@ -180,6 +180,42 @@ def test_prematurely_completed_group_self_heals():
     assert g["accepting"] is True
 
 
+def test_spillover_creates_next_group_when_full():
+    """One auto-continue link keeps recruiting: when the group fills, the same
+    link starts and joins the next group in the series."""
+    _, admin = _user("Chainer")
+    g = client.post("/app/api/thrift/groups", cookies=admin, json={
+        "name": "Chain", "contribution_amount": 1000, "max_members": 2,
+        "spillover": True, "require_approval": False}).json()
+    gid, token = g["id"], g["invite_token"]
+
+    _, a = _user("A")
+    ra = client.post(f"/app/api/thrift/join/{token}", cookies=a, json={}).json()
+    assert ra["group_id"] == gid            # first group had room (admin + A = full)
+
+    _, b = _user("B")
+    rb = client.post(f"/app/api/thrift/join/{token}", cookies=b, json={}).json()
+    assert rb["group_id"] != gid            # spilled into a brand-new group
+
+    groups = client.get("/app/api/thrift/groups", cookies=admin).json()["groups"]
+    assert len(groups) == 2
+    assert any(gr["name"] == "Chain 2" for gr in groups)
+
+
+def test_existing_member_is_not_spilled_by_the_link():
+    _, admin = _user("Owner")
+    g = client.post("/app/api/thrift/groups", cookies=admin, json={
+        "name": "Chain", "contribution_amount": 1000, "max_members": 2,
+        "spillover": True, "require_approval": False}).json()
+    gid, token = g["id"], g["invite_token"]
+    _, a = _user("A")
+    client.post(f"/app/api/thrift/join/{token}", cookies=a, json={})   # A fills it
+    # A re-opens the link → returns the same membership, no new group.
+    again = client.post(f"/app/api/thrift/join/{token}", cookies=a, json={}).json()
+    assert again["group_id"] == gid and again["already"] is True
+    assert len(client.get("/app/api/thrift/groups", cookies=admin).json()["groups"]) == 1
+
+
 def test_many_groups_and_unique_names_and_access():
     _, cook = _user("Multi")
     _make_group(cook, name="Group A", amount=5000)

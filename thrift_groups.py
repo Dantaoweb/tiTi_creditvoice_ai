@@ -8,6 +8,7 @@ groups, each with its own name, amount and members. Members join by an invite
 link; the group admin (creator) can promote a member to "approver" to share the
 power to approve joiners and record contributions.
 """
+import re
 import secrets
 from datetime import datetime, timezone
 
@@ -94,8 +95,66 @@ def can_accept_members(db, group):
     return True, None
 
 
+def member_in_series(db, group, user_phone):
+    """The user's existing membership anywhere in this group's series (or just
+    this group when it isn't a series) — so an existing member is never spilled
+    into a second group by the same link."""
+    if group.series_key:
+        sibling_ids = [g.id for g in db.query(ThriftGroup).filter(
+            ThriftGroup.series_key == group.series_key).all()]
+    else:
+        sibling_ids = [group.id]
+    if not sibling_ids or not user_phone:
+        return None
+    return db.query(ThriftMember).filter(
+        ThriftMember.group_id.in_(sibling_ids),
+        ThriftMember.user_phone.in_(phone_candidates(user_phone)),
+        ThriftMember.status != "removed",
+    ).first()
+
+
+def _create_next_sibling(db, group):
+    """Start the next group in a spillover series, copying its settings and
+    numbering the name (e.g. 'Aje oloja' → 'Aje oloja 2')."""
+    base = re.sub(r"\s+\d+$", "", group.name or "").strip() or "Group"
+    count = db.query(ThriftGroup).filter(ThriftGroup.series_key == group.series_key).count()
+    owner = db.query(User).filter(User.phone == group.owner_phone).first()
+    return create_group(
+        db, group.owner_phone, f"{base} {count + 1}", group.contribution_amount,
+        frequency=group.frequency, admin_name=getattr(owner, "name", None),
+        require_approval=group.require_approval, max_members=group.max_members,
+        spillover=True, series_key=group.series_key,
+    )
+
+
+def open_sibling(db, group):
+    """An existing open sibling in the series (no creation), or None."""
+    if not group.series_key:
+        return None
+    siblings = db.query(ThriftGroup).filter(
+        ThriftGroup.series_key == group.series_key,
+        ThriftGroup.status == "active",
+    ).order_by(ThriftGroup.id.asc()).all()
+    for s in siblings:
+        if can_accept_members(db, s)[0]:
+            return s
+    return None
+
+
+def resolve_join_target(db, group):
+    """The group a new joiner should actually land in: this group if it can take
+    them, otherwise (for a spillover series) the next open sibling, creating one
+    when all are full. Non-spillover groups resolve to themselves."""
+    if group.status == "active" and can_accept_members(db, group)[0]:
+        return group
+    if not group.spillover or not group.series_key:
+        return group
+    return open_sibling(db, group) or _create_next_sibling(db, group)
+
+
 def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
-                 admin_name=None, require_approval=True, max_members=None):
+                 admin_name=None, require_approval=True, max_members=None,
+                 spillover=False, series_key=None):
     group = ThriftGroup(
         owner_phone=owner_phone,
         name=(name or "").strip(),
@@ -106,6 +165,9 @@ def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
         require_approval=bool(require_approval),
         max_members=int(max_members) if max_members else None,
         locked=False,
+        spillover=bool(spillover),
+        # A spillover group anchors a series (its own key) unless it inherits one.
+        series_key=series_key or (new_token() if spillover else None),
         status="active",
     )
     db.add(group)
@@ -251,6 +313,7 @@ def serialize_group(db, group, viewer_phone, detail=False):
         "total_rounds": len(active),
         "max_members": getattr(group, "max_members", None),
         "locked": bool(getattr(group, "locked", False)),
+        "spillover": bool(getattr(group, "spillover", False)),
         "slots_taken": member_slots(db, group.id),
         "accepting": can_accept_members(db, group)[0] and group.status == "active",
         # The invite link is only handed to people who can bring members in.
