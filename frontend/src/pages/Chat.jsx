@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, Mic, MicOff, Zap, ShoppingCart, Package, CreditCard, Users, BarChart2, Egg, Coins } from "lucide-react";
+import { Send, Mic, MicOff, Zap, ShoppingCart, Package, CreditCard, Users, BarChart2, Egg, Coins, HelpCircle, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
@@ -43,6 +43,7 @@ export default function Chat() {
   const [voiceStatus, setVoiceStatus] = useState("");
   const [fastMode, setFastMode]     = useState({ enabled: false });
   const [fastBusy, setFastBusy]     = useState(false);
+  const [showMenu, setShowMenu]     = useState(false);   // "What can I do?" panel
 
   const inputRef    = useRef(null);
   const bottomRef   = useRef(null);
@@ -259,6 +260,32 @@ export default function Chat() {
       {voiceStatus && (
         <div className="chat-voice-status">{voiceStatus}</div>
       )}
+
+      {/* ── "What can I do?" menu (persistent) ── */}
+      {showMenu && (
+        <div className="chat-help-panel">
+          <div className="chat-help-panel-head">
+            <span>What would you like to do?</span>
+            <button type="button" onClick={() => setShowMenu(false)} aria-label="Close">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="chat-quickstart">
+            {quickStart.map(a => (
+              <button key={a.label} className="chat-qs-btn" onClick={() => navigate(a.to)}>
+                <a.icon size={17} />
+                <span>{a.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="chat-help-row">
+        <button type="button" className={`chat-help-btn${showMenu ? " active" : ""}`}
+          onClick={() => setShowMenu(m => !m)}>
+          <HelpCircle size={14} /> What can I do?
+        </button>
+      </div>
 
       {/* ── Input bar ── */}
       <form onSubmit={e => { e.preventDefault(); send(); }} className={`chat-input-bar${fastMode.enabled ? " chat-input-fast" : ""}`}>
