@@ -832,14 +832,15 @@ FAQ_ANSWERS = {
         "auto reminders off"
     ),
     "thrift_ajo": (
-        "To record a thrift, ajo, or esusu contribution:\n\n"
-        "Amina contributed 5000\n"
-        "Tunde paid thrift 2000\n"
-        "Ade saved 3000\n\n"
-        "tiTi records it as a payment and updates their balance.\n\n"
-        "To check a member's total contributions:\n"
-        "Amina balance\n"
-        "customer summary Amina"
+        "Thrift / Ajo / Esusu savings:\n\n"
+        "• Your OWN savings (here on WhatsApp):\n"
+        "  I saved 5000\n"
+        "  personal savings 10000\n\n"
+        "• Savings GROUPS are on the web app (Thrift / Ajo → Group). One person can run many groups, each with its own amount, members and invite link. Three kinds:\n"
+        "  1. Rotating ajo — fixed amount each round, pot rotates to one member per round.\n"
+        "  2. Daily collection (alajo) — collect a daily amount from each customer; each keeps their own savings and you cash them out (keeping a commission).\n"
+        "  3. Target — everyone saves toward one goal, e.g. Eid (Pro plan).\n\n"
+        "Every group is capped, joins via a link, and the admin can add an approver. Open the web app to set one up."
     ),
     "multi_item_sale": (
         "To record a sale with multiple products at once:\n\n"

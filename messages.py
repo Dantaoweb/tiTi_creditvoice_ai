@@ -1020,8 +1020,8 @@ def build_app_guide_message(topic):
             "3. Enter their phone number and select their role:\n"
             "   — Co-founder, Partner, Investor, or Silent\n"
             "4. Set equity % and investment amount if applicable\n"
-            "5. They'll receive a WhatsApp invitation to join\n\n"
-            "Partners can be given different levels of access to your business data."
+            "5. Copy the invite link and send it to them — it's locked to the phone number you entered, so only their account can accept it\n\n"
+            "Once they accept, they get a read-only view of the business scoped to their role. Partners/investors are a Pro plan feature (Premium for unlimited)."
         ),
         "notes": (
             "📝 *How to use Business Notes*\n\n"
