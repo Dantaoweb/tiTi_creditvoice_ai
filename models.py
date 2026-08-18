@@ -1073,6 +1073,11 @@ class ThriftGroup(Base):
     # How the pot recipient each round is chosen: order (join/turn order) | choice
     # (admin picks). More methods (performance, referrals) can extend this later.
     payout_method = Column(String, default="order")
+    # Collector (alajo) groups: the agent's fee kept when a customer is settled.
+    #   one_day  = one day's contribution   | percent = % of the balance
+    #   amount   = a fixed naira fee
+    commission_type = Column(String, default="one_day")
+    commission_value = Column(Integer, nullable=True)   # for percent/amount
     status = Column(String, default="active")        # active | completed
     created_at = Column(DateTime, default=utcnow)
 
@@ -1090,6 +1095,7 @@ class ThriftMember(Base):
     role = Column(String, default="member")          # admin | approver | member
     status = Column(String, default="active")        # pending | active | declined | removed
     turn_order = Column(Integer, nullable=True)      # rotation position (assigned when active)
+    daily_amount = Column(Integer, nullable=True)    # collector: this customer's agreed daily save
     joined_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
@@ -1105,6 +1111,8 @@ class ThriftContribution(Base):
     round_number = Column(Integer, default=1)
     amount = Column(Integer)
     recorded_by_phone = Column(String, nullable=True)
+    # Collector: contributions clear once the customer is settled (cashed out).
+    settled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utcnow)
 
 
@@ -1117,7 +1125,8 @@ class ThriftPayout(Base):
     group_id = Column(Integer, ForeignKey("thrift_groups.id"), index=True)
     member_id = Column(Integer, ForeignKey("thrift_members.id"), index=True)
     round_number = Column(Integer)
-    amount = Column(Integer)
+    amount = Column(Integer)                          # net paid out (collector: after commission)
+    commission = Column(Integer, nullable=True)       # collector: the agent's fee kept
     recorded_by_phone = Column(String, nullable=True)
     # Recipient confirms they received the pot — visible to every member.
     status = Column(String, default="pending")       # pending | confirmed

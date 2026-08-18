@@ -690,7 +690,8 @@ def ensure_schema_updates(engine):
         _tg_updates = {"max_members": "INTEGER", "locked": "BOOLEAN",
                        "spillover": "BOOLEAN", "series_key": "VARCHAR",
                        "payout_method": "VARCHAR", "group_type": "VARCHAR",
-                       "goal_amount": "INTEGER", "target_date": "TIMESTAMP"}
+                       "goal_amount": "INTEGER", "target_date": "TIMESTAMP",
+                       "commission_type": "VARCHAR", "commission_value": "INTEGER"}
         with engine.begin() as connection:
             for col, typ in _tg_updates.items():
                 if col not in _tg_cols:
@@ -698,10 +699,22 @@ def ensure_schema_updates(engine):
                         f"ALTER TABLE thrift_groups ADD COLUMN {col} {typ}"
                     ))
 
+    if "thrift_members" in inspector.get_table_names():
+        _tm_cols = {c["name"] for c in inspector.get_columns("thrift_members")}
+        with engine.begin() as connection:
+            if "daily_amount" not in _tm_cols:
+                connection.execute(text("ALTER TABLE thrift_members ADD COLUMN daily_amount INTEGER"))
+
+    if "thrift_contributions" in inspector.get_table_names():
+        _tc_cols = {c["name"] for c in inspector.get_columns("thrift_contributions")}
+        with engine.begin() as connection:
+            if "settled" not in _tc_cols:
+                connection.execute(text("ALTER TABLE thrift_contributions ADD COLUMN settled BOOLEAN"))
+
     if "thrift_payouts" in inspector.get_table_names():
         _tp_cols = {c["name"] for c in inspector.get_columns("thrift_payouts")}
         _tp_updates = {"status": "VARCHAR", "confirmed_at": "TIMESTAMP",
-                       "confirmed_by_phone": "VARCHAR"}
+                       "confirmed_by_phone": "VARCHAR", "commission": "INTEGER"}
         with engine.begin() as connection:
             for col, typ in _tp_updates.items():
                 if col not in _tp_cols:

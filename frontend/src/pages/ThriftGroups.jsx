@@ -19,11 +19,13 @@ const ROLE_LABEL = { admin: "Admin", approver: "Approver", member: "Member" };
 function CreateGroup({ onDone, onCancel }) {
   const { allows } = usePlan();
   const canTarget = allows("THRIFT_TARGET_GROUPS");
-  const [form, setForm] = useState({ name: "", type: "rotating", amount: "", goal: "", target_date: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false, payout_method: "order" });
+  const [form, setForm] = useState({ name: "", type: "rotating", amount: "", goal: "", target_date: "", frequency: "weekly", require_approval: true, max_members: "", spillover: false, payout_method: "order", commission_type: "one_day", commission_value: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isTarget = form.type === "target";
+  const isCollector = form.type === "collector";
+  const isRotating = !isTarget && !isCollector;
 
   async function submit(e) {
     e.preventDefault();
@@ -43,8 +45,11 @@ function CreateGroup({ onDone, onCancel }) {
         target_date: isTarget && form.target_date ? form.target_date : null,
         frequency: form.frequency, require_approval: form.require_approval,
         max_members: cap,
-        spillover: isTarget ? false : form.spillover,
+        spillover: isRotating ? form.spillover : false,
         payout_method: form.payout_method,
+        commission_type: isCollector ? form.commission_type : undefined,
+        commission_value: isCollector && form.commission_type !== "one_day"
+          ? parseAmt(form.commission_value) : undefined,
       });
       onDone(g);
     } catch (e) { setErr(e.message); }
@@ -57,20 +62,24 @@ function CreateGroup({ onDone, onCancel }) {
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
         <div className="form-group">
           <label className="form-label">Type</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className={`btn btn-sm ${!isTarget ? "btn-primary" : "btn-secondary"}`}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className={`btn btn-sm ${isRotating ? "btn-primary" : "btn-secondary"}`}
               onClick={() => set("type", "rotating")} disabled={busy}>Rotating (ajo)</button>
+            <button type="button" className={`btn btn-sm ${isCollector ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => set("type", "collector")} disabled={busy}>Daily collection</button>
             <button type="button" className={`btn btn-sm ${isTarget ? "btn-primary" : "btn-secondary"}`}
               onClick={() => canTarget && set("type", "target")} disabled={busy || !canTarget}
               title={canTarget ? "" : "Target/goal groups are a Pro feature"}>
               Target (shared goal){!canTarget && " 🔒"}
             </button>
           </div>
-          <span className="form-hint">{!canTarget
-            ? "Target/goal savings (e.g. Eid) is available on Pro. Rotating ajo works on your plan."
-            : isTarget
-              ? "Everyone saves flexible amounts, any time, toward one goal (e.g. Eid)."
-              : "A fixed amount each round; the pot rotates to one member per round."}</span>
+          <span className="form-hint">{
+            isCollector
+              ? "You collect a daily amount from each customer; each gets their own savings back, minus your commission."
+              : isTarget
+                ? (canTarget ? "Everyone saves flexible amounts, any time, toward one goal (e.g. Eid)."
+                             : "Target/goal savings (e.g. Eid) is available on Pro.")
+                : "A fixed amount each round; the pot rotates to one member per round."}</span>
         </div>
         <div className="form-group">
           <label className="form-label">Group name *</label>
@@ -89,6 +98,30 @@ function CreateGroup({ onDone, onCancel }) {
               <input type="date" value={form.target_date} min={new Date().toISOString().slice(0, 10)}
                 onChange={e => set("target_date", e.target.value)} disabled={busy} />
             </div>
+          </div>
+        ) : isCollector ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Default daily amount *</label>
+              <MoneyInput value={form.amount} onChange={v => set("amount", v)} placeholder="e.g. 500" disabled={busy} />
+              <span className="form-hint">Each customer can have their own amount.</span>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Your commission</label>
+              <select value={form.commission_type} onChange={e => set("commission_type", e.target.value)} disabled={busy}>
+                <option value="one_day">One day's contribution</option>
+                <option value="percent">Percentage of savings</option>
+                <option value="amount">Fixed fee</option>
+              </select>
+            </div>
+            {form.commission_type !== "one_day" && (
+              <div className="form-group">
+                <label className="form-label">{form.commission_type === "percent" ? "Percent (%)" : "Fixed fee (₦)"}</label>
+                <input type="number" min="0" value={form.commission_value}
+                  onChange={e => set("commission_value", e.target.value)}
+                  placeholder={form.commission_type === "percent" ? "e.g. 5" : "e.g. 500"} disabled={busy} />
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
@@ -114,7 +147,7 @@ function CreateGroup({ onDone, onCancel }) {
               onChange={e => set("max_members", e.target.value)} placeholder="e.g. 10" disabled={busy} />
             <span className="form-hint">Every group must be capped.</span>
           </div>
-          {!isTarget && (
+          {isRotating && (
             <div className="form-group">
               <label className="form-label">Who collects the pot?</label>
               <select value={form.payout_method} onChange={e => set("payout_method", e.target.value)} disabled={busy}>
@@ -129,7 +162,7 @@ function CreateGroup({ onDone, onCancel }) {
             onChange={e => set("require_approval", e.target.checked)} style={{ width: "auto" }} />
           People who join via the link need approval first
         </label>
-        {!isTarget && (
+        {isRotating && (
           <label style={{ display: "flex", gap: 8, alignItems: "start", fontSize: 13.5 }}>
             <input type="checkbox" checked={form.spillover}
               onChange={e => set("spillover", e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
@@ -143,6 +176,86 @@ function CreateGroup({ onDone, onCancel }) {
           <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={busy}>Cancel</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+// ── Collector (daily-collection) customers ──────────────────────────────────────
+function CollectorCustomers({ g, groupId, act, busy, canApprove, isAdmin, removeMember }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [name, setName] = useState("");
+  const [daily, setDaily] = useState("");
+  const customers = (g.members || []).filter(m => m.status === "active" && m.role !== "admin");
+
+  async function addCustomer(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    await act(`thrift/groups/${groupId}/members`, { name: name.trim(), daily_amount: parseAmt(daily) || null });
+    setName(""); setDaily(""); setShowAdd(false);
+  }
+  async function cashOut(m) {
+    const raw = window.prompt(
+      `Cash out ${m.name} — balance ${nairaFull(m.balance)}.\nCommission you keep (leave blank for the default):`, "");
+    if (raw === null) return;
+    const body = raw.trim() === "" ? {} : { commission: parseAmt(raw) || 0 };
+    await act(`thrift/groups/${groupId}/members/${m.id}/settle`, body);
+  }
+
+  return (
+    <div className="card">
+      <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
+        <span className="card-title"><Users size={15} /> Customers ({customers.length})</span>
+        {canApprove && g.accepting && (
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(s => !s)}>
+            <UserPlus size={13} /> Add customer
+          </button>
+        )}
+      </div>
+      {showAdd && (
+        <form onSubmit={addCustomer} style={{ display: "flex", gap: 8, margin: "8px 0", flexWrap: "wrap" }}>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Customer name"
+            style={{ flex: 1, minWidth: 140 }} autoFocus />
+          <input inputMode="numeric" value={daily} onChange={e => setDaily(e.target.value)}
+            placeholder={`daily (${g.contribution_amount})`} style={{ width: 120 }} />
+          <button className="btn btn-primary btn-sm" disabled={busy}>Add</button>
+        </form>
+      )}
+      {customers.length === 0 ? (
+        <p className="td-muted card-body">No customers yet. Add customers and their agreed daily amount.</p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="history-table">
+            <thead><tr><th>Customer</th><th>Daily</th><th>Balance</th><th>Days</th><th>Today</th><th></th></tr></thead>
+            <tbody>
+              {customers.map(m => (
+                <tr key={m.id}>
+                  <td>{m.name}</td>
+                  <td className="td-muted">{m.daily_amount ? nairaFull(m.daily_amount) : "—"}</td>
+                  <td><strong>{nairaFull(m.balance)}</strong></td>
+                  <td className="td-muted">{m.days_saved || 0}</td>
+                  <td>{m.paid_today ? <span className="badge badge-green"><Check size={11} /> Paid</span> : <span className="td-muted">—</span>}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {canApprove && (
+                      <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <button className="btn btn-secondary btn-sm" disabled={busy || m.paid_today}
+                          onClick={() => act(`thrift/groups/${groupId}/collect`, { member_id: m.id })}>
+                          <Coins size={12} /> {m.paid_today ? "Collected" : "Collect"}
+                        </button>
+                        <button className="btn btn-primary btn-sm" disabled={busy || !m.balance}
+                          onClick={() => cashOut(m)}>Cash out</button>
+                        {isAdmin && (
+                          <button className="btn btn-secondary btn-sm" style={{ color: "var(--rose)" }} title="Remove"
+                            disabled={busy} onClick={() => removeMember(m.id)}><Trash2 size={12} /></button>
+                        )}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -199,6 +312,8 @@ function GroupDetail({ groupId, onBack }) {
   const isAdmin = g.is_admin;
   const completed = g.status === "completed";
   const isTarget = g.group_type === "target";
+  const isCollector = g.group_type === "collector";
+  const isRotating = !isTarget && !isCollector;
 
   return (
     <>
@@ -211,7 +326,9 @@ function GroupDetail({ groupId, onBack }) {
         <span className="text-subtle text-sm">
           {isTarget
             ? <>Target: {nairaFull(g.goal_amount)}{g.target_date ? ` · by ${dateStr(g.target_date)}` : ""}</>
-            : <>{nairaFull(g.contribution_amount)} · {cap(g.frequency)} · {completed ? "Completed" : `Round ${g.current_round} of ${g.total_rounds}`}</>}
+            : isCollector
+              ? <>Daily collection · {nairaFull(g.contribution_amount)}/day default · commission: {g.commission_type === "percent" ? `${g.commission_value || 0}%` : g.commission_type === "amount" ? nairaFull(g.commission_value) : "one day"}</>
+              : <>{nairaFull(g.contribution_amount)} · {cap(g.frequency)} · {completed ? "Completed" : `Round ${g.current_round} of ${g.total_rounds}`}</>}
         </span>
       </div>
 
@@ -237,6 +354,13 @@ function GroupDetail({ groupId, onBack }) {
             {g.goal_reached && <div className="text-sm" style={{ color: "#166534", marginTop: 6 }}>🎉 Goal reached!</div>}
           </div>
         </>
+      ) : isCollector ? (
+      <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
+        <MetricCard label="Total held" value={nairaFull(g.total_held)} color="green" />
+        <MetricCard label="Customers" value={g.max_members ? `${g.active_count}/${g.max_members}` : g.active_count} color="blue" />
+        <MetricCard label="Commission earned" value={nairaFull(g.total_commission)} color="brand" small />
+        <MetricCard label="Paid out" value={nairaFull(g.total_paid_out)} color="amber" small />
+      </div>
       ) : (
       <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
         <MetricCard label="Pot per round" value={nairaFull(g.pot)} color="green" />
@@ -247,7 +371,7 @@ function GroupDetail({ groupId, onBack }) {
       )}
 
       {/* Pot this round — order rotates automatically, choice lets admin pick */}
-      {!isTarget && !completed && (g.eligible_recipients || []).length > 0 && (
+      {isRotating && !completed && (g.eligible_recipients || []).length > 0 && (
         <div className="card" style={{ borderLeft: "3px solid var(--brand)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <CircleDollarSign size={18} color="var(--brand)" />
@@ -295,7 +419,7 @@ function GroupDetail({ groupId, onBack }) {
               {g.locked ? <><Unlock size={13} /> Unlock</> : <><Lock size={13} /> Lock group</>}
             </button>
           </div>
-          {!isTarget && (
+          {isRotating && (
             <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} className="text-sm">
               <span className="text-subtle">Pot collector:</span>
               <select value={g.payout_method} disabled={busy}
@@ -352,7 +476,14 @@ function GroupDetail({ groupId, onBack }) {
         </div>
       )}
 
-      {/* Members */}
+      {/* Collector: daily-collection customers */}
+      {isCollector && (
+        <CollectorCustomers g={g} groupId={groupId} act={act} busy={busy}
+          canApprove={canApprove} isAdmin={isAdmin} removeMember={removeMember} />
+      )}
+
+      {/* Members (rotating / target) */}
+      {!isCollector && (
       <div className="card">
         <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
           <span className="card-title"><Users size={15} /> Members</span>
@@ -421,20 +552,28 @@ function GroupDetail({ groupId, onBack }) {
           </table>
         </div>
       </div>
+      )}
 
       {/* Payout history */}
-      {!isTarget && g.payouts?.length > 0 && (
+      {(isRotating || isCollector) && g.payouts?.length > 0 && (
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 8 }}>Payout history</div>
+          <div className="card-title" style={{ marginBottom: 8 }}>{isCollector ? "Cash-out history" : "Payout history"}</div>
           <div style={{ overflowX: "auto" }}>
             <table className="history-table">
-              <thead><tr><th>Round</th><th>Collected by</th><th>Amount</th><th>Confirmed</th></tr></thead>
+              <thead><tr>
+                <th>{isCollector ? "Customer" : "Round"}</th>
+                {!isCollector && <th>Collected by</th>}
+                <th>{isCollector ? "Paid out" : "Amount"}</th>
+                {isCollector && <th>Commission</th>}
+                <th>Confirmed</th>
+              </tr></thead>
               <tbody>
                 {g.payouts.map(p => (
                   <tr key={p.id}>
-                    <td className="td-muted">{p.round_number}</td>
-                    <td>{p.member_name}</td>
+                    <td className="td-muted">{isCollector ? p.member_name : p.round_number}</td>
+                    {!isCollector && <td>{p.member_name}</td>}
                     <td><strong>{nairaFull(p.amount)}</strong></td>
+                    {isCollector && <td className="td-muted">{nairaFull(p.commission)}</td>}
                     <td>
                       {p.confirmed
                         ? <span className="badge badge-green"><Check size={11} /> Confirmed by recipient</span>
@@ -498,7 +637,9 @@ export default function ThriftGroups() {
               <div className="text-subtle text-sm" style={{ marginTop: 6 }}>
                 {g.group_type === "target"
                   ? <>🎯 Goal {nairaFull(g.goal_amount)}</>
-                  : <>{nairaFull(g.contribution_amount)} · {cap(g.frequency)}</>}
+                  : g.group_type === "collector"
+                    ? <>💰 Daily collection · {nairaFull(g.contribution_amount)}/day</>
+                    : <>{nairaFull(g.contribution_amount)} · {cap(g.frequency)}</>}
               </div>
               {g.group_type === "target" && (
                 <div style={{ height: 6, background: "var(--line)", borderRadius: 99, overflow: "hidden", marginTop: 8 }}>

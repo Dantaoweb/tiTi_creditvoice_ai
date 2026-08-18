@@ -187,11 +187,12 @@ def resolve_join_target(db, group):
 def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
                  admin_name=None, require_approval=True, max_members=None,
                  spillover=False, series_key=None, payout_method="order",
-                 group_type="rotating", goal_amount=None, target_date=None):
+                 group_type="rotating", goal_amount=None, target_date=None,
+                 commission_type="one_day", commission_value=None):
     group = ThriftGroup(
         owner_phone=owner_phone,
         name=(name or "").strip(),
-        group_type="target" if group_type == "target" else "rotating",
+        group_type=group_type if group_type in ("target", "collector", "rotating") else "rotating",
         contribution_amount=int(contribution_amount or 0),
         goal_amount=int(goal_amount) if goal_amount else None,
         target_date=target_date,
@@ -205,6 +206,8 @@ def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
         # A spillover group anchors a series (its own key) unless it inherits one.
         series_key=series_key or (new_token() if spillover else None),
         payout_method=payout_method if payout_method in ("order", "choice") else "order",
+        commission_type=commission_type if commission_type in ("one_day", "percent", "amount") else "one_day",
+        commission_value=int(commission_value) if commission_value else None,
         status="active",
     )
     db.add(group)
@@ -220,16 +223,82 @@ def create_group(db, owner_phone, name, contribution_amount, frequency="weekly",
     return group
 
 
-def add_member(db, group, name, phone=None):
+def add_member(db, group, name, phone=None, daily_amount=None):
     m = ThriftMember(
         group_id=group.id, name=(name or "").strip(), phone=phone,
         role="member", status="active",
         turn_order=_next_turn_order(db, group.id), joined_at=_utcnow(),
+        daily_amount=int(daily_amount) if daily_amount else None,
     )
     db.add(m)
     db.commit()
     db.refresh(m)
     return m
+
+
+# ── Collector (alajo) model ─────────────────────────────────────────────────
+def member_balance(db, member):
+    """A collector customer's un-settled savings (what they'd be paid if cashed
+    out now, before commission)."""
+    rows = db.query(ThriftContribution).filter(
+        ThriftContribution.group_id == member.group_id,
+        ThriftContribution.member_id == member.id,
+        ThriftContribution.settled != True,
+    ).all()
+    return sum(c.amount or 0 for c in rows), len(rows)
+
+
+def commission_for(group, member, balance):
+    """The agent's fee for settling this customer, per the group's policy."""
+    ctype = getattr(group, "commission_type", "one_day") or "one_day"
+    if ctype == "amount":
+        fee = int(group.commission_value or 0)
+    elif ctype == "percent":
+        fee = round(balance * int(group.commission_value or 0) / 100)
+    else:  # one_day = one day's agreed contribution
+        fee = int(member.daily_amount or group.contribution_amount or 0)
+    return max(0, min(fee, balance))
+
+
+def record_collection(db, group, member, amount=None, recorded_by_phone=None, date=None):
+    """Log a daily contribution for a collector customer (defaults to their agreed
+    daily amount). Stays un-settled until the customer is cashed out."""
+    amt = int(amount) if amount else int(member.daily_amount or group.contribution_amount or 0)
+    if amt <= 0:
+        return None
+    c = ThriftContribution(
+        group_id=group.id, member_id=member.id, round_number=0,
+        amount=amt, recorded_by_phone=recorded_by_phone, settled=False,
+    )
+    if date is not None:
+        c.created_at = date
+    db.add(c)
+    db.commit()
+    return c
+
+
+def settle_member(db, group, member, commission_override=None, recorded_by_phone=None):
+    """Cash out a customer: pay their balance minus the agent's commission, clear
+    their contributions, and record the payout (for the customer to confirm)."""
+    balance, _count = member_balance(db, member)
+    if balance <= 0:
+        return None
+    fee = (max(0, min(int(commission_override), balance))
+           if commission_override is not None else commission_for(group, member, balance))
+    net = balance - fee
+    payout = ThriftPayout(
+        group_id=group.id, member_id=member.id, round_number=0,
+        amount=net, commission=fee, recorded_by_phone=recorded_by_phone,
+        status="pending",
+    )
+    db.add(payout)
+    db.query(ThriftContribution).filter(
+        ThriftContribution.group_id == group.id,
+        ThriftContribution.member_id == member.id,
+        ThriftContribution.settled != True,
+    ).update({"settled": True}, synchronize_session=False)
+    db.commit()
+    return payout
 
 
 def join_via_link(db, group, user, name):
@@ -383,6 +452,8 @@ def serialize_group(db, group, viewer_phone, detail=False):
         "locked": bool(getattr(group, "locked", False)),
         "spillover": bool(getattr(group, "spillover", False)),
         "payout_method": getattr(group, "payout_method", None) or "order",
+        "commission_type": getattr(group, "commission_type", None) or "one_day",
+        "commission_value": getattr(group, "commission_value", None),
         "slots_taken": member_slots(db, group.id),
         "accepting": can_accept_members(db, group)[0] and group.status == "active",
         # The invite link is only handed to people who can bring members in.
@@ -406,10 +477,19 @@ def serialize_group(db, group, viewer_phone, detail=False):
     ).all()
     total_by = {}
     paid_this_round = set()
+    unsettled_by = {}       # collector: current (un-cashed-out) balance per customer
+    days_saved_by = {}      # collector: number of un-settled contributions
+    paid_today = set()      # collector: contributed today (still un-settled)
+    _today = _utcnow().date()
     for c in contribs:
         total_by[c.member_id] = total_by.get(c.member_id, 0) + (c.amount or 0)
         if c.round_number == group.current_round:
             paid_this_round.add(c.member_id)
+        if not c.settled:
+            unsettled_by[c.member_id] = unsettled_by.get(c.member_id, 0) + (c.amount or 0)
+            days_saved_by[c.member_id] = days_saved_by.get(c.member_id, 0) + 1
+            if c.created_at and c.created_at.date() == _today:
+                paid_today.add(c.member_id)
 
     my_member = member_for_user(db, group.id, viewer_phone)
     my_id = my_member.id if my_member else None
@@ -425,7 +505,18 @@ def serialize_group(db, group, viewer_phone, detail=False):
         "paid_current_round": m.id in paid_this_round,
         "has_collected": m.id in collected,
         "is_me": m.id == my_id,
+        # Collector fields
+        "daily_amount": m.daily_amount,
+        "balance": unsettled_by.get(m.id, 0),
+        "days_saved": days_saved_by.get(m.id, 0),
+        "paid_today": m.id in paid_today,
     } for m in members]
+
+    if gtype == "collector":
+        payout_rows = db.query(ThriftPayout).filter(ThriftPayout.group_id == group.id).all()
+        out["total_held"] = sum(unsettled_by.values())
+        out["total_commission"] = sum(int(p.commission or 0) for p in payout_rows)
+        out["total_paid_out"] = sum(int(p.amount or 0) for p in payout_rows)
     # Members still eligible to collect the pot (for the admin's 'choice' picker).
     out["eligible_recipients"] = [
         {"id": m.id, "name": _cap(m.name)}
@@ -451,6 +542,7 @@ def serialize_group(db, group, viewer_phone, detail=False):
         "member_name": _cap(id_to_member[p.member_id].name) if p.member_id in id_to_member else "—",
         "round_number": p.round_number,
         "amount": p.amount,
+        "commission": p.commission,
         # Legacy rows (status NULL) are treated as already confirmed.
         "status": p.status or "confirmed",
         "confirmed": (p.status or "confirmed") == "confirmed",

@@ -15,8 +15,8 @@ import thrift_groups as tg
 
 class CreateGroupRequest(BaseModel):
     name: str = Field(max_length=80)
-    group_type: Optional[str] = "rotating"          # rotating | target
-    contribution_amount: Optional[int] = 0
+    group_type: Optional[str] = "rotating"          # rotating | target | collector
+    contribution_amount: Optional[int] = 0          # collector: default daily amount
     goal_amount: Optional[int] = None               # target groups
     target_date: Optional[str] = None               # target groups (YYYY-MM-DD)
     frequency: Optional[str] = Field(default="weekly", max_length=20)
@@ -24,6 +24,12 @@ class CreateGroupRequest(BaseModel):
     max_members: Optional[int] = None
     spillover: Optional[bool] = False
     payout_method: Optional[str] = "order"
+    commission_type: Optional[str] = "one_day"      # collector: one_day | percent | amount
+    commission_value: Optional[int] = None
+
+
+class SettleRequest(BaseModel):
+    commission: Optional[int] = None                # override the computed fee
 
 
 class GroupSettingsRequest(BaseModel):
@@ -39,6 +45,7 @@ class PayoutRequest(BaseModel):
 class AddMemberRequest(BaseModel):
     name: str = Field(max_length=120)
     phone: Optional[str] = Field(default=None, max_length=20)
+    daily_amount: Optional[int] = None              # collector: this customer's daily save
 
 
 class ContributionRequest(BaseModel):
@@ -127,6 +134,7 @@ def register_thrift_group_routes(app):
                 require_approval=payload.require_approval,
                 max_members=payload.max_members, spillover=payload.spillover,
                 payout_method=payload.payout_method,
+                commission_type=payload.commission_type, commission_value=payload.commission_value,
             )
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
@@ -175,7 +183,49 @@ def register_thrift_group_routes(app):
             ok, reason = tg.can_accept_members(db, g)
             if not ok:
                 raise HTTPException(status_code=400, detail=reason)
-            tg.add_member(db, g, payload.name, payload.phone)
+            tg.add_member(db, g, payload.name, payload.phone, daily_amount=payload.daily_amount)
+            return tg.serialize_group(db, g, session["phone"], detail=True)
+        finally:
+            db.close()
+
+    # ── Collector (alajo): daily collection + cash-out ────────────────────────
+    @app.post("/app/api/thrift/groups/{group_id}/collect")
+    def record_daily_collection(group_id: int, payload: ContributionRequest, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            g = _load_group(db, group_id)
+            _require(db, g, session["phone"], approve=True)
+            m = db.query(ThriftMember).filter(
+                ThriftMember.id == payload.member_id,
+                ThriftMember.group_id == g.id,
+                ThriftMember.status == "active",
+            ).first()
+            if not m:
+                raise HTTPException(status_code=404, detail="Member not found.")
+            if not tg.record_collection(db, g, m, payload.amount, recorded_by_phone=session["phone"]):
+                raise HTTPException(status_code=400, detail="Set this customer's daily amount first.")
+            return tg.serialize_group(db, g, session["phone"], detail=True)
+        finally:
+            db.close()
+
+    @app.post("/app/api/thrift/groups/{group_id}/members/{member_id}/settle")
+    def settle_customer(group_id: int, member_id: int, payload: SettleRequest = SettleRequest(),
+                        session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            g = _load_group(db, group_id)
+            _require(db, g, session["phone"], approve=True)
+            m = db.query(ThriftMember).filter(
+                ThriftMember.id == member_id,
+                ThriftMember.group_id == g.id,
+                ThriftMember.status == "active",
+            ).first()
+            if not m:
+                raise HTTPException(status_code=404, detail="Member not found.")
+            payout = tg.settle_member(db, g, m, commission_override=payload.commission,
+                                      recorded_by_phone=session["phone"])
+            if not payout:
+                raise HTTPException(status_code=400, detail="This customer has nothing to cash out.")
             return tg.serialize_group(db, g, session["phone"], detail=True)
         finally:
             db.close()
