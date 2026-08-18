@@ -16,10 +16,23 @@ const DRAG_THRESHOLD = 6;
 
 function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
 
+// Keep a saved/dragged position inside the current viewport. Without this a FAB
+// dragged near an edge — or saved on a bigger screen and reopened on a phone —
+// renders off-screen and looks like it has disappeared on every page.
+function clampPos(pos) {
+  if (!pos || typeof pos.left !== "number" || typeof pos.top !== "number") return null;
+  const W = typeof window !== "undefined" ? window.innerWidth : 360;
+  const H = typeof window !== "undefined" ? window.innerHeight : 640;
+  return {
+    left: clamp(pos.left, 8, Math.max(8, W - 64)),
+    top: clamp(pos.top, 8, Math.max(8, H - 64)),
+  };
+}
+
 function loadSavedPos() {
   try {
     const saved = localStorage.getItem(FAB_POS_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) return clampPos(JSON.parse(saved));
   } catch {}
   return null;
 }
@@ -48,6 +61,26 @@ export default function TitiPanel() {
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 80);
   }, [open]);
+
+  // Re-clamp the FAB into view on resize / orientation change, and once on mount
+  // (in case a previously off-screen saved position needs rescuing).
+  useEffect(() => {
+    function fix() {
+      setFabPos(prev => {
+        const next = clampPos(prev);
+        if (!next) return prev;
+        if (!prev || next.left !== prev.left || next.top !== prev.top) {
+          try { localStorage.setItem(FAB_POS_KEY, JSON.stringify(next)); } catch {}
+          fabPosRef.current = next;
+          return next;
+        }
+        return prev;
+      });
+    }
+    fix();
+    window.addEventListener("resize", fix);
+    return () => window.removeEventListener("resize", fix);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
