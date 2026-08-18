@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Mic, MicOff, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Send, Mic, MicOff, Zap, ShoppingCart, Package, CreditCard, Users, BarChart2, Egg, Coins } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost } from "../lib/api";
@@ -15,8 +16,25 @@ async function blobToBase64(blob) {
 export default function Chat() {
   const { user } = useAuth();
   const { ownerPhone } = useApp();
+  const navigate = useNavigate();
   const L = getBizLabels(user?.menu_group);
   const firstName = user?.name?.split(" ")[0] || "there";
+
+  // Goal-oriented quick-start — answers "what do I want to do?" for a new user
+  // instead of only showing transaction examples. Tailored to the business type;
+  // each button lands them on the right screen (or the right guided form).
+  const noProducts = user?.menu_group === "thrift" || user?.menu_group === "fee";
+  const isPoultry = user?.business_type === "poultry_farm";
+  const isThriftBiz = user?.menu_group === "thrift";
+  const quickStart = [
+    { icon: ShoppingCart, label: `Record a ${L.saleNoun || "sale"}`, to: "/capture?form=sale" },
+    { icon: CreditCard, label: "Record a payment", to: "/capture?form=payment" },
+    !noProducts && { icon: Package, label: "Add stock", to: "/capture?form=stock" },
+    { icon: Users, label: `See who owes me`, to: "/customers" },
+    isPoultry && { icon: Egg, label: "Log eggs & feed", to: "/poultry" },
+    isThriftBiz && { icon: Coins, label: "Savings groups (ajo)", to: "/thrift" },
+    { icon: BarChart2, label: "See my numbers", to: "/dashboard" },
+  ].filter(Boolean);
 
   const [messages, setMessages]     = useState([]);
   const [input, setInput]           = useState("");
@@ -165,9 +183,18 @@ export default function Chat() {
             <div className="chat-msg-titi">
               <div className="chat-titi-avatar chat-titi-avatar-sm">Ti</div>
               <div className="chat-bubble-titi">
-                Hi {firstName}! Type a transaction or tap an example to start.
+                Hi {firstName}! 👋 What would you like to do? Tap one below — or just type it.
               </div>
             </div>
+            <div className="chat-quickstart chat-chips-offset">
+              {quickStart.map(a => (
+                <button key={a.label} className="chat-qs-btn" onClick={() => navigate(a.to)}>
+                  <a.icon size={17} />
+                  <span>{a.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="chat-qs-hint chat-chips-offset">Or type it yourself, e.g.</div>
             <div className="chat-chips chat-chips-offset">
               {L.examples.map(ex => (
                 <button key={ex.label} className="chat-chip" onClick={() => setInput(ex.text)}>

@@ -562,7 +562,15 @@ const FORM_TABS = [
 ];
 
 function QuickFormPanel({ ownerPhone }) {
-  const [formTab, setFormTab] = useState("sale");
+  // Deep-link support: /capture?form=stock opens straight on that form, so the
+  // Chat "What would you like to do?" buttons land the user on the right step.
+  const _initialForm = (() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("form");
+      return ["sale", "payment", "stock"].includes(t) ? t : "sale";
+    } catch { return "sale"; }
+  })();
+  const [formTab, setFormTab] = useState(_initialForm);
   const [success, setSuccess] = useState(null);  // { msg, link }
 
   function handleSuccess(msg, link = null) {
