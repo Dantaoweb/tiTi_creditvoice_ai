@@ -86,7 +86,10 @@ def register_pos_routes(app):
                 query = query.filter(InventoryItem.branch_id == eff_branch)
             if q:
                 query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
-            rows = query.order_by(InventoryItem.name).limit(50).all()
+            # The POS loads the catalogue once and searches it client-side, so the
+            # cap must fit the whole price list — a 50-row cap dropped every product
+            # past the alphabetical 50th (e.g. "panadol"), making it unsellable.
+            rows = query.order_by(InventoryItem.name).limit(1000).all()
             # Monthly transaction usage — lets the POS warn as the Basic cap nears.
             from subscriptions import get_business_subscription, monthly_transaction_usage
             _sub = get_business_subscription(db, _session_user(db, session))

@@ -75,6 +75,39 @@ def test_parser_sell_with_amount_is_not_shortcut():
     assert not (p and p.get("type") == "SELECT_PRODUCT")
 
 
+# ── Regression: products beyond the alphabetical browse page ─────────────────
+def test_product_late_in_alphabet_is_found_by_name():
+    """The bug: 'select panadol' searched only the first page, so a product past
+    the cut-off (P after 40 'a…' items) could never be selected."""
+    db = make_db()
+    for i in range(45):
+        db.add(InventoryItem(owner_phone=OWNER, name=f"aaa item {i:02d}", unit="pc",
+                             selling_price=100, quantity=5, is_available=True))
+    db.add(InventoryItem(owner_phone=OWNER, name="panadol", unit="pack",
+                         selling_price=200, quantity=10, is_available=True))
+    db.commit()
+
+    sender = Sender()
+    res = start_select_product(db, PHONE, OWNER, sender, product_query="panadol")
+    assert res["status"] == "select_product_qty_asked"
+    assert any("Panadol" in m for m in sender.messages)
+    pending = db.query(PendingAction).filter(PendingAction.phone == PHONE).first()
+    assert pending.action == ACTION_SELECT_PRODUCT_QTY
+    assert json.loads(pending.payload_json)["selected_name"] == "panadol"
+
+
+def test_browse_shows_search_hint_when_truncated():
+    db = make_db()
+    for i in range(45):
+        db.add(InventoryItem(owner_phone=OWNER, name=f"item {i:02d}", unit="pc",
+                             selling_price=100, quantity=5, is_available=True))
+    db.commit()
+    sender = Sender()
+    res = start_select_product(db, PHONE, OWNER, sender)
+    assert res["status"] == "select_product_list"
+    assert any("of 45" in m for m in sender.messages)
+
+
 def test_parser_bare_sell_is_not_shortcut():
     p = parse_message("sell")
     assert not (p and p.get("type") == "SELECT_PRODUCT" and p.get("product"))

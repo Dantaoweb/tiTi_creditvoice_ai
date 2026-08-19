@@ -218,15 +218,19 @@ def build_customer_receipt(
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+_BROWSE_LIMIT = 40   # products shown when browsing "select product" on WhatsApp
+
+
 def start_select_product(db, phone, business_owner_phone, send_message, product_query=None):
-    items = db.query(InventoryItem).filter(
+    base = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == business_owner_phone,
         InventoryItem.selling_price.isnot(None),
         InventoryItem.selling_price > 0,
         InventoryItem.is_available == True,
-    ).order_by(InventoryItem.name.asc()).limit(20).all()
+    )
+    total = base.count()
 
-    if not items:
+    if total == 0:
         send_message(
             phone,
             "No products with a selling price found.\n\n"
@@ -236,24 +240,30 @@ def start_select_product(db, phone, business_owner_phone, send_message, product_
         )
         return {"status": "select_product_empty"}
 
-    # "sell sugar" — scope the flow to one product and its variants. Containment
-    # (not exact) matching on purpose: with "sugar" and "sugar cube" in stock,
-    # "sell sugar" must offer both, not silently pick the exact-name row.
+    # "sell sugar" / "select panadol" — search the WHOLE price list by name so a
+    # product later in the alphabet is always found (the bug was matching only the
+    # first page, so anything past the cut-off, e.g. "panadol", never came up).
+    # Containment matching on purpose: "sugar" offers "sugar" and "sugar cube".
     if product_query:
         term = product_query.strip().lower()
-        matches = [i for i in items if term in i.name.lower() or i.name.lower() in term]
+        matches = base.filter(InventoryItem.name.ilike(f"%{term}%")) \
+                      .order_by(InventoryItem.name.asc()).limit(30).all()
         if not matches:
             send_message(
                 phone,
                 f"No product matching '{product_query}' in your price list.\n\n"
-                "Send *select product* to see all products, or add it first:\n"
+                "Send *select product* to browse, or add it first:\n"
                 f"add stock {product_query} cost 500 sell 600"
             )
             return {"status": "select_product_no_match"}
 
         if len(matches) == 1:
-            # Single match — skip the list, go straight to quantity
+            # Single match — skip the list, go straight to quantity. Keep a
+            # browse page as item_ids so "add another" still lists products.
             item = matches[0]
+            catalog_ids = [i.id for i in base.order_by(InventoryItem.name.asc()).limit(_BROWSE_LIMIT).all()]
+            if item.id not in catalog_ids:
+                catalog_ids.insert(0, item.id)
             db.query(PendingAction).filter(PendingAction.phone == phone).delete()
             pending = PendingAction(
                 phone=phone,
@@ -264,7 +274,7 @@ def start_select_product(db, phone, business_owner_phone, send_message, product_
                 paid_amount=0,
                 items_json=json.dumps([]),
                 payload_json=json.dumps({
-                    "item_ids": [i.id for i in items],   # full list for "add another"
+                    "item_ids": catalog_ids,             # for "add another"
                     "selected_id": item.id,
                     "selected_name": item.name,
                     "selected_price": item.selling_price,
@@ -284,6 +294,8 @@ def start_select_product(db, phone, business_owner_phone, send_message, product_
 
         # Multiple variants — show just those
         items = matches
+    else:
+        items = base.order_by(InventoryItem.name.asc()).limit(_BROWSE_LIMIT).all()
 
     item_ids = [item.id for item in items]
     db.query(PendingAction).filter(PendingAction.phone == phone).delete()
@@ -300,7 +312,13 @@ def start_select_product(db, phone, business_owner_phone, send_message, product_
     db.add(pending)
     db.commit()
 
-    send_message(phone, build_product_list_message(items))
+    msg = build_product_list_message(items)
+    # When the catalogue is bigger than one page, tell them how to reach the rest
+    # by name instead of leaving later products unreachable.
+    if not product_query and total > len(items):
+        msg += (f"\n\nShowing {len(items)} of {total}. To find any product, "
+                f"type its name — e.g. *select panadol*")
+    send_message(phone, msg)
     return {"status": "select_product_list"}
 
 
@@ -311,11 +329,16 @@ def _handle_list_selection(db, phone, text, pending, business_owner_phone, send_
     item_ids = payload.get("item_ids", [])
 
     if not text.strip().isdigit():
+        # A typed product name searches the whole price list, so a product beyond
+        # this page (e.g. "panadol") is reachable even here — not just by number.
+        q = text.strip()
+        if len(q) >= 2:
+            return start_select_product(db, phone, business_owner_phone, send_message, product_query=q)
         items = db.query(InventoryItem).filter(InventoryItem.id.in_(item_ids)).all()
         items.sort(key=lambda x: item_ids.index(x.id))
         send_message(
             phone,
-            build_product_list_message(items) + "\n\nReply with a number.\nSend MENU to go back."
+            build_product_list_message(items) + "\n\nReply with a number, or type a product name.\nSend MENU to go back."
         )
         return {"status": "select_product_invalid_selection"}
 
