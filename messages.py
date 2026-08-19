@@ -614,7 +614,7 @@ def build_onboarding_start_message():
         "👋 Welcome! I'm *tiTi* — your business assistant, right here on WhatsApp.\n\n"
         "I help you:\n"
         "✅ Know who owes you — never forget a debt again\n"
-        "✅ Record sales in seconds — just type or send a voice note\n"
+        "✅ Record sales in seconds — just type what happened\n"
         "✅ Track your stock and see your profit\n\n"
         "It's *free* to start. Let's set you up 👇\n\n"
         "*What's your business name?*\n"
