@@ -611,9 +611,14 @@ def build_supported_formats_message(user=None):
 
 def build_onboarding_start_message():
     return (
-        "Welcome to CreditVoice.\n\n"
-        "Reply with your business name to create your free BASIC account.\n"
-        "Example: Ayo Stores"
+        "👋 Welcome! I'm *tiTi* — your business assistant, right here on WhatsApp.\n\n"
+        "I help you:\n"
+        "✅ Know who owes you — never forget a debt again\n"
+        "✅ Record sales in seconds — just type or send a voice note\n"
+        "✅ Track your stock and see your profit\n\n"
+        "It's *free* to start. Let's set you up 👇\n\n"
+        "*What's your business name?*\n"
+        "_Example: Ayo Stores_"
     )
 
 
