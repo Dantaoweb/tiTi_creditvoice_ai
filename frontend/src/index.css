@@ -2260,6 +2260,12 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   font-weight: 700; font-size: 13.5px; color: var(--ink); margin-bottom: 8px;
 }
 .chat-help-panel-head button { background: none; border: none; cursor: pointer; color: var(--muted); padding: 2px; }
+.chat-help-panel { max-height: 55vh; overflow-y: auto; }
+.chat-help-group { padding: 8px 0; border-top: 1px solid var(--line-2); }
+.chat-help-group:first-of-type { border-top: none; }
+.chat-help-q { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.chat-help-ghint { font-size: 11.5px; color: var(--muted); margin: 1px 0 6px; }
+.chat-help-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* Typing indicator */
 .chat-typing-dots {

@@ -36,6 +36,45 @@ export default function Chat() {
     { icon: BarChart2, label: "See my numbers", to: "/dashboard" },
   ].filter(Boolean);
 
+  // "What can I do?" — a guided helper that explains, by plain-language goal,
+  // which tool to use (not a repeat of the quick actions above).
+  const helpGroups = [
+    !noProducts && {
+      q: "Track what you sell?",
+      hint: "Know your stock and prices",
+      actions: [
+        { label: "Add stock", to: "/capture?form=stock" },
+        { label: "Price list", to: "/inventory" },
+      ],
+    },
+    {
+      q: "Record what you sell?",
+      hint: "Log a sale from your list",
+      actions: [
+        { label: "Select product", to: "/pos" },
+        { label: "Select service", to: "/pos" },
+      ],
+    },
+    {
+      q: "Need a receipt?",
+      hint: "Make one to print or send",
+      actions: [{ label: "New receipt", to: "/receipts/new" }],
+    },
+    {
+      q: "Track who owes you?",
+      hint: "Credit sales and payments",
+      actions: [
+        { label: "Customers", to: "/customers" },
+        { label: "Record payment", to: "/capture?form=payment" },
+      ],
+    },
+    isPoultry && {
+      q: "Poultry farm?",
+      hint: "Daily eggs and feed",
+      actions: [{ label: "Egg & Feed", to: "/poultry" }],
+    },
+  ].filter(Boolean);
+
   const [messages, setMessages]     = useState([]);
   const [input, setInput]           = useState("");
   const [busy, setBusy]             = useState(false);
@@ -265,19 +304,24 @@ export default function Chat() {
       {showMenu && (
         <div className="chat-help-panel">
           <div className="chat-help-panel-head">
-            <span>What would you like to do?</span>
+            <span>What can tiTi help you with?</span>
             <button type="button" onClick={() => setShowMenu(false)} aria-label="Close">
               <X size={16} />
             </button>
           </div>
-          <div className="chat-quickstart">
-            {quickStart.map(a => (
-              <button key={a.label} className="chat-qs-btn" onClick={() => navigate(a.to)}>
-                <a.icon size={17} />
-                <span>{a.label}</span>
-              </button>
-            ))}
-          </div>
+          {helpGroups.map(g => (
+            <div key={g.q} className="chat-help-group">
+              <div className="chat-help-q">{g.q}</div>
+              {g.hint && <div className="chat-help-ghint">{g.hint}</div>}
+              <div className="chat-help-actions">
+                {g.actions.map(a => (
+                  <button key={a.label} className="chat-chip" onClick={() => navigate(a.to)}>
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
       <div className="chat-help-row">
