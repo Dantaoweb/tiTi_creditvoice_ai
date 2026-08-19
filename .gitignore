@@ -54,6 +54,9 @@ frontend/dist/
 !web/dist/
 !web/dist/**
 
+# ── Marketing workspace (kept out of the codebase / CI / builds) ──────────────
+marketing/
+
 # ── OS & editor noise ─────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
