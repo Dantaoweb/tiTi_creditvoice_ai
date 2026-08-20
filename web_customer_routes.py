@@ -592,6 +592,9 @@ def register_customer_routes(app):
             tx.void_reason = reason
             tx.voided_by_id = user.id
             tx.voided_at = now
+            # Voiding a sale returns the stock it deducted (no-op for payments).
+            from inventory_suppliers import restore_inventory_for_voided_sale
+            restored = restore_inventory_for_voided_sale(db, owner_phone, tx.id, user.id)
             db.add(TransactionNote(
                 transaction_id=tx.id,
                 author_user_id=user.id,
@@ -618,6 +621,7 @@ def register_customer_routes(app):
                 except Exception:
                     pass
 
-            return {"ok": True, "id": tx.id, "is_voided": True, "void_reason": reason}
+            return {"ok": True, "id": tx.id, "is_voided": True, "void_reason": reason,
+                    "stock_returned": restored}
         finally:
             db.close()

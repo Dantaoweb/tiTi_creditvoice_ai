@@ -409,6 +409,49 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
     return item
 
 
+# Movement sources that represent a sale deducting stock (so voiding must return it).
+SALE_MOVEMENT_SOURCES = ("CUSTOMER_SALE", "POS", "SALE")
+
+
+def restore_inventory_for_voided_sale(db, owner_phone, tx_id, recorded_by_id=None):
+    """Voiding a sale must return the stock it deducted. Adds each deducted
+    quantity back and logs a reversing IN movement (source VOID_REVERSAL) for the
+    audit trail. Safe for any transaction — no-op when nothing was deducted, and
+    won't double-restore (guards on an existing reversal). Returns the restored
+    rows [{name, quantity, unit}]."""
+    if not tx_id:
+        return []
+    already = db.query(InventoryMovement).filter(
+        InventoryMovement.owner_phone == owner_phone,
+        InventoryMovement.source_type == "VOID_REVERSAL",
+        InventoryMovement.source_id == tx_id,
+    ).first()
+    if already:
+        return []
+    outs = db.query(InventoryMovement).filter(
+        InventoryMovement.owner_phone == owner_phone,
+        InventoryMovement.source_id == tx_id,
+        InventoryMovement.movement_type == "OUT",
+        InventoryMovement.source_type.in_(SALE_MOVEMENT_SOURCES),
+    ).all()
+    restored = []
+    for m in outs:
+        item = db.query(InventoryItem).filter(InventoryItem.id == m.item_id).first()
+        qty = m.quantity or 0
+        if not item or qty <= 0:
+            continue
+        item.quantity = (item.quantity or 0) + qty
+        item.updated_at = _utcnow()
+        db.add(InventoryMovement(
+            owner_phone=owner_phone, item_id=item.id, movement_type="IN",
+            quantity=qty, unit_price=m.unit_price, source_type="VOID_REVERSAL",
+            source_id=tx_id, recorded_by_id=recorded_by_id,
+            note=f"Returned to stock — voided sale #{tx_id}",
+        ))
+        restored.append({"name": item.name, "quantity": qty, "unit": item.unit})
+    return restored
+
+
 def deduct_inventory_for_items(db, owner_phone, items, source_type, source_id, recorded_by_id=None):
     updates = []
     missing = []

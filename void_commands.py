@@ -59,6 +59,17 @@ def handle_void_transaction(db, phone, parsed, user, business_owner_phone, visib
     tx.voided_by_id = user.id
     tx.voided_at = now
 
+    # Voiding a sale returns the stock it deducted (no-op for payments).
+    from inventory_suppliers import restore_inventory_for_voided_sale
+    restored = restore_inventory_for_voided_sale(db, business_owner_phone, tx.id, user.id)
+    stock_line = ""
+    if restored:
+        parts = ", ".join(
+            f"{r['name'].title()} +{int(r['quantity'])}{(' ' + r['unit']) if r['unit'] else ''}"
+            for r in restored
+        )
+        stock_line = f"\nStock returned: {parts}"
+
     note_text = (
         f"VOIDED by {user.name.title()} on {now.strftime('%d/%m/%Y %H:%M')}. "
         f"Reason: {void_reason}"
@@ -76,7 +87,7 @@ def handle_void_transaction(db, phone, parsed, user, business_owner_phone, visib
         f"Customer: {customer_label}\n"
         f"Type: {type_label}\n"
         f"Amount: N{tx.amount:,}\n"
-        f"Reason: {void_reason}\n\n"
+        f"Reason: {void_reason}{stock_line}\n\n"
         "This will no longer count in balances or reports."
     )
 
