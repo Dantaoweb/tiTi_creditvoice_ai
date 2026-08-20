@@ -180,6 +180,36 @@ def test_stock_in_matches_existing_item_despite_unit_mismatch():
         db.close()
 
 
+def test_stock_in_matches_unit_prefixed_name_no_duplicate():
+    """Products named with a leading unit — 'bag of rice', 'carton of milk',
+    'sachet water' — must not duplicate on stock-in. normalize_item strips the
+    leading unit, so without a whole-name match a twin ('rice', 'milk') appears."""
+    from inventory_suppliers import add_inventory_movement
+    phone, cook = _owner()
+    for name, unit in [("bag of rice", "bag"), ("carton of milk", "carton"), ("sachet water", "sachet")]:
+        r = client.post("/app/api/inventory", cookies=cook, json={
+            "owner_phone": phone, "name": name, "unit": unit,
+            "quantity": 0, "selling_price": 500, "cost_price": 400})
+        assert r.status_code == 200, r.text
+
+    db = SessionLocal()
+    try:
+        # Re-stock each (incl. a plural drift) — must fold into the same row.
+        add_inventory_movement(db, phone, "bag of rice", 10, "bag", 400, "IN", "TEST", None)
+        add_inventory_movement(db, phone, "bags of rice", 5, "bags", 400, "IN", "TEST", None)
+        add_inventory_movement(db, phone, "carton of milk", 3, "carton", 400, "IN", "TEST", None)
+        add_inventory_movement(db, phone, "sachet water", 20, "sachet", 400, "IN", "TEST", None)
+        db.commit()
+        total = db.query(InventoryItem).filter(InventoryItem.owner_phone == phone).count()
+        assert total == 3, [(i.name, i.unit, i.quantity) for i in
+                            db.query(InventoryItem).filter(InventoryItem.owner_phone == phone).all()]
+        rice = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == phone, InventoryItem.name == "bag of rice").one()
+        assert rice.quantity == 15   # 10 + 5, no twin
+    finally:
+        db.close()
+
+
 def test_stock_received_rejects_zero_quantity():
     _p, cook = _owner()
     r = client.post("/app/api/inventory/stock-received", cookies=cook, json={

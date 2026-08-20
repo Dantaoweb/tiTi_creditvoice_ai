@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 
-from item_normalizer import normalize_item
+from item_normalizer import normalize_item, clean_product_name
 
 # ── Retail breakdown helpers ───────────────────────────────────────────────────
 
@@ -184,7 +184,28 @@ def save_product_alias(db, owner_phone, alias, canonical):
 
 
 def find_matching_inventory_item(db, owner_phone, product, unit=None):
+    raw_name = clean_product_name(product)
     product, unit = normalize_item(product, unit)
+
+    # 0. Whole-name match for items stored with a unit-prefixed name — e.g.
+    #    "bag of rice", "carton of milk", "sachet water", "packet indomie".
+    #    normalize_item strips that leading unit ("carton of milk" -> "milk"), so
+    #    without this the stored item is never found and a DUPLICATE is created.
+    #    Checks the raw name AND the normalised composite forms, so plural/spacing
+    #    drift ("bags of rice" -> "bag of rice") still matches. Exact whole-name,
+    #    so it can't false-match a different product. Skipped for plain names.
+    if raw_name and raw_name != product.lower():
+        candidates = {raw_name}
+        if product and unit:
+            candidates.add(f"{unit} of {product}".lower())
+            candidates.add(f"{unit} {product}".lower())
+        candidates.discard(product.lower())
+        raw_hit = db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            func.lower(InventoryItem.name).in_(list(candidates)),
+        ).first()
+        if raw_hit:
+            return raw_hit
 
     # 1. Exact match
     item = find_inventory_item(db, owner_phone, product, unit)
@@ -341,16 +362,19 @@ def _auto_category(db, owner_phone, product):
 def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None, created_at=None):
     if not product or not quantity:
         return None
-    product, unit = normalize_item(product, unit)
+    # Match on the RAW name so find_matching's whole-name check can catch items
+    # stored with a unit-prefixed name (e.g. "bag of rice"); only normalise for
+    # naming a brand-new item.
+    norm_product, norm_unit = normalize_item(product, unit)
     item = find_matching_inventory_item(db, owner_phone, product, unit)
     if not item:
         item = InventoryItem(
             owner_phone=owner_phone,
-            name=product.lower(),
-            unit=unit,
+            name=norm_product.lower(),
+            unit=norm_unit,
             quantity=0,
             cost_price=unit_price,
-            category=_auto_category(db, owner_phone, product),
+            category=_auto_category(db, owner_phone, norm_product),
         )
         db.add(item)
         db.flush()
