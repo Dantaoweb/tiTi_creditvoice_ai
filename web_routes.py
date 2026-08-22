@@ -82,6 +82,10 @@ _SEO_PAGES = {
         "Privacy Policy — CreditVoice",
         "How CreditVoice collects, uses, and protects your data under the Nigeria Data Protection Act (NDPA).",
     ),
+    "/app/data-deletion": (
+        "Data Deletion Instructions — CreditVoice",
+        "How to delete your CreditVoice account and personal data.",
+    ),
 }
 
 

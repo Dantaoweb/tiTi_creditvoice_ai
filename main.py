@@ -244,6 +244,7 @@ def sitemap_xml():
         (f"{_SITE_URL}/", today, "1.0"),
         (f"{_SITE_URL}/app/terms", None, "0.3"),
         (f"{_SITE_URL}/app/privacy", None, "0.3"),
+        (f"{_SITE_URL}/app/data-deletion", None, "0.2"),
     ]
     rows = ""
     for loc, lastmod, prio in pages:

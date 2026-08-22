@@ -35,6 +35,7 @@ import FuelStation   from "./pages/FuelStation";
 import Opportunities from "./pages/Opportunities";
 import Terms        from "./pages/Terms";
 import Privacy      from "./pages/Privacy";
+import DataDeletion from "./pages/DataDeletion";
 import Upgrade      from "./pages/Upgrade";
 import Profile      from "./pages/Profile";
 
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="login" element={<Login />} />
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />
+        <Route path="data-deletion" element={<DataDeletion />} />
 
         {/* Authenticated — all inside sidebar Layout */}
         <Route
