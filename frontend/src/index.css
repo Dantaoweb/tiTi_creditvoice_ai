@@ -1482,11 +1482,20 @@ tr.low-stock td { background: #fffbeb; }
   margin-bottom: 8px;
 }
 
-/* Make the customer field obvious — it was blending into the summary rows and
-   users kept missing it (recording sales without attaching a customer). */
-.pos-customer-box {
+/* Make the customer field obvious — it was blending in and users kept missing it
+   (recording sales without attaching a customer). Shared look across POS and
+   Quick Record so the customer field is consistent everywhere. */
+.pos-customer-box,
+.customer-highlight {
   background: rgba(26, 86, 219, 0.05);
   border-left: 3px solid var(--brand);
+}
+/* Quick Record renders it as a standalone form-group card. */
+.customer-highlight {
+  border: 1px solid rgba(26, 86, 219, 0.22);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  padding: 12px;
 }
 .pos-customer-label { color: var(--ink); font-size: 12px; }
 .pos-customer-opt {

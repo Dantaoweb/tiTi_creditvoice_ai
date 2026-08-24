@@ -313,16 +313,19 @@ function SaleForm({ ownerPhone, onSuccess }) {
           <input inputMode="numeric" value={amount} onChange={e => setAmount(fmtAmt(e.target.value))} placeholder="0" required />
         </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">{L.customer} <span className="text-subtle">— leave blank for cash sale</span></label>
+      <div className="form-group customer-highlight">
+        <label className="form-label">{L.customer} <span className="text-subtle">— who's buying? (optional)</span></label>
         <CustomerSearch
           ownerPhone={ownerPhone}
-          placeholder={`Search ${L.customerName.toLowerCase()}…`}
+          placeholder={`Add a ${L.customerName.toLowerCase()}…`}
           allowNew
           onSelect={c => { setCustomer(c); setSettleDebt(true); }}
           value={customer}
           onQueryChange={setCustQuery}
         />
+        {!customer && (
+          <span className="form-hint">Add a {L.customerName.toLowerCase()} to track their debt — or leave blank for a cash sale.</span>
+        )}
       </div>
       {customer && (
         <div className="form-group">
