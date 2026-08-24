@@ -1482,6 +1482,26 @@ tr.low-stock td { background: #fffbeb; }
   margin-bottom: 8px;
 }
 
+/* Make the customer field obvious — it was blending into the summary rows and
+   users kept missing it (recording sales without attaching a customer). */
+.pos-customer-box {
+  background: rgba(26, 86, 219, 0.05);
+  border-left: 3px solid var(--brand);
+}
+.pos-customer-label { color: var(--ink); font-size: 12px; }
+.pos-customer-opt {
+  font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--muted);
+}
+.pos-customer-box .pos-search-row {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.pos-customer-box .pos-search-row:focus-within {
+  border-color: var(--brand);
+  box-shadow: var(--shadow-sm);
+}
+
 .pos-total-row {
   display: flex;
   justify-content: space-between;

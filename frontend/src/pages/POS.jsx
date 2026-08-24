@@ -206,7 +206,7 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear, onQueryChange
           className="pos-search-input"
           value={q}
           onChange={e => { setQ(e.target.value); setOpen(true); }}
-          placeholder="Search customer (optional)…"
+          placeholder="Tap to add a customer…"
         />
       </div>
       {open && q.trim() && (
@@ -571,8 +571,10 @@ export default function POS() {
         {/* Payment summary */}
         <div className="pos-summary">
 
-          <div className="pos-summary-section">
-            <div className="pos-summary-label">Customer</div>
+          <div className="pos-summary-section pos-customer-box">
+            <div className="pos-summary-label pos-customer-label">
+              Customer <span className="pos-customer-opt">— who's buying? (optional)</span>
+            </div>
             <CustomerSearch
               ownerPhone={ownerPhone}
               customer={customer}
@@ -581,7 +583,7 @@ export default function POS() {
               onQueryChange={setCustQuery}
             />
             {!customer && (
-              <span className="form-hint">Leave blank for walk-in / cash sale</span>
+              <span className="form-hint">Add a customer to track their debt — or leave blank for a walk-in / cash sale.</span>
             )}
           </div>
 
