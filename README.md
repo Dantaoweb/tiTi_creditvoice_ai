@@ -7,15 +7,64 @@ thrift/ajo savings, and more.
 > **What & why** the product does → see [`PRD.md`](PRD.md).
 > **How to run the code** → this README.
 
-## Stack
-- **Backend:** Python 3.11, FastAPI, SQLAlchemy. Entry: `main.py`.
-- **Frontend:** React 19 + Vite (`frontend/`), builds to `web/dist/`, served by
-  FastAPI at `/app` (base path `/app/`).
-- **DB:** SQLite in dev, PostgreSQL in prod. Schema via `Base.metadata.create_all`
-  + idempotent `schema_updates.py` (ALTERs) at startup.
-- **AI:** Claude (message interpretation), OpenAI Whisper (voice).
-- **Channels:** Meta WhatsApp Cloud API; Monnify (payments/wallet).
-- **Host:** Render (see `render.yaml`).
+## Tech stack
+
+Entry point: `main.py` (FastAPI). The React app builds to `web/dist/` and is
+served by FastAPI at `/app`. Versions below are pinned in `requirements.txt` /
+`frontend/package.json`.
+
+### Backend
+| Tool | Version | Purpose |
+|---|---|---|
+| Python | 3.11 | Runtime |
+| FastAPI | 0.136.1 | Web framework / API + webhooks |
+| Uvicorn | 0.47.0 | ASGI server |
+| Pydantic | 2.13.4 | Request validation / schemas |
+| SQLAlchemy | 2.0.49 | ORM (all queries — parameterized) |
+| psycopg2-binary | 2.9.12 | PostgreSQL driver (prod) |
+| SQLite | stdlib | Dev database |
+| requests | 2.34.2 | Outbound HTTP (WhatsApp, Monnify, Claude) |
+| python-dotenv | 1.2.2 | Local env loading |
+| fpdf2 | 2.8.7 | PDF receipts / statements |
+
+### Frontend
+| Tool | Version | Purpose |
+|---|---|---|
+| React | 19.2.6 | UI (SPA) |
+| react-dom | 19.2.6 | DOM renderer |
+| react-router-dom | 7.18.1 | Client-side routing (`/app/*`) |
+| lucide-react | 1.17.0 | Icons |
+| Vite | 8.1.x | Build tool / bundler |
+| @vitejs/plugin-react | 6.0.2 | React build support |
+| vite-plugin-pwa | 1.3.0 | PWA manifest + service worker (installable / TWA) |
+| ESLint | 10.3.0 | Linting |
+
+### AI / ML
+| Tool | Purpose |
+|---|---|
+| Anthropic **Claude** (via HTTP API) | tiTi conversational replies (`ANTHROPIC_API_KEY`) |
+| OpenAI (`openai` 2.36.0) | Transaction-parse fallback + **Whisper** voice transcription |
+
+### Integrations & services
+| Service | Purpose |
+|---|---|
+| Meta **WhatsApp Cloud API** (Graph v18) | Send/receive tiTi messages; signed webhooks |
+| **Monnify** | Payments / virtual accounts / wallet (HMAC-verified webhooks) |
+| **pywebpush** 2.4.0 (VAPID) | Web push notifications |
+| **SMTP** | Transactional email (admin/notifications) |
+| **Sentry** (`sentry-sdk` 2.63.0) | Error monitoring |
+
+### Infrastructure & tooling
+| Tool | Purpose |
+|---|---|
+| **Render** (`render.yaml`) | Hosting (web service + Postgres) |
+| **Cloudflare** | DNS (DNS-only; Render handles TLS/CDN/DDoS) |
+| **GitHub Actions** (`.github/workflows/ci.yml`) | CI: pytest, py_compile, secret scan, dependency audit, migration guard, frontend build |
+| **pytest** 9.0.3 | Test suite |
+| **Google Play (TWA)** | Android packaging via PWA (assetlinks) |
+
+**Data layer:** SQLite in dev, PostgreSQL in prod; schema created by
+`Base.metadata.create_all` plus idempotent `schema_updates.py` (ALTERs) at startup.
 
 ## Prerequisites
 - Python 3.11, Node 20+ (CI uses Node 24), npm.
