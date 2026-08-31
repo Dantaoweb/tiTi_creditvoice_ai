@@ -25,19 +25,19 @@ window. Callback URL: `https://creditvoiceai.com/webhook`.
 - [ ] **System User** created in Business Settings, assigned the App + WABA.
 - [ ] **Permanent token** generated with `whatsapp_business_messaging` + `whatsapp_business_management` (set to **never expire**) → this is `WHATSAPP_TOKEN`.
 - [ ] **App Secret** copied (App → Settings → Basic) → this is `META_APP_SECRET`.
-- [ ] Chose a `VERIFY_TOKEN` string (any secret string).
+- [ ] Chose a `WEBHOOK_VERIFY_TOKEN` string (any secret string).
 
 ### D. Webhook
 - [ ] App → WhatsApp → Configuration → Webhook:
   - Callback URL: `https://creditvoiceai.com/webhook`
-  - Verify token: the `VERIFY_TOKEN` value.
+  - Verify token: the `WEBHOOK_VERIFY_TOKEN` value.
   - **Verify and Save** succeeded.
 - [ ] Subscribed the WABA to the **messages** field.
 
 ### E. Environment (Render) — then redeploy
 - [ ] `WHATSAPP_TOKEN`
 - [ ] `PHONE_NUMBER_ID`
-- [ ] `VERIFY_TOKEN`
+- [ ] `WEBHOOK_VERIFY_TOKEN`
 - [ ] `META_APP_SECRET`
 - [ ] `TITI_WHATSAPP` (display number for wa.me links, optional)
 - [ ] Redeployed.
