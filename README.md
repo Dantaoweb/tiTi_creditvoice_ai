@@ -1,6 +1,6 @@
 # CreditVoice / tiTi
 
-A business-management platform for Nigerian SMEs — a WhatsApp assistant (**tiTi**)
+A business-management platform for Nigerian SMEs — a Financial AI assistant for businesses (**tiTi**)
 plus a web dashboard. Record sales, track customer credit, manage inventory, run
 thrift/ajo savings, and more.
 
