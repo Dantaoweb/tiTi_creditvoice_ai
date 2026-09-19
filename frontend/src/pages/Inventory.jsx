@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, PlusCircle, MinusCircle, ChevronRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -840,6 +840,8 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
 }
 
 // ── Main page ────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 50;
+
 export default function Inventory() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
@@ -850,10 +852,18 @@ export default function Inventory() {
   const canManageStock = user?.full_access ?? !user?.parent_id;
 
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [summary, setSummary] = useState(null);   // whole-catalogue counts from the server
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [isStale, setIsStale] = useState(false);
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");         // debounced search sent to the server
+  const [lowOnly, setLowOnly] = useState(false);
+  const [sort, setSort] = useState(null);         // { col, dir } — null = recently updated first
+  const reqId = useRef(0);
   const [showAdd, setShowAdd] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
@@ -862,33 +872,72 @@ export default function Inventory() {
   const [detailItem, setDetailItem] = useState(null);
   const [fields, setFields] = useState([]);   // per-business custom stock fields
 
-  function load() {
-    setLoading(true);
-    apiFetch("inventory", { owner_phone: ownerPhone })
-      .then(d => { setRows(d.items); setIsStale(!navigator.onLine); })
-      .catch(e => { setError(e.message); setIsStale(true); })
-      .finally(() => setLoading(false));
+  // Stock is paged and searched on the server so large catalogues (200+ items)
+  // are fully reachable — the list used to stop at the latest 200.
+  function pageParams(offset, limit) {
+    return {
+      owner_phone: ownerPhone, q: query, low: lowOnly ? "true" : "",
+      sort: sort?.col || "", dir: sort?.dir || "", offset, limit,
+    };
   }
 
-  useEffect(load, [ownerPhone]);
+  function loadSummary() {
+    apiFetch("inventory/summary").then(setSummary).catch(() => {});
+  }
+
+  // Reload from the top. `keep` = how many rows to re-fetch, so saving an item
+  // on a later page doesn't throw the user back to the first 50.
+  function load(keep = 0) {
+    const id = ++reqId.current;
+    setLoading(true);
+    apiFetch("inventory", pageParams(0, Math.min(Math.max(keep, PAGE_SIZE), 500)))
+      .then(d => {
+        if (id !== reqId.current) return;
+        setRows(d.items); setTotal(d.total); setHasMore(d.has_more);
+        setError(null); setIsStale(!navigator.onLine);
+      })
+      .catch(e => { if (id === reqId.current) { setError(e.message); setIsStale(true); } })
+      .finally(() => { if (id === reqId.current) setLoading(false); });
+    loadSummary();
+  }
+
+  function loadMore() {
+    const id = reqId.current;
+    setLoadingMore(true);
+    apiFetch("inventory", pageParams(rows.length, PAGE_SIZE))
+      .then(d => {
+        if (id !== reqId.current) return;
+        setRows(prev => {
+          const seen = new Set(prev.map(r => r.id));
+          return [...prev, ...d.items.filter(r => !seen.has(r.id))];
+        });
+        setTotal(d.total); setHasMore(d.has_more);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoadingMore(false));
+  }
+
+  const reload = () => load(rows.length);
+
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => { load(); }, [ownerPhone, query, lowOnly, sort]);
 
   useEffect(() => {
     apiFetch("inventory/fields").then(d => setFields(d.fields || [])).catch(() => {});
   }, []);
 
-  const filtered = search
-    ? rows.filter(r => (r.name || "").toLowerCase().includes(search.toLowerCase()))
-    : rows;
-
-  const lowCount = rows.filter(
-    r => !r.is_service && r.is_available && r.low_stock_alert !== null && (r.quantity ?? 0) <= r.low_stock_alert
-  ).length;
+  const lowCount = summary?.low_stock ?? 0;
 
   const pageTitle = isServiceBiz ? L.stock : "Inventory";
   const addLabel = isServiceBiz ? "Add Service / Product" : "Add Product";
 
-  // Active = items with a selling price set (drafts don't count toward limit)
-  const activeCount  = rows.filter(r => r.selling_price != null).length;
+  // Active = items with a selling price set (drafts don't count toward limit).
+  // Server-counted over the whole catalogue — the same number the cap enforces.
+  const activeCount  = summary?.active ?? 0;
   const inventoryLim = planLimit("active_inventory_items");
   const canAddActive = withinLimit("active_inventory_items", activeCount);
 
@@ -897,15 +946,18 @@ export default function Inventory() {
       <StaleDataBanner isStale={isStale} />
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
 
-      {lowCount > 0 && (
-        <div className="card card-body" style={{ display: "flex", gap: 8, color: "var(--amber)", fontSize: 13.5 }}>
+      {(lowCount > 0 || lowOnly) && (
+        <div className="card card-body" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", color: "var(--amber)", fontSize: 13.5 }}>
           ⚠️ <strong>{lowCount}</strong> product{lowCount !== 1 ? "s" : ""} below the low-stock alert level.
+          <button type="button" className="btn btn-ghost btn-xs" onClick={() => setLowOnly(v => !v)}>
+            {lowOnly ? "Show all" : "Show them"}
+          </button>
         </div>
       )}
 
       <div className="card">
         <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
-          <span className="card-title">{pageTitle} <span className="text-subtle text-sm">({filtered.length})</span></span>
+          <span className="card-title">{pageTitle} <span className="text-subtle text-sm">({total.toLocaleString()})</span></span>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input
               placeholder="Search…"
@@ -946,11 +998,15 @@ export default function Inventory() {
           </div>
         )}
         <DataTable
-          loading={loading}
-          rows={filtered}
-          emptyText={isServiceBiz
-            ? "No services yet. Click 'Add Service / Product' to build your price list."
-            : "No inventory items yet. Click Add Product to get started."
+          loading={loading && rows.length === 0}
+          rows={rows}
+          sort={sort}
+          onSort={setSort}
+          emptyText={query || lowOnly
+            ? "No products match."
+            : isServiceBiz
+              ? "No services yet. Click 'Add Service / Product' to build your price list."
+              : "No inventory items yet. Click Add Product to get started."
           }
           rowClass={r =>
             !r.is_service && r.is_available && r.low_stock_alert !== null && (r.quantity ?? 0) <= r.low_stock_alert
@@ -1012,13 +1068,25 @@ export default function Inventory() {
             },
           ]}
         />
+        {rows.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, padding: 12, flexWrap: "wrap" }}>
+            <span className="text-subtle text-sm">
+              Showing {rows.length.toLocaleString()} of {total.toLocaleString()}
+            </span>
+            {hasMore && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {showCatalog && (
         <CatalogPickerModal
           ownerPhone={ownerPhone}
           onClose={() => setShowCatalog(false)}
-          onSaved={load}
+          onSaved={reload}
         />
       )}
 
@@ -1026,7 +1094,7 @@ export default function Inventory() {
         <BulkAddModal
           ownerPhone={ownerPhone}
           onClose={() => setShowBulk(false)}
-          onSaved={load}
+          onSaved={reload}
         />
       )}
 
@@ -1036,9 +1104,7 @@ export default function Inventory() {
           isServiceBiz={isServiceBiz}
           fields={fields}
           onClose={() => setShowAdd(false)}
-          onSaved={item => {
-            setRows(prev => [{ ...item, is_available: true, is_service: item.is_service ?? false }, ...prev]);
-          }}
+          onSaved={() => load(rows.length + 1)}
         />
       )}
 
@@ -1047,7 +1113,7 @@ export default function Inventory() {
           item={editItem}
           fields={fields}
           onClose={() => setEditItem(null)}
-          onSaved={load}
+          onSaved={reload}
         />
       )}
 
@@ -1055,7 +1121,7 @@ export default function Inventory() {
         <AdjustModal
           item={adjustItem}
           onClose={() => setAdjustItem(null)}
-          onSaved={load}
+          onSaved={reload}
         />
       )}
 

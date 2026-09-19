@@ -2,22 +2,24 @@ import { useState } from "react";
 import EmptyState from "./EmptyState";
 import Skeleton from "./Skeleton";
 
-export default function DataTable({ columns, rows, loading, emptyText, rowClass }) {
-  const [sortCol, setSortCol] = useState(null);
-  const [sortDir, setSortDir] = useState("asc");
+// Pass `sort` ({ col, dir }) + `onSort` to sort on the server (paged data);
+// otherwise rows are sorted in the browser.
+export default function DataTable({ columns, rows, loading, emptyText, rowClass, sort, onSort }) {
+  const [localCol, setLocalCol] = useState(null);
+  const [localDir, setLocalDir] = useState("asc");
+  const sortCol = onSort ? sort?.col ?? null : localCol;
+  const sortDir = onSort ? sort?.dir ?? "asc" : localDir;
 
   function handleSort(col) {
     if (!col.sortKey) return;
-    if (sortCol === col.sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortCol(col.sortKey);
-      setSortDir("asc");
-    }
+    const dir = sortCol === col.sortKey && sortDir === "asc" ? "desc" : "asc";
+    if (onSort) return onSort({ col: col.sortKey, dir });
+    setLocalCol(col.sortKey);
+    setLocalDir(dir);
   }
 
   let sorted = rows || [];
-  if (sortCol) {
+  if (sortCol && !onSort) {
     sorted = [...sorted].sort((a, b) => {
       const av = a[sortCol];
       const bv = b[sortCol];

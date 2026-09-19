@@ -113,23 +113,32 @@ export function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false,
 }
 
 export function InventorySearch({ ownerPhone, onSelect, value, allowNew = false }) {
-  const [items, setItems]   = useState([]);
   const [search, setSearch] = useState("");
   const [open, setOpen]     = useState(false);
-
-  useEffect(() => {
-    if (!ownerPhone) return;
-    apiFetch("inventory", { owner_phone: ownerPhone })
-      .then(d => setItems(d.items || []))
-      .catch(() => {});
-  }, [ownerPhone]);
+  // Results for `result.q` — searched on the server across the whole catalogue,
+  // so an item that isn't among the latest few hundred is still found (and not
+  // offered as "new", which created duplicate stock).
+  const [result, setResult] = useState({ q: "", items: [] });
 
   const q = search.trim();
-  const filtered = q
-    ? items.filter(i => i.name.toLowerCase().includes(q.toLowerCase()))
-    : [];
-  const exact = q && items.some(i => i.name.toLowerCase() === q.toLowerCase());
-  const showNew = allowNew && q && !exact;
+
+  useEffect(() => {
+    if (!ownerPhone || !q) return;
+    let live = true;
+    const t = setTimeout(() => {
+      apiFetch("inventory", { owner_phone: ownerPhone, q, limit: 20 })
+        .then(d => { if (live) setResult({ q, items: d.items || [] }); })
+        .catch(() => { if (live) setResult({ q, items: [] }); });
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [ownerPhone, q]);
+
+  const ready = q && result.q === q;   // results are for what's typed now
+  const filtered = ready ? result.items : [];
+  const exact = filtered.some(i => i.name.toLowerCase() === q.toLowerCase());
+  // Only offer "new" once the search has answered — never while it's in flight.
+  // If the search failed (offline), still allow it; the server matches by name.
+  const showNew = allowNew && ready && !exact;
 
   if (value) {
     return (

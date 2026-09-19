@@ -8,8 +8,9 @@ shared helpers come from web_common. Stock management is owner/branch-admin only
 import json
 from typing import Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import case, func, or_
 
 from database import SessionLocal
 from models import User, InventoryItem, InventoryMovement, ItemPriceChange, utcnow
@@ -37,6 +38,18 @@ def _load_attributes(item):
         return json.loads(item.attributes_json) if item.attributes_json else {}
     except Exception:
         return {}
+
+
+def _low_stock(query):
+    """Physical, available items at or below their low-stock alert — the same
+    rule the Inventory page uses to highlight a row."""
+    return query.filter(
+        InventoryItem.quantity.isnot(None),
+        or_(InventoryItem.category.is_(None), InventoryItem.category != "service"),
+        InventoryItem.is_available == True,  # noqa: E712
+        InventoryItem.low_stock_alert.isnot(None),
+        InventoryItem.quantity <= InventoryItem.low_stock_alert,
+    )
 
 
 def _save_stock_note(db, owner_phone, user_id, category, note_text, context):
@@ -136,19 +149,78 @@ def register_inventory_routes(app):
         finally:
             db.close()
 
-    @app.get("/app/api/inventory")
-    def web_inventory(session: dict = Depends(require_web_auth)):
+    def _scoped_inventory_query(db, session):
+        """Inventory rows this viewer may see. Branch staff see only their
+        branch's stock; unassigned staff and owners see the full catalogue so
+        they can still sell/manage."""
+        owner_phone = _session_owner_phone(db, session)
+        query = _owner_filter(db.query(InventoryItem), InventoryItem, owner_phone)
+        eff_branch, _rec = _scoped_read(db, session)
+        if eff_branch is not None:
+            query = query.filter(InventoryItem.branch_id == eff_branch)
+        return owner_phone, query
+
+    @app.get("/app/api/inventory/summary")
+    def web_inventory_summary(session: dict = Depends(require_web_auth)):
+        """Whole-catalogue counts for the Inventory page header. Computed on the
+        server so they stay correct however many pages the browser has loaded."""
         db = SessionLocal()
         try:
-            owner_phone = _session_owner_phone(db, session)
-            query = _owner_filter(db.query(InventoryItem), InventoryItem, owner_phone)
-            # Branch staff see only their branch's stock. (Unassigned staff and
-            # owners see the full catalogue so they can still sell/manage.)
-            eff_branch, _rec = _scoped_read(db, session)
-            if eff_branch is not None:
-                query = query.filter(InventoryItem.branch_id == eff_branch)
-            rows = query.order_by(InventoryItem.updated_at.desc()).limit(200).all()
+            owner_phone, query = _scoped_inventory_query(db, session)
             return {
+                "total": query.count(),
+                "low_stock": _low_stock(query).count(),
+                # Owner-wide, exactly what _check_inventory_limit enforces.
+                "active": _active_inventory_count(db, owner_phone),
+            }
+        finally:
+            db.close()
+
+    @app.get("/app/api/inventory")
+    def web_inventory(
+        session: dict = Depends(require_web_auth),
+        q: str = Query(default="", max_length=120),
+        low: bool = False,
+        sort: str = Query(default="updated", pattern="^(updated|name|selling_price)$"),
+        dir: str = Query(default="desc", pattern="^(asc|desc)$"),
+        limit: int = Query(default=50, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ):
+        """One page of stock. `q` searches name + custom fields across the WHOLE
+        catalogue (not just the loaded page); `low` keeps only items at/below
+        their low-stock alert."""
+        db = SessionLocal()
+        try:
+            _owner_phone, query = _scoped_inventory_query(db, session)
+            term = q.strip().lower()
+            if term:
+                pat = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                query = query.filter(or_(
+                    func.lower(InventoryItem.name).like(pat, escape="\\"),
+                    func.lower(InventoryItem.attributes_json).like(pat, escape="\\"),
+                ))
+            if low:
+                query = _low_stock(query)
+            total = query.count()
+
+            if sort == "name":
+                col = InventoryItem.name
+            elif sort == "selling_price":
+                col = InventoryItem.selling_price
+            else:
+                col = InventoryItem.updated_at
+            order = [col.asc() if dir == "asc" else col.desc()]
+            if term and sort == "updated":
+                # Searching: exact name first, then names starting with the term,
+                # so "rice" is never pushed off a short result list by "fried rice".
+                name_l = func.lower(InventoryItem.name)
+                order = [case((name_l == term, 0), (name_l.like(term + "%"), 1), else_=2), name_l.asc()]
+            rows = query.order_by(*order, InventoryItem.id.desc()).offset(offset).limit(limit).all()
+            return {
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + len(rows) < total,
                 "items": [
                     {
                         "id": item.id,
