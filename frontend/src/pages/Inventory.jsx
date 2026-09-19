@@ -865,6 +865,7 @@ export default function Inventory() {
   const [sort, setSort] = useState(null);         // { col, dir } — null = recently updated first
   const reqId = useRef(0);
   const [showAdd, setShowAdd] = useState(false);
+  const [showLimitNote, setShowLimitNote] = useState(false);   // Basic cap reached
   const [showBulk, setShowBulk] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -978,15 +979,37 @@ export default function Inventory() {
             {canManageStock && (
               <button
                 className="btn btn-primary btn-sm"
-                onClick={() => canAddActive ? setShowAdd(true) : null}
+                // At the Basic cap, explain why instead of silently ignoring the tap.
+                onClick={() => canAddActive ? setShowAdd(true) : setShowLimitNote(true)}
                 title={canAddActive ? undefined : `Basic plan: ${inventoryLim} active products. Upgrade to Go for unlimited.`}
-                style={canAddActive ? {} : { opacity: 0.5, cursor: "not-allowed" }}
+                style={canAddActive ? {} : { opacity: 0.6 }}
               >
                 <Plus size={14} /> {addLabel}
               </button>
             )}
           </div>
         </div>
+        {showLimitNote && !canAddActive && (
+          <div style={{ padding: "8px 16px 0" }}>
+            <div className="modal-error" style={{ position: "relative", paddingRight: 32 }}>
+              <strong>You've reached the Basic plan limit of {inventoryLim} priced products.</strong>
+              <div style={{ marginTop: 4 }}>
+                Upgrade to Go for unlimited priced products. On Basic, you can still add
+                products without a price using <strong>Quick Add</strong>, or remove the price
+                from a product you've already priced to free a slot.
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button type="button" className="btn btn-primary btn-sm"
+                  onClick={() => { window.location.href = "/app/upgrade"; }}>
+                  Upgrade to Go →
+                </button>
+              </div>
+              <button type="button" className="modal-close" aria-label="Dismiss"
+                onClick={() => setShowLimitNote(false)}
+                style={{ position: "absolute", top: 6, right: 8 }}>×</button>
+            </div>
+          </div>
+        )}
         {inventoryLim !== null && (
           <div style={{ padding: "8px 16px 0" }}>
             <LimitBar
