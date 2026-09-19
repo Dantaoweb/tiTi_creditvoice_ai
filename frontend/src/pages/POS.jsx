@@ -14,20 +14,49 @@ const PAGE_SIZE = 20;   // products shown at once; slide/arrow to reveal more
 
 function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   const [products, setProducts] = useState([]);
+  const [catalogue, setCatalogue] = useState({ total: 0, truncated: false });
   const [usage, setUsage] = useState(null);   // { count, limit, remaining }
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [attempt, setAttempt] = useState(0);   // bump to retry a failed load
+  // Server matches for `remote.q` — only used when the catalogue is bigger than
+  // what was preloaded, so products past the preload are still sellable.
+  const [remote, setRemote] = useState({ q: "", items: [] });
   const [page, setPage] = useState(0);
   const touchX = useRef(null);
 
+  const branchParam = branchId ? { branch_id: branchId } : {};
+
+  // The whole priced catalogue is loaded once and searched on the phone:
+  // instant, and still works if the connection drops mid-shift.
   useEffect(() => {
     if (!ownerPhone) return;
     setLoading(true);
-    apiFetch("pos/products", { owner_phone: ownerPhone, ...(branchId ? { branch_id: branchId } : {}) })
-      .then(d => { setProducts(d.products || []); setUsage(d.monthly_transactions || null); })
-      .catch(() => {})
+    setLoadError("");
+    apiFetch("pos/products", { owner_phone: ownerPhone, ...branchParam })
+      .then(d => {
+        setProducts(d.products || []);
+        setCatalogue({ total: d.total ?? (d.products || []).length, truncated: !!d.truncated });
+        setUsage(d.monthly_transactions || null);
+      })
+      .catch(e => setLoadError(isNetworkError(e)
+        ? "Couldn't load products — check your internet connection."
+        : `Couldn't load products: ${e.message}`))
       .finally(() => setLoading(false));
-  }, [ownerPhone, branchId]);
+  }, [ownerPhone, branchId, attempt]);
+
+  const term = q.trim();
+  useEffect(() => {
+    if (!catalogue.truncated || !term) return;
+    let live = true;
+    const t = setTimeout(() => {
+      apiFetch("pos/products", { owner_phone: ownerPhone, ...branchParam, q: term, limit: 50 })
+        .then(d => { if (live) setRemote({ q: term, items: d.products || [] }); })
+        .catch(() => {});   // offline: local results still work
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [catalogue.truncated, term, ownerPhone, branchId]);
 
   // Basic monthly-transaction cap warning (only when a limit applies and it's close).
   const capBanner = (usage && usage.limit != null && usage.remaining != null && usage.remaining <= 10) ? (
@@ -44,9 +73,14 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
     </div>
   ) : null;
 
-  const filtered = q.trim()
-    ? products.filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
+  const local = term
+    ? products.filter(p => p.name.toLowerCase().includes(term.toLowerCase()))
     : products;
+  // Add server matches the preload didn't include (big catalogues only).
+  const extra = catalogue.truncated && term && remote.q === term
+    ? remote.items.filter(r => !local.some(p => p.id === r.id))
+    : [];
+  const filtered = extra.length ? [...local, ...extra].sort((a, b) => a.name.localeCompare(b.name)) : local;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pages - 1);
@@ -87,9 +121,18 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
       <div className="pos-grid-scroll" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {loading ? (
           <div className="pos-grid-msg">Loading products…</div>
+        ) : loadError ? (
+          <div className="pos-grid-msg">
+            {loadError}{" "}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAttempt(a => a + 1)}>
+              Retry
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="pos-grid-msg">
-            {q ? "No products match your search." : "Add products in Inventory to see them here."}
+            {!q ? "Add products in Inventory to see them here."
+              : catalogue.truncated && remote.q !== term ? "Searching all products…"
+              : "No products match your search."}
           </div>
         ) : (
           <div className="pos-pick-list">
@@ -136,6 +179,11 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
         )}
       </div>
 
+      {catalogue.truncated && !term && !loading && (
+        <div className="pos-grid-msg" style={{ padding: "6px 0", fontSize: 12 }}>
+          Showing {products.length.toLocaleString()} of {catalogue.total.toLocaleString()} products — search to find the rest.
+        </div>
+      )}
       {pages > 1 && (
         <div className="pos-pager">
           <button onClick={() => go(-1)} disabled={safePage === 0} aria-label="previous">‹</button>

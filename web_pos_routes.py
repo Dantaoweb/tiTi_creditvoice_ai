@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 
 from database import SessionLocal
 from models import User, InventoryItem, Branch, Transaction, Customer
@@ -18,8 +19,12 @@ from web_pos import get_pos_receipt, save_pos_sale
 from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _money, _iso, _scoped_read, _session_user,
-    _require_tx_in_scope, _send_web_receipt, _require_can_record,
+    _require_tx_in_scope, _send_web_receipt, _require_can_record, _like_pattern,
 )
+
+# Priced products the POS preloads for on-phone search. ~5,000 gzips to roughly
+# what 1,000 used to cost uncompressed; bigger catalogues fall back to `q`.
+POS_CATALOGUE_LIMIT = 5000
 
 
 class PosCartItem(BaseModel):
@@ -67,8 +72,9 @@ def register_pos_routes(app):
 
     @app.get("/app/api/pos/products")
     def web_pos_products(
-        q: Optional[str] = Query(default=None),
+        q: Optional[str] = Query(default=None, max_length=120),
         branch_id: Optional[int] = Query(default=None),
+        limit: int = Query(default=POS_CATALOGUE_LIMIT, ge=1, le=POS_CATALOGUE_LIMIT),
         session: dict = Depends(require_web_auth),
     ):
         db = SessionLocal()
@@ -84,12 +90,15 @@ def register_pos_routes(app):
             eff_branch = _selling_branch(db, session, owner_phone, branch_id)
             if eff_branch is not None:
                 query = query.filter(InventoryItem.branch_id == eff_branch)
-            if q:
-                query = query.filter(InventoryItem.name.ilike(f"%{q}%"))
-            # The POS loads the catalogue once and searches it client-side, so the
-            # cap must fit the whole price list — a 50-row cap dropped every product
-            # past the alphabetical 50th (e.g. "panadol"), making it unsellable.
-            rows = query.order_by(InventoryItem.name).limit(1000).all()
+            term = (q or "").strip().lower()
+            if term:
+                query = query.filter(func.lower(InventoryItem.name).like(_like_pattern(term), escape="\\"))
+            # The POS loads the catalogue once and searches it on the phone (instant,
+            # and keeps working if the connection drops mid-shift). A catalogue
+            # bigger than the preload is flagged `truncated`; the POS then also
+            # searches here (`q`) so no product is silently unsellable.
+            total = query.count()
+            rows = query.order_by(InventoryItem.name).limit(limit).all()
             # Monthly transaction usage — lets the POS warn as the Basic cap nears.
             from subscriptions import get_business_subscription, monthly_transaction_usage
             _sub = get_business_subscription(db, _session_user(db, session))
@@ -112,6 +121,8 @@ def register_pos_routes(app):
                     }
                     for item in rows
                 ],
+                "total": total,
+                "truncated": total > len(rows),
                 "monthly_transactions": {"count": _count, "limit": _limit, "remaining": _remaining},
             }
         finally:
