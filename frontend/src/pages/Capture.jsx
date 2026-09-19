@@ -26,32 +26,48 @@ async function blobToBase64(blob) {
 // ── Shared search inputs ─────────────────────────────────────────────────────
 
 export function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false, allowNew = false, onSelect, value, onQueryChange }) {
-  const [customers, setCustomers] = useState([]);
   const [search, setSearch]       = useState("");
   const [open, setOpen]           = useState(false);
+  const [topDebtors, setTopDebtors] = useState(null);   // shown before typing (debt collection)
+  // Results for `result.q` — searched on the server across ALL customers, so an
+  // older customer is still found (and not offered as "new", which split their
+  // debt across two records).
+  const [result, setResult] = useState({ q: "", items: [] });
+
+  const q = search.trim();
+  const debtorParam = filterDebtors ? "true" : "";
 
   useEffect(() => {
-    if (!ownerPhone) return;
-    apiFetch("customers", { owner_phone: ownerPhone })
-      .then(d => {
-        let list = d.customers || [];
-        if (filterDebtors) list = list.filter(c => c.balance > 0);
-        setCustomers(list);
-      })
-      .catch(() => {});
+    if (!ownerPhone || !filterDebtors) return;
+    apiFetch("customers", { owner_phone: ownerPhone, debtors: "true", limit: 8 })
+      .then(d => setTopDebtors(d.customers || []))
+      .catch(() => setTopDebtors([]));
   }, [ownerPhone, filterDebtors]);
 
-  function setQuery(q) {
-    setSearch(q);
-    onQueryChange && onQueryChange(q);
+  useEffect(() => {
+    if (!ownerPhone || !q) return;
+    let live = true;
+    const t = setTimeout(() => {
+      apiFetch("customers", { owner_phone: ownerPhone, q, debtors: debtorParam, limit: 20 })
+        .then(d => { if (live) setResult({ q, items: d.customers || [] }); })
+        .catch(() => { if (live) setResult({ q, items: [] }); });
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [ownerPhone, q, debtorParam]);
+
+  function setQuery(v) {
+    setSearch(v);
+    onQueryChange && onQueryChange(v);
   }
 
-  const filtered = search.trim()
-    ? customers.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
-    : filterDebtors ? customers.slice(0, 8) : [];
+  const ready = q && result.q === q;   // results are for what's typed now
+  const filtered = q
+    ? (ready ? result.items : [])
+    : filterDebtors ? (topDebtors || []) : [];
 
-  const exactMatch = filtered.some(c => c.name.toLowerCase() === search.trim().toLowerCase());
-  const showAddNew = allowNew && search.trim().length >= 2 && !exactMatch;
+  const exactMatch = filtered.some(c => c.name.toLowerCase() === q.toLowerCase());
+  // Only offer "new" once the search has answered — never while it's in flight.
+  const showAddNew = allowNew && q.length >= 2 && ready && !exactMatch;
 
   if (value) {
     return (
@@ -103,7 +119,7 @@ export function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false,
           )}
         </div>
       )}
-      {open && filterDebtors && customers.length === 0 && (
+      {open && filterDebtors && !q && topDebtors?.length === 0 && (
         <div className="qf-dropdown">
           <div style={{ padding: "10px 14px", color: "var(--muted)", fontSize: 13 }}>No debtors found.</div>
         </div>

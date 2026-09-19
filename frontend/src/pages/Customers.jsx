@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText, ChevronRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -439,7 +439,9 @@ function ReminderPreviewModal({ reminders, onClose, onSent }) {
 }
 
 // ── Debtors tab ──────────────────────────────────────────────────────────────
-function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
+// `debtors` is the loaded page (biggest debt first); `summary` holds the
+// server's whole-list totals so the strip isn't limited to what's loaded.
+function DebtorsTab({ debtors, summary, footer, loading, onPay, onDetail, onBalanceUpdate }) {
   const [mode, setMode] = useState(null);   // "review" | "auto" | null (loading)
   const [reminders, setReminders] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -510,8 +512,9 @@ function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
     return diff > 0 ? diff : null;
   }
 
-  const totalOwed = debtors.reduce((s, d) => s + (d.balance || 0), 0);
-  const numOverdue = debtors.filter(d => d.has_overdue).length;
+  const totalOwed = summary?.outstanding ?? debtors.reduce((s, d) => s + (d.balance || 0), 0);
+  const numDebtors = summary?.debtors ?? debtors.length;
+  const numOverdue = summary?.overdue ?? debtors.filter(d => d.has_overdue).length;
   const pendingCount = reminders.filter(r => r.status !== "SENT").length;
 
   return (
@@ -523,7 +526,7 @@ function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
           <div className="debtors-stat-label">Total Outstanding</div>
         </div>
         <div className="debtors-stat">
-          <div className="debtors-stat-value">{debtors.length}</div>
+          <div className="debtors-stat-value">{numDebtors.toLocaleString()}</div>
           <div className="debtors-stat-label">Debtors</div>
         </div>
         <div className="debtors-stat">
@@ -574,7 +577,7 @@ function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
           <button
             className="btn btn-primary btn-sm"
             onClick={handleGenerate}
-            disabled={generating || debtors.length === 0}
+            disabled={generating || numDebtors === 0}
           >
             <Bell size={13} />
             {generating ? "Generating…" : mode === "auto" ? "Send Reminders" : "Generate Reminders"}
@@ -600,7 +603,7 @@ function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
       {/* Debtor table */}
       {debtors.length === 0 ? (
         <div className="td-muted" style={{ textAlign: "center", padding: "48px 0" }}>
-          No customers with outstanding balance.
+          {loading ? "Loading…" : "No customers with outstanding balance."}
         </div>
       ) : (
         <div className="debtors-table-wrap">
@@ -667,6 +670,7 @@ function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
           </table>
         </div>
       )}
+      {footer}
 
       {showPreview && (
         <ReminderPreviewModal
@@ -682,46 +686,105 @@ function DebtorsTab({ debtors, onPay, onDetail, onBalanceUpdate }) {
 }
 
 // ── Main page ────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 50;
+
 export default function Customers() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
   const L = getBizLabels(user?.menu_group);
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState([]);           // loaded page(s) of the active tab
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [summary, setSummary] = useState(null);   // whole-list counts from the server
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [isStale, setIsStale] = useState(false);
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");         // debounced search sent to the server
+  const [sort, setSort] = useState(null);         // { col, dir } — null = newest first
   const [activeTab, setActiveTab] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
   const [payCustomer, setPayCustomer] = useState(null);
   const [detailCustomer, setDetailCustomer] = useState(null);
+  const reqId = useRef(0);
 
-  function load() {
-    setLoading(true);
-    apiFetch("customers", { owner_phone: ownerPhone })
-      .then(d => { setRows(d.customers); setIsStale(!navigator.onLine); })
-      .catch(e => { setError(e.message); setIsStale(true); })
-      .finally(() => setLoading(false));
+  // Customers are paged and searched on the server so every customer (and
+  // every debtor) is reachable — the list used to stop at the newest 200.
+  const isDebtors = activeTab === "debtors";
+  function pageParams(offset, limit) {
+    return isDebtors
+      ? { owner_phone: ownerPhone, debtors: "true", offset, limit }
+      : { owner_phone: ownerPhone, q: query, sort: sort?.col || "", dir: sort?.dir || "", offset, limit };
   }
 
-  useEffect(load, [ownerPhone]);
+  function loadSummary() {
+    apiFetch("customers/summary").then(setSummary).catch(() => {});
+  }
+
+  // Reload from the top. `keep` = how many rows to re-fetch, so saving a
+  // customer on a later page doesn't throw the user back to the first 50.
+  function load(keep = 0) {
+    const id = ++reqId.current;
+    setLoading(true);
+    apiFetch("customers", pageParams(0, Math.min(Math.max(keep, PAGE_SIZE), 500)))
+      .then(d => {
+        if (id !== reqId.current) return;
+        setRows(d.customers); setTotal(d.total); setHasMore(d.has_more);
+        setError(null); setIsStale(!navigator.onLine);
+      })
+      .catch(e => { if (id === reqId.current) { setError(e.message); setIsStale(true); } })
+      .finally(() => { if (id === reqId.current) setLoading(false); });
+    loadSummary();
+  }
+
+  function loadMore() {
+    const id = reqId.current;
+    setLoadingMore(true);
+    apiFetch("customers", pageParams(rows.length, PAGE_SIZE))
+      .then(d => {
+        if (id !== reqId.current) return;
+        setRows(prev => {
+          const seen = new Set(prev.map(r => r.id));
+          return [...prev, ...d.customers.filter(r => !seen.has(r.id))];
+        });
+        setTotal(d.total); setHasMore(d.has_more);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoadingMore(false));
+  }
+
+  const reload = () => load(rows.length);
+
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => { setRows([]); load(); }, [ownerPhone, query, sort, activeTab]);
 
   function updateBalance(customerId, newBalance) {
-    setRows(prev => prev.map(r => r.id === customerId ? { ...r, balance: newBalance } : r));
+    // A settled debtor leaves the Debtors list; totals come from the server.
+    setRows(prev => prev
+      .map(r => r.id === customerId ? { ...r, balance: newBalance } : r)
+      .filter(r => !isDebtors || r.balance > 0));
+    loadSummary();
   }
 
-  const filtered = search
-    ? rows.filter(r =>
-        (r.name || "").toLowerCase().includes(search.toLowerCase()) ||
-        (r.phone || "").includes(search)
-      )
-    : rows;
+  const debtorCount = summary?.debtors ?? 0;
 
-  const debtors = [...rows]
-    .filter(r => r.balance > 0)
-    .sort((a, b) => b.balance - a.balance);
-
-  const debtorCount = debtors.length;
+  const pager = rows.length > 0 && (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, padding: 12, flexWrap: "wrap" }}>
+      <span className="text-subtle text-sm">
+        Showing {rows.length.toLocaleString()} of {total.toLocaleString()}
+      </span>
+      {hasMore && (
+        <button type="button" className="btn btn-secondary btn-sm" onClick={loadMore} disabled={loadingMore}>
+          {loadingMore ? "Loading…" : "Load more"}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -732,8 +795,8 @@ export default function Customers() {
         <div className="card-header" style={{ flexWrap: "wrap", rowGap: 8, borderBottom: "none", paddingBottom: 8 }}>
           <span className="card-title" style={{ flex: "1 1 auto", whiteSpace: "nowrap" }}>
             {activeTab === "all"
-              ? <>{L.customers} <span className="text-subtle text-sm">({filtered.length})</span></>
-              : <>Debtors <span className="text-subtle text-sm">({debtorCount})</span></>
+              ? <>{L.customers} <span className="text-subtle text-sm">({total.toLocaleString()})</span></>
+              : <>Debtors <span className="text-subtle text-sm">({debtorCount.toLocaleString()})</span></>
             }
           </span>
           {activeTab === "all" && (
@@ -773,10 +836,13 @@ export default function Customers() {
 
         {/* Tab content */}
         {activeTab === "all" ? (
+          <>
           <DataTable
-            loading={loading}
-            rows={filtered}
-            emptyText={L.noCustomers}
+            loading={loading && rows.length === 0}
+            rows={rows}
+            sort={sort}
+            onSort={setSort}
+            emptyText={query ? "No customers match." : L.noCustomers}
             rowClass={r => r.balance > 0 ? "has-balance" : ""}
             columns={[
               {
@@ -815,10 +881,15 @@ export default function Customers() {
               },
             ]}
           />
+          {pager}
+          </>
         ) : (
           <div style={{ padding: "16px" }}>
             <DebtorsTab
-              debtors={debtors}
+              debtors={rows}
+              summary={summary}
+              footer={pager}
+              loading={loading}
               onPay={c => setPayCustomer(c)}
               onDetail={c => setDetailCustomer(c)}
               onBalanceUpdate={updateBalance}
@@ -831,7 +902,7 @@ export default function Customers() {
         <AddCustomerModal
           ownerPhone={ownerPhone}
           onClose={() => setShowAdd(false)}
-          onSaved={c => setRows(prev => [{ ...c, created_at: new Date().toISOString() }, ...prev])}
+          onSaved={() => load(rows.length + 1)}
           L={L}
         />
       )}
@@ -849,7 +920,7 @@ export default function Customers() {
           customer={detailCustomer}
           onClose={() => setDetailCustomer(null)}
           onPay={c => { setDetailCustomer(null); setPayCustomer(c); }}
-          onSaved={load}
+          onSaved={reload}
         />
       )}
     </>

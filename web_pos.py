@@ -2,6 +2,8 @@
 import json
 import uuid
 
+from sqlalchemy import func
+
 from models import Customer, InventoryItem, InventoryMovement, Transaction, TransactionItem, User, utcnow
 
 
@@ -86,10 +88,12 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
     if not customer_id and customer_name and customer_name.strip():
         cname = customer_name.strip()
         cphone = (customer_phone or "").strip() or None
+        # Case-insensitive so "mama bola" reuses "Mama Bola" instead of splitting
+        # her debt across two records. Oldest match wins if duplicates exist.
         existing = db.query(Customer).filter(
             Customer.owner_phone == owner_phone,
-            Customer.name == cname,
-        ).first()
+            func.lower(Customer.name) == cname.lower(),
+        ).order_by(Customer.id.asc()).first()
         if existing:
             customer_id = existing.id
             if cphone and not existing.customer_phone:

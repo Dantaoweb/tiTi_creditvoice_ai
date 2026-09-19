@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import case, func, or_
 
 from database import SessionLocal
 from models import User, Customer, Transaction, Branch
@@ -63,47 +64,113 @@ class VoidTxRequest(BaseModel):
 def register_customer_routes(app):
 
     # ── Customers ────────────────────────────────────────────────────────
-    @app.get("/app/api/customers")
-    def web_customers(session: dict = Depends(require_web_auth)):
+    def _scoped_customer_query(db, session):
+        """Customers this viewer may see. Branch isolation: a branch staff sees
+        their branch's customers; an unassigned staff sees only customers
+        they've recorded a sale for."""
+        owner_phone = _session_owner_phone(db, session)
+        query = _owner_filter(db.query(Customer), Customer, owner_phone)
+        eff_branch, rec = _scoped_read(db, session)
+        if eff_branch is not None:
+            query = query.filter(Customer.branch_id == eff_branch)
+        elif rec is not None:
+            query = query.filter(Customer.id.in_(
+                db.query(Transaction.customer_id).filter(Transaction.recorded_by_id == rec)
+            ))
+        return query
+
+    def _earliest_due_query(db):
+        """(customer_id, earliest due date) over unvoided credit sales."""
+        return db.query(
+            Transaction.customer_id, func.min(Transaction.due_date),
+        ).filter(
+            Transaction.type == "BUY",
+            Transaction.due_date.isnot(None),
+            Transaction.is_voided.isnot(True),
+        ).group_by(Transaction.customer_id)
+
+    def _naive_utcnow():
+        return datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC to match DB
+
+    @app.get("/app/api/customers/summary")
+    def web_customers_summary(session: dict = Depends(require_web_auth)):
+        """Whole-list counts for the Customers page and Debtors tab. Computed on
+        the server so they cover every customer, not just the loaded page."""
         db = SessionLocal()
         try:
-            from datetime import datetime, timezone
-            now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC to match DB
-            owner_phone = _session_owner_phone(db, session)
-            query = _owner_filter(db.query(Customer), Customer, owner_phone)
-            # Branch isolation: a branch staff sees their branch's customers; an
-            # unassigned staff sees only customers they've recorded a sale for.
-            eff_branch, rec = _scoped_read(db, session)
-            if eff_branch is not None:
-                query = query.filter(Customer.branch_id == eff_branch)
-            elif rec is not None:
-                query = query.filter(Customer.id.in_(
-                    db.query(Transaction.customer_id).filter(Transaction.recorded_by_id == rec)
-                ))
-            rows = query.order_by(Customer.created_at.desc()).limit(200).all()
+            query = _scoped_customer_query(db, session)
+            debtors = query.filter(Customer.balance > 0)
+            debtor_ids = debtors.with_entities(Customer.id)
+            overdue = _earliest_due_query(db).filter(
+                Transaction.customer_id.in_(debtor_ids),
+            ).having(func.min(Transaction.due_date) < _naive_utcnow()).count()
+            return {
+                "total": query.count(),
+                "debtors": debtors.count(),
+                "outstanding": _money(debtors.with_entities(func.sum(Customer.balance)).scalar()),
+                "overdue": overdue,
+            }
+        finally:
+            db.close()
 
-            def _customer_due(customer_id):
-                due_dates = [
-                    tx.due_date
-                    for tx in db.query(Transaction).filter(
-                        Transaction.customer_id == customer_id,
-                        Transaction.type == "BUY",
-                        Transaction.due_date.isnot(None),
-                        Transaction.is_voided.isnot(True),
-                    ).all()
-                    if tx.due_date
+    @app.get("/app/api/customers")
+    def web_customers(
+        session: dict = Depends(require_web_auth),
+        q: str = Query(default="", max_length=120),
+        debtors: bool = False,
+        sort: str = Query(default="", pattern="^(|newest|name|balance)$"),
+        dir: str = Query(default="", pattern="^(|asc|desc)$"),
+        limit: int = Query(default=50, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ):
+        """One page of customers. `q` searches name + phone across ALL customers
+        (not just the loaded page); `debtors` keeps only those who owe. Default
+        order: newest first, or biggest debt first for debtors."""
+        db = SessionLocal()
+        try:
+            now = _naive_utcnow()
+            query = _scoped_customer_query(db, session)
+            term = q.strip().lower()
+            if term:
+                def _like(s):
+                    return "%" + s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                conds = [
+                    func.lower(Customer.name).like(_like(term), escape="\\"),
+                    Customer.customer_phone.like(_like(term), escape="\\"),
                 ]
-                if not due_dates:
-                    return None, False
-                next_due = min(due_dates)
-                has_overdue = any(d < now for d in due_dates)
-                return next_due, has_overdue
+                # "0803…" should find a number stored as "234803…".
+                if term.isdigit() and term.startswith("0") and len(term) > 1:
+                    conds.append(Customer.customer_phone.like(_like(term[1:]), escape="\\"))
+                query = query.filter(or_(*conds))
+            if debtors:
+                query = query.filter(Customer.balance > 0)
+            total = query.count()
+
+            sort = sort or ("balance" if debtors else "newest")
+            if sort == "name":
+                col, default_dir = func.lower(Customer.name), "asc"
+            elif sort == "balance":
+                col, default_dir = func.coalesce(Customer.balance, 0), "desc"
+            else:
+                col, default_dir = Customer.created_at, "desc"
+            order = [col.asc() if (dir or default_dir) == "asc" else col.desc()]
+            if term and not dir:
+                # Searching: exact name first, then names starting with the term,
+                # so "tunde" is never pushed off a short result list by "mama tunde".
+                name_l = func.lower(Customer.name)
+                order = [case((name_l == term, 0), (name_l.like(term + "%"), 1), else_=2), name_l.asc()]
+            rows = query.order_by(*order, Customer.id.desc()).offset(offset).limit(limit).all()
+
+            # Due dates for the whole page in ONE query (was one query per debtor).
+            ids = [c.id for c in rows]
+            due_by_id = dict(_earliest_due_query(db).filter(Transaction.customer_id.in_(ids)).all()) if ids else {}
 
             result = []
             for c in rows:
                 # Denormalized column — already on the row; NULL falls back to the sum
                 bal = _money(c.balance if c.balance is not None else get_balance(db, c.id))
-                next_due, has_overdue = _customer_due(c.id) if bal > 0 else (None, False)
+                next_due = due_by_id.get(c.id) if bal > 0 else None
+                has_overdue = bool(next_due and next_due < now)
                 result.append({
                     "id": c.id,
                     "name": c.name,
@@ -114,7 +181,13 @@ def register_customer_routes(app):
                     "next_due": _iso(next_due),
                     "created_at": _iso(c.created_at),
                 })
-            return {"customers": result}
+            return {
+                "customers": result,
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + len(rows) < total,
+            }
         finally:
             db.close()
 
@@ -126,9 +199,10 @@ def register_customer_routes(app):
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
+            # Case-insensitive: "Mama Bola" and "mama bola" are the same person.
             existing = db.query(Customer).filter(
                 Customer.owner_phone == owner_phone,
-                Customer.name == payload.name.strip(),
+                func.lower(Customer.name) == payload.name.strip().lower(),
             ).first()
             if existing:
                 raise HTTPException(status_code=409, detail="A customer with this name already exists.")
@@ -172,7 +246,7 @@ def register_customer_routes(app):
                     raise HTTPException(status_code=400, detail="Name cannot be empty.")
                 clash = db.query(Customer).filter(
                     Customer.owner_phone == owner_phone,
-                    Customer.name == new_name,
+                    func.lower(Customer.name) == new_name.lower(),
                     Customer.id != customer_id,
                 ).first()
                 if clash:

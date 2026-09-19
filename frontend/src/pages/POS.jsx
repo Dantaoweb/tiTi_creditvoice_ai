@@ -152,24 +152,25 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
 function CustomerSearch({ ownerPhone, customer, onSelect, onClear, onQueryChange }) {
   const [q, _setQ] = useState("");
   const setQ = (v) => { _setQ(v); onQueryChange && onQueryChange(v); };
-  const [results, setResults] = useState([]);
-  const timeout = useRef(null);
+  // Results for `found.q` — searched on the server (name or phone) across ALL
+  // customers, instead of downloading the whole list on every keystroke.
+  const [found, setFound] = useState({ q: "", items: [] });
   const [open, setOpen] = useState(false);
+  const term = q.trim();
 
   useEffect(() => {
-    clearTimeout(timeout.current);
-    if (!q.trim()) { setResults([]); return; }
-    timeout.current = setTimeout(async () => {
-      try {
-        const data = await apiFetch("customers", { owner_phone: ownerPhone });
-        const lower = q.toLowerCase();
-        setResults((data.customers || []).filter(c =>
-          c.name.toLowerCase().includes(lower) ||
-          (c.phone || "").includes(lower)
-        ).slice(0, 8));
-      } catch { setResults([]); }
+    if (!term) return;
+    let live = true;
+    const t = setTimeout(() => {
+      apiFetch("customers", { owner_phone: ownerPhone, q: term, limit: 8 })
+        .then(d => { if (live) setFound({ q: term, items: d.customers || [] }); })
+        .catch(() => { if (live) setFound({ q: term, items: [] }); });
     }, 250);
-  }, [q, ownerPhone]);
+    return () => { live = false; clearTimeout(t); };
+  }, [term, ownerPhone]);
+
+  const ready = term && found.q === term;   // results are for what's typed now
+  const results = ready ? found.items : [];
 
   if (customer) {
     return (
@@ -221,7 +222,8 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear, onQueryChange
               </span>
             </button>
           ))}
-          {!results.some(c => c.name.toLowerCase() === q.trim().toLowerCase()) && (
+          {/* Only offer "new" once the search has answered with no exact match. */}
+          {ready && !results.some(c => c.name.toLowerCase() === term.toLowerCase()) && (
             <button
               className="pos-product-row"
               onClick={() => {
