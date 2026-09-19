@@ -18,6 +18,7 @@ from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
     _require_stock_manager, _check_inventory_limit, _session_user, _active_inventory_count,
+    _like_pattern,
 )
 
 
@@ -194,7 +195,7 @@ def register_inventory_routes(app):
             _owner_phone, query = _scoped_inventory_query(db, session)
             term = q.strip().lower()
             if term:
-                pat = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                pat = _like_pattern(term)
                 query = query.filter(or_(
                     func.lower(InventoryItem.name).like(pat, escape="\\"),
                     func.lower(InventoryItem.attributes_json).like(pat, escape="\\"),

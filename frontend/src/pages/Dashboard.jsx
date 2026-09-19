@@ -382,7 +382,7 @@ export default function Dashboard() {
     setError(null);
     const params = { period };
     if (branchId) params.branch_id = branchId;
-    const txParams = { period };
+    const txParams = { period, limit: 8 };   // only the latest few are shown
     if (branchId) txParams.branch_id = branchId;
     Promise.all([
       apiFetch("dashboard", params),

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, MapPin, Lock } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -11,6 +11,8 @@ import StaleDataBanner from "../components/StaleDataBanner";
 import { usePlan } from "../lib/usePlan";
 import { useToast } from "../components/Toast";
 
+const PAGE_SIZE = 50;
+
 export default function Transactions() {
   const { ownerPhone, period } = useApp();
   const { user } = useAuth();
@@ -19,13 +21,21 @@ export default function Transactions() {
   const L = getBizLabels(user?.menu_group);
   const toast = useToast();
   const [rows, setRows]           = useState([]);
+  const [total, setTotal]         = useState(0);
+  const [hasMore, setHasMore]     = useState(false);
+  const [byType, setByType]       = useState({});   // server counts per type, whole period
   const [branches, setBranches]   = useState([]);
   const [loading, setLoading]     = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError]         = useState(null);
   const [isStale, setIsStale]     = useState(false);
   const [filter, setFilter]       = useState("all");
   const [branchFilter, setBranchFilter] = useState("");
+  const [search, setSearch]       = useState("");
+  const [query, setQuery]         = useState("");   // debounced search sent to the server
+  const [sort, setSort]           = useState(null); // { col, dir } — null = newest first
   const [exporting, setExporting] = useState(false);
+  const reqId = useRef(0);
 
   async function handleExport(exportType) {
     setExporting(true);
@@ -42,15 +52,58 @@ export default function Transactions() {
     apiFetch("branches").then(d => setBranches(d.branches || [])).catch(() => {});
   }, []);
 
+  // Paged, filtered and searched on the server so the whole period is
+  // reachable — the list used to stop at the latest 200.
+  function pageParams(offset, limit) {
+    return {
+      period, branch_id: branchFilter, q: query,
+      type: filter === "all" ? "" : filter,
+      sort: sort ? (sort.col === "amount" ? "amount" : "date") : "", dir: sort?.dir || "",
+      offset, limit,
+    };
+  }
+
   useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Type counts ignore the type filter itself, so every pill keeps its count.
+  useEffect(() => {
+    apiFetch("transactions/summary", { period, branch_id: branchFilter, q: query })
+      .then(d => setByType(d.by_type || {}))
+      .catch(() => {});
+  }, [ownerPhone, period, branchFilter, query]);
+
+  useEffect(() => {
+    const id = ++reqId.current;
     setLoading(true);
-    const params = { period };
-    if (branchFilter) params.branch_id = branchFilter;
-    apiFetch("transactions", params)
-      .then((d) => { setRows(d.transactions); setIsStale(!navigator.onLine); })
-      .catch((e) => { setError(e.message); setIsStale(true); })
-      .finally(() => setLoading(false));
-  }, [ownerPhone, period, branchFilter]);
+    setRows([]);
+    apiFetch("transactions", pageParams(0, PAGE_SIZE))
+      .then((d) => {
+        if (id !== reqId.current) return;
+        setRows(d.transactions); setTotal(d.total); setHasMore(d.has_more);
+        setError(null); setIsStale(!navigator.onLine);
+      })
+      .catch((e) => { if (id === reqId.current) { setError(e.message); setIsStale(true); } })
+      .finally(() => { if (id === reqId.current) setLoading(false); });
+  }, [ownerPhone, period, branchFilter, filter, query, sort]);
+
+  function loadMore() {
+    const id = reqId.current;
+    setLoadingMore(true);
+    apiFetch("transactions", pageParams(rows.length, PAGE_SIZE))
+      .then((d) => {
+        if (id !== reqId.current) return;
+        setRows(prev => {
+          const seen = new Set(prev.map(r => r.id));
+          return [...prev, ...d.transactions.filter(r => !seen.has(r.id))];
+        });
+        setTotal(d.total); setHasMore(d.has_more);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingMore(false));
+  }
 
   async function voidTx(row) {
     const reason = window.prompt(
@@ -70,8 +123,11 @@ export default function Transactions() {
     }
   }
 
-  const types = ["all", ...Array.from(new Set(rows.map((r) => r.type))).sort()];
-  const filtered = filter === "all" ? rows : rows.filter((r) => r.type === filter);
+  // Keep the selected pill visible even if a search leaves it with no matches.
+  const types = ["all", ...Array.from(new Set([...Object.keys(byType), ...(filter !== "all" ? [filter] : [])])).sort()];
+  const typeCount = t => t === "all"
+    ? Object.values(byType).reduce((s, n) => s + n, 0)
+    : byType[t] || 0;
 
   return (
     <>
@@ -79,8 +135,14 @@ export default function Transactions() {
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Transactions <span className="text-subtle text-sm">({filtered.length})</span></span>
+          <span className="card-title">Transactions <span className="text-subtle text-sm">({total.toLocaleString()})</span></span>
           <div className="gap-2" style={{ flexWrap: "wrap" }}>
+            <input
+              placeholder="Search customer or product…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ width: 190, minWidth: 120 }}
+            />
             {branches.length > 0 && (
               <select
                 className="branch-filter-select"
@@ -100,6 +162,7 @@ export default function Transactions() {
                 onClick={() => setFilter(t)}
               >
                 {t === "all" ? "All" : t}
+                <span style={{ opacity: 0.7, marginLeft: 4 }}>({typeCount(t).toLocaleString()})</span>
               </button>
             ))}
             {canExport ? (
@@ -129,9 +192,11 @@ export default function Transactions() {
           </div>
         </div>
         <DataTable
-          loading={loading}
-          rows={filtered}
-          emptyText="No transactions for this period."
+          loading={loading && rows.length === 0}
+          rows={rows}
+          sort={sort}
+          onSort={setSort}
+          emptyText={query || filter !== "all" ? "No transactions match." : "No transactions for this period."}
           rowClass={(r) => r.is_voided ? "voided" : ""}
           columns={[
             { key: "id",         label: "#",         render: (r) => <span className="td-mono td-muted">#{r.id}</span> },
@@ -155,6 +220,18 @@ export default function Transactions() {
                 : <button className="btn btn-ghost btn-xs text-rose" onClick={() => voidTx(r)}>Void</button> },
           ]}
         />
+        {rows.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, padding: 12, flexWrap: "wrap" }}>
+            <span className="text-subtle text-sm">
+              Showing {rows.length.toLocaleString()} of {total.toLocaleString()}
+            </span>
+            {hasMore && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

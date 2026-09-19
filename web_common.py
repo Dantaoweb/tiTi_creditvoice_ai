@@ -133,6 +133,13 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
+def _like_pattern(term: str) -> str:
+    """'%term%' for a LIKE search, with % _ \\ in the user's text escaped so
+    they match literally. Pair with like(..., escape="\\\\")."""
+    esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{esc}%"
+
+
 def _safe_filename(name: str) -> str:
     """Strip characters that could break a Content-Disposition filename= field."""
     import re

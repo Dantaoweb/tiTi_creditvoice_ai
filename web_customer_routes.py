@@ -21,6 +21,7 @@ from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
     _session_user, _send_web_receipt, _add_notification, _require_can_record,
+    _like_pattern,
 )
 
 
@@ -132,15 +133,13 @@ def register_customer_routes(app):
             query = _scoped_customer_query(db, session)
             term = q.strip().lower()
             if term:
-                def _like(s):
-                    return "%" + s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
                 conds = [
-                    func.lower(Customer.name).like(_like(term), escape="\\"),
-                    Customer.customer_phone.like(_like(term), escape="\\"),
+                    func.lower(Customer.name).like(_like_pattern(term), escape="\\"),
+                    Customer.customer_phone.like(_like_pattern(term), escape="\\"),
                 ]
                 # "0803…" should find a number stored as "234803…".
                 if term.isdigit() and term.startswith("0") and len(term) > 1:
-                    conds.append(Customer.customer_phone.like(_like(term[1:]), escape="\\"))
+                    conds.append(Customer.customer_phone.like(_like_pattern(term[1:]), escape="\\"))
                 query = query.filter(or_(*conds))
             if debtors:
                 query = query.filter(Customer.balance > 0)
@@ -576,23 +575,71 @@ def register_customer_routes(app):
             db.close()
 
     # ── Transactions ──────────────────────────────────────────────────────
+    def _tx_query(db, session, period, branch_id, q):
+        """Transactions this viewer may see for the period, voided included,
+        optionally narrowed by a customer-name / product search."""
+        owner_phone = _session_owner_phone(db, session)
+        period_key = period.upper() if period else None
+        # Branch isolation: staff are scoped to their branch (or own records);
+        # an owner may filter by the branch they picked.
+        eff_branch, rec = _scoped_read(db, session, branch_id)
+        query = get_owner_transaction_query(
+            db, owner_phone, period_key, recorded_by_id=rec, include_voided=True, branch_id=eff_branch,
+        )
+        term = (q or "").strip().lower()
+        if term:
+            pat = _like_pattern(term)
+            # Customer is already outer-joined by get_owner_transaction_query.
+            query = query.filter(or_(
+                func.lower(Customer.name).like(pat, escape="\\"),
+                func.lower(Transaction.product).like(pat, escape="\\"),
+            ))
+        return query
+
+    @app.get("/app/api/transactions/summary")
+    def web_transactions_summary(
+        period: Optional[str] = Query(default=None),
+        branch_id: Optional[int] = Query(default=None),
+        q: str = Query(default="", max_length=120),
+        session: dict = Depends(require_web_auth),
+    ):
+        """How many transactions of each type match — over the WHOLE period, so
+        the type filters show real counts rather than what's been loaded."""
+        db = SessionLocal()
+        try:
+            query = _tx_query(db, session, period, branch_id, q)
+            by_type = dict(
+                query.with_entities(Transaction.type, func.count(Transaction.id))
+                .group_by(Transaction.type).all()
+            )
+            by_type = {t: n for t, n in by_type.items() if t}
+            return {"total": sum(by_type.values()), "by_type": by_type}
+        finally:
+            db.close()
+
     @app.get("/app/api/transactions")
     def web_transactions(
         period: Optional[str] = Query(default=None),
         branch_id: Optional[int] = Query(default=None),
+        tx_type: str = Query(default="", alias="type", max_length=20),
+        q: str = Query(default="", max_length=120),
+        sort: str = Query(default="date", pattern="^(date|amount)$"),
+        dir: str = Query(default="desc", pattern="^(asc|desc)$"),
+        limit: int = Query(default=50, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
         session: dict = Depends(require_web_auth),
     ):
+        """One page of the period's transactions (newest first by default).
+        `type` and `q` filter across the whole period, not just the loaded page."""
         db = SessionLocal()
         try:
-            owner_phone = _session_owner_phone(db, session)
-            period_key = period.upper() if period else None
-            # Branch isolation: staff are scoped to their branch (or own records);
-            # an owner may filter by the branch they picked.
-            eff_branch, rec = _scoped_read(db, session, branch_id)
-            query = get_owner_transaction_query(
-                db, owner_phone, period_key, recorded_by_id=rec, include_voided=True, branch_id=eff_branch,
-            )
-            rows = query.order_by(Transaction.created_at.desc()).limit(200).all()
+            query = _tx_query(db, session, period, branch_id, q)
+            if tx_type:
+                query = query.filter(Transaction.type == tx_type.upper())
+            total = query.count()
+            col = Transaction.amount if sort == "amount" else Transaction.created_at
+            order = col.asc() if dir == "asc" else col.desc()
+            rows = query.order_by(order, Transaction.id.desc()).offset(offset).limit(limit).all()
             customer_ids = [r.customer_id for r in rows if r.customer_id]
             customers = {}
             if customer_ids:
@@ -627,7 +674,11 @@ def register_customer_routes(app):
                         "branch_name": branches[tx.branch_id].name if tx.branch_id and branches.get(tx.branch_id) else None,
                     }
                     for tx in rows
-                ]
+                ],
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + len(rows) < total,
             }
         finally:
             db.close()

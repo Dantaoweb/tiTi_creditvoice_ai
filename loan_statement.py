@@ -188,9 +188,14 @@ def generate_loan_statement(
     stock_items: list[dict],
     period_label: str,
     period: Optional[str] = None,
+    transactions_total: Optional[int] = None,
 ) -> bytes:
     """
     Build and return a loan-ready statement PDF as bytes.
+
+    transactions_total: how many transactions the period really has. The
+    history lists at most 100, so the heading says "latest 100 of N" and a
+    lender never mistakes the excerpt for the full record.
 
     owner: {name, phone, business_type_label, business_category}
     summary: {total_sales_amount, total_pay_amount, total_outstanding,
@@ -288,7 +293,13 @@ def generate_loan_statement(
         "VOID":   "Voided",
     }
     if transactions:
-        _section_title(pdf, f"TRANSACTION HISTORY  (last {min(len(transactions), 100)} records)")
+        shown = min(len(transactions), 100)
+        total = max(transactions_total or 0, len(transactions))
+        _section_title(
+            pdf,
+            f"TRANSACTION HISTORY  (latest {shown:,} of {total:,} records)" if total > shown
+            else f"TRANSACTION HISTORY  (all {shown:,} records)",
+        )
         pdf.ln(1)
         cols = [
             ("Date",       0.17, "C"),

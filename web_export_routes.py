@@ -98,10 +98,9 @@ def register_export_routes(app):
             debtors_raw, _ = get_unpaid_debtors(db, owner_phone=phone)
             period_lbl     = dashboard_period_label(period_key) if period_key else "all time"
 
-            tx_rows = (
-                get_owner_transaction_query(db, phone, period_key)
-                .order_by(Transaction.created_at.desc()).limit(100).all()
-            )
+            tx_query = get_owner_transaction_query(db, phone, period_key)
+            tx_total = tx_query.count()
+            tx_rows = tx_query.order_by(Transaction.created_at.desc()).limit(100).all()
             cids = [r.customer_id for r in tx_rows if r.customer_id]
             customer_map = (
                 {c.id: c.name for c in db.query(Customer).filter(Customer.id.in_(cids)).all()}
@@ -129,7 +128,7 @@ def register_export_routes(app):
             pdf_bytes = generate_loan_statement(
                 owner=owner, summary=summary, transactions=transactions,
                 debtors=debtors_raw, stock_items=stock_items,
-                period_label=period_lbl, period=period_key,
+                period_label=period_lbl, period=period_key, transactions_total=tx_total,
             )
             biz_slug = (owner_user.name or "business").replace(" ", "_")[:20]
             filename = f"CreditVoice_Statement_{biz_slug}.pdf"
@@ -178,12 +177,9 @@ def register_export_routes(app):
             debtors_raw, _   = get_unpaid_debtors(db, owner_phone=phone)
             period_lbl  = dashboard_period_label(period_key) if period_key else "all time"
 
-            tx_rows = (
-                get_owner_transaction_query(db, phone, period_key)
-                .order_by(Transaction.created_at.desc())
-                .limit(100)
-                .all()
-            )
+            tx_query = get_owner_transaction_query(db, phone, period_key)
+            tx_total = tx_query.count()
+            tx_rows = tx_query.order_by(Transaction.created_at.desc()).limit(100).all()
             customer_map = {}
             cids = [r.customer_id for r in tx_rows if r.customer_id]
             if cids:
@@ -227,6 +223,7 @@ def register_export_routes(app):
                 stock_items  = stock_items,
                 period_label = period_lbl,
                 period       = period_key,
+                transactions_total = tx_total,
             )
 
             biz_slug = (owner_user.name or "business").replace(" ", "_")[:20]
