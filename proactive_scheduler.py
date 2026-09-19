@@ -171,11 +171,52 @@ def _check_overdue_debt(db):
 
 # ── Inactivity nudge ────────────────────────────────────────────────────────────
 
+def _last_transaction_by_owner(db):
+    """{owner_phone: latest transaction time} for every business, in two grouped
+    queries. Transactions have no owner_phone column: a transaction belongs to
+    a business through its customer's owner, or (direct sales with no
+    customer) through the owner/staff who recorded it — same attribution as
+    the admin user-performance view."""
+    from sqlalchemy import func
+    from models import Customer, Transaction, User
+
+    last = {}
+
+    def _bump(phone, when):
+        if phone and when and (phone not in last or when > last[phone]):
+            last[phone] = when
+
+    for phone, when in (
+        db.query(Customer.owner_phone, func.max(Transaction.created_at))
+        .join(Transaction, Transaction.customer_id == Customer.id)
+        .group_by(Customer.owner_phone)
+        .all()
+    ):
+        _bump(phone, when)
+
+    # Map each user id to its business owner's phone (owner → self, staff → parent).
+    id_phone, parent_of = {}, {}
+    for uid, uphone, pid in db.query(User.id, User.phone, User.parent_id).all():
+        id_phone[uid] = uphone
+        parent_of[uid] = pid
+    for rid, when in (
+        db.query(Transaction.recorded_by_id, func.max(Transaction.created_at))
+        .filter(Transaction.customer_id == None)  # noqa: E711
+        .group_by(Transaction.recorded_by_id)
+        .all()
+    ):
+        pid = parent_of.get(rid)
+        _bump(id_phone.get(pid) if pid else id_phone.get(rid), when)
+
+    return last
+
+
 def _check_inactivity(db):
-    from models import ProactiveLog, Transaction, User
+    from models import ProactiveLog, User
 
     cutoff_inactive = _utcnow() - timedelta(days=3)
     cutoff_nudge    = _utcnow() - timedelta(days=7)
+    last_tx_at = _last_transaction_by_owner(db)
 
     owners = db.query(User).filter(
         # Any top-level account is an owner. Web-registered owners have role
@@ -186,11 +227,8 @@ def _check_inactivity(db):
     ).all()
 
     for owner in owners:
-        last_tx = db.query(Transaction).filter(
-            Transaction.owner_phone == owner.phone,
-        ).order_by(Transaction.created_at.desc()).first()
-
-        if not last_tx or last_tx.created_at > cutoff_inactive:
+        last_at = last_tx_at.get(owner.phone)
+        if not last_at or last_at > cutoff_inactive:
             continue
 
         last = db.query(ProactiveLog).filter(
@@ -675,6 +713,41 @@ def _check_subscription_expiry(db):
         db.commit()
 
 
+_CHECKS = (
+    _check_low_stock,
+    _check_overdue_debt,
+    _check_inactivity,
+    _check_reminder_automation,
+    _check_delivery_due,
+    _check_supplier_due,
+    _check_savings_due,
+    _check_target_savings,
+    _check_subscription_expiry,
+    _reconcile_balances,
+    _purge_old_logs,
+    _purge_old_notifications,
+)
+
+
+def run_proactive_cycle(db):
+    """Run every check once. Each check is isolated: one that raises is logged
+    and rolled back, and the rest still run (a single broken check used to
+    abort the whole cycle, silently skipping everything after it).
+    Returns the names of checks that failed."""
+    failed = []
+    for check in _CHECKS:
+        try:
+            check(db)
+        except Exception as e:
+            failed.append(check.__name__)
+            print(f"[proactive] {check.__name__} failed: {e!r}", flush=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+    return failed
+
+
 async def run_proactive_scheduler():
     from database import SessionLocal
 
@@ -684,21 +757,10 @@ async def run_proactive_scheduler():
         db = SessionLocal()
         try:
             print("[proactive] Running proactive checks…", flush=True)
-            _check_low_stock(db)
-            _check_overdue_debt(db)
-            _check_inactivity(db)
-            _check_reminder_automation(db)
-            _check_delivery_due(db)
-            _check_supplier_due(db)
-            _check_savings_due(db)
-            _check_target_savings(db)
-            _check_subscription_expiry(db)
-            _reconcile_balances(db)
-            _purge_old_logs(db)
-            _purge_old_notifications(db)
+            failed = run_proactive_cycle(db)
             global last_run_at
             last_run_at = datetime.now(timezone.utc)
-            print("[proactive] Cycle complete.", flush=True)
+            print(f"[proactive] Cycle complete.{' Failed: ' + ', '.join(failed) if failed else ''}", flush=True)
         except Exception as e:
             print(f"[proactive] Scheduler error: {e}", flush=True)
         finally:

@@ -266,14 +266,17 @@ def register_auth_routes(app):
     @app.get("/app/api/account/personal-data")
     def web_personal_data(session: dict = Depends(require_web_auth)):
         """Return a copy of all personal data held for this user (NDPR s.2.5)."""
-        from models import Customer, Transaction, ParseLog
+        from models import Customer, ParseLog
         db = SessionLocal()
         try:
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user:
                 raise HTTPException(status_code=404, detail="User not found.")
 
-            tx_count  = db.query(Transaction).filter(Transaction.owner_phone == user.phone).count()
+            # Transactions have no owner_phone; count the business's the same
+            # way every report does (customer owner or owner/staff recorder).
+            from reports import get_owner_transaction_query
+            tx_count  = get_owner_transaction_query(db, user.phone, include_voided=True).count()
             cust_count= db.query(Customer).filter(Customer.owner_phone == user.phone).count()
             log_count = db.query(ParseLog).filter(ParseLog.phone == user.phone).count()
 
