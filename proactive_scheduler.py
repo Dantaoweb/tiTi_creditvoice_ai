@@ -7,7 +7,8 @@ Runs three checks and delivers alerts to BOTH WhatsApp and the frontend
 Checks:
   1. Low-stock alerts  — items at or below alert threshold (once per 24h)
   2. Overdue debt      — customers with balance >7 days unpaid (every 72h)
-  3. Inactivity nudge  — no messages in 3+ days (once per week)
+  3. Inactivity nudge  — nothing recorded in 3+ days, or 3+ days since sign-up
+                         with nothing recorded yet (once per week)
 
 Interval: every 6 hours.  ProactiveLog prevents duplicate sends.
 """
@@ -228,7 +229,11 @@ def _check_inactivity(db):
 
     for owner in owners:
         last_at = last_tx_at.get(owner.phone)
-        if not last_at or last_at > cutoff_inactive:
+        # An owner who has never recorded anything is measured from sign-up —
+        # new users who never get started need the nudge most.
+        never_started = last_at is None
+        since = last_at or owner.created_at
+        if not since or since > cutoff_inactive:
             continue
 
         last = db.query(ProactiveLog).filter(
@@ -240,6 +245,28 @@ def _check_inactivity(db):
             continue
 
         first_name = (owner.name or "there").split()[0].title()
+
+        if never_started:
+            # Getting-started nudge: no 1-4 check-in (those options assume they
+            # used tiTi before), just how to record the first sale.
+            body = (
+                f"Hi {first_name}! You signed up for CreditVoice but haven't recorded "
+                "your first sale yet. It takes a few seconds — just type or send a "
+                "voice note like:\n\n"
+                "• _sold 2 bags rice 18000_\n"
+                "• _Ada bought 3 shirts 7500, paid 5000_\n"
+                "• _Emeka paid 3000_\n\n"
+                "Or open the web app and tap *Quick Record*. "
+                "Send *help* anytime and tiTi will guide you 🤝"
+            )
+            try:
+                _notify(db, owner.phone, "inactivity", "🚀 Record your first sale", body)
+                db.add(ProactiveLog(owner_phone=owner.phone, event_type="inactivity", sent_at=_utcnow()))
+                db.commit()
+            except Exception as e:
+                print(f"[proactive] inactivity error for {owner.phone}: {e}", flush=True)
+            continue
+
         body = (
             f"Hi {first_name}! We noticed you haven't recorded anything in a few days.\n\n"
             "Quick question — what's been happening?\n\n"

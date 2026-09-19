@@ -94,6 +94,60 @@ def test_inactivity_check_runs_and_nudges_idle_owner():
     assert _inactivity_notifs(idle) == 1
 
 
+def _signed_up_days_ago(phone, days):
+    db = SessionLocal()
+    try:
+        db.query(User).filter(User.phone == phone).first().created_at = utcnow() - timedelta(days=days)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_never_started_owner_gets_getting_started_nudge():
+    from models import PendingAction
+    stale, _ = _owner()
+    _signed_up_days_ago(stale, 5)            # signed up 5 days ago, recorded nothing
+    fresh, _ = _owner()                      # signed up today — too early to nudge
+
+    _run(ps._check_inactivity)
+
+    db = SessionLocal()
+    try:
+        n = db.query(AppNotification).filter(
+            AppNotification.owner_phone == stale, AppNotification.event_type == "inactivity",
+        ).all()
+        assert len(n) == 1 and n[0].title == "🚀 Record your first sale"
+        assert "first sale" in n[0].body
+        # No 1-4 check-in for someone who never started.
+        assert db.query(PendingAction).filter(
+            PendingAction.phone == stale, PendingAction.action == "INACTIVITY_CHECKIN",
+        ).count() == 0
+    finally:
+        db.close()
+    assert _inactivity_notifs(fresh) == 0
+
+    _run(ps._check_inactivity)               # weekly cooldown applies too
+    assert _inactivity_notifs(stale) == 1
+
+
+def test_returning_owner_still_gets_checkin_question():
+    from models import PendingAction
+    idle, _ = _owner()
+    _add_tx(idle, days_ago=5)
+    _run(ps._check_inactivity)
+    db = SessionLocal()
+    try:
+        n = db.query(AppNotification).filter(
+            AppNotification.owner_phone == idle, AppNotification.event_type == "inactivity",
+        ).one()
+        assert n.title == "👋 Missing you!"
+        assert db.query(PendingAction).filter(
+            PendingAction.phone == idle, PendingAction.action == "INACTIVITY_CHECKIN",
+        ).count() == 1
+    finally:
+        db.close()
+
+
 def test_last_transaction_attributes_staff_sales_to_owner():
     owner, _ = _owner()
     db = SessionLocal()
