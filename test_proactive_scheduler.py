@@ -130,6 +130,18 @@ def test_never_started_owner_gets_getting_started_nudge():
     assert _inactivity_notifs(stale) == 1
 
 
+def test_owner_without_signup_date_is_not_skipped():
+    phone, _ = _owner()
+    db = SessionLocal()
+    try:
+        db.query(User).filter(User.phone == phone).first().created_at = None
+        db.commit()
+    finally:
+        db.close()
+    _run(ps._check_inactivity)
+    assert _inactivity_notifs(phone) == 1
+
+
 def test_returning_owner_still_gets_checkin_question():
     from models import PendingAction
     idle, _ = _owner()

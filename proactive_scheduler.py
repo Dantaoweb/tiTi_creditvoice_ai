@@ -232,8 +232,9 @@ def _check_inactivity(db):
         # An owner who has never recorded anything is measured from sign-up —
         # new users who never get started need the nudge most.
         never_started = last_at is None
-        since = last_at or owner.created_at
-        if not since or since > cutoff_inactive:
+        # No sign-up date on record → treat as long ago, so nobody is skipped.
+        since = last_at or owner.created_at or datetime.min
+        if since > cutoff_inactive:
             continue
 
         last = db.query(ProactiveLog).filter(
