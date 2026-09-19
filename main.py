@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app_routes import register_http_routes
 from database import Base, engine
@@ -66,6 +67,15 @@ app = FastAPI(
 
 Base.metadata.create_all(engine)
 ensure_schema_updates(engine)
+
+# ── Response compression ──────────────────────────────────────────────────────
+# Gzip JSON/HTML/CSV/JS for clients that accept it — list endpoints, the POS
+# catalogue and the app bundle shrink ~4-10x, which matters on mobile data.
+# Added FIRST so it's innermost: it sees each route's whole response and can
+# skip tiny ones (the BaseHTTPMiddleware layers below re-chunk bodies, which
+# would force it to compress everything). Safe: nothing here streams
+# incrementally (no SSE/websockets).
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 # ── Trusted host validation ───────────────────────────────────────────────────
 # Rejects requests whose Host header isn't in the allowlist, blocking
