@@ -30,6 +30,29 @@ def _sale(db, owner_phone, owner_id):
     return rec["receipt_number"], r["receipt_id"]
 
 
+def test_whatsapp_receipt_text_quotes_the_business_receipt_number():
+    """The shared/WhatsApp copy must quote the business's own number (1, 2, 3…),
+    not the global transaction id — that is what a customer reads back."""
+    from web_pos import format_receipt_text
+    rec = {"id": 4821, "type": "SALE", "total": 1000, "paid": 1000, "balance_owed": 0,
+           "receipt_number": 7, "items": [{"product": "rice", "qty": 1, "unit_price": 1000, "total": 1000}]}
+    assert "Receipt #7" in format_receipt_text(rec)
+    assert "TXN-4821" not in format_receipt_text(rec)
+
+    rec.pop("receipt_number")          # old rows with no number fall back to the id
+    assert "Ref: TXN-4821" in format_receipt_text(rec)
+
+
+def test_whatsapp_sale_receipts_quote_the_business_receipt_number():
+    from select_product_commands import build_owner_receipt, build_customer_receipt
+    cart = [{"product": "rice", "quantity": 1, "unit_price": 1000, "total": 1000}]
+    args = ("Shop", "Ade", cart, 1000, 1000, 0, None, 4821)
+    for text in (build_owner_receipt(*args, receipt_no=7),
+                 build_customer_receipt(*args, receipt_no=7)):
+        assert "Receipt #7" in text and "TXN-4821" not in text
+    assert "Ref: TXN-4821" in build_owner_receipt(*args)   # no number → id fallback
+
+
 def test_receipt_numbers_are_per_business():
     db = _db()
     db.add(User(id="a", phone="234800000111", name="A", role="owner"))

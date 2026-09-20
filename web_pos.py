@@ -438,7 +438,10 @@ def format_receipt_text(receipt):
             lines.append(f"Ready by: {receipt['service_date'][:10]}")
 
     lines.append("--------------------")
-    lines.append(f"Ref: TXN-{receipt.get('id')}")
+    # The business's own receipt number (1, 2, 3…), not the global row id —
+    # customers and owners quote this back. Falls back to the id for old rows.
+    _no = receipt.get("receipt_number")
+    lines.append(f"Receipt #{_no}" if _no else f"Ref: TXN-{receipt.get('id')}")
     if cfg.get("footer"):
         lines.append(cfg["footer"])
     return "\n".join(lines)

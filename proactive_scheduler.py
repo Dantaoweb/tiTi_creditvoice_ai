@@ -458,7 +458,7 @@ def _check_delivery_due(db):
         when = "today" if days_out == 0 else ("tomorrow" if days_out == 1 else f"in {days_out} days")
         date_str = tx.service_date.strftime("%d %b %Y")
         body = (
-            f"{cname}'s job/order (Receipt #{tx.id}) is due for delivery {when} ({date_str}).\n\n"
+            f"{cname}'s job/order (Receipt #{tx.receipt_number or tx.id}) is due for delivery {when} ({date_str}).\n\n"
             "Open Deliveries to update the date or message the customer."
         )
         try:

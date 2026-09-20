@@ -515,6 +515,7 @@ def register_customer_routes(app):
                 "deliveries": [
                     {
                         "id": tx.id,
+                        "receipt_number": tx.receipt_number,
                         "service_date": _iso(tx.service_date),
                         "customer": cust.name,
                         "customer_phone": cust.customer_phone,

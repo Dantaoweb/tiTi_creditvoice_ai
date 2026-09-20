@@ -99,7 +99,7 @@ export default function Receipt() {
     const addr = receipt.branch_address || receipt.biz_address;
     if (addr) L.push(addr);
     if (isInvoice && invoiceNo) L.push(invoiceNo);
-    else L.push(`Receipt #${receipt.id}`);
+    else L.push(`Receipt #${receipt.receipt_number ?? receipt.id}`);   // per-business number, as printed
     L.push(dateTimeStr(receipt.created_at));
     if (receipt.customer?.name) L.push(`${isInvoice ? "Bill to" : custLabel}: ${receipt.customer.name}`);
     L.push("--------------------");

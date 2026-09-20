@@ -134,7 +134,15 @@ def build_confirm_message(cart, customer_name, paid, total, due_date_str=None, o
     return f"{msg}\n\n{_CONFIRM_DISCLAIMER}"
 
 
-def build_owner_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id, config=None):
+def _receipt_ref(tx_id, receipt_no=None):
+    """The business's own receipt number when the sale has one, else the raw
+    transaction id — customers quote this back, so it must match what the web
+    receipt prints."""
+    return f"Receipt #{receipt_no}" if receipt_no else f"Ref: TXN-{tx_id}"
+
+
+def build_owner_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id, config=None,
+                        receipt_no=None):
     cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
     date_str = now.strftime("%d/%m/%Y  %H:%M")
@@ -156,7 +164,7 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
         if due_date_str:
             lines.append(f"Due:      {due_date_str}")
     lines.append("--------------------")
-    lines.append(f"Ref: TXN-{tx_id}")
+    lines.append(_receipt_ref(tx_id, receipt_no))
     lines.append(cfg["footer"])
     return "\n".join(lines)
 
@@ -164,7 +172,7 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
 def build_customer_receipt(
     business_name, customer_name, cart, total, paid,
     balance, due_date_str, tx_id, config=None, show_discount=False,
-    business_phone=None,
+    business_phone=None, receipt_no=None,
 ):
     cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
@@ -211,7 +219,7 @@ def build_customer_receipt(
         if due_date_str:
             lines.append(f"Due date: {due_date_str}")
     lines.append("--------------------")
-    lines.append(f"Ref: TXN-{tx_id}")
+    lines.append(_receipt_ref(tx_id, receipt_no))
     lines.append(cfg["footer"])
     return "\n".join(lines)
 
@@ -819,7 +827,8 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
 
     # ── Build and send owner receipt ──────────────────────────────────────────
     owner_receipt = build_owner_receipt(
-        business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id, receipt_cfg
+        business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id, receipt_cfg,
+        receipt_no=getattr(buy_tx, "receipt_number", None),
     )
     if overall_discount:
         owner_receipt += f"\nDiscount: -N{overall_discount:,}"
@@ -837,6 +846,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             business_name, customer_name, cart, total, paid, balance,
             due_date_str, buy_tx.id, receipt_cfg, show_discount=show_discount,
             business_phone=business_owner_phone,
+            receipt_no=getattr(buy_tx, "receipt_number", None),
         )
         send_message(customer_phone, customer_receipt)
     else:

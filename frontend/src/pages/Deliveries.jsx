@@ -16,7 +16,7 @@ function fmtWhen(iso) {
 
 function NotifyModal({ delivery, onClose, onSent }) {
   const suggested =
-    `Hello ${delivery.customer || ""}, your order (Receipt #${delivery.id}) ` +
+    `Hello ${delivery.customer || ""}, your order (Receipt #${delivery.receipt_number ?? delivery.id}) ` +
     `will be ready by ${dateStr(delivery.service_date)}. Thank you.`;
   const [msg, setMsg] = useState(suggested);
   const [sending, setSending] = useState(false);
