@@ -84,7 +84,15 @@ def format_invoice_text(receipt):
         lines.append(f"  x{qty} @ N{int(it.get('unit_price', 0)):,} = N{int(it.get('total', 0)):,}")
     lines.append("--------------------")
     lines.append(f"Total:       N{total:,}")
-    lines.append(f"*Amount due: N{due:,}*")
+    # Debt carried in from earlier sales: an invoice showing only this sale's
+    # amount understates what the customer actually owes the business.
+    prev_bal = int(receipt.get("previous_balance") or 0)
+    if prev_bal > 0:
+        lines.append(f"Amount due (this invoice): N{due:,}")
+        lines.append(f"Previous balance:          N{prev_bal:,}")
+        lines.append(f"*Total due now:            N{int(receipt.get('total_owed_now') or (due + prev_bal)):,}*")
+    else:
+        lines.append(f"*Amount due: N{due:,}*")
     if receipt.get("due_date"):
         lines.append(f"Due by: {receipt['due_date'][:10]}")
     lines.append("--------------------")

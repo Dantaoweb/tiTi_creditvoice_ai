@@ -114,14 +114,20 @@ export default function Receipt() {
       L.push("--------------------");
       L.push(`Total: ${nairaFull(receipt.total)}`);
       if (!isInvoice) L.push(`Paid: ${nairaFull(paid)}`);
-      if (owed > 0) L.push(`${isInvoice ? "Amount due" : "Balance this sale"}: ${nairaFull(owed)}`);
+      if (owed > 0) {
+        L.push(isInvoice
+          ? `Amount due${prevBalance > 0 ? " (this invoice)" : ""}: ${nairaFull(owed)}`
+          : `Balance this sale: ${nairaFull(owed)}`);
+      }
       else if (!isInvoice) L.push("Status: Paid in full");
       if (priorDebt > 0) {
         L.push(`Previous debt settled: ${nairaFull(priorDebt)}`);
         L.push(`Total received: ${nairaFull(receipt.grand_total_collected ?? (paid + priorDebt))}`);
       }
       if (prevBalance > 0) L.push(`Previous balance: ${nairaFull(prevBalance)}`);
-      if (prevBalance > 0 || priorDebt > 0) L.push(`Total owed now: ${nairaFull(owedNow)}`);
+      if (prevBalance > 0 || priorDebt > 0) {
+        L.push(`${isInvoice ? "Total due now" : "Total owed now"}: ${nairaFull(owedNow)}`);
+      }
     }
     L.push("--------------------");
     L.push(isInvoice ? invoiceFooter : receiptFooter);
@@ -228,8 +234,20 @@ export default function Receipt() {
 
         {isInvoice && (
           <div className="receipt-customer" style={{ borderTop: "1px dashed var(--border)", marginTop: 8, paddingTop: 8 }}>
-            <span className="receipt-label" style={{ fontWeight: 700 }}>Amount Due</span>
+            <span className="receipt-label" style={{ fontWeight: 700 }}>
+              {prevBalance > 0 ? "Amount Due (this invoice)" : "Amount Due"}
+            </span>
             <span style={{ fontWeight: 700, color: owed > 0 ? "#b91c1c" : "#166534" }}>{nairaFull(owed)}</span>
+            {/* Earlier debt belongs on the invoice too, or it understates what
+                the customer owes the business. */}
+            {prevBalance > 0 && (
+              <>
+                <span className="receipt-muted">Previous balance: {nairaFull(prevBalance)}</span>
+                <span style={{ fontWeight: 700, color: owedNow > 0 ? "#b91c1c" : "#166534" }}>
+                  Total due now: {nairaFull(owedNow)}
+                </span>
+              </>
+            )}
             {dueStr && <span className="receipt-muted">Due by {dueStr}</span>}
           </div>
         )}
@@ -289,7 +307,11 @@ export default function Receipt() {
                   <td className="receipt-right">{nairaFull(paid)}</td>
                 </tr>
                 <tr style={{ fontWeight: 700, color: owed > 0 ? "#b91c1c" : "#166534" }}>
-                  <td colSpan={3}>{owed > 0 ? (prevBalance > 0 ? "Balance this sale" : "Balance owed") : "Paid in full"}</td>
+                  <td colSpan={3}>
+                    {owed <= 0 ? "Paid in full"
+                      : isInvoice ? (prevBalance > 0 ? "Amount due (this invoice)" : "Amount due")
+                      : prevBalance > 0 ? "Balance this sale" : "Balance owed"}
+                  </td>
                   <td className="receipt-right">{owed > 0 ? nairaFull(owed) : "✓"}</td>
                 </tr>
               </>
@@ -314,7 +336,7 @@ export default function Receipt() {
             )}
             {(prevBalance > 0 || priorDebt > 0) && (
               <tr className="receipt-total-row" style={{ color: owedNow > 0 ? "#b91c1c" : "#166534" }}>
-                <td colSpan={3}>Total owed now</td>
+                <td colSpan={3}>{isInvoice ? "Total due now" : "Total owed now"}</td>
                 <td className="receipt-right">{owedNow > 0 ? nairaFull(owedNow) : "✓"}</td>
               </tr>
             )}
