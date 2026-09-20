@@ -287,6 +287,24 @@ def get_pos_receipt(db, tx_id, user=None):
 
     balance_owed = max(0, tx.amount - paid_amount) if customer else 0
 
+    # What the customer owed BEFORE this sale — everything recorded ahead of it.
+    # Computed from the ledger rather than the live balance so a printed receipt
+    # keeps saying the same thing after later payments.
+    previous_balance = 0
+    if customer:
+        from sqlalchemy import case, func
+        previous_balance = int(db.query(
+            func.coalesce(func.sum(case(
+                (Transaction.type == "BUY", Transaction.amount),
+                (Transaction.type == "PAY", -Transaction.amount),
+                else_=0,
+            )), 0)
+        ).filter(
+            Transaction.customer_id == customer.id,
+            Transaction.id < tx.id,
+            Transaction.is_voided.isnot(True),
+        ).scalar() or 0)
+
     # A prior debt cleared in the same checkout (POS "Settle previous debt"): its
     # PAY is tagged with this sale's id. Surface it so the receipt shows the sale
     # total, the old debt settled, and the grand total collected.
@@ -329,6 +347,11 @@ def get_pos_receipt(db, tx_id, user=None):
         "balance_owed": balance_owed,
         "prior_debt_paid": prior_debt_paid,
         "grand_total_collected": paid_amount + prior_debt_paid,
+        "previous_balance": previous_balance,
+        # Everything the customer owes as at this receipt: what they owed before,
+        # plus this sale's unpaid part, less any old debt settled in the same
+        # checkout. A receipt that shows only this sale's balance hides the rest.
+        "total_owed_now": max(0, previous_balance + balance_owed - prior_debt_paid),
         "due_date": tx.due_date.isoformat() if tx.due_date else None,
         "service_date": tx.service_date.isoformat() if tx.service_date else None,
         "created_at": tx.created_at.isoformat() if tx.created_at else None,
@@ -395,7 +418,22 @@ def format_receipt_text(receipt):
         lines.append(f"{cfg.get('amount_label', 'Total')}: N{total:,}")
         lines.append(f"Paid:  N{paid:,}")
         if bal > 0:
-            lines.append(f"Balance: N{bal:,}")
+            lines.append(f"Balance this sale: N{bal:,}")
+        # Old debt settled in the same checkout, and what's still owed overall —
+        # without these the customer's copy can show far less than they handed
+        # over, and hide debt carried from earlier sales.
+        prior_settled = int(receipt.get("prior_debt_paid") or 0)
+        if prior_settled > 0:
+            lines.append(f"Previous debt settled: N{prior_settled:,}")
+            lines.append(f"Total received: N{int(receipt.get('grand_total_collected') or (paid + prior_settled)):,}")
+        prev_bal = int(receipt.get("previous_balance") or 0)
+        owed_now = int(receipt.get("total_owed_now") or 0)
+        if prev_bal > 0:
+            lines.append(f"Previous balance: N{prev_bal:,}")
+        # Always spell out the total once earlier debt is involved, so the two
+        # balance lines are never added up by hand into the wrong figure.
+        if prev_bal > 0 or prior_settled > 0:
+            lines.append(f"Total owed now: N{owed_now:,}")
         if receipt.get("service_date"):
             lines.append(f"Ready by: {receipt['service_date'][:10]}")
 

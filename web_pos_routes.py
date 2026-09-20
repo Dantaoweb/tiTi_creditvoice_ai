@@ -169,6 +169,19 @@ def register_pos_routes(app):
                             status_code=400,
                             detail=f"'{wrong.name.title()}' belongs to another branch and can't be sold from here.",
                         )
+            # What the customer owed BEFORE this sale — the ceiling for a
+            # "settle previous debt" payment. Read now: once the sale is saved
+            # the balance also carries this sale's unpaid part, and capping
+            # against that let the settlement eat into the new sale and then
+            # print as "Previous debt settled".
+            owed_before_sale = 0
+            if payload.debt_payment and payload.debt_payment > 0 and payload.customer_id:
+                _c = db.query(Customer).filter(
+                    Customer.id == payload.customer_id,
+                    Customer.owner_phone == owner_phone,
+                ).first()
+                owed_before_sale = max(0, int((_c.balance if _c else 0) or 0))
+
             result = save_pos_sale(
                 db,
                 owner_phone,
@@ -193,8 +206,8 @@ def register_pos_routes(app):
                     Customer.owner_phone == owner_phone,
                 ).first()
                 if cust:
-                    owed_now = max(0, int(cust.balance or 0))   # never overpay the debt
-                    amt = min(int(payload.debt_payment), owed_now)
+                    # Never overpay, and never beyond what was owed before this sale.
+                    amt = min(int(payload.debt_payment), owed_before_sale, max(0, int(cust.balance or 0)))
                     if amt > 0:
                         # Tag the PAY with the sale's id so the sale receipt can show
                         # the prior debt that was cleared in the same checkout.
