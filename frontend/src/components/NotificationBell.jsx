@@ -1,7 +1,38 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, X, Trash2, BellRing, BellOff } from "lucide-react";
+import { Bell, X, Trash2, BellRing, BellOff, Volume2, VolumeX } from "lucide-react";
 import { apiFetch, apiPost, apiDelete } from "../lib/api";
 import { getPushState, enablePush, disablePush } from "../lib/webpush";
+
+// Chime for a notification that arrives while the app is open. Synthesised, so
+// there's no audio file to download. On by default so users learn that alerts
+// come through; the toggle is remembered per device.
+const SOUND_KEY = "cv_notif_sound";
+
+function soundPref() {
+  try { return localStorage.getItem(SOUND_KEY) !== "off"; } catch { return true; }
+}
+
+function playChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    // Two short notes, quiet enough not to startle.
+    [[880, 0], [1175, 0.12]].forEach(([freq, at]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.28);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + at);
+      osc.stop(ctx.currentTime + at + 0.3);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), 1200);
+  } catch { /* audio blocked or unsupported — stay silent */ }
+}
 
 const TYPE_ICONS = {
   low_stock:    "⚠️",
@@ -16,7 +47,9 @@ export default function NotificationBell() {
   const [push, setPush] = useState(null);               // { available, subscribed, key, ... }
   const [pushBusy, setPushBusy] = useState(false);
   const [pushErr, setPushErr] = useState("");
+  const [soundOn, setSoundOn] = useState(soundPref);
   const panelRef = useRef(null);
+  const seenIds = useRef(null);   // null until the first load, so it never chimes on open
 
   useEffect(() => {
     if (open && push === null) getPushState().then(setPush).catch(() => setPush({ available: false }));
@@ -40,8 +73,25 @@ export default function NotificationBell() {
     }
   }
 
+  function toggleSound() {
+    const next = !soundOn;
+    setSoundOn(next);
+    try { localStorage.setItem(SOUND_KEY, next ? "on" : "off"); } catch { /* private mode */ }
+    if (next) playChime();   // let them hear what they just switched on
+  }
+
   function load() {
-    apiFetch("notifications").then(d => setNotifications(d.notifications || [])).catch(() => {});
+    apiFetch("notifications")
+      .then(d => {
+        const list = d.notifications || [];
+        const ids = new Set(list.map(n => n.id));
+        const first = seenIds.current === null;
+        const fresh = first ? [] : list.filter(n => !n.is_read && !seenIds.current.has(n.id));
+        seenIds.current = ids;
+        setNotifications(list);
+        if (fresh.length && soundPref()) playChime();
+      })
+      .catch(() => {});
   }
 
   useEffect(() => {
@@ -177,6 +227,28 @@ export default function NotificationBell() {
               </button>
             </div>
           )}
+
+          {/* Chime for alerts that arrive while the app is open */}
+          <div style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+            {soundOn ? <Volume2 size={15} color="var(--brand)" /> : <VolumeX size={15} color="var(--text-muted)" />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>Notification sound</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {soundOn ? "On — a chime plays when an alert arrives" : "Off — alerts arrive silently"}
+              </div>
+            </div>
+            <button
+              onClick={toggleSound}
+              style={{
+                flexShrink: 0, border: "none", borderRadius: 999, cursor: "pointer",
+                padding: "5px 12px", fontSize: 12, fontWeight: 700,
+                background: soundOn ? "var(--surface, #eef2f7)" : "var(--brand)",
+                color: soundOn ? "var(--text-muted)" : "#fff",
+              }}
+            >
+              {soundOn ? "Turn off" : "Turn on"}
+            </button>
+          </div>
 
           <div style={{ overflowY: "auto", flex: 1 }}>
             {notifications.length === 0 ? (

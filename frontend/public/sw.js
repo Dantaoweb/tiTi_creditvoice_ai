@@ -38,7 +38,12 @@ self.addEventListener("push", (event) => {
     body: data.body || "",
     icon: "/app/pwa-192.png",
     badge: "/app/pwa-192.png",
+    // One tag per alert type: a low-stock alert no longer replaces an overdue-debt
+    // one. renotify makes a repeat of the SAME type alert again (sound + vibration)
+    // instead of swapping in silently.
     tag: data.tag || "cv-notify",
+    renotify: true,
+    vibrate: [200, 100, 200],   // noticeable in a noisy shop/market
     data: { url: data.url || "/app" },
   };
   event.waitUntil(self.registration.showNotification(title, options));

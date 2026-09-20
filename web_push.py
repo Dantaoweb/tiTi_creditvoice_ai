@@ -19,19 +19,24 @@ def push_enabled() -> bool:
     return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
 
 
-def send_web_push(owner_phone: str, title: str, body: str, url: str = "/app") -> None:
+def send_web_push(owner_phone: str, title: str, body: str, url: str = "/app",
+                  tag: str = "") -> None:
     """Fire-and-forget: push to every subscribed device of the business.
+
+    `tag` groups notifications on the phone — pass the event type so a low-stock
+    alert doesn't silently replace an overdue-debt one (the service worker sets
+    renotify, so a repeat of the same type still alerts).
 
     Cheap when nobody subscribed (one indexed query returning nothing). Only
     users who opted in have rows, so the network cost is limited to them."""
     if not push_enabled() or not owner_phone:
         return
     threading.Thread(
-        target=_send_blocking, args=(owner_phone, title, body, url), daemon=True
+        target=_send_blocking, args=(owner_phone, title, body, url, tag), daemon=True
     ).start()
 
 
-def _send_blocking(owner_phone, title, body, url):
+def _send_blocking(owner_phone, title, body, url, tag=""):
     try:
         from pywebpush import webpush, WebPushException
         from database import SessionLocal
@@ -46,7 +51,8 @@ def _send_blocking(owner_phone, title, body, url):
         ).all()
         if not subs:
             return
-        payload = json.dumps({"title": title, "body": body, "url": url})
+        payload = json.dumps({"title": title, "body": body, "url": url,
+                              "tag": tag or "cv-notify"})
         dead = []
         for s in subs:
             try:

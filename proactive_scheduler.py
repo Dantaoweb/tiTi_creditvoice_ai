@@ -45,7 +45,7 @@ def _notify(db, owner_phone, event_type, title, body, send_whatsapp=True):
     # app is closed). Fire-and-forget; no-op when push is unconfigured.
     try:
         from web_push import send_web_push
-        send_web_push(owner_phone, title, body)
+        send_web_push(owner_phone, title, body, tag=event_type or "cv-notify")
     except Exception:
         pass
 
