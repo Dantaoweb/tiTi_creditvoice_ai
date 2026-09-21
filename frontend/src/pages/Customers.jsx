@@ -72,6 +72,100 @@ function AddCustomerModal({ ownerPhone, onClose, onSaved, L }) {
   );
 }
 
+// ── Send balance modal ───────────────────────────────────────────────────────
+// A customer asking "what do I owe?" gets an editable statement. WhatsApp
+// blocks free-form messages to anyone who hasn't messaged the business number
+// in 24h, so when the send doesn't land the owner can send it from their own
+// phone (wa.me) or copy it anywhere.
+function SendBalanceModal({ customer, onClose }) {
+  const [text, setText] = useState("");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState(null);   // { tone, text }
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    apiFetch(`customers/${customer.id}/balance-message`)
+      .then(d => { setData(d); setText(d.message || ""); })
+      .catch(e => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, [customer.id]);
+
+  const waLink = () => {
+    const digits = (data?.customer_phone || "").replace(/\D/g, "");
+    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : null;
+  };
+
+  async function sendOnWhatsApp() {
+    setSending(true); setErr(""); setStatus(null);
+    try {
+      const res = await apiPost(`customers/${customer.id}/send-balance`, { message: text });
+      setStatus(res.delivered
+        ? { tone: "ok", text: `Sent to ${res.customer_name} on WhatsApp.` }
+        : { tone: "warn", text: "WhatsApp wouldn't deliver it — the customer hasn't messaged your business number recently. Send it from your own phone instead." });
+    } catch (e) { setErr(e.message); }
+    finally { setSending(false); }
+  }
+
+  async function copyText() {
+    try {
+      if (navigator.share) await navigator.share({ text });
+      else {
+        await navigator.clipboard.writeText(text);
+        setStatus({ tone: "ok", text: "Copied — paste it anywhere." });
+      }
+    } catch { /* cancelled */ }
+  }
+
+  const hasPhone = !!data?.customer_phone;
+
+  return (
+    <Modal title={`Send balance — ${(customer.name || "").replace(/\b\w/g, c => c.toUpperCase())}`} onClose={onClose}>
+      <div className="modal-body">
+        {err && <div className="modal-error">{err}</div>}
+        {status && (
+          <div className="modal-error" style={{
+            background: status.tone === "ok" ? "rgba(22,101,52,0.08)" : "rgba(180,83,9,0.10)",
+            color: status.tone === "ok" ? "#166534" : "#92400e",
+          }}>{status.text}</div>
+        )}
+        {loading ? <p className="td-muted">Preparing message…</p> : (
+          <>
+            <div className="form-group">
+              <label className="form-label">Message (edit before sending)</label>
+              <textarea rows={10} value={text} onChange={e => setText(e.target.value)} />
+            </div>
+            {!hasPhone && (
+              <div className="form-hint" style={{ marginBottom: 8 }}>
+                No phone on file for this customer — copy the message, or add their phone to send on WhatsApp.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {hasPhone && (
+                <button className="btn btn-primary btn-sm" onClick={sendOnWhatsApp} disabled={sending || !text.trim()}>
+                  <Send size={13} /> {sending ? "Sending…" : "Send on WhatsApp"}
+                </button>
+              )}
+              {hasPhone && waLink() && (
+                <a className="btn btn-secondary btn-sm" href={waLink()} target="_blank" rel="noopener noreferrer">
+                  Send from my phone
+                </a>
+              )}
+              <button className="btn btn-ghost btn-sm" onClick={copyText} disabled={!text.trim()}>
+                Copy / Share
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onClose}>Close</button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Record payment modal ─────────────────────────────────────────────────────
 function PaymentModal({ customer, onClose, onSaved }) {
   const navigate = useNavigate();
@@ -195,7 +289,7 @@ function DueDateCell({ tx, onUpdated }) {
 // One place for a customer: identity + inline edit (name/phone/profile),
 // balance, a Record-payment action (delegated to PaymentModal), and full
 // transaction history. Mirrors the Suppliers detail-modal pattern.
-function CustomerDetailModal({ customer, onClose, onPay, onSaved }) {
+function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
@@ -305,12 +399,19 @@ function CustomerDetailModal({ customer, onClose, onPay, onSaved }) {
             value={nairaFull(Math.abs(balance))} color={balance > 0 ? "rose" : balance < 0 ? "green" : undefined} />
         </div>
 
-        {balance > 0 && (
-          <button className="btn btn-primary" style={{ width: "100%", marginBottom: 16 }}
-            onClick={() => onPay({ id: customer.id, name: customer.name, balance })}>
-            Record payment
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          {balance > 0 && (
+            <button className="btn btn-primary" style={{ flex: "1 1 160px" }}
+              onClick={() => onPay({ id: customer.id, name: customer.name, balance })}>
+              Record payment
+            </button>
+          )}
+          {/* Answers "how much do I owe?" without hunting through reminders. */}
+          <button className="btn btn-secondary" style={{ flex: "1 1 160px" }}
+            onClick={() => onSendBalance({ id: customer.id, name: customer.name })}>
+            <Send size={14} /> Send balance
           </button>
-        )}
+        </div>
 
         <div className="card-title" style={{ marginBottom: 6 }}>Transaction history</div>
         {!data ? (
@@ -441,7 +542,7 @@ function ReminderPreviewModal({ reminders, onClose, onSent }) {
 // ── Debtors tab ──────────────────────────────────────────────────────────────
 // `debtors` is the loaded page (biggest debt first); `summary` holds the
 // server's whole-list totals so the strip isn't limited to what's loaded.
-function DebtorsTab({ debtors, summary, footer, loading, onPay, onDetail, onBalanceUpdate }) {
+function DebtorsTab({ debtors, summary, footer, loading, onPay, onDetail, onSendBalance, onBalanceUpdate }) {
   const [mode, setMode] = useState(null);   // "review" | "auto" | null (loading)
   const [reminders, setReminders] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -655,13 +756,22 @@ function DebtorsTab({ debtors, summary, footer, loading, onPay, onDetail, onBala
                       )}
                     </td>
                     <td>
-                      <button
-                        className="btn btn-primary btn-xs"
-                        title="Record payment"
-                        onClick={() => onPay(d)}
-                      >
-                        <Wallet size={13} /> Pay
-                      </button>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <button
+                          className="btn btn-ghost btn-xs"
+                          title="Send this customer their balance"
+                          onClick={() => onSendBalance(d)}
+                        >
+                          <Send size={13} />
+                        </button>
+                        <button
+                          className="btn btn-primary btn-xs"
+                          title="Record payment"
+                          onClick={() => onPay(d)}
+                        >
+                          <Wallet size={13} /> Pay
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -706,6 +816,7 @@ export default function Customers() {
   const [activeTab, setActiveTab] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
   const [payCustomer, setPayCustomer] = useState(null);
+  const [balanceCustomer, setBalanceCustomer] = useState(null);   // "Send balance" target
   const [detailCustomer, setDetailCustomer] = useState(null);
   const reqId = useRef(0);
 
@@ -892,6 +1003,7 @@ export default function Customers() {
               loading={loading}
               onPay={c => setPayCustomer(c)}
               onDetail={c => setDetailCustomer(c)}
+              onSendBalance={c => setBalanceCustomer(c)}
               onBalanceUpdate={updateBalance}
             />
           </div>
@@ -904,6 +1016,13 @@ export default function Customers() {
           onClose={() => setShowAdd(false)}
           onSaved={() => load(rows.length + 1)}
           L={L}
+        />
+      )}
+
+      {balanceCustomer && (
+        <SendBalanceModal
+          customer={balanceCustomer}
+          onClose={() => setBalanceCustomer(null)}
         />
       )}
 
@@ -920,6 +1039,7 @@ export default function Customers() {
           customer={detailCustomer}
           onClose={() => setDetailCustomer(null)}
           onPay={c => { setDetailCustomer(null); setPayCustomer(c); }}
+          onSendBalance={c => { setDetailCustomer(null); setBalanceCustomer(c); }}
           onSaved={reload}
         />
       )}

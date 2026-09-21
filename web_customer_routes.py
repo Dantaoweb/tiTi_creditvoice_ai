@@ -54,6 +54,10 @@ class SetServiceDateRequest(BaseModel):
     service_date: Optional[str] = None
 
 
+class SendBalanceRequest(BaseModel):
+    message: str = Field(default="", max_length=2000)   # owner-edited statement
+
+
 class DeliveryNotifyRequest(BaseModel):
     message: str = Field(max_length=1000)
 
@@ -260,6 +264,67 @@ def register_customer_routes(app):
                 "id": customer.id,
                 "name": customer.name,
                 "phone": customer.customer_phone,
+            }
+        finally:
+            db.close()
+
+    # ── Share a customer's balance ────────────────────────────────────────
+    @app.get("/app/api/customers/{customer_id}/balance-message")
+    def web_balance_message(customer_id: int, session: dict = Depends(require_web_auth)):
+        """The editable "what you owe" statement for this customer, plus a wa.me
+        link so the owner can send it from their own phone."""
+        from customer_statement import build_balance_message, find_customer, self_send_url
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            customer = find_customer(db, owner_phone, customer_id)
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found.")
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
+            message = build_balance_message(db, owner_user, customer)
+            return {
+                "customer_id": customer.id,
+                "customer_name": customer.name,
+                "customer_phone": customer.customer_phone,
+                "balance": _money(customer.balance),
+                "message": message,
+                "self_send_url": self_send_url(customer.customer_phone, message),
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/customers/{customer_id}/send-balance")
+    def web_send_balance(
+        customer_id: int,
+        payload: SendBalanceRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Send the statement to the customer on WhatsApp. WhatsApp blocks
+        free-form messages to anyone who hasn't messaged the business number in
+        24h, so an undelivered send is reported honestly with a wa.me link for
+        the owner to send from their own phone instead."""
+        from customer_statement import build_balance_message, find_customer, self_send_url
+        from whatsapp_client import send_whatsapp_message
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            customer = find_customer(db, owner_phone, customer_id)
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found.")
+            owner_user = db.query(User).filter(User.phone == owner_phone).first()
+            message = (payload.message or "").strip() or build_balance_message(db, owner_user, customer)
+            if not customer.customer_phone:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No phone on file for this customer. Copy the message and send it yourself.",
+                )
+            delivered = bool(send_whatsapp_message(customer.customer_phone, message))
+            return {
+                "ok": True,
+                "delivered": delivered,
+                "customer_name": customer.name,
+                "message": message,
+                "self_send_url": self_send_url(customer.customer_phone, message),
             }
         finally:
             db.close()
