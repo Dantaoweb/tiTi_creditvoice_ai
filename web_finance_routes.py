@@ -15,7 +15,7 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from database import SessionLocal
-from models import FinancePartner, ScorecardConfig, User, utcnow
+from models import FinancePartner, FinanceReferral, ScorecardConfig, User, utcnow
 from web_auth import require_web_auth
 from web_common import _admin_rate_check, _session_owner_phone
 
@@ -40,6 +40,15 @@ class PartnerRequest(BaseModel):
 class ScorecardConfigRequest(BaseModel):
     config: dict
     note: Optional[str] = Field(default=None, max_length=300)
+
+
+class ApplyRequest(BaseModel):
+    # Consent is explicit and per partner: sharing a business's trading record
+    # is the owner's decision, not a side effect of tapping "apply".
+    consent: bool = False
+    asset_requested: Optional[str] = Field(default=None, max_length=120)
+    asset_value: Optional[int] = None
+    note: Optional[str] = Field(default=None, max_length=1000)
 
 
 _COMMISSION_TYPES = {"FLAT_PER_DEAL", "PERCENT_OF_ASSET", "PERCENT_OF_REPAYMENTS"}
@@ -81,6 +90,45 @@ def _partner_dict(p, include_internal=True):
             "updated_by": p.updated_by,
         })
     return out
+
+
+def _referral_code(db):
+    """Short, quotable code so a closed deal can be traced back to us."""
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no look-alikes
+    for _ in range(20):
+        code = "CV-" + "".join(secrets.choice(alphabet) for _ in range(5))
+        if not db.query(FinanceReferral).filter(FinanceReferral.referral_code == code).first():
+            return code
+    return "CV-" + secrets.token_hex(4).upper()
+
+
+# Statuses the owner may still withdraw from — once a partner has approved or
+# delivered, withdrawing would rewrite history the fee depends on.
+_WITHDRAWABLE = {"SUBMITTED", "SHARED", "IN_REVIEW"}
+
+
+def _referral_dict(r, partner=None):
+    return {
+        "id": r.id,
+        "referral_code": r.referral_code,
+        "partner_id": r.partner_id,
+        "partner_name": partner.name if partner else None,
+        "asset_requested": r.asset_requested,
+        "asset_value": r.asset_value,
+        "note": r.note,
+        "status": r.status,
+        "decline_reason": r.decline_reason,
+        "score": r.snapshot_score,
+        "tier": r.snapshot_tier,
+        "confidence": r.snapshot_confidence,
+        "config_version": r.config_version,
+        "consent_given_at": r.consent_given_at.isoformat() if r.consent_given_at else None,
+        "consent_revoked_at": r.consent_revoked_at.isoformat() if r.consent_revoked_at else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "approved_at": r.approved_at.isoformat() if r.approved_at else None,
+        "delivered_at": r.delivered_at.isoformat() if r.delivered_at else None,
+    }
 
 
 def register_finance_routes(app):
@@ -306,10 +354,128 @@ def register_finance_routes(app):
                     "checks": checks,
                     "eligible": eligible(checks),
                 })
+            # So the page can show "applied" instead of offering again.
+            applied = {
+                r.partner_id: r.status
+                for r in db.query(FinanceReferral).filter(
+                    FinanceReferral.owner_phone == owner_phone
+                ).all()
+            }
+            for offer in offers:
+                offer["applied_status"] = applied.get(offer["id"])
             return {
                 "score": card["score"], "tier": card["tier"],
                 "confidence": card["confidence"], "scored": card["scored"],
                 "offers": offers,
             }
+        finally:
+            db.close()
+
+    # ── Business owner: ask to be introduced ──────────────────────────────
+    @app.post("/app/api/finance-offers/{partner_id}/apply")
+    def apply_to_partner(partner_id: str, payload: ApplyRequest,
+                         session: dict = Depends(require_web_auth)):
+        """Ask for an introduction to this partner.
+
+        Requires explicit consent, and freezes the scorecard as it stands now —
+        so what the partner is shown can't be changed later by re-tuning the
+        rules or by a sudden burst of recording.
+        """
+        from business_scorecard import score_business
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            if not payload.consent:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Your consent is required before your business record can be shared.",
+                )
+            partner = db.query(FinancePartner).filter(
+                FinancePartner.id == partner_id,
+                FinancePartner.is_active == True,  # noqa: E712
+            ).first()
+            if not partner:
+                raise HTTPException(status_code=404, detail="Partner not found.")
+
+            open_already = db.query(FinanceReferral).filter(
+                FinanceReferral.owner_phone == owner_phone,
+                FinanceReferral.partner_id == partner_id,
+                FinanceReferral.status.notin_(["DECLINED", "WITHDRAWN"]),
+            ).first()
+            if open_already:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"You already have a request with {partner.name} ({open_already.referral_code}).",
+                )
+
+            owner = db.query(User).filter(User.phone == owner_phone).first()
+            card = score_business(db, owner_phone)
+            now = utcnow()
+            referral = FinanceReferral(
+                referral_code=_referral_code(db),
+                partner_id=partner.id,
+                owner_phone=owner_phone,
+                business_name=(owner.business_type_label or owner.name) if owner else None,
+                contact_phone=owner_phone,
+                asset_requested=(payload.asset_requested or "").strip() or None,
+                asset_value=payload.asset_value,
+                note=(payload.note or "").strip() or None,
+                consent_given_at=now,
+                snapshot_json=json.dumps(card),
+                snapshot_score=int(card["score"]) if card.get("score") is not None else None,
+                snapshot_tier=card.get("tier"),
+                snapshot_confidence=int(card.get("confidence") or 0),
+                config_version=card.get("config_version"),
+                status="SUBMITTED",
+                created_at=now,
+            )
+            db.add(referral)
+            db.commit()
+            db.refresh(referral)
+            return _referral_dict(referral, partner)
+        finally:
+            db.close()
+
+    @app.get("/app/api/my-referrals")
+    def my_referrals(session: dict = Depends(require_web_auth)):
+        """This business's introduction requests and where each one stands."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            rows = (
+                db.query(FinanceReferral, FinancePartner)
+                .outerjoin(FinancePartner, FinanceReferral.partner_id == FinancePartner.id)
+                .filter(FinanceReferral.owner_phone == owner_phone)
+                .order_by(FinanceReferral.created_at.desc())
+                .all()
+            )
+            return {"referrals": [_referral_dict(r, p) for r, p in rows]}
+        finally:
+            db.close()
+
+    @app.post("/app/api/my-referrals/{referral_id}/withdraw")
+    def withdraw_referral(referral_id: str, session: dict = Depends(require_web_auth)):
+        """Withdraw the request and revoke consent to share the record."""
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            r = db.query(FinanceReferral).filter(
+                FinanceReferral.id == referral_id,
+                FinanceReferral.owner_phone == owner_phone,
+            ).first()
+            if not r:
+                raise HTTPException(status_code=404, detail="Request not found.")
+            if r.status not in _WITHDRAWABLE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"This request is already {r.status.lower()} and can no longer be withdrawn.",
+                )
+            now = utcnow()
+            r.status = "WITHDRAWN"
+            r.consent_revoked_at = now
+            r.updated_at = now
+            db.commit()
+            db.refresh(r)
+            return _referral_dict(r)
         finally:
             db.close()

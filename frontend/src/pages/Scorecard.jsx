@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, TrendingUp, Info, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
-import { apiFetch } from "../lib/api";
-import { nairaFull, dateStr } from "../lib/format";
+import { apiFetch, apiPost } from "../lib/api";
+import { nairaFull, dateStr, parseAmt } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 
 // The business's own evidence file: what CreditVoice can show a finance partner
@@ -54,7 +54,130 @@ function MonthlySales({ months }) {
   );
 }
 
-function Offer({ offer }) {
+const REFERRAL_STATUS = {
+  SUBMITTED: ["Sent to CreditVoice", "#92400e", "rgba(180,83,9,0.10)"],
+  SHARED:    ["Shared with partner", "#1d4ed8", "rgba(29,78,216,0.10)"],
+  IN_REVIEW: ["Partner reviewing", "#1d4ed8", "rgba(29,78,216,0.10)"],
+  APPROVED:  ["Approved", "#166534", "rgba(22,101,52,0.10)"],
+  DELIVERED: ["Asset delivered", "#166534", "rgba(22,101,52,0.12)"],
+  DECLINED:  ["Declined", "#b91c1c", "rgba(185,28,28,0.10)"],
+  WITHDRAWN: ["Withdrawn", "#6b7280", "rgba(107,114,128,0.12)"],
+};
+
+function StatusPill({ status }) {
+  const [label, color, bg] = REFERRAL_STATUS[status] || [status, "#6b7280", "rgba(107,114,128,0.12)"];
+  return <span className="badge" style={{ color, background: bg, fontWeight: 700 }}>{label}</span>;
+}
+
+// Applying shares this business's trading record with one partner. Consent is
+// explicit, and the scorecard is frozen at this moment so what the partner sees
+// can't drift afterwards.
+function ApplyModal({ offer, onClose, onDone }) {
+  const [asset, setAsset] = useState((offer.asset_types || [])[0] || "");
+  const [value, setValue] = useState("");
+  const [note, setNote] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function submit() {
+    setBusy(true); setErr("");
+    try {
+      await apiPost(`finance-offers/${offer.id}/apply`, {
+        consent: true,
+        asset_requested: asset.trim() || null,
+        asset_value: value ? parseAmt(value) : null,
+        note: note.trim() || null,
+      });
+      onDone();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">Request an introduction — {offer.name}</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          {err && <div className="modal-error">{err}</div>}
+          <div className="form-group">
+            <label className="form-label">What do you need?</label>
+            <input value={asset} onChange={e => setAsset(e.target.value)}
+              placeholder={(offer.asset_types || []).join(", ") || "e.g. motorcycle"} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Roughly what does it cost? (optional)</label>
+            <input inputMode="numeric" value={value} onChange={e => setValue(e.target.value)} placeholder="e.g. 1,200,000" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Anything they should know? (optional)</label>
+            <textarea rows={3} value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13 }}>
+            <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}
+              style={{ marginTop: 3 }} />
+            <span>
+              I agree to share my business record with <strong>{offer.name}</strong> — sales totals,
+              how steadily I record, margin, how my customers pay and how I pay suppliers.
+              My customers' names and phone numbers are never shared. I can withdraw this
+              request while it is still under review.
+            </span>
+          </label>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy || !consent}>
+            {busy ? "Sending…" : "Send request"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MyRequests({ referrals, onWithdraw }) {
+  if (!referrals || referrals.length === 0) return null;
+  return (
+    <div className="card">
+      <div className="card-header"><span className="card-title">My financing requests</span></div>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Partner</th><th>Item</th><th>Ref</th><th>Sent</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {referrals.map(r => (
+              <tr key={r.id}>
+                <td><strong>{r.partner_name || "—"}</strong></td>
+                <td>{r.asset_requested || "—"}{r.asset_value ? ` · ${nairaFull(r.asset_value)}` : ""}</td>
+                <td className="td-mono td-muted">{r.referral_code}</td>
+                <td className="td-muted">{r.created_at ? dateStr(r.created_at) : "—"}</td>
+                <td>
+                  <StatusPill status={r.status} />
+                  {r.decline_reason && (
+                    <div className="td-muted" style={{ fontSize: 11 }}>{r.decline_reason}</div>
+                  )}
+                </td>
+                <td>
+                  {["SUBMITTED", "SHARED", "IN_REVIEW"].includes(r.status) && (
+                    <button className="btn btn-ghost btn-xs text-rose" onClick={() => onWithdraw(r)}>
+                      Withdraw
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Offer({ offer, onApply }) {
   const assets = (offer.asset_types || []).join(", ");
   return (
     <div className="card" style={{ marginBottom: 12 }}>
@@ -91,6 +214,15 @@ function Offer({ offer }) {
             ))}
           </div>
         )}
+        <div style={{ marginTop: 12 }}>
+          {offer.applied_status && !["DECLINED", "WITHDRAWN"].includes(offer.applied_status) ? (
+            <StatusPill status={offer.applied_status} />
+          ) : (
+            <button className="btn btn-primary btn-sm" onClick={() => onApply(offer)}>
+              Request an introduction
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -99,15 +231,27 @@ function Offer({ offer }) {
 export default function Scorecard() {
   const [card, setCard] = useState(null);
   const [offers, setOffers] = useState(null);
+  const [referrals, setReferrals] = useState([]);
+  const [applying, setApplying] = useState(null);   // the offer being applied to
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
+  function loadOffers() {
+    return Promise.all([apiFetch("finance-offers"), apiFetch("my-referrals")])
+      .then(([o, r]) => { setOffers(o); setReferrals(r.referrals || []); });
+  }
+
   useEffect(() => {
-    Promise.all([apiFetch("scorecard"), apiFetch("finance-offers")])
-      .then(([c, o]) => { setCard(c); setOffers(o); })
+    Promise.all([apiFetch("scorecard").then(setCard), loadOffers()])
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  async function withdraw(r) {
+    if (!window.confirm(`Withdraw your request to ${r.partner_name}? Your record will no longer be shared with them.`)) return;
+    try { await apiPost(`my-referrals/${r.id}/withdraw`, {}); await loadOffers(); }
+    catch (e) { setError(e.message); }
+  }
 
   if (loading) return <div className="page-loading">Loading your scorecard…</div>;
   if (error) return <div style={{ color: "var(--rose)" }}>{error}</div>;
@@ -207,7 +351,7 @@ export default function Scorecard() {
           {(offers?.offers || []).length === 0 ? (
             <p className="td-muted">No partners listed yet. They will appear here as they join.</p>
           ) : (
-            offers.offers.map(o => <Offer key={o.id} offer={o} />)
+            offers.offers.map(o => <Offer key={o.id} offer={o} onApply={setApplying} />)
           )}
           <div className="text-subtle text-sm" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
             <ExternalLink size={13} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -218,6 +362,16 @@ export default function Scorecard() {
           </div>
         </div>
       </div>
+
+      <MyRequests referrals={referrals} onWithdraw={withdraw} />
+
+      {applying && (
+        <ApplyModal
+          offer={applying}
+          onClose={() => setApplying(null)}
+          onDone={async () => { setApplying(null); await loadOffers(); }}
+        />
+      )}
     </>
   );
 }

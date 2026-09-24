@@ -1497,6 +1497,63 @@ class ScorecardConfig(Base):
     updated_by   = Column(String, nullable=True)
 
 
+class FinanceReferral(Base):
+    """A business asking to be introduced to a finance partner.
+
+    Carries three things that make the introduction defensible months later:
+      • consent — the owner decides when their record is shared, and can revoke
+      • a FROZEN scorecard snapshot taken at application time, so neither a
+        later re-tuning of the rules nor a sudden burst of recording can change
+        what the partner was shown
+      • a referral code, so a deal closed by the partner is attributable and
+        the fee is calculable rather than negotiable
+
+    Statuses are canonical because commission depends on them:
+    SUBMITTED → SHARED → IN_REVIEW → APPROVED → DELIVERED, or DECLINED /
+    WITHDRAWN at any point.
+    """
+
+    __tablename__ = "finance_referrals"
+
+    id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    referral_code   = Column(String, unique=True, index=True)   # e.g. CV-7F3K2
+    partner_id      = Column(String, ForeignKey("finance_partners.id"), index=True)
+    owner_phone     = Column(String, index=True)
+    business_name   = Column(String, nullable=True)
+    contact_phone   = Column(String, nullable=True)
+
+    asset_requested = Column(String, nullable=True)    # "motorcycle", "freezer"
+    asset_value     = Column(Integer, nullable=True)   # as quoted by the partner
+    note            = Column(Text, nullable=True)      # what the owner told us
+
+    # Consent to share the trading record with THIS partner.
+    consent_given_at   = Column(DateTime, nullable=True)
+    consent_revoked_at = Column(DateTime, nullable=True)
+
+    # The evidence exactly as it stood when they applied.
+    snapshot_json       = Column(Text, nullable=True)
+    snapshot_score      = Column(Integer, nullable=True)
+    snapshot_tier       = Column(String, nullable=True)
+    snapshot_confidence = Column(Integer, nullable=True)
+    config_version      = Column(Integer, nullable=True)
+
+    status          = Column(String, default="SUBMITTED", index=True)
+    decline_reason  = Column(String, nullable=True)
+    partner_ref     = Column(String, nullable=True)    # the partner's own reference
+    admin_notes     = Column(Text, nullable=True)
+
+    approved_at     = Column(DateTime, nullable=True)
+    delivered_at    = Column(DateTime, nullable=True)
+
+    # Commission is calculated in a later step; kept here so the ledger has a home.
+    commission_amount    = Column(Integer, nullable=True)
+    commission_status    = Column(String, default="PENDING")   # PENDING/DUE/INVOICED/PAID
+    commission_marked_at = Column(DateTime, nullable=True)
+
+    created_at      = Column(DateTime, default=utcnow, index=True)
+    updated_at      = Column(DateTime, nullable=True)
+
+
 class Opportunity(Base):
     """An opportunity card created by admin and visible to all users."""
 
