@@ -1436,6 +1436,67 @@ class SupplierRating(Base):
     created_at         = Column(DateTime, default=utcnow)
 
 
+# ── Finance partners + business scorecard ────────────────────────────────────
+# CreditVoice introduces businesses to installment/asset-finance partners (e.g.
+# a motorcycle financier) and earns a fee per closed deal. The partner does its
+# own underwriting; what CreditVoice supplies is EVIDENCE — a business's trading
+# record turned into a report and a tier. Everything here is admin-editable so a
+# new partner or a changed criterion never needs a code change.
+
+class FinancePartner(Base):
+    """An installment / asset-finance partner, editable by admin.
+
+    `eligibility_json` holds the minimums this partner asks for (months of
+    records, monthly sales floor, …) and `commission_*` how CreditVoice is paid
+    for a closed deal. Both are per partner because no two agree the same terms.
+    """
+
+    __tablename__ = "finance_partners"
+
+    id                = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name              = Column(String, nullable=False)
+    contact_name      = Column(String, nullable=True)
+    contact_phone     = Column(String, nullable=True)
+    contact_email     = Column(String, nullable=True)
+    logo_url          = Column(String, nullable=True)
+    # What they finance, free text/JSON list: ["motorcycle", "freezer", …]
+    asset_types       = Column(Text, default="[]")
+    asset_value_min   = Column(Integer, nullable=True)
+    asset_value_max   = Column(Integer, nullable=True)
+    # {"min_months_recorded": 3, "min_avg_monthly_sales": 300000, …}
+    eligibility_json  = Column(Text, default="{}")
+    # FLAT_PER_DEAL | PERCENT_OF_ASSET | PERCENT_OF_REPAYMENTS
+    commission_type   = Column(String, default="PERCENT_OF_ASSET")
+    commission_value  = Column(Integer, default=0)      # naira, or basis points for percent
+    # ON_DELIVERY | ON_FIRST_REPAYMENT | ON_COMPLETION
+    commission_due_on = Column(String, default="ON_DELIVERY")
+    notes             = Column(Text, nullable=True)
+    is_active         = Column(Boolean, default=True)
+    created_at        = Column(DateTime, default=utcnow)
+    updated_at        = Column(DateTime, nullable=True)
+    updated_by        = Column(String, nullable=True)
+
+
+class ScorecardConfig(Base):
+    """Admin-tuned scorecard rules, versioned.
+
+    A report stores the version that produced it, so a score can still be
+    explained months later after the weights have been re-tuned — and so a
+    partner dispute can be settled from the record.
+    """
+
+    __tablename__ = "scorecard_configs"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    version      = Column(Integer, nullable=False, index=True)
+    # {"weights": {...}, "tiers": [...], "min_months_recorded": 1, "window_months": 6, ...}
+    config_json  = Column(Text, nullable=False)
+    is_active    = Column(Boolean, default=True, index=True)
+    note         = Column(String, nullable=True)      # why this change was made
+    created_at   = Column(DateTime, default=utcnow)
+    updated_by   = Column(String, nullable=True)
+
+
 class Opportunity(Base):
     """An opportunity card created by admin and visible to all users."""
 

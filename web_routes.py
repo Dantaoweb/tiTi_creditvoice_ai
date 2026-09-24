@@ -300,6 +300,10 @@ def register_web_routes(app):
     from web_token_routes import register_token_routes
     register_token_routes(app)
 
+    # ── Finance partners + business scorecard — split into web_finance_routes ──
+    from web_finance_routes import register_finance_routes
+    register_finance_routes(app)
+
     # ── TWA / Play Store: Digital Asset Links ────────────────────────────────
     @app.get("/.well-known/assetlinks.json")
     def assetlinks():

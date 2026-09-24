@@ -33,6 +33,7 @@ import Wallet       from "./pages/Wallet";
 import Thrift        from "./pages/Thrift";
 import FuelStation   from "./pages/FuelStation";
 import Opportunities from "./pages/Opportunities";
+import Scorecard from "./pages/Scorecard";
 import Terms        from "./pages/Terms";
 import Privacy      from "./pages/Privacy";
 import DataDeletion from "./pages/DataDeletion";
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="branches"     element={<Branches />}     />
           <Route path="automation"     element={<Automation />}     />
           <Route path="opportunities" element={<Opportunities />} />
+          <Route path="scorecard"    element={<Scorecard />}      />
           <Route path="admin"        element={<Admin />}          />
           <Route path="upgrade"      element={<Upgrade />}        />
           <Route path="profile"      element={<Profile />}        />

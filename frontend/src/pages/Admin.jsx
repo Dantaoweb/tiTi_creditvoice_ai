@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiFetch, apiPost, apiDelete } from "../lib/api";
+import { apiFetch, apiPost, apiPut, apiDelete } from "../lib/api";
 import { nairaFull, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import { Download, RefreshCw, Search, Ticket, Trash2, RotateCcw } from "lucide-react";
@@ -1254,7 +1254,443 @@ function PaymentsTab() {
   );
 }
 
-const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Token Codes", "Referrals", "Notify", "Failed Messages"];
+// ── Finance partners + scorecard rules ──────────────────────────────────────
+// Everything a partner deal depends on is editable here: their minimums, the
+// commission, and how businesses are scored. No code change per partner.
+
+const COMMISSION_TYPES = [
+  ["PERCENT_OF_ASSET", "% of asset value"],
+  ["FLAT_PER_DEAL", "Flat amount per deal"],
+  ["PERCENT_OF_REPAYMENTS", "% of repayments"],
+];
+const COMMISSION_DUE = [
+  ["ON_DELIVERY", "When the asset is delivered"],
+  ["ON_FIRST_REPAYMENT", "On first repayment"],
+  ["ON_COMPLETION", "When fully repaid"],
+];
+// The minimums a partner can demand. Keys match the backend's eligibility rules.
+const ELIGIBILITY_FIELDS = [
+  ["min_months_recorded", "Months of records"],
+  ["min_months_on_platform", "Months on CreditVoice"],
+  ["min_avg_monthly_sales", "Average monthly sales (₦)"],
+  ["min_monthly_sales_floor", "Lowest monthly sales (₦)"],
+  ["min_repeat_customer_pct", "% customers who return"],
+  ["min_collection_rate_pct", "% of credit collected"],
+  ["min_supplier_paid_pct", "% of suppliers paid"],
+  ["min_score", "Scorecard score"],
+  ["min_confidence", "Evidence confidence"],
+];
+
+const BLANK_PARTNER = {
+  name: "", contact_name: "", contact_phone: "", contact_email: "", logo_url: "",
+  asset_types: [], asset_value_min: null, asset_value_max: null, eligibility: {},
+  commission_type: "PERCENT_OF_ASSET", commission_value: 0,
+  commission_due_on: "ON_DELIVERY", notes: "", is_active: true,
+};
+
+function PartnerForm({ initial, onSaved, onCancel }) {
+  const [p, setP] = useState({ ...BLANK_PARTNER, ...(initial || {}) });
+  const [assets, setAssets] = useState((initial?.asset_types || []).join(", "));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k, v) => setP(prev => ({ ...prev, [k]: v }));
+  const setElig = (k, v) => setP(prev => ({
+    ...prev,
+    eligibility: { ...prev.eligibility, ...(v === "" ? { [k]: undefined } : { [k]: Number(v) }) },
+  }));
+
+  async function save() {
+    if (!p.name.trim()) { setErr("Partner name is required."); return; }
+    setBusy(true); setErr("");
+    const body = {
+      ...p,
+      asset_types: assets.split(",").map(s => s.trim()).filter(Boolean),
+      eligibility: Object.fromEntries(
+        Object.entries(p.eligibility || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")
+      ),
+    };
+    try {
+      if (initial?.id) await apiPut(`admin/finance-partners/${initial.id}`, body);
+      else await apiPost("admin/finance-partners", body);
+      onSaved();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-header">
+        <span className="card-title">{initial?.id ? `Edit ${initial.name}` : "New finance partner"}</span>
+      </div>
+      <div className="card-body" style={{ display: "grid", gap: 10 }}>
+        {err && <div className="modal-error">{err}</div>}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="form-group" style={{ flex: "1 1 220px", margin: 0 }}>
+            <label className="form-label">Partner name *</label>
+            <input value={p.name} onChange={e => set("name", e.target.value)} />
+          </div>
+          <div className="form-group" style={{ flex: "1 1 220px", margin: 0 }}>
+            <label className="form-label">What they finance (comma separated)</label>
+            <input value={assets} onChange={e => setAssets(e.target.value)} placeholder="motorcycle, freezer" />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="form-group" style={{ flex: "1 1 160px", margin: 0 }}>
+            <label className="form-label">Contact name</label>
+            <input value={p.contact_name || ""} onChange={e => set("contact_name", e.target.value)} />
+          </div>
+          <div className="form-group" style={{ flex: "1 1 160px", margin: 0 }}>
+            <label className="form-label">Contact phone</label>
+            <input value={p.contact_phone || ""} onChange={e => set("contact_phone", e.target.value)} />
+          </div>
+          <div className="form-group" style={{ flex: "1 1 160px", margin: 0 }}>
+            <label className="form-label">Contact email</label>
+            <input value={p.contact_email || ""} onChange={e => set("contact_email", e.target.value)} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="form-group" style={{ flex: "1 1 140px", margin: 0 }}>
+            <label className="form-label">Asset value from (₦)</label>
+            <input inputMode="numeric" value={p.asset_value_min ?? ""}
+              onChange={e => set("asset_value_min", e.target.value === "" ? null : parseAmt(e.target.value))} />
+          </div>
+          <div className="form-group" style={{ flex: "1 1 140px", margin: 0 }}>
+            <label className="form-label">Asset value to (₦)</label>
+            <input inputMode="numeric" value={p.asset_value_max ?? ""}
+              onChange={e => set("asset_value_max", e.target.value === "" ? null : parseAmt(e.target.value))} />
+          </div>
+        </div>
+
+        <div className="form-label" style={{ marginTop: 6 }}>Our commission</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="form-group" style={{ flex: "1 1 180px", margin: 0 }}>
+            <label className="form-label">Type</label>
+            <select value={p.commission_type} onChange={e => set("commission_type", e.target.value)}>
+              {COMMISSION_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="form-group" style={{ flex: "1 1 140px", margin: 0 }}>
+            <label className="form-label">
+              {p.commission_type === "FLAT_PER_DEAL" ? "Amount (₦)" : "Basis points (500 = 5%)"}
+            </label>
+            <input inputMode="numeric" value={p.commission_value ?? 0}
+              onChange={e => set("commission_value", parseAmt(e.target.value) || 0)} />
+          </div>
+          <div className="form-group" style={{ flex: "1 1 200px", margin: 0 }}>
+            <label className="form-label">Payable</label>
+            <select value={p.commission_due_on} onChange={e => set("commission_due_on", e.target.value)}>
+              {COMMISSION_DUE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="form-label" style={{ marginTop: 6 }}>
+          Their minimums <span className="text-subtle">— leave blank for no requirement</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {ELIGIBILITY_FIELDS.map(([key, label]) => (
+            <div className="form-group" key={key} style={{ flex: "1 1 170px", margin: 0 }}>
+              <label className="form-label" style={{ fontSize: 11 }}>{label}</label>
+              <input inputMode="numeric" value={p.eligibility?.[key] ?? ""}
+                onChange={e => setElig(key, e.target.value)} />
+            </div>
+          ))}
+        </div>
+
+        <div className="form-group" style={{ margin: 0 }}>
+          <label className="form-label">Internal notes</label>
+          <textarea rows={2} value={p.notes || ""} onChange={e => set("notes", e.target.value)} />
+        </div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+          <input type="checkbox" checked={!!p.is_active} onChange={e => set("is_active", e.target.checked)} />
+          Active — businesses can see this partner
+        </label>
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save partner"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FinancePartnersPanel() {
+  const [partners, setPartners] = useState([]);
+  const [editing, setEditing] = useState(null);   // partner object, or "new"
+  const [err, setErr] = useState("");
+
+  function load() {
+    apiFetch("admin/finance-partners")
+      .then(d => setPartners(d.partners || []))
+      .catch(e => setErr(e.message));
+  }
+  useEffect(load, []);
+
+  async function remove(p) {
+    if (!window.confirm(`Delete ${p.name}? Businesses will no longer see this partner.`)) return;
+    try { await apiDelete(`admin/finance-partners/${p.id}`); load(); }
+    catch (e) { setErr(e.message); }
+  }
+
+  const money = v => (v ? nairaFull(v) : "—");
+
+  return (
+    <div>
+      {err && <div style={{ color: "var(--rose)", marginBottom: 10 }}>{err}</div>}
+      {editing ? (
+        <PartnerForm
+          initial={editing === "new" ? null : editing}
+          onCancel={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+        />
+      ) : (
+        <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }} onClick={() => setEditing("new")}>
+          + Add finance partner
+        </button>
+      )}
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Finance partners <span className="text-subtle text-sm">({partners.length})</span></span>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Partner</th><th>Finances</th><th>Asset value</th><th>Commission</th><th>Minimums</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+              {partners.length === 0 ? (
+                <tr><td colSpan={7} className="td-muted">No partners yet.</td></tr>
+              ) : partners.map(p => (
+                <tr key={p.id}>
+                  <td>
+                    <strong>{p.name}</strong>
+                    {p.contact_phone && <div className="td-muted" style={{ fontSize: 11 }}>{p.contact_phone}</div>}
+                  </td>
+                  <td>{(p.asset_types || []).join(", ") || "—"}</td>
+                  <td className="td-muted">{money(p.asset_value_min)} – {money(p.asset_value_max)}</td>
+                  <td>
+                    {p.commission_type === "FLAT_PER_DEAL"
+                      ? nairaFull(p.commission_value)
+                      : `${(p.commission_value / 100).toFixed(2)}%`}
+                    <div className="td-muted" style={{ fontSize: 11 }}>
+                      {(COMMISSION_DUE.find(([v]) => v === p.commission_due_on) || [])[1]}
+                    </div>
+                  </td>
+                  <td className="td-muted" style={{ fontSize: 11 }}>
+                    {Object.keys(p.eligibility || {}).length === 0 ? "none" :
+                      Object.entries(p.eligibility).map(([k, v]) => (
+                        <div key={k}>{(ELIGIBILITY_FIELDS.find(([f]) => f === k) || [k, k])[1]}: {Number(v).toLocaleString()}</div>
+                      ))}
+                  </td>
+                  <td>
+                    <span className={`badge ${p.is_active ? "badge-green" : "badge-gray"}`}>
+                      {p.is_active ? "Active" : "Paused"}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="btn btn-ghost btn-xs" onClick={() => setEditing(p)}>Edit</button>
+                      <button className="btn btn-ghost btn-xs text-rose" onClick={() => remove(p)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScorecardRulesPanel() {
+  const [data, setData] = useState(null);
+  const [cfg, setCfg] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  function load() {
+    apiFetch("admin/scorecard-config")
+      .then(d => { setData(d); setCfg(JSON.parse(JSON.stringify(d.config))); })
+      .catch(e => setErr(e.message));
+  }
+  useEffect(load, []);
+
+  if (err) return <div style={{ color: "var(--rose)" }}>{err}</div>;
+  if (!cfg) return <p className="td-muted">Loading rules…</p>;
+
+  const setComp = (key, field, value) => setCfg(prev => ({
+    ...prev,
+    components: { ...prev.components, [key]: { ...prev.components[key], [field]: Number(value) } },
+  }));
+  const setTier = (i, field, value) => setCfg(prev => {
+    const tiers = prev.tiers.map((t, idx) => idx === i ? { ...t, [field]: field === "min_score" ? Number(value) : value } : t);
+    return { ...prev, tiers };
+  });
+
+  const totalWeight = Object.values(cfg.components || {}).reduce((s, c) => s + Number(c.weight || 0), 0);
+
+  async function runPreview() {
+    setBusy(true); setErr(""); setMsg("");
+    try { setPreview(await apiPost("admin/scorecard-preview", { config: cfg })); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function save() {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      const r = await apiPost("admin/scorecard-config", { config: cfg, note: note.trim() || null });
+      setMsg(`Saved as version ${r.version}. Previous versions are kept.`);
+      setNote(""); load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {msg && <div className="card card-body" style={{ color: "#166534" }}>{msg}</div>}
+
+      <div className="card">
+        <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
+          <span className="card-title">Scoring rules <span className="text-subtle text-sm">v{data.version}</span></span>
+          <span className="text-subtle text-sm">
+            Weights total {totalWeight}{totalWeight !== 100 ? " — they don't have to add to 100, scores are scaled" : ""}
+          </span>
+        </div>
+        <div className="card-body" style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="form-group" style={{ flex: "1 1 160px", margin: 0 }}>
+              <label className="form-label">Window (months of history to read)</label>
+              <input inputMode="numeric" value={cfg.window_months}
+                onChange={e => setCfg({ ...cfg, window_months: Number(e.target.value) || 1 })} />
+            </div>
+            <div className="form-group" style={{ flex: "1 1 200px", margin: 0 }}>
+              <label className="form-label">Minimum months before scoring</label>
+              <input inputMode="numeric" value={cfg.min_months_recorded}
+                onChange={e => setCfg({ ...cfg, min_months_recorded: Number(e.target.value) || 0 })} />
+            </div>
+          </div>
+
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Component</th><th>Weight</th><th>Scores 0 at</th><th>Scores 100 at</th></tr>
+              </thead>
+              <tbody>
+                {Object.entries(cfg.components || {}).map(([key, c]) => (
+                  <tr key={key}>
+                    <td>{c.label || key}<div className="td-muted" style={{ fontSize: 11 }}>{c.metric}</div></td>
+                    <td><input style={{ width: 70 }} inputMode="numeric" value={c.weight}
+                      onChange={e => setComp(key, "weight", e.target.value)} /></td>
+                    <td><input style={{ width: 110 }} inputMode="numeric" value={c.zero}
+                      onChange={e => setComp(key, "zero", e.target.value)} /></td>
+                    <td><input style={{ width: 110 }} inputMode="numeric" value={c.full}
+                      onChange={e => setComp(key, "full", e.target.value)} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="form-label">Tiers</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {(cfg.tiers || []).map((t, i) => (
+              <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input style={{ width: 130 }} value={t.name} onChange={e => setTier(i, "name", e.target.value)} />
+                <span className="text-subtle text-sm">from</span>
+                <input style={{ width: 70 }} inputMode="numeric" value={t.min_score}
+                  onChange={e => setTier(i, "min_score", e.target.value)} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="modal-footer" style={{ flexWrap: "wrap", gap: 8 }}>
+          <input placeholder="Why this change? (kept in history)" value={note}
+            onChange={e => setNote(e.target.value)} style={{ flex: "1 1 220px" }} />
+          <button className="btn btn-secondary" onClick={runPreview} disabled={busy}>
+            {busy ? "Working…" : "Preview effect"}
+          </button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>Save as new version</button>
+          <button className="btn btn-ghost" onClick={() => setCfg(JSON.parse(JSON.stringify(data.defaults)))}>
+            <RotateCcw size={13} /> Reset to defaults
+          </button>
+        </div>
+      </div>
+
+      {preview && (
+        <div className="card">
+          <div className="card-header"><span className="card-title">Effect on your businesses</span></div>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th></th><th>Live rules</th><th>Proposed</th></tr></thead>
+              <tbody>
+                <tr><td>Businesses checked</td><td>{preview.live.businesses}</td><td>{preview.proposed.businesses}</td></tr>
+                <tr><td>Scored</td><td>{preview.live.scored}</td><td>{preview.proposed.scored}</td></tr>
+                <tr><td>Not enough records</td><td>{preview.live.unscored}</td><td>{preview.proposed.unscored}</td></tr>
+                <tr><td>Average score</td><td>{preview.live.avg_score}</td><td><strong>{preview.proposed.avg_score}</strong></td></tr>
+                {Array.from(new Set([...Object.keys(preview.live.tiers), ...Object.keys(preview.proposed.tiers)])).map(tier => (
+                  <tr key={tier}>
+                    <td>{tier}</td>
+                    <td>{preview.live.tiers[tier] || 0}</td>
+                    <td>{preview.proposed.tiers[tier] || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-header"><span className="card-title">Change history</span></div>
+        <div className="table-scroll">
+          <table>
+            <thead><tr><th>Version</th><th>Note</th><th>By</th><th>When</th><th></th></tr></thead>
+            <tbody>
+              {(data.history || []).map(h => (
+                <tr key={h.version}>
+                  <td>v{h.version}</td>
+                  <td>{h.note || "—"}</td>
+                  <td className="td-muted">{h.updated_by || "—"}</td>
+                  <td className="td-muted">{h.created_at ? new Date(h.created_at).toLocaleString() : "—"}</td>
+                  <td>{h.is_active ? <span className="badge badge-green">Live</span> : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinanceTab() {
+  const [panel, setPanel] = useState("partners");
+  return (
+    <div>
+      <div className="page-tabs" style={{ marginBottom: 14 }}>
+        <button className={`page-tab${panel === "partners" ? " active" : ""}`} onClick={() => setPanel("partners")}>
+          Partners
+        </button>
+        <button className={`page-tab${panel === "rules" ? " active" : ""}`} onClick={() => setPanel("rules")}>
+          Scorecard rules
+        </button>
+      </div>
+      {panel === "partners" ? <FinancePartnersPanel /> : <ScorecardRulesPanel />}
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -1390,6 +1826,7 @@ export default function Admin() {
       {tab === "Payments"       && <PaymentsTab />}
       {tab === "Suppliers"      && <SuppliersTab />}
       {tab === "Opportunities"  && <OpportunitiesTab />}
+      {tab === "Finance"        && <FinanceTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}
       {tab === "Referrals"      && <ReferralSettingsTab />}
       {tab === "Notify"         && <NotifyTab />}
