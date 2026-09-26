@@ -54,7 +54,7 @@ function MonthlySales({ months }) {
   );
 }
 
-const REFERRAL_STATUS = {
+const APPLICATION_STATUS = {
   SUBMITTED: ["Sent to CreditVoice", "#92400e", "rgba(180,83,9,0.10)"],
   SHARED:    ["Shared with partner", "#1d4ed8", "rgba(29,78,216,0.10)"],
   IN_REVIEW: ["Partner reviewing", "#1d4ed8", "rgba(29,78,216,0.10)"],
@@ -65,7 +65,7 @@ const REFERRAL_STATUS = {
 };
 
 function StatusPill({ status }) {
-  const [label, color, bg] = REFERRAL_STATUS[status] || [status, "#6b7280", "rgba(107,114,128,0.12)"];
+  const [label, color, bg] = APPLICATION_STATUS[status] || [status, "#6b7280", "rgba(107,114,128,0.12)"];
   return <span className="badge" style={{ color, background: bg, fontWeight: 700 }}>{label}</span>;
 }
 
@@ -98,7 +98,7 @@ function ApplyModal({ offer, onClose, onDone }) {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
-          <span className="modal-title">Request an introduction — {offer.name}</span>
+          <span className="modal-title">Apply — {offer.name}</span>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
@@ -123,14 +123,14 @@ function ApplyModal({ offer, onClose, onDone }) {
               I agree to share my business record with <strong>{offer.name}</strong> — sales totals,
               how steadily I record, margin, how my customers pay and how I pay suppliers.
               My customers' names and phone numbers are never shared. I can withdraw this
-              request while it is still under review.
+              application while it is still under review.
             </span>
           </label>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={submit} disabled={busy || !consent}>
-            {busy ? "Sending…" : "Send request"}
+            {busy ? "Sending…" : "Send application"}
           </button>
         </div>
       </div>
@@ -138,22 +138,22 @@ function ApplyModal({ offer, onClose, onDone }) {
   );
 }
 
-function MyRequests({ referrals, onWithdraw }) {
-  if (!referrals || referrals.length === 0) return null;
+function MyApplications({ applications, onWithdraw }) {
+  if (!applications || applications.length === 0) return null;
   return (
     <div className="card">
-      <div className="card-header"><span className="card-title">My financing requests</span></div>
+      <div className="card-header"><span className="card-title">My financing applications</span></div>
       <div className="table-scroll">
         <table>
           <thead>
             <tr><th>Partner</th><th>Item</th><th>Ref</th><th>Sent</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
-            {referrals.map(r => (
+            {applications.map(r => (
               <tr key={r.id}>
                 <td><strong>{r.partner_name || "—"}</strong></td>
                 <td>{r.asset_requested || "—"}{r.asset_value ? ` · ${nairaFull(r.asset_value)}` : ""}</td>
-                <td className="td-mono td-muted">{r.referral_code}</td>
+                <td className="td-mono td-muted">{r.application_code}</td>
                 <td className="td-muted">{r.created_at ? dateStr(r.created_at) : "—"}</td>
                 <td>
                   <StatusPill status={r.status} />
@@ -219,7 +219,7 @@ function Offer({ offer, onApply }) {
             <StatusPill status={offer.applied_status} />
           ) : (
             <button className="btn btn-primary btn-sm" onClick={() => onApply(offer)}>
-              Request an introduction
+              Apply
             </button>
           )}
         </div>
@@ -231,14 +231,14 @@ function Offer({ offer, onApply }) {
 export default function Scorecard() {
   const [card, setCard] = useState(null);
   const [offers, setOffers] = useState(null);
-  const [referrals, setReferrals] = useState([]);
+  const [applications, setApplications] = useState([]);
   const [applying, setApplying] = useState(null);   // the offer being applied to
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   function loadOffers() {
-    return Promise.all([apiFetch("finance-offers"), apiFetch("my-referrals")])
-      .then(([o, r]) => { setOffers(o); setReferrals(r.referrals || []); });
+    return Promise.all([apiFetch("finance-offers"), apiFetch("my-applications")])
+      .then(([o, r]) => { setOffers(o); setApplications(r.applications || []); });
   }
 
   useEffect(() => {
@@ -248,8 +248,8 @@ export default function Scorecard() {
   }, []);
 
   async function withdraw(r) {
-    if (!window.confirm(`Withdraw your request to ${r.partner_name}? Your record will no longer be shared with them.`)) return;
-    try { await apiPost(`my-referrals/${r.id}/withdraw`, {}); await loadOffers(); }
+    if (!window.confirm(`Withdraw your application to ${r.partner_name}? Your record will no longer be shared with them.`)) return;
+    try { await apiPost(`my-applications/${r.id}/withdraw`, {}); await loadOffers(); }
     catch (e) { setError(e.message); }
   }
 
@@ -363,7 +363,7 @@ export default function Scorecard() {
         </div>
       </div>
 
-      <MyRequests referrals={referrals} onWithdraw={withdraw} />
+      <MyApplications applications={applications} onWithdraw={withdraw} />
 
       {applying && (
         <ApplyModal

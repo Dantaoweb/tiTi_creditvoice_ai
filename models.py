@@ -1497,7 +1497,7 @@ class ScorecardConfig(Base):
     updated_by   = Column(String, nullable=True)
 
 
-class FinanceReferral(Base):
+class FinanceApplication(Base):
     """A business asking to be introduced to a finance partner.
 
     Carries three things that make the introduction defensible months later:
@@ -1513,10 +1513,10 @@ class FinanceReferral(Base):
     WITHDRAWN at any point.
     """
 
-    __tablename__ = "finance_referrals"
+    __tablename__ = "finance_applications"
 
     id              = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    referral_code   = Column(String, unique=True, index=True)   # e.g. CV-7F3K2
+    application_code   = Column(String, unique=True, index=True)   # e.g. CV-7F3K2
     partner_id      = Column(String, ForeignKey("finance_partners.id"), index=True)
     owner_phone     = Column(String, index=True)
     business_name   = Column(String, nullable=True)

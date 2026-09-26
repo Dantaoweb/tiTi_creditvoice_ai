@@ -477,7 +477,7 @@ function TokenCodesTab() {
   );
 }
 
-// ── referral settings tab ────────────────────────────────────────────────────
+// ── application settings tab ────────────────────────────────────────────────────
 
 function ReferralSettingsTab() {
   const [amount, setAmount] = useState("");
@@ -489,10 +489,10 @@ function ReferralSettingsTab() {
   const [refLoading, setRefLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch("admin/referral-settings")
+    apiFetch("admin/application-settings")
       .then(d => { setCurrent(d.cashback_amount); setAmount(String(d.cashback_amount)); })
       .catch(() => {});
-    apiFetch("admin/referrals")
+    apiFetch("admin/applications")
       .then(setRefData)
       .catch(() => {})
       .finally(() => setRefLoading(false));
@@ -504,9 +504,9 @@ function ReferralSettingsTab() {
     if (isNaN(n) || n < 0) { setErr("Enter a valid amount (₦0 or more)."); return; }
     setBusy(true); setErr(""); setMsg("");
     try {
-      await apiPost("admin/referral-settings", { cashback_amount: n });
+      await apiPost("admin/application-settings", { cashback_amount: n });
       setCurrent(n);
-      setMsg(`Cashback set to ${nairaFull(n)} per successful referral.`);
+      setMsg(`Cashback set to ${nairaFull(n)} per successful application.`);
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -548,7 +548,7 @@ function ReferralSettingsTab() {
         {refLoading ? (
           <div className="td-muted" style={{ padding: 12 }}>Loading…</div>
         ) : referrers.length === 0 ? (
-          <div className="td-muted" style={{ padding: 12 }}>No referrals yet.</div>
+          <div className="td-muted" style={{ padding: 12 }}>No applications yet.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -561,12 +561,12 @@ function ReferralSettingsTab() {
               </thead>
               <tbody>
                 {referrers.map(r => (
-                  <tr key={r.referral_code} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <tr key={r.application_code} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "8px 10px" }}>
                       <div style={{ fontWeight: 600 }}>{r.referrer_name || "—"}</div>
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.referrer_phone || ""}</div>
                     </td>
-                    <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{r.referral_code}</td>
+                    <td style={{ padding: "8px 10px", fontFamily: "monospace" }}>{r.application_code}</td>
                     <td style={{ padding: "8px 10px" }}>{r.referrer_plan}</td>
                     <td style={{ padding: "8px 10px" }}>{r.total_invited}</td>
                     <td style={{ padding: "8px 10px" }}>{r.active_go}</td>
@@ -1673,19 +1673,252 @@ function ScorecardRulesPanel() {
   );
 }
 
+// ── Application pipeline + commission ledger ───────────────────────────────────
+// A deal moves SUBMITTED → SHARED → IN_REVIEW → APPROVED → DELIVERED. Reaching
+// the partner's trigger raises the fee, so the ledger follows the deal.
+
+const APP_STATUS_COLORS = {
+  SUBMITTED: ["#92400e", "rgba(180,83,9,0.10)"],
+  SHARED:    ["#1d4ed8", "rgba(29,78,216,0.10)"],
+  IN_REVIEW: ["#1d4ed8", "rgba(29,78,216,0.10)"],
+  APPROVED:  ["#166534", "rgba(22,101,52,0.10)"],
+  DELIVERED: ["#166534", "rgba(22,101,52,0.16)"],
+  DECLINED:  ["#b91c1c", "rgba(185,28,28,0.10)"],
+  WITHDRAWN: ["#6b7280", "rgba(107,114,128,0.12)"],
+};
+const COMMISSION_NEXT = { PENDING: "DUE", DUE: "INVOICED", INVOICED: "PAID", PAID: null };
+
+function AppStatus({ status }) {
+  const [color, background] = APP_STATUS_COLORS[status] || ["#6b7280", "rgba(107,114,128,0.12)"];
+  return <span className="badge" style={{ color, background, fontWeight: 700 }}>{status.replace("_", " ")}</span>;
+}
+
+function ApplicationRow({ r, onChanged, onOpen }) {
+  const [assetValue, setAssetValue] = useState(r.asset_value ?? "");
+  const [partnerRef, setPartnerRef] = useState(r.partner_ref ?? "");
+  const [reason, setReason] = useState(r.decline_reason ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function patch(body) {
+    setBusy(true); setErr("");
+    try { await apiFetch(`admin/finance-applications/${r.id}`, {}, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }); onChanged(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function commission(status) {
+    setBusy(true); setErr("");
+    try { await apiPost(`admin/finance-applications/${r.id}/commission`, { status }); onChanged(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  const nextFee = COMMISSION_NEXT[r.commission_status];
+
+  return (
+    <tr>
+      <td>
+        <button type="button" className="name-chip" onClick={() => onOpen(r)} title="View the frozen record">
+          <span>{r.business_name || r.owner_name || "—"}</span>
+        </button>
+        <div className="td-muted" style={{ fontSize: 11 }}>{r.owner_phone}</div>
+        <div className="td-mono td-muted" style={{ fontSize: 11 }}>{r.application_code}</div>
+      </td>
+      <td>
+        {r.partner_name || "—"}
+        <div className="td-muted" style={{ fontSize: 11 }}>{r.asset_requested || "—"}</div>
+      </td>
+      <td>
+        {r.tier || "Unrated"}
+        <div className="td-muted" style={{ fontSize: 11 }}>
+          {r.score ?? "—"} · {r.confidence}% evidence · rules v{r.config_version ?? "—"}
+        </div>
+      </td>
+      <td>
+        <input style={{ width: 110 }} inputMode="numeric" value={assetValue}
+          placeholder="asset ₦"
+          onChange={e => setAssetValue(e.target.value)}
+          onBlur={() => {
+            const v = assetValue === "" ? null : parseAmt(assetValue);
+            if (v !== (r.asset_value ?? null)) patch({ asset_value: v });
+          }} />
+        <input style={{ width: 110, marginTop: 4 }} value={partnerRef} placeholder="their ref"
+          onChange={e => setPartnerRef(e.target.value)}
+          onBlur={() => { if (partnerRef !== (r.partner_ref || "")) patch({ partner_ref: partnerRef }); }} />
+      </td>
+      <td>
+        <AppStatus status={r.status} />
+        {err && <div style={{ color: "var(--rose)", fontSize: 11 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+          {(r.next_statuses || []).filter(s => s !== "WITHDRAWN").map(s => (
+            <button key={s} className="btn btn-ghost btn-xs" disabled={busy}
+              onClick={() => s === "DECLINED"
+                ? patch({ status: s, decline_reason: reason || window.prompt("Reason for declining?") || "" })
+                : patch({ status: s })}>
+              → {s.replace("_", " ")}
+            </button>
+          ))}
+        </div>
+        {r.decline_reason && <div className="td-muted" style={{ fontSize: 11 }}>{r.decline_reason}</div>}
+      </td>
+      <td>
+        {r.commission_amount ? <strong>{nairaFull(r.commission_amount)}</strong> : <span className="td-muted">—</span>}
+        <div className="td-muted" style={{ fontSize: 11 }}>{r.commission_status}</div>
+        {r.commission_reason && !r.commission_amount && (
+          <div className="td-muted" style={{ fontSize: 11 }}>{r.commission_reason}</div>
+        )}
+        {nextFee && (
+          <button className="btn btn-ghost btn-xs" disabled={busy} onClick={() => commission(nextFee)}>
+            mark {nextFee.toLowerCase()}
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function SnapshotModal({ application, onClose }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    apiFetch(`admin/finance-applications/${application.id}`).then(setData).catch(e => setErr(e.message));
+  }, [application.id]);
+
+  const m = data?.snapshot?.metrics;
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-wide">
+        <div className="modal-header">
+          <span className="modal-title">
+            {application.business_name || application.owner_phone} — {application.application_code}
+          </span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          {err && <div className="modal-error">{err}</div>}
+          {!data ? <p className="td-muted">Loading…</p> : !m ? (
+            <p className="td-muted">No snapshot stored for this application.</p>
+          ) : (
+            <>
+              <p className="text-subtle text-sm">
+                The record exactly as it stood when they applied
+                {data.consent_given_at ? ` (consent given ${new Date(data.consent_given_at).toLocaleDateString()})` : ""}
+                — scored on rules v{data.config_version}. This is what a partner is shown.
+              </p>
+              <table className="history-table">
+                <tbody>
+                  <tr><td>Tier / score / evidence</td><td className="receipt-right">{data.tier} · {data.score ?? "—"} · {data.confidence}%</td></tr>
+                  <tr><td>Average monthly sales</td><td className="receipt-right">{nairaFull(m.avg_monthly_sales)}</td></tr>
+                  <tr><td>Lowest month</td><td className="receipt-right">{nairaFull(m.min_monthly_sales)}</td></tr>
+                  <tr><td>Months of records · recording days/month</td><td className="receipt-right">{m.months_recorded} · {m.avg_active_days_per_month}</td></tr>
+                  <tr><td>Gross margin (coverage)</td><td className="receipt-right">{m.gross_margin_pct}% ({m.margin_coverage_pct}%)</td></tr>
+                  <tr><td>Customers · returning</td><td className="receipt-right">{m.total_customers} · {m.repeat_customer_pct}%</td></tr>
+                  <tr><td>Credit given · collected</td><td className="receipt-right">{nairaFull(m.credit_sales)} · {m.collection_rate_pct}%</td></tr>
+                  <tr><td>Owed to them · due in 30 days</td><td className="receipt-right">{nairaFull(m.receivables)} · {nairaFull(m.expected_next_30_days)}</td></tr>
+                  <tr><td>Suppliers paid · overdue</td><td className="receipt-right">{m.supplier_paid_pct}% · {nairaFull(m.overdue_payables)}</td></tr>
+                  <tr><td>Sales tied to a named customer</td><td className="receipt-right">{m.corroborated_revenue_pct}%</td></tr>
+                </tbody>
+              </table>
+              {application.note && (
+                <p style={{ marginTop: 10, fontSize: 13 }}><strong>They said:</strong> {application.note}</p>
+              )}
+            </>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApplicationsPanel() {
+  const [data, setData] = useState(null);
+  const [status, setStatus] = useState("");
+  const [open, setOpen] = useState(null);
+  const [err, setErr] = useState("");
+
+  function load() {
+    apiFetch("admin/finance-applications", status ? { status } : {})
+      .then(setData).catch(e => setErr(e.message));
+  }
+  useEffect(load, [status]);
+
+  if (err) return <div style={{ color: "var(--rose)" }}>{err}</div>;
+  if (!data) return <p className="td-muted">Loading applications…</p>;
+
+  const t = data.commission_totals || {};
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div className="metrics-grid">
+        <MetricCardLite label="Fees due" value={nairaFull(t.DUE || 0)} />
+        <MetricCardLite label="Invoiced" value={nairaFull(t.INVOICED || 0)} />
+        <MetricCardLite label="Paid to us" value={nairaFull(t.PAID || 0)} />
+        <MetricCardLite label="Delivered deals" value={data.counts?.DELIVERED || 0} />
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {["", "SUBMITTED", "SHARED", "IN_REVIEW", "APPROVED", "DELIVERED", "DECLINED", "WITHDRAWN"].map(s => (
+          <button key={s || "all"} className={`btn btn-sm btn-pill ${status === s ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setStatus(s)}>
+            {s ? `${s.replace("_", " ")} (${data.counts?.[s] ?? 0})` : "All"}
+          </button>
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Applications <span className="text-subtle text-sm">({data.applications.length})</span></span>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Business</th><th>Partner</th><th>Scorecard</th><th>Deal</th><th>Stage</th><th>Our fee</th></tr>
+            </thead>
+            <tbody>
+              {data.applications.length === 0 ? (
+                <tr><td colSpan={6} className="td-muted">No applications{status ? " at this stage" : " yet"}.</td></tr>
+              ) : data.applications.map(r => (
+                <ApplicationRow key={r.id} r={r} onChanged={load} onOpen={setOpen} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {open && <SnapshotModal application={open} onClose={() => setOpen(null)} />}
+    </div>
+  );
+}
+
+function MetricCardLite({ label, value }) {
+  return (
+    <div className="card card-body">
+      <div className="text-subtle text-sm">{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800 }}>{value}</div>
+    </div>
+  );
+}
+
 function FinanceTab() {
-  const [panel, setPanel] = useState("partners");
+  const [panel, setPanel] = useState("applications");
+  const PANELS = [["applications", "Applications"], ["partners", "Partners"], ["rules", "Scorecard rules"]];
   return (
     <div>
       <div className="page-tabs" style={{ marginBottom: 14 }}>
-        <button className={`page-tab${panel === "partners" ? " active" : ""}`} onClick={() => setPanel("partners")}>
-          Partners
-        </button>
-        <button className={`page-tab${panel === "rules" ? " active" : ""}`} onClick={() => setPanel("rules")}>
-          Scorecard rules
-        </button>
+        {PANELS.map(([key, label]) => (
+          <button key={key} className={`page-tab${panel === key ? " active" : ""}`} onClick={() => setPanel(key)}>
+            {label}
+          </button>
+        ))}
       </div>
-      {panel === "partners" ? <FinancePartnersPanel /> : <ScorecardRulesPanel />}
+      {panel === "applications" ? <ApplicationsPanel />
+        : panel === "partners" ? <FinancePartnersPanel />
+        : <ScorecardRulesPanel />}
     </div>
   );
 }
@@ -1828,7 +2061,7 @@ export default function Admin() {
       {tab === "Opportunities"  && <OpportunitiesTab />}
       {tab === "Finance"        && <FinanceTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}
-      {tab === "Referrals"      && <ReferralSettingsTab />}
+      {tab === "Referrals"        && <ReferralSettingsTab />}
       {tab === "Notify"         && <NotifyTab />}
       {tab === "Failed Messages"&& <FailedParsesTab />}
     </div>

@@ -1,12 +1,12 @@
 """
 Asking to be introduced to a finance partner: explicit consent, a frozen
-scorecard snapshot, and a referral code so a closed deal is attributable.
+scorecard snapshot, and an application code so a closed deal is attributable.
 """
 import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("ENVIRONMENT", "development")
-os.environ.setdefault("WEB_SECRET_KEY", "test-secret-key-for-finance-referrals-000000")
+os.environ.setdefault("WEB_SECRET_KEY", "test-secret-key-for-finance-applications-000000")
 ADMIN_PHONE = "2348090003000"
 os.environ["APP_ADMIN_PHONES"] = ADMIN_PHONE
 
@@ -20,7 +20,7 @@ from main import app
 import web_auth
 import business_scorecard as bs
 from database import SessionLocal
-from models import Customer, FinanceReferral, Transaction, User, utcnow
+from models import Customer, FinanceApplication, Transaction, User, utcnow
 
 client = TestClient(app, raise_server_exceptions=True)
 _seq = iter(range(1000, 2000))
@@ -94,7 +94,7 @@ def test_apply_records_consent_snapshot_and_code(admin):
     r = _apply(cook, pid)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["referral_code"].startswith("CV-") and len(body["referral_code"]) == 8
+    assert body["application_code"].startswith("CV-") and len(body["application_code"]) == 8
     assert body["status"] == "SUBMITTED"
     assert body["consent_given_at"] is not None
     assert body["asset_value"] == 1_200_000
@@ -105,8 +105,8 @@ def test_apply_records_consent_snapshot_and_code(admin):
 
     db = SessionLocal()
     try:
-        stored = json.loads(db.query(FinanceReferral).filter(
-            FinanceReferral.id == body["id"]).first().snapshot_json)
+        stored = json.loads(db.query(FinanceApplication).filter(
+            FinanceApplication.id == body["id"]).first().snapshot_json)
         assert stored["metrics"]["avg_monthly_sales"] == card["metrics"]["avg_monthly_sales"]
     finally:
         db.close()
@@ -131,7 +131,7 @@ def test_snapshot_does_not_move_when_rules_or_trading_change_later(admin):
     finally:
         db.close()
 
-    after = client.get("/app/api/my-referrals", cookies=cook).json()["referrals"][0]
+    after = client.get("/app/api/my-applications", cookies=cook).json()["applications"][0]
     assert after["score"] == before["score"]
     assert after["config_version"] == before["config_version"]
     # …while a fresh scorecard has moved.
@@ -143,7 +143,7 @@ def test_consent_is_required(admin):
     pid = _partner(admin)
     r = _apply(cook, pid, consent=False)
     assert r.status_code == 400 and "consent" in r.json()["detail"].lower()
-    assert client.get("/app/api/my-referrals", cookies=cook).json()["referrals"] == []
+    assert client.get("/app/api/my-applications", cookies=cook).json()["applications"] == []
 
 
 def test_one_open_request_per_partner_and_reapply_after_withdrawing(admin):
@@ -151,15 +151,15 @@ def test_one_open_request_per_partner_and_reapply_after_withdrawing(admin):
     pid = _partner(admin)
     first = _apply(cook, pid).json()
     again = _apply(cook, pid)
-    assert again.status_code == 400 and first["referral_code"] in again.json()["detail"]
+    assert again.status_code == 400 and first["application_code"] in again.json()["detail"]
 
-    w = client.post(f"/app/api/my-referrals/{first['id']}/withdraw", cookies=cook)
+    w = client.post(f"/app/api/my-applications/{first['id']}/withdraw", cookies=cook)
     assert w.status_code == 200, w.text
     assert w.json()["status"] == "WITHDRAWN"
     assert w.json()["consent_revoked_at"] is not None
 
     assert _apply(cook, pid).status_code == 200      # free to try again
-    assert len(client.get("/app/api/my-referrals", cookies=cook).json()["referrals"]) == 2
+    assert len(client.get("/app/api/my-applications", cookies=cook).json()["applications"]) == 2
 
 
 def test_cannot_withdraw_once_approved_or_delivered(admin):
@@ -168,11 +168,11 @@ def test_cannot_withdraw_once_approved_or_delivered(admin):
     rid = _apply(cook, pid).json()["id"]
     db = SessionLocal()
     try:
-        db.query(FinanceReferral).filter(FinanceReferral.id == rid).first().status = "APPROVED"
+        db.query(FinanceApplication).filter(FinanceApplication.id == rid).first().status = "APPROVED"
         db.commit()
     finally:
         db.close()
-    r = client.post(f"/app/api/my-referrals/{rid}/withdraw", cookies=cook)
+    r = client.post(f"/app/api/my-applications/{rid}/withdraw", cookies=cook)
     assert r.status_code == 400 and "approved" in r.json()["detail"].lower()
 
 
@@ -192,5 +192,5 @@ def test_another_business_cannot_withdraw_someone_elses_request(admin):
     pid = _partner(admin)
     rid = _apply(cook, pid).json()["id"]
     _other, other_cook = _business()
-    r = client.post(f"/app/api/my-referrals/{rid}/withdraw", cookies=other_cook)
+    r = client.post(f"/app/api/my-applications/{rid}/withdraw", cookies=other_cook)
     assert r.status_code == 404

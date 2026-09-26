@@ -130,6 +130,15 @@ def test_only_admins_can_manage_partners():
 def test_admin_edits_scorecard_rules_and_sees_the_effect_before_saving(admin):
     _business(months=4, per_month=4, amount=100_000)
 
+    # Start from the built-in rules: other test modules share this database and
+    # may have left a tighter config live, which would invert the comparison.
+    import business_scorecard as bs
+    db = SessionLocal()
+    try:
+        bs.save_config(db, bs.DEFAULT_CONFIG, updated_by="test", note="baseline")
+    finally:
+        db.close()
+
     live = client.get("/app/api/admin/scorecard-config", cookies=admin).json()
     assert live["config"]["components"]["sales_volume"]["weight"] == 20
     assert live["defaults"]["window_months"] == 6

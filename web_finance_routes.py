@@ -15,7 +15,7 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from database import SessionLocal
-from models import FinancePartner, FinanceReferral, ScorecardConfig, User, utcnow
+from models import FinancePartner, FinanceApplication, ScorecardConfig, User, utcnow
 from web_auth import require_web_auth
 from web_common import _admin_rate_check, _session_owner_phone
 
@@ -40,6 +40,19 @@ class PartnerRequest(BaseModel):
 class ScorecardConfigRequest(BaseModel):
     config: dict
     note: Optional[str] = Field(default=None, max_length=300)
+
+
+class ApplicationUpdateRequest(BaseModel):
+    status: Optional[str] = Field(default=None, max_length=20)
+    asset_value: Optional[int] = None          # as finally quoted by the partner
+    partner_ref: Optional[str] = Field(default=None, max_length=120)
+    decline_reason: Optional[str] = Field(default=None, max_length=300)
+    admin_notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class CommissionRequest(BaseModel):
+    status: str = Field(max_length=20)         # DUE | INVOICED | PAID | PENDING
+    amount: Optional[int] = None               # override the calculated figure
 
 
 class ApplyRequest(BaseModel):
@@ -92,13 +105,13 @@ def _partner_dict(p, include_internal=True):
     return out
 
 
-def _referral_code(db):
+def _application_code(db):
     """Short, quotable code so a closed deal can be traced back to us."""
     import secrets
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no look-alikes
     for _ in range(20):
         code = "CV-" + "".join(secrets.choice(alphabet) for _ in range(5))
-        if not db.query(FinanceReferral).filter(FinanceReferral.referral_code == code).first():
+        if not db.query(FinanceApplication).filter(FinanceApplication.application_code == code).first():
             return code
     return "CV-" + secrets.token_hex(4).upper()
 
@@ -107,11 +120,48 @@ def _referral_code(db):
 # delivered, withdrawing would rewrite history the fee depends on.
 _WITHDRAWABLE = {"SUBMITTED", "SHARED", "IN_REVIEW"}
 
+# The pipeline, as a graph. Enforced so an application can't jump from SUBMITTED to
+# DELIVERED (which would make a fee payable with no record of the steps), and so
+# a finished application can't be quietly reopened.
+_TRANSITIONS = {
+    "SUBMITTED": {"SHARED", "DECLINED", "WITHDRAWN"},
+    "SHARED":    {"IN_REVIEW", "APPROVED", "DECLINED", "WITHDRAWN"},
+    "IN_REVIEW": {"APPROVED", "DECLINED", "WITHDRAWN"},
+    "APPROVED":  {"DELIVERED", "DECLINED"},
+    "DELIVERED": set(),
+    "DECLINED":  set(),
+    "WITHDRAWN": set(),
+}
 
-def _referral_dict(r, partner=None):
+_COMMISSION_STATES = {"PENDING", "DUE", "INVOICED", "PAID"}
+
+
+def calculate_commission(partner, application):
+    """(amount, reason) for this deal under the partner's terms.
+
+    A percentage of repayments can only be known once repayments are recorded,
+    so it returns None with a reason rather than a misleading zero.
+    """
+    if not partner:
+        return None, "Partner record is missing."
+    kind = partner.commission_type
+    value = int(partner.commission_value or 0)
+    if kind == "FLAT_PER_DEAL":
+        return value, None
+    if kind == "PERCENT_OF_ASSET":
+        if not application.asset_value:
+            return None, "Enter the asset value the partner financed."
+        # commission_value is basis points: 500 = 5%.
+        return int(round(int(application.asset_value) * value / 10000)), None
+    if kind == "PERCENT_OF_REPAYMENTS":
+        return None, "Calculated from recorded repayments (not tracked yet)."
+    return None, f"Unknown commission type: {kind}"
+
+
+def _application_dict(r, partner=None):
     return {
         "id": r.id,
-        "referral_code": r.referral_code,
+        "application_code": r.application_code,
         "partner_id": r.partner_id,
         "partner_name": partner.name if partner else None,
         "asset_requested": r.asset_requested,
@@ -320,6 +370,194 @@ def register_finance_routes(app):
         finally:
             db.close()
 
+    # ── Admin: application pipeline + commission ledger ──────────────────────
+    def _admin_application_dict(r, partner, owner=None, commission_reason=None):
+        out = _application_dict(r, partner)
+        out.update({
+            "business_name": r.business_name,
+            "owner_phone": r.owner_phone,
+            "owner_name": owner.name if owner else None,
+            "partner_ref": r.partner_ref,
+            "admin_notes": r.admin_notes,
+            "commission_amount": r.commission_amount,
+            "commission_status": r.commission_status,
+            "commission_reason": commission_reason,
+            "commission_marked_at": r.commission_marked_at.isoformat() if r.commission_marked_at else None,
+            "next_statuses": sorted(_TRANSITIONS.get(r.status, set())),
+        })
+        return out
+
+    @app.get("/app/api/admin/finance-applications")
+    def admin_list_applications(
+        session: dict = Depends(require_web_auth),
+        status: str = "",
+        partner_id: str = "",
+    ):
+        db = SessionLocal()
+        try:
+            _require_admin(db, session)
+            q = (
+                db.query(FinanceApplication, FinancePartner)
+                .outerjoin(FinancePartner, FinanceApplication.partner_id == FinancePartner.id)
+            )
+            if status:
+                q = q.filter(FinanceApplication.status == status.upper())
+            if partner_id:
+                q = q.filter(FinanceApplication.partner_id == partner_id)
+            rows = q.order_by(FinanceApplication.created_at.desc()).limit(300).all()
+
+            owners = {}
+            phones = [r.owner_phone for r, _p in rows if r.owner_phone]
+            if phones:
+                owners = {u.phone: u for u in db.query(User).filter(User.phone.in_(phones)).all()}
+
+            applications, totals = [], {"DUE": 0, "INVOICED": 0, "PAID": 0}
+            for r, p in rows:
+                amount, reason = calculate_commission(p, r)
+                applications.append(_admin_application_dict(r, p, owners.get(r.owner_phone), reason))
+                if r.commission_status in totals:
+                    totals[r.commission_status] += int(r.commission_amount or 0)
+            return {
+                "applications": applications,
+                "commission_totals": totals,
+                "counts": {
+                    s: sum(1 for r in applications if r["status"] == s)
+                    for s in _TRANSITIONS
+                },
+            }
+        finally:
+            db.close()
+
+    @app.get("/app/api/admin/finance-applications/{application_id}")
+    def admin_application_detail(application_id: str, session: dict = Depends(require_web_auth)):
+        """The full frozen snapshot — what this business's record looked like when
+        they applied. This is what gets shared with the partner."""
+        db = SessionLocal()
+        try:
+            _require_admin(db, session)
+            r = db.query(FinanceApplication).filter(FinanceApplication.id == application_id).first()
+            if not r:
+                raise HTTPException(status_code=404, detail="Application not found.")
+            partner = db.query(FinancePartner).filter(FinancePartner.id == r.partner_id).first()
+            owner = db.query(User).filter(User.phone == r.owner_phone).first()
+            amount, reason = calculate_commission(partner, r)
+            out = _admin_application_dict(r, partner, owner, reason)
+            out["commission_calculated"] = amount
+            out["snapshot"] = _json_load(r.snapshot_json, {})
+            return out
+        finally:
+            db.close()
+
+    @app.patch("/app/api/admin/finance-applications/{application_id}")
+    def admin_update_application(application_id: str, payload: ApplicationUpdateRequest,
+                              session: dict = Depends(require_web_auth)):
+        """Move an application along the pipeline and record the partner's numbers.
+
+        Reaching the partner's commission trigger (e.g. DELIVERED) calculates the
+        fee and marks it DUE, so the ledger follows the deal rather than memory.
+        """
+        db = SessionLocal()
+        try:
+            user = _require_admin(db, session)
+            r = db.query(FinanceApplication).filter(FinanceApplication.id == application_id).first()
+            if not r:
+                raise HTTPException(status_code=404, detail="Application not found.")
+            partner = db.query(FinancePartner).filter(FinancePartner.id == r.partner_id).first()
+            now = utcnow()
+
+            if payload.asset_value is not None:
+                if payload.asset_value < 0:
+                    raise HTTPException(status_code=400, detail="Asset value cannot be negative.")
+                r.asset_value = payload.asset_value
+            if payload.partner_ref is not None:
+                r.partner_ref = payload.partner_ref.strip() or None
+            if payload.admin_notes is not None:
+                r.admin_notes = payload.admin_notes.strip() or None
+            if payload.decline_reason is not None:
+                r.decline_reason = payload.decline_reason.strip() or None
+
+            if payload.status:
+                new = payload.status.upper()
+                if new not in _TRANSITIONS:
+                    raise HTTPException(status_code=400, detail=f"Unknown status: {new}")
+                if new != r.status and new not in _TRANSITIONS.get(r.status, set()):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Cannot go from {r.status} to {new}. "
+                               f"Allowed: {', '.join(sorted(_TRANSITIONS.get(r.status, set()))) or 'none'}.",
+                    )
+                if new == "DECLINED" and not (r.decline_reason or "").strip():
+                    raise HTTPException(status_code=400, detail="Give a reason when declining.")
+                r.status = new
+                if new == "APPROVED":
+                    r.approved_at = r.approved_at or now
+                if new == "DELIVERED":
+                    r.delivered_at = r.delivered_at or now
+
+                # Commission becomes due at the trigger the partner agreed to.
+                due_on = (partner.commission_due_on if partner else "ON_DELIVERY")
+                triggered = (
+                    (due_on == "ON_DELIVERY" and new == "DELIVERED")
+                    # The later triggers need repayment records, which arrive with
+                    # installment tracking; the ledger stays PENDING until then.
+                )
+                if triggered and r.commission_status == "PENDING":
+                    amount, _reason = calculate_commission(partner, r)
+                    if amount is not None:
+                        r.commission_amount = amount
+                        r.commission_status = "DUE"
+                        r.commission_marked_at = now
+
+            r.updated_at = now
+            _audit(db, user, "ADMIN_SETTINGS_CHANGE", f"finance_application:{r.id}:{r.status}")
+            db.commit()
+            db.refresh(r)
+            amount, reason = calculate_commission(partner, r)
+            out = _admin_application_dict(r, partner, None, reason)
+            out["commission_calculated"] = amount
+            return out
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/finance-applications/{application_id}/commission")
+    def admin_set_commission(application_id: str, payload: CommissionRequest,
+                             session: dict = Depends(require_web_auth)):
+        """Move the fee through the ledger: DUE → INVOICED → PAID (or back to
+        PENDING), optionally overriding the calculated amount for a deal that was
+        agreed differently."""
+        db = SessionLocal()
+        try:
+            user = _require_admin(db, session)
+            r = db.query(FinanceApplication).filter(FinanceApplication.id == application_id).first()
+            if not r:
+                raise HTTPException(status_code=404, detail="Application not found.")
+            state = payload.status.upper()
+            if state not in _COMMISSION_STATES:
+                raise HTTPException(status_code=400, detail=f"status must be one of {sorted(_COMMISSION_STATES)}")
+            if payload.amount is not None:
+                if payload.amount < 0:
+                    raise HTTPException(status_code=400, detail="Amount cannot be negative.")
+                r.commission_amount = payload.amount
+            if state != "PENDING" and not r.commission_amount:
+                partner = db.query(FinancePartner).filter(FinancePartner.id == r.partner_id).first()
+                amount, reason = calculate_commission(partner, r)
+                if amount is None:
+                    raise HTTPException(status_code=400, detail=reason or "No commission amount to record.")
+                r.commission_amount = amount
+            r.commission_status = state
+            r.commission_marked_at = utcnow()
+            r.updated_at = utcnow()
+            _audit(db, user, "ADMIN_SETTINGS_CHANGE", f"finance_commission:{r.id}:{state}")
+            db.commit()
+            db.refresh(r)
+            return {
+                "id": r.id, "commission_status": r.commission_status,
+                "commission_amount": r.commission_amount,
+                "commission_marked_at": r.commission_marked_at.isoformat() if r.commission_marked_at else None,
+            }
+        finally:
+            db.close()
+
     # ── Business owner: my scorecard + what I qualify for ─────────────────
     @app.get("/app/api/scorecard")
     def my_scorecard(session: dict = Depends(require_web_auth)):
@@ -357,8 +595,8 @@ def register_finance_routes(app):
             # So the page can show "applied" instead of offering again.
             applied = {
                 r.partner_id: r.status
-                for r in db.query(FinanceReferral).filter(
-                    FinanceReferral.owner_phone == owner_phone
+                for r in db.query(FinanceApplication).filter(
+                    FinanceApplication.owner_phone == owner_phone
                 ).all()
             }
             for offer in offers:
@@ -397,22 +635,22 @@ def register_finance_routes(app):
             if not partner:
                 raise HTTPException(status_code=404, detail="Partner not found.")
 
-            open_already = db.query(FinanceReferral).filter(
-                FinanceReferral.owner_phone == owner_phone,
-                FinanceReferral.partner_id == partner_id,
-                FinanceReferral.status.notin_(["DECLINED", "WITHDRAWN"]),
+            open_already = db.query(FinanceApplication).filter(
+                FinanceApplication.owner_phone == owner_phone,
+                FinanceApplication.partner_id == partner_id,
+                FinanceApplication.status.notin_(["DECLINED", "WITHDRAWN"]),
             ).first()
             if open_already:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"You already have a request with {partner.name} ({open_already.referral_code}).",
+                    detail=f"You already have a request with {partner.name} ({open_already.application_code}).",
                 )
 
             owner = db.query(User).filter(User.phone == owner_phone).first()
             card = score_business(db, owner_phone)
             now = utcnow()
-            referral = FinanceReferral(
-                referral_code=_referral_code(db),
+            application = FinanceApplication(
+                application_code=_application_code(db),
                 partner_id=partner.id,
                 owner_phone=owner_phone,
                 business_name=(owner.business_type_label or owner.name) if owner else None,
@@ -429,39 +667,39 @@ def register_finance_routes(app):
                 status="SUBMITTED",
                 created_at=now,
             )
-            db.add(referral)
+            db.add(application)
             db.commit()
-            db.refresh(referral)
-            return _referral_dict(referral, partner)
+            db.refresh(application)
+            return _application_dict(application, partner)
         finally:
             db.close()
 
-    @app.get("/app/api/my-referrals")
-    def my_referrals(session: dict = Depends(require_web_auth)):
+    @app.get("/app/api/my-applications")
+    def my_applications(session: dict = Depends(require_web_auth)):
         """This business's introduction requests and where each one stands."""
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
             rows = (
-                db.query(FinanceReferral, FinancePartner)
-                .outerjoin(FinancePartner, FinanceReferral.partner_id == FinancePartner.id)
-                .filter(FinanceReferral.owner_phone == owner_phone)
-                .order_by(FinanceReferral.created_at.desc())
+                db.query(FinanceApplication, FinancePartner)
+                .outerjoin(FinancePartner, FinanceApplication.partner_id == FinancePartner.id)
+                .filter(FinanceApplication.owner_phone == owner_phone)
+                .order_by(FinanceApplication.created_at.desc())
                 .all()
             )
-            return {"referrals": [_referral_dict(r, p) for r, p in rows]}
+            return {"applications": [_application_dict(r, p) for r, p in rows]}
         finally:
             db.close()
 
-    @app.post("/app/api/my-referrals/{referral_id}/withdraw")
-    def withdraw_referral(referral_id: str, session: dict = Depends(require_web_auth)):
+    @app.post("/app/api/my-applications/{application_id}/withdraw")
+    def withdraw_application(application_id: str, session: dict = Depends(require_web_auth)):
         """Withdraw the request and revoke consent to share the record."""
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
-            r = db.query(FinanceReferral).filter(
-                FinanceReferral.id == referral_id,
-                FinanceReferral.owner_phone == owner_phone,
+            r = db.query(FinanceApplication).filter(
+                FinanceApplication.id == application_id,
+                FinanceApplication.owner_phone == owner_phone,
             ).first()
             if not r:
                 raise HTTPException(status_code=404, detail="Request not found.")
@@ -476,6 +714,6 @@ def register_finance_routes(app):
             r.updated_at = now
             db.commit()
             db.refresh(r)
-            return _referral_dict(r)
+            return _application_dict(r)
         finally:
             db.close()
