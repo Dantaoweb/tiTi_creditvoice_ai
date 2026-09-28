@@ -49,26 +49,30 @@ DEFAULT_CONFIG = {
         "margin": {
             "label": "Gross margin", "metric": "gross_margin_pct",
             "weight": 10, "zero": 0, "full": 30, "higher_is_better": True,
+            # No cost prices recorded → margin cannot be measured at all.
+            "requires": "margin_coverage_pct",
         },
         "repeat_customers": {
             "label": "Customers who return", "metric": "repeat_customer_pct",
             "weight": 10, "zero": 0, "full": 50, "higher_is_better": True,
+            "requires": "active_customers",   # a cash-only kiosk names no customers
         },
         "collections": {
             "label": "Credit collected", "metric": "collection_rate_pct",
             "weight": 10, "zero": 30, "full": 90, "higher_is_better": True,
+            "requires": "credit_sales",        # sells nothing on credit
         },
         "supplier_discipline": {
             "label": "Pays suppliers", "metric": "supplier_paid_pct",
             "weight": 10, "zero": 40, "full": 100, "higher_is_better": True,
+            "requires": "supplier_purchases_total",   # doesn't track suppliers
         },
         # The strongest signal there is — but only for a business that has been
-        # financed before. `only_if` drops the component (and its weight) for
-        # everyone else, instead of scoring them zero for having no history.
+        # financed before.
         "repayment_record": {
             "label": "Repays financing on time", "metric": "repayment_on_time_pct",
             "weight": 20, "zero": 0, "full": 100, "higher_is_better": True,
-            "only_if": "has_financing",
+            "requires": "has_financing",
         },
     },
     # Highest cut-off that the score reaches wins; below the lowest → "Unrated".
@@ -380,11 +384,19 @@ def score_business(db, owner_phone, config=None, version=None):
         version, config = active_config(db)
     metrics = compute_metrics(db, owner_phone, int(config.get("window_months", 6)))
 
-    components, weighted, total_weight = [], 0.0, 0.0
+    components, skipped, weighted, total_weight = [], [], 0.0, 0.0
     for key, spec in (config.get("components") or {}).items():
-        gate = spec.get("only_if")
+        # A business that doesn't do something must not be scored 0 for it — a
+        # cash-only kiosk has no credit to collect, and plenty of traders never
+        # record suppliers. The component drops out and its weight goes to the
+        # rest, so the score reflects how they actually trade.
+        gate = spec.get("requires") or spec.get("only_if")
         if gate and not metrics.get(gate):
-            continue      # not applicable to this business — don't penalise it
+            skipped.append({
+                "key": key, "label": spec.get("label", key),
+                "metric": spec.get("metric"), "reason_metric": gate,
+            })
+            continue
         value = metrics.get(spec.get("metric"))
         sub = _component_score(value, spec)
         weight = float(spec.get("weight", 0) or 0)
@@ -397,6 +409,13 @@ def score_business(db, owner_phone, config=None, version=None):
 
     score = round(weighted / total_weight, 1) if total_weight else 0.0
     enough = metrics["months_recorded"] >= int(config.get("min_months_recorded", 1))
+    reason = None
+    if not enough:
+        reason = (f"Only {metrics['months_recorded']} month(s) of records — "
+                  f"{config.get('min_months_recorded', 1)} required.")
+    elif total_weight <= 0:
+        enough = False
+        reason = "Nothing measurable yet — no scoring rule applies to this business."
     return {
         "config_version": version,
         "scored": enough,
@@ -404,11 +423,11 @@ def score_business(db, owner_phone, config=None, version=None):
         "tier": _tier_for(score, config) if enough else config.get("unrated_label", "Unrated"),
         "confidence": _confidence(metrics, config),
         "components": sorted(components, key=lambda c: -c["weight"]),
+        # Named so a partner can see what was NOT counted, rather than wondering
+        # why a weight is missing.
+        "not_applicable": skipped,
         "metrics": metrics,
-        "not_scored_reason": None if enough else (
-            f"Only {metrics['months_recorded']} month(s) of records — "
-            f"{config.get('min_months_recorded', 1)} required."
-        ),
+        "not_scored_reason": reason,
     }
 
 

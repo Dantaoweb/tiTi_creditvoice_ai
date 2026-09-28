@@ -191,7 +191,10 @@ def test_a_strong_business_scores_higher_than_a_weak_one():
     assert s["score"] > w["score"]
     assert s["confidence"] > w["confidence"]
     assert {c["key"] for c in s["components"]} >= {"sales_volume", "consistency", "tenure"}
-    assert sum(c["weight"] for c in s["components"]) == 100
+    # Components with nothing to measure are skipped rather than scored 0, so the
+    # counted weights are whatever applies to this business — never more than 100.
+    assert 0 < sum(c["weight"] for c in s["components"]) <= 100
+    assert {x["key"] for x in s["not_applicable"]} & {"margin", "supplier_discipline"}
 
 
 def test_too_little_history_is_not_scored_rather_than_flattered():

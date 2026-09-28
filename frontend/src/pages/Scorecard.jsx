@@ -399,6 +399,13 @@ export default function Scorecard() {
               <Bar value={c.score} tone={c.score < 40 ? "amber" : "brand"} />
             </div>
           ))}
+          {(card.not_applicable || []).length > 0 && (
+            <div className="text-subtle text-sm" style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+              Not counted for your business:{" "}
+              {card.not_applicable.map(s => s.label).join(", ")}. These need records
+              you haven't kept, so they don't count against your score.
+            </div>
+          )}
         </div>
       </div>
 

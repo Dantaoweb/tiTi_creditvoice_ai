@@ -1942,6 +1942,14 @@ function SnapshotModal({ application, onClose, onChanged }) {
                   <tr><td>Owed to them · due in 30 days</td><td className="receipt-right">{nairaFull(m.receivables)} · {nairaFull(m.expected_next_30_days)}</td></tr>
                   <tr><td>Suppliers paid · overdue</td><td className="receipt-right">{m.supplier_paid_pct}% · {nairaFull(m.overdue_payables)}</td></tr>
                   <tr><td>Sales tied to a named customer</td><td className="receipt-right">{m.corroborated_revenue_pct}%</td></tr>
+                  {(data.snapshot?.not_applicable || []).length > 0 && (
+                    <tr>
+                      <td>Not counted (no records)</td>
+                      <td className="receipt-right td-muted">
+                        {data.snapshot.not_applicable.map(s => s.label).join(", ")}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
               {application.note && (
