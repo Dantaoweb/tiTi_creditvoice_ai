@@ -1489,6 +1489,10 @@ class FinancePartner(Base):
     asset_value_max   = Column(Integer, nullable=True)
     # {"min_months_recorded": 3, "min_avg_monthly_sales": 300000, …}
     eligibility_json  = Column(Text, default="{}")
+    # This partner's own view of what matters, merged over the global scorecard
+    # rules: businesses differ (some track suppliers, some never will) and so do
+    # financiers. Empty = score this partner's applicants the standard way.
+    scorecard_overrides_json = Column(Text, default="{}")
     # FLAT_PER_DEAL | PERCENT_OF_ASSET | PERCENT_OF_REPAYMENTS
     commission_type   = Column(String, default="PERCENT_OF_ASSET")
     commission_value  = Column(Integer, default=0)      # naira, or basis points for percent

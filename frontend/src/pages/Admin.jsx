@@ -1284,13 +1284,72 @@ const ELIGIBILITY_FIELDS = [
 const BLANK_PARTNER = {
   name: "", contact_name: "", contact_phone: "", contact_email: "", logo_url: "",
   asset_types: [], asset_value_min: null, asset_value_max: null, eligibility: {},
+  scorecard_overrides: {},
   commission_type: "PERCENT_OF_ASSET", commission_value: 0,
   commission_due_on: "ON_DELIVERY", notes: "", is_active: true,
 };
 
+// This partner's own scoring rules, on top of the global ones: ignore what they
+// don't care about, re-weight what they do. Blank weight = use the global one.
+function PartnerRules({ overrides, onChange }) {
+  const [global, setGlobal] = useState(null);
+  useEffect(() => {
+    apiFetch("admin/scorecard-config").then(d => setGlobal(d.config)).catch(() => {});
+  }, []);
+  if (!global) return <p className="td-muted">Loading scoring rules…</p>;
+
+  const comps = overrides?.components || {};
+  const setComp = (key, patch) => {
+    const next = { ...comps, [key]: { ...(comps[key] || {}), ...patch } };
+    // Drop an entry that says nothing, so "no overrides" stays truly empty.
+    Object.keys(next).forEach(k => {
+      const v = next[k] || {};
+      if (v.enabled !== false && (v.weight === undefined || v.weight === "")) delete next[k];
+    });
+    onChange(Object.keys(next).length ? { ...overrides, components: next } : {});
+  };
+
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Counts?</th><th>What it measures</th><th>Global weight</th><th>Their weight</th></tr>
+        </thead>
+        <tbody>
+          {Object.entries(global.components || {}).map(([key, c]) => {
+            const o = comps[key] || {};
+            const counted = o.enabled !== false;
+            return (
+              <tr key={key}>
+                <td>
+                  <input type="checkbox" checked={counted}
+                    onChange={e => setComp(key, e.target.checked ? { enabled: undefined } : { enabled: false })} />
+                </td>
+                <td>{c.label || key}<div className="td-muted" style={{ fontSize: 11 }}>{c.metric}</div></td>
+                <td className="td-muted">{c.weight}</td>
+                <td>
+                  <input style={{ width: 70 }} inputMode="numeric" disabled={!counted}
+                    value={o.weight ?? ""} placeholder={String(c.weight)}
+                    onChange={e => setComp(key, {
+                      weight: e.target.value === "" ? undefined : Number(e.target.value),
+                    })} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="text-subtle text-sm" style={{ padding: "8px 0" }}>
+        Leave everything as it is and this partner scores applicants the standard way.
+      </div>
+    </div>
+  );
+}
+
 function PartnerForm({ initial, onSaved, onCancel }) {
   const [p, setP] = useState({ ...BLANK_PARTNER, ...(initial || {}) });
   const [assets, setAssets] = useState((initial?.asset_types || []).join(", "));
+  const [showRules, setShowRules] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setP(prev => ({ ...prev, [k]: v }));
@@ -1304,6 +1363,7 @@ function PartnerForm({ initial, onSaved, onCancel }) {
     setBusy(true); setErr("");
     const body = {
       ...p,
+      scorecard_overrides: p.scorecard_overrides || {},
       asset_types: assets.split(",").map(s => s.trim()).filter(Boolean),
       eligibility: Object.fromEntries(
         Object.entries(p.eligibility || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")
@@ -1395,6 +1455,17 @@ function PartnerForm({ initial, onSaved, onCancel }) {
                 onChange={e => setElig(key, e.target.value)} />
             </div>
           ))}
+        </div>
+
+        <div style={{ marginTop: 6 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowRules(v => !v)}>
+            {showRules ? "Hide" : "Set"} this partner's scoring rules
+            {Object.keys(p.scorecard_overrides || {}).length > 0 ? " (customised)" : " (standard)"}
+          </button>
+          {showRules && (
+            <PartnerRules overrides={p.scorecard_overrides || {}}
+              onChange={v => set("scorecard_overrides", v)} />
+          )}
         </div>
 
         <div className="form-group" style={{ margin: 0 }}>

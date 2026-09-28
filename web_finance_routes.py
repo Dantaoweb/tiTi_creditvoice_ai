@@ -30,6 +30,8 @@ class PartnerRequest(BaseModel):
     asset_value_min: Optional[int] = None
     asset_value_max: Optional[int] = None
     eligibility: dict = Field(default_factory=dict)
+    # This partner's own scoring rules, layered over the global ones.
+    scorecard_overrides: dict = Field(default_factory=dict)
     commission_type: str = Field(default="PERCENT_OF_ASSET", max_length=32)
     commission_value: int = 0
     commission_due_on: str = Field(default="ON_DELIVERY", max_length=32)
@@ -111,6 +113,7 @@ def _partner_dict(p, include_internal=True):
             "contact_phone": p.contact_phone,
             "contact_email": p.contact_email,
             "eligibility": _json_load(p.eligibility_json, {}),
+            "scorecard_overrides": _json_load(p.scorecard_overrides_json, {}),
             "commission_type": p.commission_type,
             "commission_value": p.commission_value,
             "commission_due_on": p.commission_due_on,
@@ -240,6 +243,7 @@ def register_finance_routes(app):
         p.asset_value_min = payload.asset_value_min
         p.asset_value_max = payload.asset_value_max
         p.eligibility_json = json.dumps(payload.eligibility or {})
+        p.scorecard_overrides_json = json.dumps(payload.scorecard_overrides or {})
         p.commission_type = payload.commission_type
         p.commission_value = payload.commission_value
         p.commission_due_on = payload.commission_due_on
@@ -787,9 +791,15 @@ def register_finance_routes(app):
             ).order_by(FinancePartner.name).all()
             offers = []
             for p in rows:
-                checks = check_eligibility(card, _json_load(p.eligibility_json, {}))
+                # Each financier judges by its own rules where it has set them,
+                # so the score shown on their card is the score they will see.
+                p_card = score_business(db, owner_phone, partner=p)
+                checks = check_eligibility(p_card, _json_load(p.eligibility_json, {}))
                 offers.append({
                     **_partner_dict(p, include_internal=False),
+                    "score": p_card["score"],
+                    "tier": p_card["tier"],
+                    "partner_rules": p_card["partner_rules"],
                     "checks": checks,
                     "eligible": eligible(checks),
                 })
@@ -848,7 +858,7 @@ def register_finance_routes(app):
                 )
 
             owner = db.query(User).filter(User.phone == owner_phone).first()
-            card = score_business(db, owner_phone)
+            card = score_business(db, owner_phone, partner=partner)
             now = utcnow()
             application = FinanceApplication(
                 application_code=_application_code(db),

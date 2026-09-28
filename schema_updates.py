@@ -313,6 +313,7 @@ def ensure_schema_updates(engine):
             "confirmed_at": "TIMESTAMP",
             "confirmed_by": "VARCHAR",
         },
+        "finance_partners": {"scorecard_overrides_json": "VARCHAR"},
         "finance_applications": {
             "installment_count": "INTEGER",
             "installment_amount": "INTEGER",

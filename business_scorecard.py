@@ -122,6 +122,53 @@ def active_config(db):
     return row.version, merged
 
 
+def merge_config(base, overrides):
+    """Lay a partner's own rules over the global ones.
+
+    Financiers don't weigh things the same way, and businesses don't trade the
+    same way: one partner cares about daily takings and repayment, another about
+    margin and suppliers. An override may change a component's weight or band,
+    add a component, or drop one entirely with {"enabled": false} — and anything
+    it doesn't mention keeps the global setting, so a partner with no overrides
+    scores exactly as standard.
+    """
+    if not overrides:
+        return base
+    merged = dict(base)
+    for key, value in overrides.items():
+        if key != "components":
+            merged[key] = value
+    components = dict(base.get("components") or {})
+    for key, spec in (overrides.get("components") or {}).items():
+        if spec is None or spec.get("enabled") is False:
+            components.pop(key, None)
+            continue
+        combined = dict(components.get(key) or {})
+        combined.update({k: v for k, v in spec.items() if k != "enabled"})
+        components[key] = combined
+    merged["components"] = components
+    return merged
+
+
+def config_for_partner(db, partner):
+    """(global version, config, partner_rules_applied) for this partner.
+
+    The version stays the global one so an application still records which rule
+    set it was scored under; the flag says whether the partner's own overrides
+    were layered on top.
+    """
+    version, config = active_config(db)
+    overrides = {}
+    if partner is not None:
+        try:
+            overrides = json.loads(getattr(partner, "scorecard_overrides_json", "") or "{}")
+        except (ValueError, TypeError):
+            overrides = {}
+    if not overrides:
+        return version, config, False
+    return version, merge_config(config, overrides), True
+
+
 def save_config(db, config, updated_by=None, note=None):
     """Store a new active version (the previous one is kept for old reports)."""
     latest = db.query(func.max(ScorecardConfig.version)).scalar() or 0
@@ -378,8 +425,15 @@ def _confidence(metrics, cfg):
     return round(sum(parts) / len(parts), 1)
 
 
-def score_business(db, owner_phone, config=None, version=None):
-    """Metrics, per-component scores, weighted total, tier and confidence."""
+def score_business(db, owner_phone, config=None, version=None, partner=None):
+    """Metrics, per-component scores, weighted total, tier and confidence.
+
+    Pass `partner` to score against that financier's own rules; pass `config` to
+    score against a specific rule set (an old version, or a preview).
+    """
+    partner_rules = False
+    if config is None and partner is not None:
+        version, config, partner_rules = config_for_partner(db, partner)
     if config is None:
         version, config = active_config(db)
     metrics = compute_metrics(db, owner_phone, int(config.get("window_months", 6)))
@@ -418,6 +472,8 @@ def score_business(db, owner_phone, config=None, version=None):
         reason = "Nothing measurable yet — no scoring rule applies to this business."
     return {
         "config_version": version,
+        "partner_rules": partner_rules,
+        "partner_name": getattr(partner, "name", None) if partner is not None else None,
         "scored": enough,
         "score": score if enough else None,
         "tier": _tier_for(score, config) if enough else config.get("unrated_label", "Unrated"),

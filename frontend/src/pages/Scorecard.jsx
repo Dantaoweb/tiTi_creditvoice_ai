@@ -285,6 +285,13 @@ function Offer({ offer, onApply }) {
             Value range: {nairaFull(offer.asset_value_min || 0)} – {nairaFull(offer.asset_value_max || 0)}
           </div>
         )}
+        {offer.partner_rules && (
+          <div className="text-subtle text-sm" style={{ marginBottom: 8 }}>
+            {offer.name} weighs things their own way — with them your score is{" "}
+            <strong>{offer.score ?? "not rated"}</strong>
+            {offer.tier ? ` (${offer.tier})` : ""}.
+          </div>
+        )}
         {(offer.checks || []).length === 0 ? (
           <div className="text-subtle text-sm">No published requirements — apply and they will review.</div>
         ) : (
