@@ -29,6 +29,11 @@ from models import (
 client = TestClient(app, raise_server_exceptions=True)
 _seq = iter(range(1000, 3000))
 
+# Applying requires identity details (asked at application, not sign-up).
+KYC = {"legal_name": "Ade Owner", "state": "Lagos", "city": "Ikeja",
+       "address": "12 Allen Avenue", "id_type": "NIN", "id_number": "22233344455",
+       "is_registered": False}
+
 
 @pytest.fixture(autouse=True)
 def _reset():
@@ -67,6 +72,7 @@ def _business():
         db.commit()
     finally:
         db.close()
+    client.post("/app/api/kyc", cookies=cookies, json=KYC)
     return phone, cookies
 
 

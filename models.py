@@ -1493,6 +1493,10 @@ class FinancePartner(Base):
     # rules: businesses differ (some track suppliers, some never will) and so do
     # financiers. Empty = score this partner's applicants the standard way.
     scorecard_overrides_json = Column(Text, default="{}")
+    # Where they operate. Nationwide, or the states they actually serve — a
+    # business in Kano shouldn't be shown a partner that only covers Lagos.
+    nationwide       = Column(Boolean, default=True)
+    states_covered   = Column(Text, default="[]")      # JSON list of Nigerian states
     # FLAT_PER_DEAL | PERCENT_OF_ASSET | PERCENT_OF_REPAYMENTS
     commission_type   = Column(String, default="PERCENT_OF_ASSET")
     commission_value  = Column(Integer, default=0)      # naira, or basis points for percent
@@ -1573,6 +1577,10 @@ class FinanceApplication(Base):
     approved_at     = Column(DateTime, nullable=True)
     delivered_at    = Column(DateTime, nullable=True)
 
+    # The identity details as given when applying, frozen like the scorecard so
+    # what the partner was shown can be produced later.
+    kyc_json        = Column(Text, nullable=True)
+
     # Repayment plan as agreed with the partner, entered once when the asset is
     # delivered. The installments themselves live on the supplier rails.
     installment_count  = Column(Integer, nullable=True)
@@ -1586,6 +1594,43 @@ class FinanceApplication(Base):
 
     created_at      = Column(DateTime, default=utcnow, index=True)
     updated_at      = Column(DateTime, nullable=True)
+
+
+class BusinessKyc(Base):
+    """Who the business owner is, collected when they first apply for financing.
+
+    Not asked at sign-up: nobody should have to prove their identity to start
+    keeping records. It is asked once, at the point where a financier genuinely
+    needs it, and shared only with the partner the owner applies to.
+
+    `id_number` is the one genuinely sensitive field here; it is never returned
+    to anyone but the owner and an app admin, and only the last digits are shown
+    in lists. BVN is deliberately not collected.
+    """
+
+    __tablename__ = "business_kyc"
+
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone   = Column(String, unique=True, index=True)
+    legal_name    = Column(String, nullable=True)     # as written on the ID
+    date_of_birth = Column(String, nullable=True)     # YYYY-MM-DD
+    state         = Column(String, nullable=True)
+    city          = Column(String, nullable=True)
+    address       = Column(String, nullable=True)
+    id_type       = Column(String, nullable=True)     # NIN / DRIVERS_LICENCE / …
+    id_number     = Column(String, nullable=True)
+    # Most businesses in this market are not CAC-registered, and that is fine —
+    # but a financier needs to know which it is, and some require registration.
+    is_registered = Column(Boolean, nullable=True)
+    registered_name     = Column(String, nullable=True)   # name on the certificate
+    registration_number = Column(String, nullable=True)   # RC / BN number
+    guarantor_name  = Column(String, nullable=True)
+    guarantor_phone = Column(String, nullable=True)
+    years_in_business = Column(Integer, nullable=True)
+    employees     = Column(Integer, nullable=True)
+    completed_at  = Column(DateTime, nullable=True)   # set once nothing is missing
+    created_at    = Column(DateTime, default=utcnow)
+    updated_at    = Column(DateTime, nullable=True)
 
 
 class Opportunity(Base):

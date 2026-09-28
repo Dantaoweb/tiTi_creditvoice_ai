@@ -1284,10 +1284,34 @@ const ELIGIBILITY_FIELDS = [
 const BLANK_PARTNER = {
   name: "", contact_name: "", contact_phone: "", contact_email: "", logo_url: "",
   asset_types: [], asset_value_min: null, asset_value_max: null, eligibility: {},
+  nationwide: true, states_covered: [],
   scorecard_overrides: {},
   commission_type: "PERCENT_OF_ASSET", commission_value: 0,
   commission_due_on: "ON_DELIVERY", notes: "", is_active: true,
 };
+
+// The states a partner actually serves, so a business in Kano is never shown a
+// Lagos-only financier.
+function StatePicker({ selected, onChange }) {
+  const [states, setStates] = useState([]);
+  useEffect(() => {
+    apiFetch("finance-meta").then(d => setStates(d.states || [])).catch(() => {});
+  }, []);
+  const toggle = st => onChange(
+    selected.includes(st) ? selected.filter(x => x !== st) : [...selected, st]
+  );
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
+      {states.map(st => (
+        <button key={st} type="button"
+          className={`btn btn-xs btn-pill ${selected.includes(st) ? "btn-primary" : "btn-ghost"}`}
+          onClick={() => toggle(st)}>
+          {st}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // This partner's own scoring rules, on top of the global ones: ignore what they
 // don't care about, re-weight what they do. Blank weight = use the global one.
@@ -1364,6 +1388,8 @@ function PartnerForm({ initial, onSaved, onCancel }) {
     const body = {
       ...p,
       scorecard_overrides: p.scorecard_overrides || {},
+      nationwide: p.nationwide !== false,
+      states_covered: p.nationwide === false ? (p.states_covered || []) : [],
       asset_types: assets.split(",").map(s => s.trim()).filter(Boolean),
       eligibility: Object.fromEntries(
         Object.entries(p.eligibility || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")
@@ -1468,6 +1494,23 @@ function PartnerForm({ initial, onSaved, onCancel }) {
           )}
         </div>
 
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, marginTop: 6 }}>
+          <input type="checkbox"
+            checked={!!(p.eligibility || {}).requires_registered_business}
+            onChange={e => setElig("requires_registered_business", e.target.checked ? 1 : "")} />
+          Only finances CAC-registered businesses
+        </label>
+
+        <div className="form-label" style={{ marginTop: 6 }}>Where they operate</div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+          <input type="checkbox" checked={p.nationwide !== false}
+            onChange={e => set("nationwide", e.target.checked)} />
+          Nationwide
+        </label>
+        {p.nationwide === false && (
+          <StatePicker selected={p.states_covered || []} onChange={v => set("states_covered", v)} />
+        )}
+
         <div className="form-group" style={{ margin: 0 }}>
           <label className="form-label">Internal notes</label>
           <textarea rows={2} value={p.notes || ""} onChange={e => set("notes", e.target.value)} />
@@ -1540,7 +1583,14 @@ function FinancePartnersPanel() {
                     <strong>{p.name}</strong>
                     {p.contact_phone && <div className="td-muted" style={{ fontSize: 11 }}>{p.contact_phone}</div>}
                   </td>
-                  <td>{(p.asset_types || []).join(", ") || "—"}</td>
+                  <td>
+                    {(p.asset_types || []).join(", ") || "—"}
+                    <div className="td-muted" style={{ fontSize: 11 }}>
+                      {p.nationwide === false
+                        ? ((p.states_covered || []).join(", ") || "no states set")
+                        : "Nationwide"}
+                    </div>
+                  </td>
                   <td className="td-muted">{money(p.asset_value_min)} – {money(p.asset_value_max)}</td>
                   <td>
                     {p.commission_type === "FLAT_PER_DEAL"

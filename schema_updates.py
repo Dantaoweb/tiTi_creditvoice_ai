@@ -300,6 +300,7 @@ def ensure_schema_updates(engine):
     # A financed asset becomes one supplier purchase per installment, so each has
     # its own due date and the existing supplier-due reminders chase it. The
     # extra columns keep financing separable from ordinary trade credit.
+    _bool_true = "TRUE" if engine.dialect.name == "postgresql" else "1"
     _column_additions = {
         "suppliers": {"finance_partner_id": "VARCHAR"},
         "supplier_purchases": {
@@ -313,8 +314,18 @@ def ensure_schema_updates(engine):
             "confirmed_at": "TIMESTAMP",
             "confirmed_by": "VARCHAR",
         },
-        "finance_partners": {"scorecard_overrides_json": "VARCHAR"},
+        "finance_partners": {
+            "scorecard_overrides_json": "VARCHAR",
+            "nationwide": f"BOOLEAN DEFAULT {_bool_true}",
+            "states_covered": "VARCHAR",
+        },
+        "business_kyc": {
+            "is_registered": "BOOLEAN",
+            "registered_name": "VARCHAR",
+            "registration_number": "VARCHAR",
+        },
         "finance_applications": {
+            "kyc_json": "VARCHAR",
             "installment_count": "INTEGER",
             "installment_amount": "INTEGER",
             "installment_every": "VARCHAR",

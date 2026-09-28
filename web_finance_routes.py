@@ -32,11 +32,30 @@ class PartnerRequest(BaseModel):
     eligibility: dict = Field(default_factory=dict)
     # This partner's own scoring rules, layered over the global ones.
     scorecard_overrides: dict = Field(default_factory=dict)
+    nationwide: bool = True
+    states_covered: list[str] = Field(default_factory=list)
     commission_type: str = Field(default="PERCENT_OF_ASSET", max_length=32)
     commission_value: int = 0
     commission_due_on: str = Field(default="ON_DELIVERY", max_length=32)
     notes: Optional[str] = Field(default=None, max_length=2000)
     is_active: bool = True
+
+
+class KycRequest(BaseModel):
+    legal_name: Optional[str] = Field(default=None, max_length=160)
+    date_of_birth: Optional[str] = Field(default=None, max_length=10)
+    state: Optional[str] = Field(default=None, max_length=60)
+    city: Optional[str] = Field(default=None, max_length=80)
+    address: Optional[str] = Field(default=None, max_length=300)
+    id_type: Optional[str] = Field(default=None, max_length=32)
+    id_number: Optional[str] = Field(default=None, max_length=40)
+    is_registered: Optional[bool] = None
+    registered_name: Optional[str] = Field(default=None, max_length=200)
+    registration_number: Optional[str] = Field(default=None, max_length=40)
+    guarantor_name: Optional[str] = Field(default=None, max_length=160)
+    guarantor_phone: Optional[str] = Field(default=None, max_length=30)
+    years_in_business: Optional[int] = None
+    employees: Optional[int] = None
 
 
 class ScorecardConfigRequest(BaseModel):
@@ -106,6 +125,8 @@ def _partner_dict(p, include_internal=True):
         "asset_value_min": p.asset_value_min,
         "asset_value_max": p.asset_value_max,
         "is_active": bool(p.is_active),
+        "nationwide": bool(p.nationwide),
+        "states_covered": _json_load(p.states_covered, []),
     }
     if include_internal:
         out.update({
@@ -244,6 +265,15 @@ def register_finance_routes(app):
         p.asset_value_max = payload.asset_value_max
         p.eligibility_json = json.dumps(payload.eligibility or {})
         p.scorecard_overrides_json = json.dumps(payload.scorecard_overrides or {})
+        from nigeria import canonical_state
+        p.nationwide = bool(payload.nationwide)
+        states = []
+        for raw in (payload.states_covered or []):
+            name = canonical_state(raw)
+            if not name:
+                raise HTTPException(status_code=400, detail=f"'{raw}' is not a Nigerian state.")
+            states.append(name)
+        p.states_covered = json.dumps(states)
         p.commission_type = payload.commission_type
         p.commission_value = payload.commission_value
         p.commission_due_on = payload.commission_due_on
@@ -465,6 +495,8 @@ def register_finance_routes(app):
             out = _admin_application_dict(r, partner, owner, reason)
             out["commission_calculated"] = amount
             out["snapshot"] = _json_load(r.snapshot_json, {})
+            # What the partner needs to verify the person, as given at the time.
+            out["kyc"] = _json_load(r.kyc_json, None)
             return out
         finally:
             db.close()
@@ -575,6 +607,54 @@ def register_finance_routes(app):
                 "id": r.id, "commission_status": r.commission_status,
                 "commission_amount": r.commission_amount,
                 "commission_marked_at": r.commission_marked_at.isoformat() if r.commission_marked_at else None,
+            }
+        finally:
+            db.close()
+
+    # ── Identity details, asked when applying (never at sign-up) ──────────
+    @app.get("/app/api/finance-meta")
+    def finance_meta(session: dict = Depends(require_web_auth)):
+        """Reference data for the KYC form and the partner coverage editor."""
+        from business_kyc import OPTIONAL_FIELDS, REQUIRED_FIELDS
+        from nigeria import ID_TYPES, NIGERIAN_STATES
+        return {
+            "states": NIGERIAN_STATES,
+            "id_types": [{"key": k, "label": l} for k, l in ID_TYPES],
+            "required_fields": [{"key": k, "label": l} for k, l in REQUIRED_FIELDS],
+            "optional_fields": [{"key": k, "label": l} for k, l in OPTIONAL_FIELDS],
+        }
+
+    @app.get("/app/api/kyc")
+    def get_my_kyc(session: dict = Depends(require_web_auth)):
+        """The owner's own details, with whatever is still missing named."""
+        from business_kyc import get_kyc, kyc_dict, missing_fields
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            kyc = get_kyc(db, owner_phone)
+            return {
+                "kyc": kyc_dict(kyc, full_id=True),
+                "missing": [{"key": k, "label": l} for k, l in missing_fields(kyc)],
+                "complete": kyc is not None and kyc.completed_at is not None,
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/kyc")
+    def save_my_kyc(payload: KycRequest, session: dict = Depends(require_web_auth)):
+        from business_kyc import kyc_dict, missing_fields, save_kyc
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            kyc, error = save_kyc(db, owner_phone, payload.model_dump(exclude_unset=True))
+            if error:
+                raise HTTPException(status_code=400, detail=error)
+            db.commit()
+            db.refresh(kyc)
+            return {
+                "kyc": kyc_dict(kyc, full_id=True),
+                "missing": [{"key": k, "label": l} for k, l in missing_fields(kyc)],
+                "complete": kyc.completed_at is not None,
             }
         finally:
             db.close()
@@ -784,8 +864,13 @@ def register_finance_routes(app):
         from business_scorecard import check_eligibility, eligible, score_business
         db = SessionLocal()
         try:
+            from business_kyc import (
+                coverage_label, get_kyc, kyc_checks, missing_fields, partner_covers,
+            )
             owner_phone = _session_owner_phone(db, session)
             card = score_business(db, owner_phone)
+            kyc = get_kyc(db, owner_phone)
+            kyc_gaps = [{"key": k, "label": l} for k, l in missing_fields(kyc)]
             rows = db.query(FinancePartner).filter(
                 FinancePartner.is_active == True  # noqa: E712
             ).order_by(FinancePartner.name).all()
@@ -794,7 +879,9 @@ def register_finance_routes(app):
                 # Each financier judges by its own rules where it has set them,
                 # so the score shown on their card is the score they will see.
                 p_card = score_business(db, owner_phone, partner=p)
-                checks = check_eligibility(p_card, _json_load(p.eligibility_json, {}))
+                rules = _json_load(p.eligibility_json, {})
+                checks = check_eligibility(p_card, rules) + kyc_checks(p, kyc, rules)
+                covered = partner_covers(p, kyc.state if kyc else None)
                 offers.append({
                     **_partner_dict(p, include_internal=False),
                     "score": p_card["score"],
@@ -802,6 +889,8 @@ def register_finance_routes(app):
                     "partner_rules": p_card["partner_rules"],
                     "checks": checks,
                     "eligible": eligible(checks),
+                    "covered": covered,
+                    "coverage": coverage_label(p),
                 })
             # So the page can show "applied" instead of offering again.
             applied = {
@@ -815,6 +904,11 @@ def register_finance_routes(app):
             return {
                 "score": card["score"], "tier": card["tier"],
                 "confidence": card["confidence"], "scored": card["scored"],
+                # Applying needs identity details; naming the gaps lets the page
+                # send the owner straight to the form instead of failing later.
+                "kyc_complete": not kyc_gaps,
+                "kyc_missing": kyc_gaps,
+                "state": kyc.state if kyc else None,
                 "offers": offers,
             }
         finally:
@@ -846,6 +940,33 @@ def register_finance_routes(app):
             if not partner:
                 raise HTTPException(status_code=404, detail="Partner not found.")
 
+            # A financier needs to know who they are dealing with. Asked here
+            # rather than at sign-up, and the gaps are named so the app can open
+            # the form instead of just refusing.
+            from business_kyc import coverage_label, get_kyc, kyc_dict, missing_fields, partner_covers
+            kyc = get_kyc(db, owner_phone)
+            gaps = missing_fields(kyc)
+            if gaps:
+                raise HTTPException(status_code=400, detail={
+                    "message": "Add your business and identity details before applying.",
+                    "kyc_required": [{"key": k, "label": l} for k, l in gaps],
+                })
+            from business_kyc import kyc_checks as _kyc_checks
+            failed_kyc = [c for c in _kyc_checks(partner, kyc, _json_load(partner.eligibility_json, {}))
+                          if not c["passed"]]
+            if failed_kyc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{partner.name} only finances registered businesses. "
+                           "Add your CAC registration details to apply.",
+                )
+            if not partner_covers(partner, kyc.state):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{partner.name} does not operate in {kyc.state} "
+                           f"(they cover: {coverage_label(partner)}).",
+                )
+
             open_already = db.query(FinanceApplication).filter(
                 FinanceApplication.owner_phone == owner_phone,
                 FinanceApplication.partner_id == partner_id,
@@ -871,6 +992,7 @@ def register_finance_routes(app):
                 note=(payload.note or "").strip() or None,
                 consent_given_at=now,
                 snapshot_json=json.dumps(card),
+                kyc_json=json.dumps(kyc_dict(kyc, full_id=True)),
                 snapshot_score=int(card["score"]) if card.get("score") is not None else None,
                 snapshot_tier=card.get("tier"),
                 snapshot_confidence=int(card.get("confidence") or 0),
