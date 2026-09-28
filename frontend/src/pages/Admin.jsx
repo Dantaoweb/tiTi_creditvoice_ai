@@ -1780,7 +1780,129 @@ function ApplicationRow({ r, onChanged, onOpen }) {
   );
 }
 
-function SnapshotModal({ application, onClose }) {
+// Once an asset is delivered, the repayment plan is entered here and becomes
+// one supplier bill per installment on the business's own Suppliers page.
+function RepaymentPanel({ application, onChanged }) {
+  const [schedule, setSchedule] = useState(null);
+  const [form, setForm] = useState({ installments: "", amount_each: "", every: "WEEKLY", first_due: "" });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  function load() {
+    apiFetch(`admin/finance-applications/${application.id}/schedule`)
+      .then(d => setSchedule(d.schedule)).catch(e => setErr(e.message));
+  }
+  useEffect(load, [application.id]);
+
+  async function create() {
+    setBusy(true); setErr("");
+    try {
+      const r = await apiPost(`admin/finance-applications/${application.id}/schedule`, {
+        installments: Number(form.installments) || 0,
+        amount_each: parseAmt(form.amount_each) || 0,
+        every: form.every,
+        first_due: form.first_due || null,
+      });
+      setSchedule(r.schedule); onChanged && onChanged();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function act(path, body) {
+    setBusy(true); setErr("");
+    try {
+      const r = await apiPost(`admin/finance-applications/${application.id}/${path}`, body);
+      setSchedule(r.schedule); onChanged && onChanged();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+      <div className="form-label" style={{ marginBottom: 8 }}>Repayment plan</div>
+      {err && <div className="modal-error">{err}</div>}
+
+      {!schedule ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="form-group" style={{ margin: 0, flex: "0 1 120px" }}>
+            <label className="form-label" style={{ fontSize: 11 }}>Installments</label>
+            <input inputMode="numeric" value={form.installments}
+              onChange={e => setForm({ ...form, installments: e.target.value })} placeholder="12" />
+          </div>
+          <div className="form-group" style={{ margin: 0, flex: "0 1 140px" }}>
+            <label className="form-label" style={{ fontSize: 11 }}>Each (₦)</label>
+            <input inputMode="numeric" value={form.amount_each}
+              onChange={e => setForm({ ...form, amount_each: e.target.value })} placeholder="100,000" />
+          </div>
+          <div className="form-group" style={{ margin: 0, flex: "0 1 120px" }}>
+            <label className="form-label" style={{ fontSize: 11 }}>Every</label>
+            <select value={form.every} onChange={e => setForm({ ...form, every: e.target.value })}>
+              <option value="WEEKLY">Week</option>
+              <option value="MONTHLY">Month</option>
+            </select>
+          </div>
+          <div className="form-group" style={{ margin: 0, flex: "0 1 150px" }}>
+            <label className="form-label" style={{ fontSize: 11 }}>First due (optional)</label>
+            <input type="date" value={form.first_due}
+              onChange={e => setForm({ ...form, first_due: e.target.value })} />
+          </div>
+          <button className="btn btn-primary btn-sm" disabled={busy} onClick={create}>
+            {busy ? "Creating…" : "Create plan"}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="text-subtle text-sm" style={{ marginBottom: 8 }}>
+            {schedule.settled_count} of {schedule.count} paid · {nairaFull(schedule.confirmed_paid)} confirmed ·
+            {" "}{nairaFull(schedule.outstanding)} outstanding
+            {schedule.overdue_count > 0 && <span style={{ color: "var(--rose)" }}> · {schedule.overdue_count} overdue</span>}
+            {schedule.settled_count > 0 && ` · ${schedule.on_time_pct}% on time`}
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>#</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                {schedule.installments.map(i => (
+                  <tr key={i.installment_no}>
+                    <td>{i.installment_no}</td>
+                    <td className="td-muted">{i.due_date ? new Date(i.due_date).toLocaleDateString() : "—"}</td>
+                    <td>{nairaFull(i.amount)}</td>
+                    <td>
+                      {i.settled
+                        ? (i.confirmed >= i.amount
+                            ? <span className="badge badge-green">confirmed</span>
+                            : <span className="badge" style={{ color: "#92400e", background: "rgba(180,83,9,0.10)" }}>claimed</span>)
+                        : i.overdue ? <span className="badge" style={{ color: "#b91c1c", background: "rgba(185,28,28,0.10)" }}>overdue</span>
+                        : <span className="td-muted">due</span>}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {i.settled && i.confirmed < i.amount && (
+                          <button className="btn btn-ghost btn-xs" disabled={busy}
+                            onClick={() => act("repayments/confirm", { installment_no: i.installment_no })}>
+                            confirm
+                          </button>
+                        )}
+                        {!i.settled && (
+                          <button className="btn btn-ghost btn-xs" disabled={busy}
+                            onClick={() => act("repayments", { installment_no: i.installment_no, amount: i.outstanding })}>
+                            mark paid
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SnapshotModal({ application, onClose, onChanged }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -1824,6 +1946,9 @@ function SnapshotModal({ application, onClose }) {
               </table>
               {application.note && (
                 <p style={{ marginTop: 10, fontSize: 13 }}><strong>They said:</strong> {application.note}</p>
+              )}
+              {application.status === "DELIVERED" && (
+                <RepaymentPanel application={application} onChanged={onChanged} />
               )}
             </>
           )}
@@ -1890,7 +2015,7 @@ function ApplicationsPanel() {
         </div>
       </div>
 
-      {open && <SnapshotModal application={open} onClose={() => setOpen(null)} />}
+      {open && <SnapshotModal application={open} onClose={() => setOpen(null)} onChanged={load} />}
     </div>
   );
 }

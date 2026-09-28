@@ -296,6 +296,39 @@ def ensure_schema_updates(engine):
                     )
                 )
 
+    # ── Financing repayments ride the supplier rails ─────────────────────────
+    # A financed asset becomes one supplier purchase per installment, so each has
+    # its own due date and the existing supplier-due reminders chase it. The
+    # extra columns keep financing separable from ordinary trade credit.
+    _column_additions = {
+        "suppliers": {"finance_partner_id": "VARCHAR"},
+        "supplier_purchases": {
+            "finance_application_id": "VARCHAR",
+            "installment_no": "INTEGER",
+            "installments_total": "INTEGER",
+        },
+        "supplier_payments": {
+            "purchase_id": "INTEGER",
+            "verification": "VARCHAR DEFAULT 'CLAIMED'",
+            "confirmed_at": "TIMESTAMP",
+            "confirmed_by": "VARCHAR",
+        },
+        "finance_applications": {
+            "installment_count": "INTEGER",
+            "installment_amount": "INTEGER",
+            "installment_every": "VARCHAR",
+        },
+    }
+    for table, columns in _column_additions.items():
+        try:
+            existing = {c["name"] for c in inspector.get_columns(table)}
+        except Exception:
+            continue          # table not created yet on this deploy
+        with engine.begin() as connection:
+            for name, coltype in columns.items():
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {coltype}"))
+
     # ── Indexes for hot query paths (idempotent, both Postgres and SQLite) ───
     # get_balance() sums BUY/PAY per customer; deliveries/reminders filter by
     # service_date. Without these, those queries scan the transactions table.

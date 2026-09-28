@@ -62,6 +62,14 @@ DEFAULT_CONFIG = {
             "label": "Pays suppliers", "metric": "supplier_paid_pct",
             "weight": 10, "zero": 40, "full": 100, "higher_is_better": True,
         },
+        # The strongest signal there is — but only for a business that has been
+        # financed before. `only_if` drops the component (and its weight) for
+        # everyone else, instead of scoring them zero for having no history.
+        "repayment_record": {
+            "label": "Repays financing on time", "metric": "repayment_on_time_pct",
+            "weight": 20, "zero": 0, "full": 100, "higher_is_better": True,
+            "only_if": "has_financing",
+        },
     },
     # Highest cut-off that the score reaches wins; below the lowest → "Unrated".
     "tiers": [
@@ -242,17 +250,23 @@ def compute_metrics(db, owner_phone, window_months=6):
 
     # Does the business pay what IT owes? The closest thing to repayment
     # behaviour that exists before any financing has happened.
+    # Trade credit only: financed assets ride the same table but are excluded
+    # here, or a ₦1.2m motorcycle would swamp a shop's ordinary supplier record.
     sup = (
         db.query(
             func.coalesce(func.sum(SupplierPurchase.total), 0),
             func.coalesce(func.sum(SupplierPurchase.paid_amount), 0),
-        ).filter(SupplierPurchase.owner_phone == owner_phone).first()
+        ).filter(
+            SupplierPurchase.owner_phone == owner_phone,
+            SupplierPurchase.finance_application_id.is_(None),
+        ).first()
     )
     supplier_total, supplier_paid = int(sup[0] or 0), int(sup[1] or 0)
     overdue_payables = int(
         db.query(func.coalesce(func.sum(SupplierPurchase.total - SupplierPurchase.paid_amount), 0))
         .filter(
             SupplierPurchase.owner_phone == owner_phone,
+            SupplierPurchase.finance_application_id.is_(None),
             SupplierPurchase.due_date.isnot(None),
             SupplierPurchase.due_date < now,
             SupplierPurchase.total > SupplierPurchase.paid_amount,
@@ -274,6 +288,9 @@ def compute_metrics(db, owner_phone, window_months=6):
     months_on_platform = 0
     if owner and owner.created_at:
         months_on_platform = max(0, int((now - owner.created_at).days / 30))
+
+    from finance_installments import repayment_metrics
+    repayment = repayment_metrics(db, owner_phone)
 
     return {
         # Trading
@@ -306,6 +323,16 @@ def compute_metrics(db, owner_phone, window_months=6):
         "supplier_paid_pct": _pct(supplier_paid, supplier_total),
         "overdue_payables": overdue_payables,
         "subscription_payments": int(subscription_payments),
+        # Financing already taken, and how it is being repaid. Only repayments
+        # the partner (or the wallet) confirmed count here.
+        "has_financing": repayment["has_financing"],
+        "repayment_installments": repayment["installments"],
+        "repayment_settled": repayment["settled"],
+        "repayment_on_time_pct": repayment["on_time_pct"],
+        "repayment_overdue": repayment["overdue"],
+        "financed_total": repayment["financed_total"],
+        "repaid_confirmed": repayment["repaid_confirmed"],
+        "financing_outstanding": repayment["outstanding"],
         # Depth of the record
         "corroborated_revenue_pct": _pct(revenue_with_customer, revenue),
         "staff_count": int(staff_count),
@@ -355,6 +382,9 @@ def score_business(db, owner_phone, config=None, version=None):
 
     components, weighted, total_weight = [], 0.0, 0.0
     for key, spec in (config.get("components") or {}).items():
+        gate = spec.get("only_if")
+        if gate and not metrics.get(gate):
+            continue      # not applicable to this business — don't penalise it
         value = metrics.get(spec.get("metric"))
         sub = _component_score(value, spec)
         weight = float(spec.get("weight", 0) or 0)

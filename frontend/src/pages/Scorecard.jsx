@@ -138,6 +138,94 @@ function ApplyModal({ offer, onClose, onDone }) {
   );
 }
 
+// A financed asset's repayment plan. It also lives on the Suppliers page (each
+// installment is a supplier bill), but the plan reads clearer in one place.
+function RepaymentPlan({ application, onPaid }) {
+  const [schedule, setSchedule] = useState(null);
+  const [busy, setBusy] = useState(null);      // installment number being paid
+  const [err, setErr] = useState("");
+
+  function load() {
+    apiFetch(`my-applications/${application.id}/schedule`)
+      .then(d => setSchedule(d.schedule))
+      .catch(e => setErr(e.message));
+  }
+  useEffect(load, [application.id]);
+
+  async function pay(inst) {
+    const typed = window.prompt(
+      `How much did you pay towards installment ${inst.installment_no}?`,
+      String(inst.outstanding));
+    if (typed === null) return;
+    const amount = parseAmt(typed);
+    if (!amount || amount <= 0) return;
+    setBusy(inst.installment_no); setErr("");
+    try {
+      const r = await apiPost(`my-applications/${application.id}/repayments`,
+        { installment_no: inst.installment_no, amount });
+      setSchedule(r.schedule);
+      onPaid && onPaid();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(null); }
+  }
+
+  if (err) return <div style={{ color: "var(--rose)", fontSize: 12 }}>{err}</div>;
+  if (!schedule) return null;
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
+        <span className="card-title">
+          Repayments — {application.partner_name} · {application.asset_requested || "asset"}
+        </span>
+        <span className="text-subtle text-sm">
+          {schedule.settled_count} of {schedule.count} paid · {nairaFull(schedule.outstanding)} left
+          {schedule.overdue_count > 0 && <span style={{ color: "var(--rose)" }}> · {schedule.overdue_count} overdue</span>}
+        </span>
+      </div>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {schedule.installments.map(i => (
+              <tr key={i.installment_no} className={i.overdue ? "low-stock" : ""}>
+                <td>{i.installment_no}</td>
+                <td className="td-muted">{i.due_date ? dateStr(i.due_date) : "—"}</td>
+                <td>{nairaFull(i.amount)}{i.paid > 0 && !i.settled ? ` · paid ${nairaFull(i.paid)}` : ""}</td>
+                <td>
+                  {i.settled ? (
+                    i.confirmed >= i.amount
+                      ? <span className="badge badge-green">Paid ✓ confirmed</span>
+                      : <span className="badge" style={{ color: "#92400e", background: "rgba(180,83,9,0.10)" }}>
+                          Paid · awaiting confirmation
+                        </span>
+                  ) : i.overdue ? (
+                    <span className="badge" style={{ color: "#b91c1c", background: "rgba(185,28,28,0.10)" }}>Overdue</span>
+                  ) : <span className="td-muted">Due</span>}
+                </td>
+                <td>
+                  {!i.settled && (
+                    <button className="btn btn-primary btn-xs" disabled={busy === i.installment_no}
+                      onClick={() => pay(i)}>
+                      {busy === i.installment_no ? "Saving…" : "I have paid"}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card-body text-subtle text-sm">
+        Each installment also appears under Suppliers, where you pay everyone else.
+        A repayment counts towards your record once {application.partner_name} confirms it.
+      </div>
+    </div>
+  );
+}
+
 function MyApplications({ applications, onWithdraw }) {
   if (!applications || applications.length === 0) return null;
   return (
@@ -364,6 +452,10 @@ export default function Scorecard() {
       </div>
 
       <MyApplications applications={applications} onWithdraw={withdraw} />
+
+      {applications.filter(a => a.status === "DELIVERED").map(a => (
+        <RepaymentPlan key={a.id} application={a} onPaid={loadOffers} />
+      ))}
 
       {applying && (
         <ApplyModal

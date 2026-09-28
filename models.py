@@ -290,6 +290,11 @@ class Supplier(Base):
 
     owner_phone = Column(String, index=True)
 
+    # Set when this "supplier" is a finance partner the business is repaying, so
+    # trade credit and financing repayments can be told apart in reports and in
+    # the scorecard (a ₦1.2m asset would otherwise swamp the supplier metric).
+    finance_partner_id = Column(String, ForeignKey("finance_partners.id"), nullable=True, index=True)
+
     created_at = Column(DateTime, default=utcnow)
 
 
@@ -319,6 +324,13 @@ class SupplierPurchase(Base):
 
     recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
+    # A financed asset's repayment plan lives here as one row per installment —
+    # each with its own due date, so punctuality is recorded rather than just a
+    # running total, and the existing supplier-due reminders chase each one.
+    finance_application_id = Column(String, ForeignKey("finance_applications.id"), nullable=True, index=True)
+    installment_no    = Column(Integer, nullable=True)
+    installments_total = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=utcnow)
 
 
@@ -337,6 +349,18 @@ class SupplierPayment(Base):
     product = Column(String, nullable=True)
 
     recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    # Which installment this settles (financing repayments only).
+    purchase_id = Column(Integer, ForeignKey("supplier_purchases.id"), nullable=True, index=True)
+
+    # How much this payment can be trusted as evidence:
+    #   CLAIMED           — the owner says they paid
+    #   PARTNER_CONFIRMED — the partner told us, or admin ticked it
+    #   WALLET_CONFIRMED  — money seen landing in a CreditVoice virtual account
+    # Only confirmed repayments feed the scorecard's repayment record.
+    verification  = Column(String, default="CLAIMED")
+    confirmed_at  = Column(DateTime, nullable=True)
+    confirmed_by  = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=utcnow)
 
@@ -1544,6 +1568,12 @@ class FinanceApplication(Base):
 
     approved_at     = Column(DateTime, nullable=True)
     delivered_at    = Column(DateTime, nullable=True)
+
+    # Repayment plan as agreed with the partner, entered once when the asset is
+    # delivered. The installments themselves live on the supplier rails.
+    installment_count  = Column(Integer, nullable=True)
+    installment_amount = Column(Integer, nullable=True)
+    installment_every  = Column(String, nullable=True)    # WEEKLY | MONTHLY
 
     # Commission is calculated in a later step; kept here so the ledger has a home.
     commission_amount    = Column(Integer, nullable=True)

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from database import SessionLocal
 from models import FinancePartner, FinanceApplication, ScorecardConfig, User, utcnow
 from web_auth import require_web_auth
-from web_common import _admin_rate_check, _session_owner_phone
+from web_common import _admin_rate_check, _session_owner_phone, _session_user
 
 
 class PartnerRequest(BaseModel):
@@ -48,6 +48,23 @@ class ApplicationUpdateRequest(BaseModel):
     partner_ref: Optional[str] = Field(default=None, max_length=120)
     decline_reason: Optional[str] = Field(default=None, max_length=300)
     admin_notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ScheduleRequest(BaseModel):
+    installments: int
+    amount_each: int
+    every: str = Field(default="WEEKLY", max_length=10)   # WEEKLY | MONTHLY
+    first_due: Optional[str] = None                       # YYYY-MM-DD
+
+
+class RepaymentRequest(BaseModel):
+    installment_no: int
+    amount: int
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+class ConfirmRepaymentRequest(BaseModel):
+    installment_no: Optional[int] = None   # omit to confirm everything claimed
 
 
 class CommissionRequest(BaseModel):
@@ -554,6 +571,190 @@ def register_finance_routes(app):
                 "id": r.id, "commission_status": r.commission_status,
                 "commission_amount": r.commission_amount,
                 "commission_marked_at": r.commission_marked_at.isoformat() if r.commission_marked_at else None,
+            }
+        finally:
+            db.close()
+
+    # ── Repayments (financing rides the supplier rails) ───────────────────
+    def _fetch_app(db, application_id, owner_phone=None):
+        q = db.query(FinanceApplication).filter(FinanceApplication.id == application_id)
+        if owner_phone:
+            q = q.filter(FinanceApplication.owner_phone == owner_phone)
+        row = q.first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Application not found.")
+        return row
+
+    def _commission_from_repayments(db, application, partner):
+        """Raise the fee for partners paid on first repayment, on completion, or
+        as a share of repayments — now that repayments exist to read."""
+        from finance_installments import schedule_summary
+        if not partner or application.commission_status != "PENDING":
+            return
+        summary = schedule_summary(db, application.id)
+        if not summary:
+            return
+        due_on, kind = partner.commission_due_on, partner.commission_type
+        confirmed = summary["confirmed_paid"]
+        if due_on == "ON_FIRST_REPAYMENT" and confirmed <= 0:
+            return
+        if due_on == "ON_COMPLETION" and not summary["complete"]:
+            return
+        if due_on not in ("ON_FIRST_REPAYMENT", "ON_COMPLETION"):
+            return
+        amount = (
+            int(round(confirmed * int(partner.commission_value or 0) / 10000))
+            if kind == "PERCENT_OF_REPAYMENTS"
+            else calculate_commission(partner, application)[0]
+        )
+        if amount:
+            application.commission_amount = amount
+            application.commission_status = "DUE"
+            application.commission_marked_at = utcnow()
+
+    @app.post("/app/api/admin/finance-applications/{application_id}/schedule")
+    def admin_create_schedule(application_id: str, payload: ScheduleRequest,
+                              session: dict = Depends(require_web_auth)):
+        """Enter the repayment plan the partner agreed, once the asset is
+        delivered. It becomes one supplier purchase per installment, so the
+        business pays it where it already pays everyone else."""
+        from datetime import datetime as _dt
+        from finance_installments import generate_schedule, schedule_summary
+        db = SessionLocal()
+        try:
+            user = _require_admin(db, session)
+            application = _fetch_app(db, application_id)
+            if application.status != "DELIVERED":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Add the repayment plan once the asset is marked delivered.",
+                )
+            partner = db.query(FinancePartner).filter(
+                FinancePartner.id == application.partner_id).first()
+            if not partner:
+                raise HTTPException(status_code=400, detail="Partner record is missing.")
+            first_due = None
+            if payload.first_due:
+                try:
+                    first_due = _dt.strptime(payload.first_due[:10], "%Y-%m-%d")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="First due date must be YYYY-MM-DD.")
+            try:
+                generate_schedule(db, application, partner, payload.installments,
+                                  payload.amount_each, payload.every, first_due,
+                                  recorded_by_id=user.id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            _audit(db, user, "ADMIN_SETTINGS_CHANGE",
+                   f"finance_schedule:{application.id}:{payload.installments}x{payload.amount_each}")
+            db.commit()
+            return {"ok": True, "schedule": schedule_summary(db, application.id)}
+        finally:
+            db.close()
+
+    @app.get("/app/api/admin/finance-applications/{application_id}/schedule")
+    def admin_get_schedule(application_id: str, session: dict = Depends(require_web_auth)):
+        from finance_installments import schedule_summary
+        db = SessionLocal()
+        try:
+            _require_admin(db, session)
+            _fetch_app(db, application_id)
+            return {"schedule": schedule_summary(db, application_id)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/finance-applications/{application_id}/repayments/confirm")
+    def admin_confirm_repayments(application_id: str, payload: ConfirmRepaymentRequest,
+                                 session: dict = Depends(require_web_auth)):
+        """Turn owner-claimed repayments into confirmed evidence — the partner
+        said the money arrived. Only confirmed repayments feed the scorecard."""
+        from finance_installments import PARTNER_CONFIRMED, confirm_repayments, schedule_summary
+        db = SessionLocal()
+        try:
+            user = _require_admin(db, session)
+            application = _fetch_app(db, application_id)
+            partner = db.query(FinancePartner).filter(
+                FinancePartner.id == application.partner_id).first()
+            confirmed = confirm_repayments(db, application, payload.installment_no,
+                                           PARTNER_CONFIRMED, confirmed_by=user.phone)
+            db.flush()
+            _commission_from_repayments(db, application, partner)
+            _audit(db, user, "ADMIN_SETTINGS_CHANGE", f"finance_repayment_confirm:{application.id}")
+            db.commit()
+            return {
+                "confirmed": confirmed,
+                "schedule": schedule_summary(db, application_id),
+                "commission_status": application.commission_status,
+                "commission_amount": application.commission_amount,
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/admin/finance-applications/{application_id}/repayments")
+    def admin_record_repayment(application_id: str, payload: RepaymentRequest,
+                               session: dict = Depends(require_web_auth)):
+        """Record a repayment on the partner's word — already confirmed evidence."""
+        from finance_installments import PARTNER_CONFIRMED, record_repayment, schedule_summary
+        db = SessionLocal()
+        try:
+            user = _require_admin(db, session)
+            application = _fetch_app(db, application_id)
+            partner = db.query(FinancePartner).filter(
+                FinancePartner.id == application.partner_id).first()
+            try:
+                record_repayment(db, application, payload.installment_no, payload.amount,
+                                 verification=PARTNER_CONFIRMED, recorded_by_id=user.id,
+                                 confirmed_by=user.phone, note=payload.note)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            db.flush()
+            _commission_from_repayments(db, application, partner)
+            _audit(db, user, "ADMIN_SETTINGS_CHANGE", f"finance_repayment:{application.id}")
+            db.commit()
+            return {
+                "ok": True, "schedule": schedule_summary(db, application_id),
+                "commission_status": application.commission_status,
+                "commission_amount": application.commission_amount,
+            }
+        finally:
+            db.close()
+
+    @app.get("/app/api/my-applications/{application_id}/schedule")
+    def my_schedule(application_id: str, session: dict = Depends(require_web_auth)):
+        """The business's own repayment plan: what is due, when, and what has
+        been confirmed."""
+        from finance_installments import schedule_summary
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            _fetch_app(db, application_id, owner_phone)
+            return {"schedule": schedule_summary(db, application_id)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/my-applications/{application_id}/repayments")
+    def my_repayment(application_id: str, payload: RepaymentRequest,
+                     session: dict = Depends(require_web_auth)):
+        """The business records a repayment it made. Recorded as CLAIMED until
+        the partner (or the wallet) confirms it, so nobody can build a repayment
+        record on their own word."""
+        from finance_installments import CLAIMED, record_repayment, schedule_summary
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            user = _session_user(db, session)
+            application = _fetch_app(db, application_id, owner_phone)
+            try:
+                record_repayment(db, application, payload.installment_no, payload.amount,
+                                 verification=CLAIMED,
+                                 recorded_by_id=user.id if user else None, note=payload.note)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            db.commit()
+            return {
+                "ok": True,
+                "awaiting_confirmation": True,
+                "schedule": schedule_summary(db, application_id),
             }
         finally:
             db.close()
