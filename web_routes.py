@@ -304,6 +304,10 @@ def register_web_routes(app):
     from web_finance_routes import register_finance_routes
     register_finance_routes(app)
 
+    # ── Financier portal (/financier) — split into web_financier_routes ────────
+    from web_financier_routes import register_financier_routes
+    register_financier_routes(app)
+
     # ── TWA / Play Store: Digital Asset Links ────────────────────────────────
     @app.get("/.well-known/assetlinks.json")
     def assetlinks():
@@ -360,6 +364,18 @@ def register_web_routes(app):
             methods=["GET"],
             include_in_schema=False,
         )
+
+    # ── Financier portal (its own top-level path, not inside /app) ────────────
+    # Financiers are not CreditVoice businesses; keeping them off /app means the
+    # portal can never be mistaken for a user's own app, and their cookie is
+    # separate. Served by the same SPA build.
+    @app.get("/financier", response_class=HTMLResponse)
+    def financier_portal_root():
+        return _render_index("/financier")
+
+    @app.get("/financier/{full_path:path}", response_class=HTMLResponse)
+    def financier_portal_spa(full_path: str):
+        return _render_index(f"/financier/{full_path}")
 
     # ── SPA catch-all (MUST be last — catches all /app/* client-side routes) ──
     @app.get("/app/{full_path:path}", response_class=HTMLResponse)

@@ -319,6 +319,7 @@ def ensure_schema_updates(engine):
             "nationwide": f"BOOLEAN DEFAULT {_bool_true}",
             "states_covered": "VARCHAR",
         },
+        "financier_users": {"invite_attempts": "INTEGER DEFAULT 0"},
         "business_kyc": {
             "is_registered": "BOOLEAN",
             "registered_name": "VARCHAR",

@@ -687,11 +687,11 @@ export default function Scorecard() {
 
       <div className="card">
         <div className="card-header">
-          <span className="card-title"><TrendingUp size={15} /> Financing partners</span>
+          <span className="card-title"><TrendingUp size={15} /> Financiers</span>
         </div>
         <div className="card-body">
           {(offers?.offers || []).length === 0 ? (
-            <p className="td-muted">No partners listed yet. They will appear here as they join.</p>
+            <p className="td-muted">No financiers listed yet. They will appear here as they join.</p>
           ) : (
             offers.offers.map(o => (
               <Offer key={o.id} offer={o} onApply={startApply} />
@@ -700,7 +700,7 @@ export default function Scorecard() {
           <div className="text-subtle text-sm" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
             <ExternalLink size={13} style={{ flexShrink: 0, marginTop: 2 }} />
             <span>
-              Partners finance tools and vehicles and let you spread the cost. They run their own
+              Financiers supply tools and vehicles and let you spread the cost. They run their own
               checks; meeting the requirements here does not guarantee approval.
             </span>
           </div>

@@ -1406,13 +1406,13 @@ function PartnerForm({ initial, onSaved, onCancel }) {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="card-header">
-        <span className="card-title">{initial?.id ? `Edit ${initial.name}` : "New finance partner"}</span>
+        <span className="card-title">{initial?.id ? `Edit ${initial.name}` : "New financier"}</span>
       </div>
       <div className="card-body" style={{ display: "grid", gap: 10 }}>
         {err && <div className="modal-error">{err}</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <div className="form-group" style={{ flex: "1 1 220px", margin: 0 }}>
-            <label className="form-label">Partner name *</label>
+            <label className="form-label">Financier name *</label>
             <input value={p.name} onChange={e => set("name", e.target.value)} />
           </div>
           <div className="form-group" style={{ flex: "1 1 220px", margin: 0 }}>
@@ -1561,18 +1561,18 @@ function FinancePartnersPanel() {
         />
       ) : (
         <button className="btn btn-primary btn-sm" style={{ marginBottom: 12 }} onClick={() => setEditing("new")}>
-          + Add finance partner
+          + Add financier
         </button>
       )}
 
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Finance partners <span className="text-subtle text-sm">({partners.length})</span></span>
+          <span className="card-title">Financiers <span className="text-subtle text-sm">({partners.length})</span></span>
         </div>
         <div className="table-scroll">
           <table>
             <thead>
-              <tr><th>Partner</th><th>Finances</th><th>Asset value</th><th>Commission</th><th>Minimums</th><th>Status</th><th></th></tr>
+              <tr><th>Financier</th><th>Finances</th><th>Asset value</th><th>Commission</th><th>Minimums</th><th>Status</th><th></th></tr>
             </thead>
             <tbody>
               {partners.length === 0 ? (
@@ -2158,9 +2158,141 @@ function MetricCardLite({ label, value }) {
   );
 }
 
+// Logins for a financier's own staff, who work at /financier. Distinct from a
+// user's business partners — different people, different app, different cookie.
+function FinancierLoginsPanel() {
+  const [users, setUsers] = useState([]);
+  const [partners, setPartners] = useState([]);
+  const [form, setForm] = useState({ finance_partner_id: "", name: "", phone: "", email: "" });
+  const [issued, setIssued] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  function load() {
+    apiFetch("admin/financier-users").then(d => setUsers(d.users || [])).catch(e => setErr(e.message));
+    apiFetch("admin/finance-partners").then(d => setPartners(d.partners || [])).catch(() => {});
+  }
+  useEffect(load, []);
+
+  async function create() {
+    setBusy(true); setErr(""); setIssued(null);
+    try {
+      const r = await apiPost("admin/financier-users", form);
+      setIssued(r);
+      setForm({ finance_partner_id: form.finance_partner_id, name: "", phone: "", email: "" });
+      load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function act(id, what) {
+    if (what === "deactivate" && !window.confirm("Deactivate this login? They are signed out immediately.")) return;
+    setBusy(true); setErr("");
+    try {
+      const r = await apiPost(`admin/financier-users/${id}/${what}`, {});
+      if (what === "reinvite") setIssued(r);
+      load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {err && <div style={{ color: "var(--rose)" }}>{err}</div>}
+      {issued && issued.invite_code && (
+        <div className="card card-body" style={{ color: "#166534" }}>
+          Invite code for <strong>{issued.name}</strong>: <strong>{issued.invite_code}</strong>
+          <div className="text-subtle text-sm">
+            They open <strong>/financier</strong>, choose "I have an invite code", and set their own PIN.
+            The code expires in 7 days.
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-header"><span className="card-title">Invite a financier's staff</span></div>
+        <div className="card-body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="form-group" style={{ margin: 0, flex: "1 1 180px" }}>
+            <label className="form-label">Financier</label>
+            <select value={form.finance_partner_id}
+              onChange={e => setForm({ ...form, finance_partner_id: e.target.value })}>
+              <option value="">Select…</option>
+              {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+            <label className="form-label">Their name</label>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+            <label className="form-label">Their phone</label>
+            <input inputMode="tel" value={form.phone}
+              onChange={e => setForm({ ...form, phone: e.target.value })} />
+          </div>
+          <div className="form-group" style={{ margin: 0, flex: "1 1 170px" }}>
+            <label className="form-label">Email (optional)</label>
+            <input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          </div>
+          <button className="btn btn-primary btn-sm" disabled={busy || !form.finance_partner_id || !form.name || !form.phone}
+            onClick={create}>
+            {busy ? "Working…" : "Create login"}
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Financier logins <span className="text-subtle text-sm">({users.length})</span></span>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Person</th><th>Financier</th><th>Status</th><th>Last sign-in</th><th></th></tr>
+            </thead>
+            <tbody>
+              {users.length === 0 ? (
+                <tr><td colSpan={5} className="td-muted">No financier logins yet.</td></tr>
+              ) : users.map(u => (
+                <tr key={u.id}>
+                  <td>
+                    <strong>{u.name}</strong>
+                    <div className="td-muted" style={{ fontSize: 11 }}>{u.phone}{u.email ? ` · ${u.email}` : ""}</div>
+                  </td>
+                  <td>{u.financier_name || "—"}</td>
+                  <td>
+                    {!u.is_active ? <span className="badge badge-gray">Deactivated</span>
+                      : u.accepted ? <span className="badge badge-green">Active</span>
+                      : <span className="badge" style={{ color: "#92400e", background: "rgba(180,83,9,0.10)" }}>
+                          Invited{u.invite_code ? ` · ${u.invite_code}` : ""}
+                        </span>}
+                  </td>
+                  <td className="td-muted">
+                    {u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "never"}
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="btn btn-ghost btn-xs" disabled={busy}
+                        onClick={() => act(u.id, "reinvite")}>new code</button>
+                      {u.is_active && (
+                        <button className="btn btn-ghost btn-xs text-rose" disabled={busy}
+                          onClick={() => act(u.id, "deactivate")}>deactivate</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FinanceTab() {
   const [panel, setPanel] = useState("applications");
-  const PANELS = [["applications", "Applications"], ["partners", "Partners"], ["rules", "Scorecard rules"]];
+  const PANELS = [["applications", "Applications"], ["partners", "Financiers"],
+                  ["logins", "Financier logins"], ["rules", "Scorecard rules"]];
   return (
     <div>
       <div className="page-tabs" style={{ marginBottom: 14 }}>
@@ -2172,6 +2304,7 @@ function FinanceTab() {
       </div>
       {panel === "applications" ? <ApplicationsPanel />
         : panel === "partners" ? <FinancePartnersPanel />
+        : panel === "logins" ? <FinancierLoginsPanel />
         : <ScorecardRulesPanel />}
     </div>
   );

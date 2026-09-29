@@ -1596,6 +1596,37 @@ class FinanceApplication(Base):
     updated_at      = Column(DateTime, nullable=True)
 
 
+class FinancierUser(Base):
+    """A login for someone who works AT a financier (e.g. Gigmile's ops staff).
+
+    Not a CreditVoice business and not a BusinessPartner (which is a user's own
+    partner/investor). These accounts live behind their own cookie and can only
+    ever see applications sent to their own financier — never another
+    financier's, never CreditVoice's commission, never any customer list.
+
+    Created by an app admin, who hands over a one-time invite code the person
+    exchanges for their own PIN — the same shape as the staff invite flow.
+    """
+
+    __tablename__ = "financier_users"
+
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    finance_partner_id = Column(String, ForeignKey("finance_partners.id"), index=True)
+    name          = Column(String, nullable=False)
+    phone         = Column(String, unique=True, index=True)
+    email         = Column(String, nullable=True)
+    pin_hash      = Column(String, nullable=True)      # set when they accept the invite
+    invite_code   = Column(String, nullable=True, index=True)
+    invite_expires_at = Column(DateTime, nullable=True)
+    invite_attempts   = Column(Integer, default=0)
+    is_active     = Column(Boolean, default=True)
+    # Bumping this invalidates their existing sessions (deactivation, PIN reset).
+    token_version = Column(Integer, default=0, nullable=False)
+    last_login_at = Column(DateTime, nullable=True)
+    created_by    = Column(String, nullable=True)
+    created_at    = Column(DateTime, default=utcnow)
+
+
 class BusinessKyc(Base):
     """Who the business owner is, collected when they first apply for financing.
 
