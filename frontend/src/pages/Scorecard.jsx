@@ -8,6 +8,12 @@ import MetricCard from "../components/MetricCard";
 // about its trading record. CreditVoice lends nothing and approves nothing —
 // partners underwrite — so the wording here never promises anyone anything.
 
+// Plain-language meaning for a component, from the advice endpoint.
+function meaningFor(advice, key) {
+  const found = (advice?.explanations || []).find(e => e.key === key);
+  return found?.meaning || "";
+}
+
 function Bar({ value, tone = "brand" }) {
   return (
     <div style={{ height: 6, background: "rgba(127,127,127,0.15)", borderRadius: 3, overflow: "hidden" }}>
@@ -488,10 +494,44 @@ function Offer({ offer, onApply }) {
   );
 }
 
+// The score is useless if a trader can't see what moved it. Each action is the
+// concrete next thing, with the business's own figures in it.
+function HowToImprove({ advice }) {
+  if (!advice || (advice.actions || []).length === 0) return null;
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">How to improve your score</span>
+      </div>
+      <div className="card-body" style={{ display: "grid", gap: 12 }}>
+        {advice.actions.map((a, i) => (
+          <div key={a.key} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{
+              flexShrink: 0, width: 22, height: 22, borderRadius: 999, fontSize: 12,
+              display: "grid", placeItems: "center", fontWeight: 800,
+              background: "rgba(37,99,235,0.12)", color: "var(--brand)",
+            }}>{i + 1}</span>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                {a.label}
+                {a.possible_gain > 0 && (
+                  <span className="text-subtle text-sm"> · up to +{a.possible_gain} points</span>
+                )}
+              </div>
+              <div className="text-subtle text-sm">{a.action}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Scorecard() {
   const [card, setCard] = useState(null);
   const [offers, setOffers] = useState(null);
   const [applications, setApplications] = useState([]);
+  const [advice, setAdvice] = useState(null);
   const [applying, setApplying] = useState(null);   // the offer being applied to
   const [kycOpen, setKycOpen] = useState(false);
   const [pendingOffer, setPendingOffer] = useState(null);   // resume after details
@@ -504,7 +544,11 @@ export default function Scorecard() {
   }
 
   useEffect(() => {
-    Promise.all([apiFetch("scorecard").then(setCard), loadOffers()])
+    Promise.all([
+      apiFetch("scorecard").then(setCard),
+      apiFetch("scorecard/advice").then(setAdvice).catch(() => {}),
+      loadOffers(),
+    ])
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -593,6 +637,11 @@ export default function Scorecard() {
                 </span>
               </div>
               <Bar value={c.score} tone={c.score < 40 ? "amber" : "brand"} />
+              {meaningFor(advice, c.key) && (
+                <div className="text-subtle text-sm" style={{ marginTop: 3 }}>
+                  {meaningFor(advice, c.key)}
+                </div>
+              )}
             </div>
           ))}
           {(card.not_applicable || []).length > 0 && (
@@ -604,6 +653,8 @@ export default function Scorecard() {
           )}
         </div>
       </div>
+
+      <HowToImprove advice={advice} />
 
       <MonthlySales months={m.monthly_sales} />
 

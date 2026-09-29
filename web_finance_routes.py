@@ -856,6 +856,34 @@ def register_finance_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/scorecard/advice")
+    def my_scorecard_advice(session: dict = Depends(require_web_auth),
+                            partner_id: str = ""):
+        """What each component means, and the actions that would raise the score
+        most — optionally judged by one partner's rules."""
+        from business_scorecard import active_config, score_business
+        from scorecard_advice import explain, improvement_plan
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            partner = None
+            if partner_id:
+                partner = db.query(FinancePartner).filter(
+                    FinancePartner.id == partner_id).first()
+            _version, config = active_config(db)
+            card = score_business(db, owner_phone, partner=partner) if partner \
+                else score_business(db, owner_phone, config=config)
+            return {
+                "score": card["score"],
+                "tier": card["tier"],
+                "confidence": card["confidence"],
+                "partner_name": card.get("partner_name"),
+                "explanations": explain(card),
+                "actions": improvement_plan(db, owner_phone, card=card, config=config, limit=4),
+            }
+        finally:
+            db.close()
+
     @app.get("/app/api/finance-offers")
     def my_finance_offers(session: dict = Depends(require_web_auth)):
         """Active partners, each with this business's standing against that

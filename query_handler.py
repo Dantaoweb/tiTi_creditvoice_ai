@@ -651,6 +651,53 @@ def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Option
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
+# ── Business score / financing questions ─────────────────────────────────────
+# Asked constantly once a business sees a score, and the answer is the same
+# whether they ask on WhatsApp or in the web chat.
+_SCORE_PATTERNS = [
+    r"\b(?:my|our|the)\s+(?:business\s+)?(?:score|scorecard|rating)\b",
+    r"\b(?:what|how)\s+is\s+my\s+(?:business\s+)?(?:score|rating)\b",
+    r"^\s*(?:business\s+)?(?:score|scorecard)\s*[?!.]*$",
+    r"\bcredit\s+score\b",
+]
+_IMPROVE_PATTERNS = [
+    r"\bimprove\s+(?:my\s+)?(?:business\s+)?(?:score|rating|scorecard)\b",
+    r"\b(?:how|what)\s+(?:do|can|should)\s+i\s+(?:do\s+to\s+)?(?:improve|increase|raise|boost)\b",
+    r"\braise\s+my\s+score\b",
+    r"\bwhy\s+is\s+my\s+score\s+(?:low|small|poor|bad)\b",
+]
+_FINANCE_PATTERNS = [
+    r"\b(?:can\s+i\s+get|do\s+i\s+qualify|am\s+i\s+eligible)\b.*\b(?:loan|finance|financing|motorcycle|bike|asset|equipment)\b",
+    r"\b(?:financing|finance)\s+(?:partners?|options?|offers?)\b",
+    r"\bwho\s+can\s+finance\s+me\b",
+    r"\bqualify\s+for\s+financing\b",
+]
+_WHAT_IS_PATTERNS = [
+    r"^\s*what\s+(?:is|does)\s+(.+?)\s*(?:mean)?[?!.]*$",
+]
+
+
+def _answer_scorecard(db, owner_phone: str, text: str) -> Optional[str]:
+    """Business-score questions. Returns None when the text isn't one."""
+    import re as _re
+    from scorecard_advice import explain_metric, financing_summary, improve_summary, score_summary
+
+    low = text.lower().strip()
+    if any(_re.search(p, low) for p in _IMPROVE_PATTERNS):
+        return improve_summary(db, owner_phone)
+    if any(_re.search(p, low) for p in _FINANCE_PATTERNS):
+        return financing_summary(db, owner_phone)
+    if any(_re.search(p, low) for p in _SCORE_PATTERNS):
+        return score_summary(db, owner_phone)
+    for pattern in _WHAT_IS_PATTERNS:
+        match = _re.search(pattern, low)
+        if match:
+            explained = explain_metric(match.group(1))
+            if explained:
+                return explained
+    return None
+
+
 def handle_natural_language_query(
     db,
     owner_phone: str,
@@ -666,6 +713,11 @@ def handle_natural_language_query(
     t = text.strip()
     if not t:
         return None
+
+    # ── 0a. Business score / financing ────────────────────────────────────────
+    scored = _answer_scorecard(db, owner_phone, t)
+    if scored:
+        return scored
 
     # ── 0. Aggregate / list / meta queries (counts, debtors, stock, sales) ─────
     agg = _answer_aggregate(db, owner_phone, t, recorded_by_id)
