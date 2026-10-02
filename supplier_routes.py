@@ -130,6 +130,9 @@ class OpportunityIn(BaseModel):
     description:  str  = Field(max_length=2000)
     link_url:     str  = Field(default="", max_length=500)
     is_active:    bool = True
+    # Link a financier and this card becomes their offer: its own requirements,
+    # and applying runs the consent + snapshot flow.
+    finance_partner_id: str = Field(default="", max_length=64)
     # JSON array of intake questions the admin sets, e.g.
     # [{"label": "Years in business", "type": "text", "required": true}]
     application_fields: str = Field(default="[]", max_length=4000)
@@ -670,6 +673,9 @@ def register_supplier_routes(app, get_db=None):
 
     @app.get("/app/api/opportunities")
     def list_opportunities():
+        """Public list — deliberately carries no per-business detail. The app
+        calls /app/api/opportunities/mine, which adds each financier's
+        requirements for the signed-in business."""
         db = SessionLocal()
         try:
             opps = db.query(Opportunity).filter(
@@ -687,6 +693,7 @@ def register_supplier_routes(app, get_db=None):
                         # The admin's intake questions — the apply form renders
                         # these, so they must reach the user before they apply.
                         "application_fields": o.application_fields or "[]",
+                        "finance_partner_id": o.finance_partner_id,
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
                     for o in opps
@@ -770,6 +777,7 @@ def register_supplier_routes(app, get_db=None):
                         "link_url": o.link_url or "",
                         "application_fields": o.application_fields or "[]",
                         "is_active": bool(o.is_active),
+                        "finance_partner_id": o.finance_partner_id,
                         "application_count": int(counts.get(o.id, 0)),
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
@@ -794,6 +802,7 @@ def register_supplier_routes(app, get_db=None):
                 link_url     = payload.link_url or None,
                 is_active    = payload.is_active,
                 application_fields = payload.application_fields or "[]",
+                finance_partner_id = payload.finance_partner_id or None,
             )
             db.add(opp)
             db.commit()
@@ -817,6 +826,7 @@ def register_supplier_routes(app, get_db=None):
             opp.link_url     = payload.link_url or None
             opp.is_active    = payload.is_active
             opp.application_fields = payload.application_fields or "[]"
+            opp.finance_partner_id = payload.finance_partner_id or None
             db.commit()
             return {"ok": True}
         finally:

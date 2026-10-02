@@ -884,6 +884,128 @@ def register_finance_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/opportunities/mine")
+    def my_opportunities(session: dict = Depends(require_web_auth)):
+        """Every offer in one place, for this business.
+
+        Users were being asked to look in two places for the same thing: a
+        noticeboard of opportunities, and a separate list of financiers. This
+        returns both as one list. A card linked to a financier carries that
+        financier's requirements, their coverage, and this business's standing
+        with them; everything else is an ordinary card with its own intake form.
+        """
+        from business_kyc import coverage_label, get_kyc, kyc_checks, missing_fields, partner_covers
+        from business_scorecard import check_eligibility, eligible, score_business
+        from models import Opportunity, OpportunityApplication
+
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            cards = (
+                db.query(Opportunity)
+                .filter(Opportunity.is_active == True)  # noqa: E712
+                .order_by(Opportunity.created_at.desc())
+                .all()
+            )
+            partners = {
+                p.id: p for p in db.query(FinancePartner).filter(
+                    FinancePartner.is_active == True  # noqa: E712
+                ).all()
+            }
+            generic_applied = {
+                a.opportunity_id: a.status
+                for a in db.query(OpportunityApplication).filter(
+                    OpportunityApplication.applicant_phone == owner_phone).all()
+            }
+            finance_applied = {
+                a.partner_id: a.status
+                for a in db.query(FinanceApplication).filter(
+                    FinanceApplication.owner_phone == owner_phone).all()
+            }
+
+            kyc = get_kyc(db, owner_phone)
+            kyc_gaps = [{"key": k, "label": l} for k, l in missing_fields(kyc)]
+
+            out = []
+            for card in cards:
+                partner = partners.get(card.finance_partner_id) if card.finance_partner_id else None
+                item = {
+                    "id": card.id,
+                    "title": card.title,
+                    "partner_name": (partner.name if partner else card.partner_name) or "",
+                    "category": card.category or "general",
+                    "description": card.description,
+                    "link_url": card.link_url or "",
+                    "application_fields": card.application_fields or "[]",
+                    "kind": "finance" if partner else "general",
+                    "applied_status": generic_applied.get(card.id),
+                    "created_at": card.created_at.isoformat() if card.created_at else None,
+                }
+                if partner:
+                    pcard = score_business(db, owner_phone, partner=partner)
+                    rules = _json_load(partner.eligibility_json, {})
+                    checks = check_eligibility(pcard, rules) + kyc_checks(partner, kyc, rules)
+                    item.update({
+                        "financier_id": partner.id,
+                        "asset_types": _json_load(partner.asset_types, []),
+                        "asset_value_min": partner.asset_value_min,
+                        "asset_value_max": partner.asset_value_max,
+                        "score": pcard["score"],
+                        "tier": pcard["tier"],
+                        "partner_rules": pcard["partner_rules"],
+                        "checks": checks,
+                        "eligible": eligible(checks),
+                        "covered": partner_covers(partner, kyc.state if kyc else None),
+                        "coverage": coverage_label(partner),
+                        "applied_status": finance_applied.get(partner.id),
+                    })
+                out.append(item)
+
+            # A financier with no card yet still needs to be reachable, or a new
+            # partner would be invisible until someone remembers to publish one.
+            carded = {c.finance_partner_id for c in cards if c.finance_partner_id}
+            for partner in partners.values():
+                if partner.id in carded:
+                    continue
+                pcard = score_business(db, owner_phone, partner=partner)
+                rules = _json_load(partner.eligibility_json, {})
+                checks = check_eligibility(pcard, rules) + kyc_checks(partner, kyc, rules)
+                assets = _json_load(partner.asset_types, [])
+                out.append({
+                    "id": f"financier:{partner.id}",
+                    "title": f"Financing from {partner.name}",
+                    "partner_name": partner.name,
+                    "category": "finance",
+                    "description": (
+                        f"Spread the cost of {', '.join(assets) if assets else 'business assets'} "
+                        f"over time. {partner.name} runs its own checks and decides."
+                    ),
+                    "link_url": "",
+                    "application_fields": "[]",
+                    "kind": "finance",
+                    "financier_id": partner.id,
+                    "asset_types": assets,
+                    "asset_value_min": partner.asset_value_min,
+                    "asset_value_max": partner.asset_value_max,
+                    "score": pcard["score"],
+                    "tier": pcard["tier"],
+                    "partner_rules": pcard["partner_rules"],
+                    "checks": checks,
+                    "eligible": eligible(checks),
+                    "covered": partner_covers(partner, kyc.state if kyc else None),
+                    "coverage": coverage_label(partner),
+                    "applied_status": finance_applied.get(partner.id),
+                    "created_at": partner.created_at.isoformat() if partner.created_at else None,
+                })
+
+            return {
+                "opportunities": out,
+                "kyc_complete": not kyc_gaps,
+                "kyc_missing": kyc_gaps,
+            }
+        finally:
+            db.close()
+
     @app.get("/app/api/finance-offers")
     def my_finance_offers(session: dict = Depends(require_web_auth)):
         """Active partners, each with this business's standing against that

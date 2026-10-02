@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../lib/api";
-import { ExternalLink, CheckCircle, Clock, XCircle, ChevronRight } from "lucide-react";
+import { ExternalLink, CheckCircle, Clock, XCircle, ChevronRight, CheckCircle2 } from "lucide-react";
+import { FinanceApplyModal, KycModal, StatusPill } from "../components/FinanceApply";
+import { nairaFull } from "../lib/format";
 
 const CATEGORY_COLORS = {
   finance:   { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" },
@@ -123,6 +125,79 @@ function ApplyModal({ opp, user, onClose, onDone }) {
             </div>
           </form>
         )}
+      </div>
+    </div>
+  );
+}
+
+// A financing card: the financier's own requirements against this business, and
+// an Apply that runs consent + a frozen snapshot rather than a generic form.
+function FinanceCard({ opp, kycComplete, onApply, onNeedKyc }) {
+  const c = CATEGORY_COLORS.finance;
+  const assets = (opp.asset_types || []).join(", ");
+  const applied = opp.applied_status && !["DECLINED", "WITHDRAWN"].includes(opp.applied_status);
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12,
+                  overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: c.bg, borderBottom: `1px solid ${c.border}`, padding: "12px 20px",
+        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: c.text, textTransform: "uppercase",
+                       letterSpacing: 0.5 }}>Financing</span>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{opp.partner_name}</span>
+      </div>
+      <div style={{ padding: "18px 20px", flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, lineHeight: 1.4 }}>{opp.title}</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.7, margin: 0 }}>
+          {opp.description}
+        </p>
+        {assets && (
+          <div className="text-subtle text-sm">Finances: {assets}</div>
+        )}
+        {(opp.asset_value_min || opp.asset_value_max) && (
+          <div className="text-subtle text-sm">
+            Value range: {nairaFull(opp.asset_value_min || 0)} – {nairaFull(opp.asset_value_max || 0)}
+          </div>
+        )}
+        {opp.coverage && (
+          <div className="text-subtle text-sm">
+            Covers: {opp.coverage}
+            {opp.covered === false && (
+              <strong style={{ color: "var(--amber)" }}> — not where you are</strong>
+            )}
+          </div>
+        )}
+        {opp.partner_rules && (
+          <div className="text-subtle text-sm">
+            They weigh things their own way — with them your score is{" "}
+            <strong>{opp.score ?? "not rated"}</strong>{opp.tier ? ` (${opp.tier})` : ""}.
+          </div>
+        )}
+        {(opp.checks || []).length > 0 && (
+          <div style={{ display: "grid", gap: 5, marginTop: 2 }}>
+            {opp.checks.map((ch, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
+                {ch.passed ? <CheckCircle2 size={13} color="#166534" />
+                           : <XCircle size={13} color="#b45309" />}
+                <span style={{ flex: 1 }}>{ch.requirement}</span>
+                <span className="text-subtle">
+                  needs {String(ch.required)} · you have {String(ch.actual)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ padding: "12px 20px", borderTop: "1px solid var(--border)" }}>
+        {applied ? <StatusPill status={opp.applied_status} />
+          : opp.covered === false ? (
+            <span className="text-subtle text-sm">They do not operate in your state yet.</span>
+          ) : (
+            <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 13 }}
+              onClick={() => (kycComplete ? onApply(opp) : onNeedKyc(opp))}>
+              Apply
+            </button>
+          )}
       </div>
     </div>
   );
@@ -251,10 +326,15 @@ export default function Opportunities() {
   const [filter, setFilter]     = useState("all");
   const [showMyApps, setShowMyApps] = useState(false);
   const [user, setUser]         = useState(null);
+  const [kycComplete, setKycComplete] = useState(true);
+  const [applying, setApplying] = useState(null);    // financing card being applied to
+  const [kycFor, setKycFor]     = useState(null);    // details needed before applying
 
+  // One call, both kinds: ordinary cards and financing offers. Users were being
+  // sent to two different screens for the same job.
   function loadAll() {
-    apiFetch("opportunities")
-      .then(d => setOpps(d.opportunities || []))
+    apiFetch("opportunities/mine")
+      .then(d => { setOpps(d.opportunities || []); setKycComplete(d.kyc_complete !== false); })
       .catch(() => setOpps([]))
       .finally(() => setLoading(false));
     apiFetch("opportunities/my-applications")
@@ -321,12 +401,30 @@ export default function Opportunities() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
             {visible.map(o => (
+              o.kind === "finance" ? (
+              <FinanceCard key={o.id} opp={o} kycComplete={kycComplete}
+                onApply={setApplying} onNeedKyc={setKycFor} />
+            ) : (
               <OpportunityCard key={o.id} opp={o} user={user}
-                applied={appliedMap[o.id] || null}
-                onApplied={loadAll} />
+                applied={appliedMap[o.id]} onApplied={loadAll} />
+            )
             ))}
           </div>
         </>
+      )}
+
+      {kycFor && (
+        <KycModal
+          onClose={() => setKycFor(null)}
+          onSaved={() => { const card = kycFor; setKycFor(null); setKycComplete(true); setApplying(card); }}
+        />
+      )}
+      {applying && (
+        <FinanceApplyModal
+          offer={applying}
+          onClose={() => setApplying(null)}
+          onDone={() => { setApplying(null); loadAll(); }}
+        />
       )}
     </div>
   );

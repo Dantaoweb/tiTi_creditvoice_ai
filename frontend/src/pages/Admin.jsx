@@ -880,7 +880,11 @@ function OpportunitiesTab() {
   const [updatingApp, setUpdatingApp] = useState(null);
   const [appNote, setAppNote]     = useState("");
 
-  const empty = { title: "", partner_name: "", category: "general", description: "", link_url: "", is_active: true, application_fields: [] };
+  const empty = { title: "", partner_name: "", category: "general", description: "", link_url: "", is_active: true, application_fields: [], finance_partner_id: "" };
+  const [financiers, setFinanciers] = useState([]);
+  useEffect(() => {
+    apiFetch("admin/finance-partners").then(d => setFinanciers(d.partners || [])).catch(() => {});
+  }, []);
   const [form, setForm]           = useState({ ...empty });
 
   const CATS = ["finance","equipment","trade","products","general"];
@@ -1057,10 +1061,28 @@ function OpportunitiesTab() {
             <label className="form-label">Description *</label>
             <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
           </div>
-          <FieldEditor
-            fields={form.application_fields || []}
-            onChange={fields => setForm(f => ({ ...f, application_fields: fields }))}
-          />
+          {/* Link a financier and this card becomes their offer: it shows their
+              requirements and applying runs consent + a frozen snapshot, so a
+              business never has to look in two places for an offer. */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Financing offer from</label>
+            <select value={form.finance_partner_id || ""}
+              onChange={e => setForm(f => ({ ...f, finance_partner_id: e.target.value }))}>
+              <option value="">Not a financing offer</option>
+              {financiers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <span className="form-hint">
+              {form.finance_partner_id
+                ? "Applicants go through consent and the scorecard snapshot — the intake questions below are ignored."
+                : "Leave as is for an ordinary notice with your own intake questions."}
+            </span>
+          </div>
+          {!form.finance_partner_id && (
+            <FieldEditor
+              fields={form.application_fields || []}
+              onChange={fields => setForm(f => ({ ...f, application_fields: fields }))}
+            />
+          )}
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer" }}>
             <input type="checkbox" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))} />
             Active (visible to users)

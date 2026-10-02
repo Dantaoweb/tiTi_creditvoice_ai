@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, TrendingUp, Info, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
+import { Link } from "react-router-dom";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr, parseAmt } from "../lib/format";
 import MetricCard from "../components/MetricCard";
+import { StatusPill } from "../components/FinanceApply";
 
 // The business's own evidence file: what CreditVoice can show a finance partner
 // about its trading record. CreditVoice lends nothing and approves nothing —
@@ -60,245 +62,11 @@ function MonthlySales({ months }) {
   );
 }
 
-const APPLICATION_STATUS = {
-  SUBMITTED: ["Sent to CreditVoice", "#92400e", "rgba(180,83,9,0.10)"],
-  SHARED:    ["Shared with partner", "#1d4ed8", "rgba(29,78,216,0.10)"],
-  IN_REVIEW: ["Partner reviewing", "#1d4ed8", "rgba(29,78,216,0.10)"],
-  APPROVED:  ["Approved", "#166534", "rgba(22,101,52,0.10)"],
-  DELIVERED: ["Asset delivered", "#166534", "rgba(22,101,52,0.12)"],
-  DECLINED:  ["Declined", "#b91c1c", "rgba(185,28,28,0.10)"],
-  WITHDRAWN: ["Withdrawn", "#6b7280", "rgba(107,114,128,0.12)"],
-};
 
-function StatusPill({ status }) {
-  const [label, color, bg] = APPLICATION_STATUS[status] || [status, "#6b7280", "rgba(107,114,128,0.12)"];
-  return <span className="badge" style={{ color, background: bg, fontWeight: 700 }}>{label}</span>;
-}
 
 // Identity details, asked at the point a financier needs them — never at
-// sign-up. The owner fills this once and it is reused for every application.
-function KycModal({ onClose, onSaved }) {
-  const [meta, setMeta] = useState(null);
-  const [form, setForm] = useState({});
-  const [missing, setMissing] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    Promise.all([apiFetch("finance-meta"), apiFetch("kyc")])
-      .then(([m, k]) => {
-        setMeta(m);
-        setForm(k.kyc || {});
-        setMissing((k.missing || []).map(x => x.key));
-      })
-      .catch(e => setErr(e.message));
-  }, []);
-
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
-
-  async function save() {
-    setBusy(true); setErr("");
-    try {
-      const r = await apiPost("kyc", form);
-      if (!r.complete) {
-        setMissing((r.missing || []).map(x => x.key));
-        setErr(`Still needed: ${(r.missing || []).map(x => x.label).join(", ")}`);
-        return;
-      }
-      onSaved();
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
-  }
-
-  const need = k => missing.includes(k);
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <span className="modal-title">Your business &amp; identity details</span>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="modal-body">
-          {err && <div className="modal-error">{err}</div>}
-          <p className="text-subtle text-sm">
-            Financiers must know who they are dealing with. You enter this once, and it
-            is shared only with the partner you apply to.
-          </p>
-          {!meta ? <p className="td-muted">Loading…</p> : (
-            <>
-              <div className="form-group">
-                <label className="form-label">Full name, as on your ID *</label>
-                <input value={form.legal_name || ""} onChange={e => set("legal_name", e.target.value)}
-                  style={need("legal_name") ? { borderColor: "var(--amber)" } : undefined} />
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div className="form-group" style={{ flex: "1 1 150px" }}>
-                  <label className="form-label">State *</label>
-                  <select value={form.state || ""} onChange={e => set("state", e.target.value)}>
-                    <option value="">Select…</option>
-                    {meta.states.map(st => <option key={st} value={st}>{st}</option>)}
-                  </select>
-                </div>
-                <div className="form-group" style={{ flex: "1 1 150px" }}>
-                  <label className="form-label">Town / city *</label>
-                  <input value={form.city || ""} onChange={e => set("city", e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Business address *</label>
-                <input value={form.address || ""} onChange={e => set("address", e.target.value)} />
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div className="form-group" style={{ flex: "1 1 170px" }}>
-                  <label className="form-label">ID type *</label>
-                  <select value={form.id_type || ""} onChange={e => set("id_type", e.target.value)}>
-                    <option value="">Select…</option>
-                    {meta.id_types.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div className="form-group" style={{ flex: "1 1 170px" }}>
-                  <label className="form-label">ID number *</label>
-                  <input value={form.id_number || ""} onChange={e => set("id_number", e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Is the business registered with CAC? *</label>
-                <select
-                  value={form.is_registered === true ? "yes" : form.is_registered === false ? "no" : ""}
-                  onChange={e => set("is_registered", e.target.value === "" ? null : e.target.value === "yes")}>
-                  <option value="">Select…</option>
-                  <option value="no">No, not registered</option>
-                  <option value="yes">Yes, registered</option>
-                </select>
-                <span className="form-hint">
-                  Being unregistered is fine — most partners accept it. A few only finance
-                  registered businesses.
-                </span>
-              </div>
-              {form.is_registered === true && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <div className="form-group" style={{ flex: "1 1 170px" }}>
-                    <label className="form-label">Registered name</label>
-                    <input value={form.registered_name || ""}
-                      onChange={e => set("registered_name", e.target.value)} />
-                  </div>
-                  <div className="form-group" style={{ flex: "1 1 150px" }}>
-                    <label className="form-label">RC / BN number *</label>
-                    <input value={form.registration_number || ""}
-                      onChange={e => set("registration_number", e.target.value)} />
-                  </div>
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div className="form-group" style={{ flex: "1 1 150px" }}>
-                  <label className="form-label">Guarantor name</label>
-                  <input value={form.guarantor_name || ""} onChange={e => set("guarantor_name", e.target.value)} />
-                </div>
-                <div className="form-group" style={{ flex: "1 1 150px" }}>
-                  <label className="form-label">Guarantor phone</label>
-                  <input inputMode="tel" value={form.guarantor_phone || ""}
-                    onChange={e => set("guarantor_phone", e.target.value)} />
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <div className="form-group" style={{ flex: "1 1 130px" }}>
-                  <label className="form-label">Years in business</label>
-                  <input inputMode="numeric" value={form.years_in_business ?? ""}
-                    onChange={e => set("years_in_business", e.target.value)} />
-                </div>
-                <div className="form-group" style={{ flex: "1 1 130px" }}>
-                  <label className="form-label">People working with you</label>
-                  <input inputMode="numeric" value={form.employees ?? ""}
-                    onChange={e => set("employees", e.target.value)} />
-                </div>
-              </div>
-              <p className="text-subtle text-sm">
-                Fields marked * are required. We never ask for your BVN.
-              </p>
-            </>
-          )}
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={save} disabled={busy || !meta}>
-            {busy ? "Saving…" : "Save details"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Applying shares this business's trading record with one partner. Consent is
 // explicit, and the scorecard is frozen at this moment so what the partner sees
-// can't drift afterwards.
-function ApplyModal({ offer, onClose, onDone }) {
-  const [asset, setAsset] = useState((offer.asset_types || [])[0] || "");
-  const [value, setValue] = useState("");
-  const [note, setNote] = useState("");
-  const [consent, setConsent] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
-  async function submit() {
-    setBusy(true); setErr("");
-    try {
-      await apiPost(`finance-offers/${offer.id}/apply`, {
-        consent: true,
-        asset_requested: asset.trim() || null,
-        asset_value: value ? parseAmt(value) : null,
-        note: note.trim() || null,
-      });
-      onDone();
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <span className="modal-title">Apply — {offer.name}</span>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="modal-body">
-          {err && <div className="modal-error">{err}</div>}
-          <div className="form-group">
-            <label className="form-label">What do you need?</label>
-            <input value={asset} onChange={e => setAsset(e.target.value)}
-              placeholder={(offer.asset_types || []).join(", ") || "e.g. motorcycle"} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Roughly what does it cost? (optional)</label>
-            <input inputMode="numeric" value={value} onChange={e => setValue(e.target.value)} placeholder="e.g. 1,200,000" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Anything they should know? (optional)</label>
-            <textarea rows={3} value={note} onChange={e => setNote(e.target.value)} />
-          </div>
-          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13 }}>
-            <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}
-              style={{ marginTop: 3 }} />
-            <span>
-              I agree to share my business record with <strong>{offer.name}</strong> — sales totals,
-              how steadily I record, margin, how my customers pay and how I pay suppliers.
-              My customers' names and phone numbers are never shared. I can withdraw this
-              application while it is still under review.
-            </span>
-          </label>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={busy || !consent}>
-            {busy ? "Sending…" : "Send application"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // A financed asset's repayment plan. It also lives on the Suppliers page (each
 // installment is a supplier bill), but the plan reads clearer in one place.
 function RepaymentPlan({ application, onPaid }) {
@@ -426,73 +194,6 @@ function MyApplications({ applications, onWithdraw }) {
   );
 }
 
-function Offer({ offer, onApply }) {
-  const assets = (offer.asset_types || []).join(", ");
-  return (
-    <div className="card" style={{ marginBottom: 12 }}>
-      <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
-        <span className="card-title">{offer.name}</span>
-        <span className="badge" style={{
-          background: offer.eligible ? "rgba(22,101,52,0.10)" : "rgba(180,83,9,0.10)",
-          color: offer.eligible ? "#166534" : "#92400e", fontWeight: 700,
-        }}>
-          {offer.eligible ? "You meet their requirements" : "Not there yet"}
-        </span>
-      </div>
-      <div className="card-body">
-        {assets && <div className="text-subtle text-sm" style={{ marginBottom: 6 }}>Finances: {assets}</div>}
-        {offer.coverage && (
-          <div className="text-subtle text-sm" style={{ marginBottom: 6 }}>
-            Covers: {offer.coverage}
-            {offer.covered === false && (
-              <strong style={{ color: "var(--amber)" }}> — not available where you are</strong>
-            )}
-          </div>
-        )}
-        {(offer.asset_value_min || offer.asset_value_max) && (
-          <div className="text-subtle text-sm" style={{ marginBottom: 10 }}>
-            Value range: {nairaFull(offer.asset_value_min || 0)} – {nairaFull(offer.asset_value_max || 0)}
-          </div>
-        )}
-        {offer.partner_rules && (
-          <div className="text-subtle text-sm" style={{ marginBottom: 8 }}>
-            {offer.name} weighs things their own way — with them your score is{" "}
-            <strong>{offer.score ?? "not rated"}</strong>
-            {offer.tier ? ` (${offer.tier})` : ""}.
-          </div>
-        )}
-        {(offer.checks || []).length === 0 ? (
-          <div className="text-subtle text-sm">No published requirements — apply and they will review.</div>
-        ) : (
-          <div style={{ display: "grid", gap: 6 }}>
-            {offer.checks.map((c, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                {c.passed
-                  ? <CheckCircle2 size={14} color="#166534" />
-                  : <XCircle size={14} color="#b45309" />}
-                <span style={{ flex: 1 }}>{c.requirement}</span>
-                <span className="text-subtle">
-                  needs {c.required.toLocaleString()} · you have {Number(c.actual).toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ marginTop: 12 }}>
-          {offer.applied_status && !["DECLINED", "WITHDRAWN"].includes(offer.applied_status) ? (
-            <StatusPill status={offer.applied_status} />
-          ) : offer.covered === false ? (
-            <span className="text-subtle text-sm">They do not operate in your state yet.</span>
-          ) : (
-            <button className="btn btn-primary btn-sm" onClick={() => onApply(offer)}>
-              Apply
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // The score is useless if a trader can't see what moved it. Each action is the
 // concrete next thing, with the business's own figures in it.
@@ -532,9 +233,6 @@ export default function Scorecard() {
   const [offers, setOffers] = useState(null);
   const [applications, setApplications] = useState([]);
   const [advice, setAdvice] = useState(null);
-  const [applying, setApplying] = useState(null);   // the offer being applied to
-  const [kycOpen, setKycOpen] = useState(false);
-  const [pendingOffer, setPendingOffer] = useState(null);   // resume after details
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -552,17 +250,6 @@ export default function Scorecard() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
-
-  // Financiers need identity details; collect them at this point rather than
-  // at sign-up, then carry on into the application the owner wanted.
-  function startApply(offer) {
-    if (offers && offers.kyc_complete === false) {
-      setPendingOffer(offer);
-      setKycOpen(true);
-      return;
-    }
-    setApplying(offer);
-  }
 
   async function withdraw(r) {
     if (!window.confirm(`Withdraw your application to ${r.partner_name}? Your record will no longer be shared with them.`)) return;
@@ -602,16 +289,6 @@ export default function Scorecard() {
         </div>
       </div>
 
-      {offers && offers.kyc_complete === false && (offers.offers || []).length > 0 && (
-        <div className="card card-body" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13.5 }}>
-            Financing partners need your business and identity details before you can apply.
-          </span>
-          <button className="btn btn-primary btn-sm" onClick={() => setKycOpen(true)}>
-            Add my details
-          </button>
-        </div>
-      )}
 
       <div className="metrics-grid">
         <MetricCard label="Average monthly sales" value={nairaFull(m.avg_monthly_sales)} color="brand" />
@@ -687,23 +364,19 @@ export default function Scorecard() {
 
       <div className="card">
         <div className="card-header">
-          <span className="card-title"><TrendingUp size={15} /> Financiers</span>
+          <span className="card-title"><TrendingUp size={15} /> Financing</span>
         </div>
         <div className="card-body">
-          {(offers?.offers || []).length === 0 ? (
-            <p className="td-muted">No financiers listed yet. They will appear here as they join.</p>
-          ) : (
-            offers.offers.map(o => (
-              <Offer key={o.id} offer={o} onApply={startApply} />
-            ))
+          <p className="text-subtle text-sm" style={{ marginTop: 0 }}>
+            Offers from financiers live with everything else on{" "}
+            <Link to="/opportunities">Opportunities</Link> — one place to look. This page is
+            your record: what you have built, and what to improve.
+          </p>
+          {offers && (offers.offers || []).length > 0 && (
+            <Link className="btn btn-primary btn-sm" to="/opportunities">
+              See {offers.offers.length} financing offer{offers.offers.length === 1 ? "" : "s"}
+            </Link>
           )}
-          <div className="text-subtle text-sm" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-            <ExternalLink size={13} style={{ flexShrink: 0, marginTop: 2 }} />
-            <span>
-              Financiers supply tools and vehicles and let you spread the cost. They run their own
-              checks; meeting the requirements here does not guarantee approval.
-            </span>
-          </div>
         </div>
       </div>
 
@@ -713,24 +386,7 @@ export default function Scorecard() {
         <RepaymentPlan key={a.id} application={a} onPaid={loadOffers} />
       ))}
 
-      {kycOpen && (
-        <KycModal
-          onClose={() => { setKycOpen(false); setPendingOffer(null); }}
-          onSaved={async () => {
-            setKycOpen(false);
-            await loadOffers();
-            if (pendingOffer) { setApplying(pendingOffer); setPendingOffer(null); }
-          }}
-        />
-      )}
 
-      {applying && (
-        <ApplyModal
-          offer={applying}
-          onClose={() => setApplying(null)}
-          onDone={async () => { setApplying(null); await loadOffers(); }}
-        />
-      )}
     </>
   );
 }

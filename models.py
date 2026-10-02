@@ -1710,6 +1710,11 @@ class Opportunity(Base):
     description        = Column(Text, nullable=False)
     link_url           = Column(String, nullable=True)
     application_fields = Column(Text, default="[]")     # JSON array of custom intake fields
+    # Set when this card IS a financier's offer. Users shouldn't have to look in
+    # two places for an offer, so financing lives on this one noticeboard; the
+    # card then shows that financier's requirements and applying runs the
+    # consent + snapshot flow instead of the generic intake form.
+    finance_partner_id = Column(String, ForeignKey("finance_partners.id"), nullable=True, index=True)
     is_active          = Column(Boolean, default=True)
     created_at         = Column(DateTime, default=utcnow)
 
