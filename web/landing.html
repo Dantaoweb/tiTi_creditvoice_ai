@@ -7,7 +7,7 @@
   <meta name="description" content="CreditVoiceai is a business assistant (tiTi) for shops, traders and artisans: record sales by chat or voice, track who owes you, manage stock, send receipts — and build a business record that opens doors to financing." />
   <link rel="canonical" href="https://creditvoiceai.com/" />
   <meta name="robots" content="index, follow" />
-  <meta name="theme-color" content="#0b1f4b" />
+  <meta name="theme-color" content="#0c1f4a" />
   <!--GSC_META-->
 
   <!-- Open Graph (WhatsApp / Facebook / LinkedIn link previews) -->
@@ -79,11 +79,14 @@
   </script>
 
   <style>
+    /* The brand is blue and amber. These are the app's own tokens, copied from
+       frontend/src/index.css so the page and the product look like one thing. */
     :root{
-      --navy:#0b1f4b; --navy-2:#13306e; --brand:#1a56db; --brand-mid:#1447c0;
-      --yellow:#f5a623; --yellow-soft:#fff6e6; --amber:#9a5b0e;
+      --brand:#1a56db; --brand-mid:#1447c0; --brand-dark:#0d3490;
+      --yellow:#f5a623; --yellow-soft:#fff6e6; --amber:#af6f14;
+      --navy:#0c1f4a; --navy-2:#122459;
       --ink:#0f172a; --muted:#5b6b85; --line:#e4e9f2; --bg:#fff; --soft:#f7f9fc;
-      --radius:14px; --shadow:0 2px 6px rgba(11,31,75,.06), 0 12px 28px rgba(11,31,75,.07);
+      --radius:14px; --shadow:0 2px 6px rgba(12,31,74,.06), 0 12px 28px rgba(12,31,74,.07);
     }
     *{box-sizing:border-box}
     html,body{margin:0;padding:0}
@@ -95,8 +98,11 @@
     .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
 
     /* header */
+    /* Amber over blue is the app's accent pattern — the sidebar wears the same
+       stripe — so the page carries it at the very top and again on the footer. */
     .nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);
-         backdrop-filter:saturate(1.6) blur(8px);border-bottom:1px solid var(--line)}
+         backdrop-filter:saturate(1.6) blur(8px);border-bottom:1px solid var(--line);
+         border-top:4px solid var(--yellow)}
     .nav .wrap{display:flex;align-items:center;gap:18px;padding-top:12px;padding-bottom:12px}
     .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--ink)}
     .brand img{width:34px;height:34px;border-radius:9px}
@@ -170,7 +176,7 @@
     .sub{color:var(--muted);margin:0 0 26px;max-width:620px}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
     .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;
-          box-shadow:0 1px 2px rgba(11,31,75,.04);transition:transform .14s, box-shadow .14s}
+          box-shadow:0 1px 2px rgba(12,31,74,.04);transition:transform .14s, box-shadow .14s}
     .card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
     .ico{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;margin-bottom:12px;
          background:#eaf0ff;color:var(--brand)}
@@ -188,8 +194,8 @@
     .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:18px;align-items:stretch}
     .plan{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;display:flex;flex-direction:column}
     .plan.featured{border-color:var(--brand);box-shadow:var(--shadow);position:relative}
-    .plan.featured:before{content:"Most popular";position:absolute;top:-11px;left:22px;background:var(--brand);
-      color:#fff;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;letter-spacing:.3px}
+    .plan.featured:before{content:"Most popular";position:absolute;top:-11px;left:22px;background:var(--yellow);
+      color:#3a2500;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;letter-spacing:.3px}
     .plan h3{margin:0 0 4px;font-size:17px}
     .price{font-size:30px;font-weight:800;letter-spacing:-.6px;margin:6px 0 2px}
     .price small{font-size:13px;font-weight:600;color:var(--muted)}
@@ -200,7 +206,8 @@
 
     /* reviews */
     .quotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
-    .quote{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:0 1px 2px rgba(11,31,75,.04)}
+    .quote{background:#fff;border:1px solid var(--line);border-left:3px solid var(--yellow);
+           border-radius:var(--radius);padding:22px;box-shadow:0 1px 2px rgba(12,31,74,.04)}
     .quote p{margin:0 0 14px;font-size:15px}
     .quote .who{font-weight:700;font-size:14.5px}
     .quote .where{color:var(--muted);font-size:13px}
@@ -218,7 +225,8 @@
     .band p{color:#c7d3ec;margin:0 auto 22px;max-width:520px}
 
     /* footer */
-    footer{background:var(--navy);color:#c7d3ec;margin-top:58px;padding:44px 0 90px;font-size:14.5px}
+    footer{background:var(--navy);color:#c7d3ec;margin-top:58px;padding:44px 0 90px;font-size:14.5px;
+           border-top:4px solid var(--yellow)}
     footer h4{color:#fff;font-size:14px;margin:0 0 12px;letter-spacing:.3px}
     footer a{color:#c7d3ec;display:block;padding:4px 0}
     footer a:hover{color:#fff}
@@ -235,7 +243,7 @@
     /* sticky mobile call to action */
     .sticky{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;gap:10px;padding:10px 16px;
             background:rgba(255,255,255,.96);border-top:1px solid var(--line);
-            backdrop-filter:blur(8px);box-shadow:0 -6px 18px rgba(11,31,75,.08)}
+            backdrop-filter:blur(8px);box-shadow:0 -6px 18px rgba(12,31,74,.08)}
     .sticky .btn{flex:1}
     @media (max-width:780px){ .sticky{display:flex} footer{padding-bottom:110px} }
   </style>
