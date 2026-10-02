@@ -3,32 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>CreditVoiceai — Record sales, credit &amp; inventory on WhatsApp</title>
-  <meta name="description" content="CreditVoiceai is a business assistant (tiTi) that helps businesses record sales, track who owes them, manage stock, and send receipts — no app download needed." />
+  <title>CreditVoiceai — Know who owes you, what you sold, what's left in stock</title>
+  <meta name="description" content="CreditVoiceai is a business assistant (tiTi) for shops, traders and artisans: record sales by chat or voice, track who owes you, manage stock, send receipts — and build a business record that opens doors to financing." />
   <link rel="canonical" href="https://creditvoiceai.com/" />
   <meta name="robots" content="index, follow" />
-  <meta name="theme-color" content="#1a56db" />
+  <meta name="theme-color" content="#0b1f4b" />
   <!--GSC_META-->
 
   <!-- Open Graph (WhatsApp / Facebook / LinkedIn link previews) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CreditVoiceai" />
-  <meta property="og:title" content="CreditVoiceai — Record sales, credit &amp; inventory on WhatsApp" />
-  <meta property="og:description" content="tiTi helps businesses record sales, track credit, manage stock and send receipts — right inside WhatsApp." />
+  <meta property="og:title" content="CreditVoiceai — Run your business records from WhatsApp" />
+  <meta property="og:description" content="Record sales by chat or voice, track who owes you, manage stock and send receipts. Free to start, no download." />
   <meta property="og:url" content="https://creditvoiceai.com/" />
-  <meta property="og:image" content="https://creditvoiceai.com/app/logo.png" />
+  <meta property="og:image" content="https://creditvoiceai.com/app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:locale" content="en_NG" />
 
-  <!-- Twitter / X card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="CreditVoiceai — Record sales, credit &amp; inventory on WhatsApp" />
-  <meta name="twitter:description" content="tiTi helps businesses record sales, track credit, manage stock and send receipts — right inside WhatsApp." />
-  <meta name="twitter:image" content="https://creditvoiceai.com/app/logo.png" />
+  <meta name="twitter:title" content="CreditVoiceai — Run your business records from WhatsApp" />
+  <meta name="twitter:description" content="Record sales by chat or voice, track who owes you, manage stock and send receipts. Free to start, no download." />
+  <meta name="twitter:image" content="https://creditvoiceai.com/app/og-image.png" />
 
   <link rel="icon" type="image/png" href="/app/favicon.png" />
   <link rel="apple-touch-icon" href="/app/favicon.png" />
 
-  <!-- Structured data: Organization + SoftwareApplication + FAQ -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -39,15 +39,14 @@
         "url": "https://creditvoiceai.com/",
         "logo": "https://creditvoiceai.com/app/logo.png",
         "email": "support@creditvoiceai.com",
-        "description": "Financial AI assistant for businesses."
+        "description": "Financial AI assistant for businesses.",
+        "address": { "@type": "PostalAddress", "addressLocality": "Osogbo", "addressRegion": "Osun", "addressCountry": "NG" }
       },
       {
         "@type": "SoftwareApplication",
         "name": "CreditVoiceai",
         "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Web, Android",
-        "url": "https://creditvoiceai.com/app",
-        "description": "Record sales, track credit and debtors, manage inventory, and send receipts through WhatsApp or the web dashboard.",
+        "operatingSystem": "Web, WhatsApp, Android",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "NGN" }
       },
       {
@@ -56,17 +55,17 @@
           {
             "@type": "Question",
             "name": "What is CreditVoiceai?",
-            "acceptedAnswer": { "@type": "Answer", "text": "CreditVoiceai is a WhatsApp assistant called tiTi that helps small and medium scale enterprises (SMEs) record sales, track who owes them, manage stock, and send receipts — with a web dashboard for reports." }
+            "acceptedAnswer": { "@type": "Answer", "text": "CreditVoiceai is a financial assistant called tiTi that helps small businesses record sales, track who owes them, manage stock and send receipts — and builds a business record that can open doors to financing." }
           },
           {
             "@type": "Question",
             "name": "Do I need to download an app?",
-            "acceptedAnswer": { "@type": "Answer", "text": "No. You can use CreditVoiceai entirely inside WhatsApp by chatting with tiTi. There is also a web dashboard, and an Android app, but no download is required to start." }
+            "acceptedAnswer": { "@type": "Answer", "text": "No. You can use CreditVoiceai entirely inside WhatsApp by chatting with tiTi. There is also a web dashboard you can install to your home screen." }
           },
           {
             "@type": "Question",
             "name": "Is CreditVoiceai free?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Yes, there is a free Basic plan. Paid plans (Go, Pro, Premium) add unlimited records, staff accounts, branches and more." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes, there is a free Basic plan. Paid plans add unlimited records, staff accounts, branches and more." }
           },
           {
             "@type": "Question",
@@ -80,104 +79,373 @@
   </script>
 
   <style>
-    :root { --brand:#1a56db; --brand-mid:#1447c0; --yellow:#f5a623; --yellow-soft:#fff6e6; --amber:#9a5b0e; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff; --soft:#f8fafc; }
-    * { box-sizing:border-box; }
-    html,body { margin:0; padding:0; }
-    body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif; color:var(--ink); background:var(--bg); line-height:1.6; -webkit-font-smoothing:antialiased; }
-    a { color:var(--brand); text-decoration:none; }
-    .wrap { max-width:960px; margin:0 auto; padding:0 20px; }
-    header { display:flex; align-items:center; justify-content:space-between; padding:18px 0; }
-    .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; }
-    .brand img { width:32px; height:32px; border-radius:8px; }
-    .btn { display:inline-block; background:var(--brand); color:#fff; font-weight:700; padding:12px 20px; border-radius:10px; font-size:15px; transition:background .15s; }
-    .btn:hover { background:var(--brand-mid); }
-    .btn.ghost { background:transparent; color:var(--brand); border:1px solid var(--brand); }
-    .btn.ghost:hover { background:#eef4ff; }
-    .btn.yellow { background:var(--yellow); color:#3a2500; }
-    .btn.yellow:hover { background:#e5951a; }
-    .hero { padding:48px 0 40px; text-align:center; }
-    .hero h1 { font-size:34px; line-height:1.2; margin:0 0 14px; letter-spacing:-0.5px; }
-    .hero p.lead { font-size:18px; color:var(--muted); max-width:640px; margin:0 auto 26px; }
-    .cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
-    .tag { display:inline-block; background:var(--yellow-soft); color:var(--amber); border:1px solid #f6d79a; font-weight:700; font-size:12px; padding:5px 12px; border-radius:999px; margin-bottom:18px; }
-    section { padding:34px 0; border-top:1px solid var(--line); }
-    h2 { font-size:22px; margin:0 0 18px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px; }
-    .card { background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:18px; }
-    .card h3 { margin:0 0 6px; font-size:16px; color:var(--brand); }
-    .card p { margin:0; color:var(--muted); font-size:14px; }
-    .steps { counter-reset:s; display:grid; gap:14px; }
-    .step { display:flex; gap:14px; align-items:flex-start; }
-    .step .n { flex:0 0 auto; width:30px; height:30px; border-radius:50%; background:var(--yellow); color:#3a2500; font-weight:700; display:grid; place-items:center; }
-    details { border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin-bottom:10px; }
-    summary { font-weight:700; cursor:pointer; }
-    details p { color:var(--muted); margin:8px 0 0; }
-    footer { border-top:1px solid var(--line); padding:26px 0 40px; color:var(--muted); font-size:14px; }
-    footer a { color:var(--muted); margin-right:16px; }
-    @media (max-width:560px){ .hero h1{font-size:27px;} }
+    :root{
+      --navy:#0b1f4b; --navy-2:#13306e; --brand:#1a56db; --brand-mid:#1447c0;
+      --yellow:#f5a623; --yellow-soft:#fff6e6; --amber:#9a5b0e;
+      --ink:#0f172a; --muted:#5b6b85; --line:#e4e9f2; --bg:#fff; --soft:#f7f9fc;
+      --radius:14px; --shadow:0 2px 6px rgba(11,31,75,.06), 0 12px 28px rgba(11,31,75,.07);
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;
+         color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+    a{color:var(--brand);text-decoration:none}
+    img{max-width:100%}
+    .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
+
+    /* header */
+    .nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);
+         backdrop-filter:saturate(1.6) blur(8px);border-bottom:1px solid var(--line)}
+    .nav .wrap{display:flex;align-items:center;gap:18px;padding-top:12px;padding-bottom:12px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;color:var(--ink)}
+    .brand img{width:34px;height:34px;border-radius:9px}
+    .nav nav{margin-left:auto;display:flex;align-items:center;gap:22px}
+    .nav nav a{color:var(--muted);font-weight:600;font-size:14.5px}
+    .nav nav a:hover{color:var(--ink)}
+    @media (max-width:780px){ .nav nav a.hide-sm{display:none} }
+
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--brand);
+         color:#fff;font-weight:700;padding:13px 22px;border-radius:12px;font-size:15px;
+         transition:transform .12s, background .15s, box-shadow .15s; box-shadow:0 6px 16px rgba(26,86,219,.22)}
+    .btn:hover{background:var(--brand-mid);transform:translateY(-1px)}
+    .btn.sm{padding:9px 16px;font-size:14px;box-shadow:none}
+    .btn.ghost{background:#fff;color:var(--brand);border:1px solid #c9d8f7;box-shadow:none}
+    .btn.ghost:hover{background:#f2f6ff}
+    .btn.yellow{background:var(--yellow);color:#3a2500;box-shadow:0 6px 16px rgba(245,166,35,.28)}
+    .btn.yellow:hover{background:#e5951a}
+    .btn.light{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35);box-shadow:none}
+    .btn.light:hover{background:rgba(255,255,255,.2)}
+
+    /* hero */
+    .hero{background:
+        radial-gradient(1100px 420px at 85% -10%, rgba(245,166,35,.18), transparent 60%),
+        radial-gradient(900px 420px at 0% 0%, rgba(26,86,219,.14), transparent 55%),
+        linear-gradient(180deg,#fbfcff 0%,#fff 70%);
+      border-bottom:1px solid var(--line)}
+    .hero .wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;
+                padding-top:56px;padding-bottom:56px}
+    .tag{display:inline-flex;align-items:center;gap:7px;background:var(--yellow-soft);color:var(--amber);
+         border:1px solid #f6d79a;font-weight:700;font-size:12.5px;padding:6px 13px;border-radius:999px;margin-bottom:16px}
+    h1{font-size:42px;line-height:1.12;margin:0 0 14px;letter-spacing:-.8px}
+    h1 .hl{background:linear-gradient(180deg,transparent 62%,rgba(245,166,35,.45) 62%)}
+    .lead{font-size:18px;color:var(--muted);margin:0 0 24px;max-width:560px}
+    .cta{display:flex;gap:12px;flex-wrap:wrap}
+    .reassure{margin-top:16px;color:var(--muted);font-size:14px;display:flex;gap:16px;flex-wrap:wrap}
+    .reassure span{display:inline-flex;align-items:center;gap:6px}
+    @media (max-width:900px){
+      .hero .wrap{grid-template-columns:1fr;padding-top:38px;padding-bottom:38px}
+      h1{font-size:31px}
+      .phones{order:-1}
+    }
+
+    /* phone mock-ups, drawn in CSS so the page stays light on mobile data */
+    .phones{position:relative;display:flex;justify-content:center;gap:16px}
+    .phone{width:230px;background:#fff;border:9px solid #0d1a33;border-radius:30px;
+           box-shadow:var(--shadow);overflow:hidden}
+    .phone.tilt{transform:rotate(-3deg)}
+    .phone.small{width:200px;transform:rotate(4deg) translateY(16px)}
+    @media (max-width:520px){ .phone.small{display:none} .phone.tilt{transform:none} }
+    .ph-top{background:var(--navy);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}
+    .ph-dot{width:18px;height:18px;border-radius:5px;background:var(--yellow)}
+    .ph-body{padding:12px;font-size:12px}
+    .rcpt{border:1px dashed var(--line);border-radius:10px;padding:10px}
+    .rcpt h4{margin:0 0 2px;font-size:12.5px;text-align:center}
+    .rcpt .c{text-align:center;color:var(--muted);font-size:10.5px;margin-bottom:8px}
+    .row{display:flex;justify-content:space-between;padding:3px 0;font-size:11.5px}
+    .row.total{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:800}
+    .row.owing{color:#b91c1c;font-weight:700}
+    .bub{max-width:85%;padding:8px 11px;border-radius:14px;margin-bottom:8px;font-size:11.5px;line-height:1.45}
+    .bub.me{background:var(--brand);color:#fff;margin-left:auto;border-bottom-right-radius:4px}
+    .bub.ti{background:#eef2f9;color:var(--ink);border-bottom-left-radius:4px}
+    .stat-pill{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);
+      background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);border-radius:999px;
+      padding:8px 16px;font-size:12.5px;font-weight:700;white-space:nowrap}
+
+    /* sections */
+    section{padding:58px 0}
+    section.alt{background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .eyebrow{color:var(--brand);font-weight:800;font-size:12.5px;letter-spacing:1.2px;text-transform:uppercase;margin:0 0 8px}
+    h2{font-size:28px;margin:0 0 10px;letter-spacing:-.4px}
+    .sub{color:var(--muted);margin:0 0 26px;max-width:620px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+    .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;
+          box-shadow:0 1px 2px rgba(11,31,75,.04);transition:transform .14s, box-shadow .14s}
+    .card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+    .ico{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;margin-bottom:12px;
+         background:#eaf0ff;color:var(--brand)}
+    .ico.y{background:var(--yellow-soft);color:var(--amber)}
+    .card h3{margin:0 0 6px;font-size:16.5px}
+    .card p{margin:0;color:var(--muted);font-size:14.5px}
+
+    .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+    .step .n{width:34px;height:34px;border-radius:50%;background:var(--yellow);color:#3a2500;
+             font-weight:800;display:grid;place-items:center;margin-bottom:10px}
+    .step strong{display:block;margin-bottom:4px}
+    .step p{margin:0;color:var(--muted);font-size:14.5px}
+
+    /* pricing */
+    .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:18px;align-items:stretch}
+    .plan{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;display:flex;flex-direction:column}
+    .plan.featured{border-color:var(--brand);box-shadow:var(--shadow);position:relative}
+    .plan.featured:before{content:"Most popular";position:absolute;top:-11px;left:22px;background:var(--brand);
+      color:#fff;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;letter-spacing:.3px}
+    .plan h3{margin:0 0 4px;font-size:17px}
+    .price{font-size:30px;font-weight:800;letter-spacing:-.6px;margin:6px 0 2px}
+    .price small{font-size:13px;font-weight:600;color:var(--muted)}
+    .plan ul{list-style:none;padding:0;margin:14px 0 18px;color:var(--muted);font-size:14px}
+    .plan li{padding:5px 0 5px 22px;position:relative}
+    .plan li:before{content:"✓";position:absolute;left:0;color:#16a34a;font-weight:800}
+    .plan .btn{margin-top:auto}
+
+    /* reviews */
+    .quotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+    .quote{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:0 1px 2px rgba(11,31,75,.04)}
+    .quote p{margin:0 0 14px;font-size:15px}
+    .quote .who{font-weight:700;font-size:14.5px}
+    .quote .where{color:var(--muted);font-size:13px}
+    .quote .contact{margin-top:8px;font-size:13px}
+    .empty-quotes{background:#fff;border:1px dashed var(--line);border-radius:var(--radius);padding:24px;color:var(--muted)}
+
+    details{border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:10px;background:#fff}
+    summary{font-weight:700;cursor:pointer}
+    details p{color:var(--muted);margin:10px 0 0}
+
+    /* closing band */
+    .band{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;border-radius:20px;
+          padding:40px 32px;text-align:center;margin:0 0 10px}
+    .band h2{color:#fff;margin-bottom:8px}
+    .band p{color:#c7d3ec;margin:0 auto 22px;max-width:520px}
+
+    /* footer */
+    footer{background:var(--navy);color:#c7d3ec;margin-top:58px;padding:44px 0 90px;font-size:14.5px}
+    footer h4{color:#fff;font-size:14px;margin:0 0 12px;letter-spacing:.3px}
+    footer a{color:#c7d3ec;display:block;padding:4px 0}
+    footer a:hover{color:#fff}
+    .fcols{display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr;gap:28px}
+    @media (max-width:760px){ .fcols{grid-template-columns:1fr 1fr} }
+    .social{display:flex;gap:12px;margin-top:14px}
+    .social a{display:grid;place-items:center;width:40px;height:40px;border-radius:11px;
+              background:rgba(255,255,255,.1);padding:0}
+    .social a:hover{background:rgba(255,255,255,.2)}
+    .fbot{border-top:1px solid rgba(255,255,255,.14);margin-top:30px;padding-top:18px;
+          display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:13.5px}
+    address{font-style:normal;display:inline}
+
+    /* sticky mobile call to action */
+    .sticky{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;gap:10px;padding:10px 16px;
+            background:rgba(255,255,255,.96);border-top:1px solid var(--line);
+            backdrop-filter:blur(8px);box-shadow:0 -6px 18px rgba(11,31,75,.08)}
+    .sticky .btn{flex:1}
+    @media (max-width:780px){ .sticky{display:flex} footer{padding-bottom:110px} }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div class="brand"><img src="/app/logo.png" alt="CreditVoiceai logo" width="32" height="32" /> CreditVoiceai</div>
-      <a class="btn" href="/app">Open the app</a>
-    </header>
 
-    <div class="hero">
-      <span class="tag">Financial AI assistant</span>
-      <h1>Run your business books right inside your devices</h1>
-      <p class="lead">CreditVoiceai's assistant, <strong>tiTi</strong>, helps businesses record sales, track who owes them, manage stock, and send receipts — no download needed.</p>
+<div class="nav">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/app/logo.png" alt="CreditVoiceai logo" width="34" height="34" /> CreditVoiceai</a>
+    <nav>
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#pricing">Pricing</a>
+      <a class="hide-sm" href="#reviews">Reviews</a>
+      <a class="btn sm" href="/app">Open the app</a>
+    </nav>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <span class="tag">● Financial assistant for small businesses</span>
+      <h1>Know <span class="hl">who owes you</span>, what you sold, and what's left in stock</h1>
+      <p class="lead">
+        Tell tiTi what happened — by chat or voice note — and your books keep themselves.
+        Sales, debtors, stock and receipts, without a notebook and without a download.
+      </p>
       <div class="cta">
-        <a class="btn" href="/app">Get started free</a>
+        <a class="btn" href="/app">Start free</a>
         <!--WA_BUTTON-->
+      </div>
+      <div class="reassure">
+        <span>✓ Free plan, no card</span>
+        <span>✓ Works on WhatsApp</span>
+        <span>✓ Built in Nigeria</span>
       </div>
     </div>
 
-    <section>
-      <h2>Everything your shop needs</h2>
-      <div class="grid">
-        <div class="card"><h3>Record sales</h3><p>Log cash and credit sales in seconds — by text or voice note to tiTi.</p></div>
-        <div class="card"><h3>Track credit &amp; debtors</h3><p>See who owes you, how much, and send friendly payment reminders automatically.</p></div>
-        <div class="card"><h3>Manage inventory</h3><p>Track stock levels, cost and selling price, with low-stock alerts.</p></div>
-        <div class="card"><h3>Send receipts</h3><p>Give customers a clean receipt and keep a numbered record for your business.</p></div>
-        <div class="card"><h3>Reports &amp; profit</h3><p>Daily, weekly and monthly sales, top products, and profit margins on the dashboard.</p></div>
-        <div class="card"><h3>Staff &amp; branches</h3><p>Add staff, set permissions, and run multiple branches on higher plans.</p></div>
+    <div class="phones">
+      <div class="phone tilt">
+        <div class="ph-top"><span class="ph-dot"></span> Receipt #42</div>
+        <div class="ph-body">
+          <div class="rcpt">
+            <h4>ADE STORES</h4>
+            <div class="c">Osogbo · 02 Oct 2026</div>
+            <div class="row"><span>Rice (50kg) ×1</span><span>₦68,000</span></div>
+            <div class="row"><span>Groundnut oil ×2</span><span>₦14,000</span></div>
+            <div class="row total"><span>Total</span><span>₦82,000</span></div>
+            <div class="row"><span>Paid</span><span>₦50,000</span></div>
+            <div class="row owing"><span>Balance this sale</span><span>₦32,000</span></div>
+            <div class="row"><span>Previous balance</span><span>₦18,000</span></div>
+            <div class="row owing"><span>Total owed now</span><span>₦50,000</span></div>
+          </div>
+        </div>
       </div>
-    </section>
 
-    <section>
-      <h2>How it works</h2>
-      <div class="steps">
-        <div class="step"><div class="n">1</div><div><strong>Message tiTi</strong><br />Start a chat on WhatsApp or open the web app.</div></div>
-        <div class="step"><div class="n">2</div><div><strong>Record as you sell</strong><br />Type or speak your sales, payments and stock — tiTi understands everyday language.</div></div>
-        <div class="step"><div class="n">3</div><div><strong>See your money</strong><br />Track debtors, get reminders, print receipts, and view reports any time.</div></div>
+      <div class="phone small">
+        <div class="ph-top"><span class="ph-dot"></span> tiTi</div>
+        <div class="ph-body">
+          <div class="bub me">sold 1 bag rice 68000 to mama bola, she paid 50000</div>
+          <div class="bub ti">Recorded ✅<br />Mama Bola now owes ₦50,000. Receipt #42 sent.</div>
+          <div class="bub me">who owes me</div>
+          <div class="bub ti">7 customers owe ₦214,500 in total. 2 are overdue — want me to remind them?</div>
+        </div>
       </div>
-    </section>
+      <div class="stat-pill">Records today → financing tomorrow</div>
+    </div>
+  </div>
+</div>
 
-    <section>
-      <h2>Frequently asked questions</h2>
-      <details open><summary>What is CreditVoiceai?</summary><p>CreditVoiceai is a Financial AI assistant for businesses called tiTi that helps small and medium scale enterprises (SMEs) record sales, track who owes them, manage stock, and send receipts — with a web dashboard for reports that turn to their credit scorecard overtime.</p></details>
-      <details><summary>Do I need to download an app to use it?</summary><p>No. You can use CreditVoiceai entirely on the web by chatting with tiTi. There is also a web dashboard application you can install and an Android app on the playstore is oncoming, but no download is required to start.</p></details>
-      <details><summary>Is CreditVoiceai free?</summary><p>Yes, there is a free Basic plan. Paid plans (Go, Pro, Premium) add unlimited records, staff accounts, branches and more.</p></details>
-      <details><summary>What can tiTi do?</summary><p>Record cash and credit sales, track debtors and send reminders, manage inventory and low-stock alerts, generate receipts and reports, and support staff, branches and partners.</p></details>
-    </section>
+<section id="features">
+  <div class="wrap">
+    <p class="eyebrow">What you get</p>
+    <h2>Everything your shop needs, in one place</h2>
+    <p class="sub">Built for shops, traders, artisans and service businesses — not for accountants.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ico">₦</div>
+        <h3>Record sales in seconds</h3>
+        <p>Type it or send a voice note. Cash or credit, tiTi understands everyday language.</p>
+      </div>
+      <div class="card">
+        <div class="ico y">◷</div>
+        <h3>Never lose a debt again</h3>
+        <p>See who owes you, how much and since when — with reminders sent for you.</p>
+      </div>
+      <div class="card">
+        <div class="ico">▦</div>
+        <h3>Stock that counts itself</h3>
+        <p>Every sale reduces your stock. Low-stock alerts before you run out.</p>
+      </div>
+      <div class="card">
+        <div class="ico y">✉</div>
+        <h3>Receipts and invoices</h3>
+        <p>Send a clean receipt on WhatsApp and keep a numbered record for yourself.</p>
+      </div>
+      <div class="card">
+        <div class="ico">◔</div>
+        <h3>Profit you can see</h3>
+        <p>Daily, weekly and monthly sales, best sellers and margins on your dashboard.</p>
+      </div>
+      <div class="card">
+        <div class="ico y">★</div>
+        <h3>A record that opens doors</h3>
+        <p>Keep records and build a business scorecard financiers trust — for the tools you need.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <footer>
-      <div style="margin-bottom:10px;">
+<section class="alt">
+  <div class="wrap">
+    <p class="eyebrow">How it works</p>
+    <h2>Three steps, starting today</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><strong>Say hello to tiTi</strong>
+        <p>Open the web app or message on WhatsApp. No download, no training.</p></div>
+      <div class="step"><div class="n">2</div><strong>Record as you sell</strong>
+        <p>"Sold 2 bags rice 18,000 to Ade" — that's the whole thing.</p></div>
+      <div class="step"><div class="n">3</div><strong>See your money</strong>
+        <p>Debtors, stock, receipts and reports, any time, on any phone.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <p class="eyebrow">Pricing</p>
+    <h2>Start free. Pay when it pays you.</h2>
+    <p class="sub">Every plan keeps your records safe. Pay yearly and get two months free.</p>
+    <!--PRICING-->
+  </div>
+</section>
+
+<section class="alt" id="reviews">
+  <div class="wrap">
+    <p class="eyebrow">In their words</p>
+    <h2>Businesses using CreditVoice</h2>
+    <p class="sub">Real businesses, their own words — and their contact, so you can reach them.</p>
+    <!--REVIEWS-->
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="eyebrow">Questions</p>
+    <h2>Frequently asked</h2>
+    <details open><summary>What is CreditVoiceai?</summary><p>A financial assistant called tiTi that helps small and medium businesses record sales, track who owes them, manage stock and send receipts — with a dashboard for reports that becomes a credit scorecard over time.</p></details>
+    <details><summary>Do I need to download an app?</summary><p>No. You can use CreditVoiceai on the web or by chatting with tiTi on WhatsApp. You can install the web app to your home screen, and an Android app is coming.</p></details>
+    <details><summary>Is it free?</summary><p>Yes — the Basic plan is free. Paid plans add unlimited records, staff accounts, branches and more.</p></details>
+    <details><summary>What can tiTi do?</summary><p>Record cash and credit sales, track debtors and send reminders, manage inventory with low-stock alerts, generate receipts and invoices, show reports and profit, and support staff, branches and partners.</p></details>
+    <details><summary>Is my business data safe?</summary><p>Your records are yours. We follow the Nigeria Data Protection Act, and nothing is shared with a financing partner unless you choose to apply and agree to share it.</p></details>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="band">
+      <h2>Your books, done by the time you close</h2>
+      <p>Join the businesses that stopped guessing what they sold and who owes them.</p>
+      <div class="cta" style="justify-content:center">
+        <a class="btn yellow" href="/app">Start free</a>
+        <a class="btn light" href="/app/login">I already have an account</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="fcols">
+      <div>
+        <h4>CreditVoiceai</h4>
+        <p style="margin:0;color:#9db0d4">Record sales, track credit, manage stock — and build a business record that opens doors.</p>
+        <!--SOCIAL-->
+      </div>
+      <div>
+        <h4>Product</h4>
         <a href="/app">Open the app</a>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="/events">Events</a>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <a href="/resources">Resources</a>
         <a href="/app/terms">Terms</a>
         <a href="/app/privacy">Privacy</a>
-        <a href="/resources">Resources</a>
-        <a href="/events">Events</a>
-        <!-- For financing partners' own staff, not for business owners. -->
         <a href="/financier">Financier login</a>
-        <a href="mailto:support@creditvoiceai.com">support@creditvoiceai.com</a>
       </div>
-      contact <address>Zone 17 No7 Iledande street okeonite osogbo</address>
-      phone <a href="tel:+2347048101876">+234 7048101876</a>
-      © CreditVoiceai. Built to digitize businesses.
-    </footer>
+      <div>
+        <h4>Talk to us</h4>
+        <a href="mailto:support@creditvoiceai.com">support@creditvoiceai.com</a>
+        <a href="tel:+2347048101876">+234 704 810 1876</a>
+        <span style="display:block;padding:4px 0;color:#9db0d4">
+          <address>Zone 17, No 7 Iledande Street, Oke-Onitea, Osogbo</address>
+        </span>
+      </div>
+    </div>
+    <div class="fbot">
+      <span>© CreditVoiceai. Built to digitize businesses.</span>
+      <span>Made in Nigeria 🇳🇬</span>
+    </div>
   </div>
+</footer>
+
+<div class="sticky">
+  <a class="btn" href="/app">Start free</a>
+  <a class="btn ghost" href="#pricing">See pricing</a>
+</div>
+
 </body>
 </html>

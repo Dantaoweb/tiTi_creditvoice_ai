@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from main import app
 import web_auth
 import business_scorecard as bs
+from conftest import month_slot
 from database import SessionLocal
 from models import Customer, Supplier, SupplierPurchase, Transaction, User, utcnow
 
@@ -70,7 +71,7 @@ def _business(with_suppliers=False):
             for i in range(6):
                 db.add(Transaction(customer_id=cust.id, type="SALE", amount=100_000,
                                    recorded_by_id=u.id,
-                                   created_at=utcnow() - timedelta(days=30 * m + i * 4 + 1)))
+                                   created_at=month_slot(m, i, 4, 6)))
         if with_suppliers:
             sup = Supplier(name="Depot", owner_phone=phone)
             db.add(sup); db.flush()

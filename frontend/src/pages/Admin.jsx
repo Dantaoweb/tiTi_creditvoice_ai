@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiFetch, apiPost, apiPut, apiDelete } from "../lib/api";
+import { apiFetch, apiPost, apiPut, apiPatch, apiDelete } from "../lib/api";
 import { nairaFull, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import { Download, RefreshCw, Search, Ticket, Trash2, RotateCcw } from "lucide-react";
@@ -2518,7 +2518,157 @@ function PublicPagesTab() {
   );
 }
 
-const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Public Pages", "Referrals", "Notify", "Failed Messages"];
+// ── Reviews on the landing page, and the public-site settings ───────────────
+// Reviews are written by the businesses themselves and carry their phone
+// number, so nothing here goes live until it is approved AND featured.
+
+const SETTING_FIELDS = [
+  ["facebook_url", "Facebook page", "https://facebook.com/…"],
+  ["instagram_url", "Instagram profile", "https://instagram.com/…"],
+  ["tiktok_url", "TikTok profile", "https://tiktok.com/@…"],
+  ["whatsapp_url", "WhatsApp link", "https://wa.me/234…"],
+  ["featured_reviews", "Reviews to show on the homepage", "3"],
+];
+
+function SiteTab() {
+  const [reviews, setReviews] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [filter, setFilter] = useState("PENDING");
+  const [settings, setSettings] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [saved, setSaved] = useState("");
+
+  function loadReviews() {
+    apiFetch("admin/reviews", filter ? { status: filter } : {})
+      .then(d => { setReviews(d.reviews || []); setCounts(d.counts || {}); })
+      .catch(e => setErr(e.message));
+  }
+  useEffect(loadReviews, [filter]);
+  useEffect(() => {
+    apiFetch("admin/site-settings").then(d => setSettings(d.settings || {}))
+      .catch(e => setErr(e.message));
+  }, []);
+
+  async function patch(row, body) {
+    setErr("");
+    try { await apiPatch(`admin/reviews/${row.id}`, body); loadReviews(); }
+    catch (e) { setErr(e.message); }
+  }
+
+  async function saveSettings() {
+    setBusy(true); setErr(""); setSaved("");
+    try {
+      const d = await apiPost("admin/site-settings", { settings });
+      setSettings(d.settings || settings);
+      setSaved("Saved. The homepage updates within a minute.");
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  const featuredCount = reviews.filter(r => r.is_featured).length;
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {err && <div style={{ color: "var(--rose)" }}>{err}</div>}
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Social links &amp; homepage settings</span>
+        </div>
+        <div className="card-body" style={{ display: "grid", gap: 10 }}>
+          <div className="text-subtle text-sm">
+            These feed the <a href="/" target="_blank" rel="noopener">homepage</a> directly —
+            no deploy needed. Leave a link blank to hide that icon.
+          </div>
+          {settings === null ? <div className="text-subtle text-sm">Loading…</div> : SETTING_FIELDS.map(([key, label, ph]) => (
+            <div className="form-group" style={{ margin: 0 }} key={key}>
+              <label className="form-label">{label}</label>
+              <input value={settings[key] || ""} placeholder={ph}
+                onChange={e => setSettings(s => ({ ...s, [key]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+        <div className="modal-footer" style={{ gap: 10, alignItems: "center" }}>
+          {saved && <span className="text-subtle text-sm">{saved}</span>}
+          <button className="btn btn-primary" disabled={busy || settings === null}
+            onClick={saveSettings}>{busy ? "Saving…" : "Save settings"}</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
+          <span className="card-title">
+            Reviews <span className="text-subtle text-sm">({featuredCount} featured on this list)</span>
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[["PENDING", "Pending"], ["APPROVED", "Approved"], ["REJECTED", "Rejected"], ["", "All"]]
+              .map(([v, l]) => (
+                <button key={l} className={`btn btn-xs ${filter === v ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => setFilter(v)}>
+                  {l}{counts[v] ? ` (${counts[v]})` : ""}
+                </button>
+              ))}
+          </div>
+        </div>
+        <div className="card-body" style={{ display: "grid", gap: 12 }}>
+          {reviews.length === 0 ? (
+            <div className="text-subtle text-sm">Nothing here.</div>
+          ) : reviews.map(r => (
+            <div key={r.id} style={{
+              border: "1px solid var(--border)", borderRadius: 10, padding: 12,
+              display: "grid", gap: 8,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <div>
+                  <strong>{r.business_name}</strong>
+                  <div className="text-subtle text-sm">
+                    {[r.business_type, r.location].filter(Boolean).join(" · ") || "—"}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span className={`badge ${r.status === "APPROVED" ? "badge-green"
+                    : r.status === "REJECTED" ? "badge-rose" : "badge-amber"}`}>{r.status}</span>
+                  {r.is_featured && <span className="badge badge-blue">On homepage</span>}
+                </div>
+              </div>
+              <div style={{ fontStyle: "italic" }}>“{r.quote}”</div>
+              <div className="text-subtle text-sm">
+                Shown contact: {r.contact_phone || "none"}
+                {r.contact_link ? ` · ${r.contact_link}` : ""}
+                {" · "}account {r.owner_phone}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {r.status !== "APPROVED" && (
+                  <button className="btn btn-xs btn-primary"
+                    onClick={() => patch(r, { status: "APPROVED" })}>Approve</button>
+                )}
+                {r.status === "APPROVED" && (
+                  <button className="btn btn-xs btn-ghost"
+                    onClick={() => patch(r, { is_featured: !r.is_featured })}>
+                    {r.is_featured ? "Take off homepage" : "Show on homepage"}
+                  </button>
+                )}
+                {r.status !== "REJECTED" && (
+                  <button className="btn btn-xs btn-ghost text-rose"
+                    onClick={() => patch(r, { status: "REJECTED" })}>Reject</button>
+                )}
+                <input style={{ width: 90, padding: "4px 8px", fontSize: 12 }} placeholder="Order"
+                  defaultValue={r.sort_order}
+                  onBlur={e => {
+                    const v = Number(e.target.value) || 0;
+                    if (v !== r.sort_order) patch(r, { sort_order: v });
+                  }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -2656,6 +2806,7 @@ export default function Admin() {
       {tab === "Opportunities"  && <OpportunitiesTab />}
       {tab === "Finance"        && <FinanceTab />}
       {tab === "Public Pages"   && <PublicPagesTab />}
+      {tab === "Site"           && <SiteTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}
       {tab === "Referrals"        && <ReferralSettingsTab />}
       {tab === "Notify"         && <NotifyTab />}

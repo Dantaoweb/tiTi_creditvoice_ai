@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from main import app
 import web_auth
 import business_scorecard as bs
+from conftest import month_slot
 from database import SessionLocal
 from models import Customer, FinanceApplication, Transaction, User, utcnow
 
@@ -64,7 +65,7 @@ def _business(months=4, per_month=4, amount=100_000):
             for i in range(per_month):
                 db.add(Transaction(customer_id=cust.id, type="SALE", amount=amount,
                                    recorded_by_id=u.id,
-                                   created_at=utcnow() - timedelta(days=30 * m + i * 5 + 1)))
+                                   created_at=month_slot(m, i, 5, per_month)))
         db.commit()
     finally:
         db.close()

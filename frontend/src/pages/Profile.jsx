@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiPut } from "../lib/api";
+import MyReview from "../components/MyReview";
 
 export default function Profile() {
   const { user, refreshUser } = useAuth();
@@ -31,6 +32,7 @@ export default function Profile() {
   }
 
   return (
+    <div style={{ display: "grid", gap: 16 }}>
     <div className="card" style={{ maxWidth: 560 }}>
       <div className="card-header">
         <span className="card-title">My Profile</span>
@@ -72,6 +74,10 @@ export default function Profile() {
           </button>
         </div>
       </form>
+    </div>
+
+    {/* Only the owner speaks for the business publicly. */}
+    {isOwner && <MyReview />}
     </div>
   );
 }

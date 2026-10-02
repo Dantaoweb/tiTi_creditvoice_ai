@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from main import app
 import web_auth
 import business_scorecard as bs
+from conftest import month_slot
 from database import SessionLocal
 from models import (
     Customer, InventoryItem, InventoryMovement, Supplier, SupplierPurchase,
@@ -73,7 +74,7 @@ def _cash_only_trading(phone, months=4, per_month=4, amount=100_000):
             for i in range(per_month):
                 db.add(Transaction(customer_id=None, type="SALE", amount=amount,
                                    recorded_by_id=uid,
-                                   created_at=utcnow() - timedelta(days=30 * m + i * 5 + 1)))
+                                   created_at=month_slot(m, i, 5, per_month)))
         db.commit()
     finally:
         db.close()
@@ -170,9 +171,9 @@ def test_credit_trader_keeps_the_collections_component():
         db.add(cust); db.flush()
         for m in range(3):
             db.add(Transaction(customer_id=cust.id, type="BUY", amount=100_000,
-                               recorded_by_id=uid, created_at=utcnow() - timedelta(days=30 * m + 1)))
+                               recorded_by_id=uid, created_at=month_slot(m)))
             db.add(Transaction(customer_id=cust.id, type="PAY", amount=90_000,
-                               recorded_by_id=uid, created_at=utcnow() - timedelta(days=30 * m)))
+                               recorded_by_id=uid, created_at=month_slot(m) + timedelta(days=1)))
         db.commit()
     finally:
         db.close()

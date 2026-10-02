@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from main import app
 import web_auth
 import business_scorecard as bs
+from conftest import month_slot
 from database import SessionLocal
 from models import (
     Customer, InventoryItem, InventoryMovement, ScorecardConfig, SupplierPurchase,
@@ -62,7 +63,7 @@ def _trade(phone, months=4, per_month=3, amount=100_000, credit=False, paid_each
             db.add(cust); db.flush()
         for m in range(months):
             for i in range(per_month):
-                when = utcnow() - timedelta(days=30 * m + i * days_apart + 1)
+                when = month_slot(m, i, days_apart, per_month)
                 db.add(Transaction(
                     customer_id=cust.id if cust else None,
                     type="BUY" if credit else "SALE", amount=amount,

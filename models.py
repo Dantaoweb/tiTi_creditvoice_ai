@@ -1596,6 +1596,48 @@ class FinanceApplication(Base):
     updated_at      = Column(DateTime, nullable=True)
 
 
+class Testimonial(Base):
+    """A business's own words about CreditVoice, shown on the landing page.
+
+    Written by the business, not by us — and it carries their name, town and
+    contact, so being featured is a free advert for them rather than unpaid
+    marketing copy. Nothing appears publicly until an admin approves it AND the
+    owner ticked the consent box, because their phone number ends up on a page
+    anyone can read.
+    """
+
+    __tablename__ = "testimonials"
+
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone   = Column(String, index=True)       # who wrote it
+    business_name = Column(String, nullable=False)   # as they want it shown
+    business_type = Column(String, nullable=True)    # "Provisions shop", "Tailor"…
+    location      = Column(String, nullable=True)    # town / state, their words
+    quote         = Column(Text, nullable=False)
+    contact_phone = Column(String, nullable=True)    # the "free ad" part
+    contact_link  = Column(String, nullable=True)    # their page, if any
+    consent_public = Column(Boolean, default=False)  # they understood it goes public
+    status        = Column(String, default="PENDING", index=True)   # PENDING/APPROVED/REJECTED
+    is_featured   = Column(Boolean, default=False)   # chosen for the landing page
+    sort_order    = Column(Integer, default=0)
+    admin_note    = Column(String, nullable=True)
+    created_at    = Column(DateTime, default=utcnow)
+    reviewed_at   = Column(DateTime, nullable=True)
+    reviewed_by   = Column(String, nullable=True)
+
+
+class SiteSetting(Base):
+    """Small key/value settings for the public site — social links, the number of
+    reviews to feature, and anything else that shouldn't need a code change."""
+
+    __tablename__ = "site_settings"
+
+    key        = Column(String, primary_key=True)
+    value      = Column(Text, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
+    updated_by = Column(String, nullable=True)
+
+
 class PublicListing(Base):
     """An entry on a public, crawlable page: a resource, a sponsor, or an event.
 

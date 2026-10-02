@@ -212,6 +212,22 @@ except OSError:
     _LANDING_RAW = "<!doctype html><title>CreditVoice</title><h1>CreditVoice</h1><p><a href=\"/app\">Open the app</a></p>"
 
 
+# Prices, reviews and social links come from settings, so the page is built per
+# request — but it is the most-crawled URL we have, so the database part is
+# cached briefly. An admin change shows up within a minute.
+_LANDING_CACHE = {"at": 0.0, "blocks": None}
+_LANDING_CACHE_SECONDS = 60
+
+
+def _landing_blocks():
+    now = time.time()
+    if _LANDING_CACHE["blocks"] is None or now - _LANDING_CACHE["at"] > _LANDING_CACHE_SECONDS:
+        from web_site_routes import landing_fragments
+        _LANDING_CACHE["blocks"] = landing_fragments()
+        _LANDING_CACHE["at"] = now
+    return _LANDING_CACHE["blocks"]
+
+
 def _render_landing():
     wa = os.getenv("TITI_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
     wa_button = (
@@ -220,11 +236,14 @@ def _render_landing():
     )
     gsc = os.getenv("GOOGLE_SITE_VERIFICATION", "").strip()
     gsc_meta = f'<meta name="google-site-verification" content="{gsc}" />' if gsc else ""
-    return (
+    page = (
         _LANDING_RAW
         .replace("<!--WA_BUTTON-->", wa_button)
         .replace("<!--GSC_META-->", gsc_meta)
     )
+    for name, html_block in _landing_blocks().items():
+        page = page.replace(f"<!--{name}-->", html_block)
+    return page
 
 
 @app.api_route("/", methods=["GET", "HEAD"])

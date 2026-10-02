@@ -365,6 +365,10 @@ def register_web_routes(app):
             include_in_schema=False,
         )
 
+    # ── Reviews (free adverts on the landing page) + site settings ────────────
+    from web_site_routes import register_site_routes
+    register_site_routes(app)
+
     # ── Public, crawlable pages (/resources, /events) ─────────────────────────
     # Deliberately NOT in the React app: that sits behind a login, so a link
     # there is invisible to search engines.
