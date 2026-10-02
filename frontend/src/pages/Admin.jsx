@@ -2310,7 +2310,193 @@ function FinanceTab() {
   );
 }
 
-const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Referrals", "Notify", "Failed Messages"];
+// What appears on the public /resources and /events pages. Those are rendered
+// as plain HTML on the server so search engines can read them — a link inside
+// the app would be invisible, since the app sits behind a login.
+const LINK_RELS = [
+  ["EDITORIAL", "We recommend it (normal link)"],
+  ["SPONSORED", "Paid or exchanged (marked sponsored)"],
+  ["NOFOLLOW", "Listed only (no endorsement)"],
+];
+const BLANK_LISTING = {
+  page: "resources", section: "", title: "", url: "", blurb: "",
+  link_rel: "EDITORIAL", event_date: "", event_venue: "", sort_order: 0, is_active: true,
+};
+
+function PublicPagesTab() {
+  const [listings, setListings] = useState([]);
+  const [form, setForm] = useState(BLANK_LISTING);
+  const [editingId, setEditingId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  function load() {
+    apiFetch("admin/public-listings").then(d => setListings(d.listings || []))
+      .catch(e => setErr(e.message));
+  }
+  useEffect(load, []);
+
+  async function save() {
+    setBusy(true); setErr("");
+    try {
+      const body = { ...form, sort_order: Number(form.sort_order) || 0 };
+      if (editingId) await apiPut(`admin/public-listings/${editingId}`, body);
+      else await apiPost("admin/public-listings", body);
+      setForm(BLANK_LISTING); setEditingId(null); load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function remove(row) {
+    if (!window.confirm(`Remove "${row.title}" from the public page?`)) return;
+    try { await apiDelete(`admin/public-listings/${row.id}`); load(); }
+    catch (e) { setErr(e.message); }
+  }
+
+  function edit(row) {
+    setEditingId(row.id);
+    setForm({ ...BLANK_LISTING, ...row, section: row.section || "",
+              url: row.url || "", blurb: row.blurb || "",
+              event_date: row.event_date || "", event_venue: row.event_venue || "" });
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {err && <div style={{ color: "var(--rose)" }}>{err}</div>}
+      <div className="card card-body text-subtle text-sm">
+        These entries appear on <a href="/resources" target="_blank" rel="noopener">/resources</a> and
+        {" "}<a href="/events" target="_blank" rel="noopener">/events</a>, which are public pages search
+        engines can read. Mark anything paid for or exchanged as sponsored.
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">{editingId ? "Edit entry" : "Add an entry"}</span>
+          {editingId && (
+            <button className="btn btn-ghost btn-sm"
+              onClick={() => { setEditingId(null); setForm(BLANK_LISTING); }}>Cancel</button>
+          )}
+        </div>
+        <div className="card-body" style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="form-group" style={{ margin: 0, flex: "0 1 140px" }}>
+              <label className="form-label">Page</label>
+              <select value={form.page} onChange={e => set("page", e.target.value)}>
+                <option value="resources">Resources</option>
+                <option value="events">Events</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 170px" }}>
+              <label className="form-label">Section heading</label>
+              <input value={form.section} onChange={e => set("section", e.target.value)}
+                placeholder={form.page === "events" ? "(events group themselves)" : "Sponsors"} />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "0 1 110px" }}>
+              <label className="form-label">Order</label>
+              <input inputMode="numeric" value={form.sort_order}
+                onChange={e => set("sort_order", e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Title *</label>
+            <input value={form.title} onChange={e => set("title", e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 240px" }}>
+              <label className="form-label">Link (optional)</label>
+              <input value={form.url} onChange={e => set("url", e.target.value)}
+                placeholder="https://…" />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 220px" }}>
+              <label className="form-label">How to mark the link</label>
+              <select value={form.link_rel} onChange={e => set("link_rel", e.target.value)}>
+                {LINK_RELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Short write-up</label>
+            <textarea rows={2} value={form.blurb} onChange={e => set("blurb", e.target.value)} />
+          </div>
+          {form.page === "events" && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="form-group" style={{ margin: 0, flex: "0 1 170px" }}>
+                <label className="form-label">Event date</label>
+                <input type="date" value={form.event_date}
+                  onChange={e => set("event_date", e.target.value)} />
+              </div>
+              <div className="form-group" style={{ margin: 0, flex: "1 1 200px" }}>
+                <label className="form-label">Venue</label>
+                <input value={form.event_venue} onChange={e => set("event_venue", e.target.value)} />
+              </div>
+            </div>
+          )}
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+            <input type="checkbox" checked={!!form.is_active}
+              onChange={e => set("is_active", e.target.checked)} />
+            Visible on the page
+          </label>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-primary" disabled={busy || !form.title.trim()} onClick={save}>
+            {busy ? "Saving…" : editingId ? "Save changes" : "Add to page"}
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">On the public pages <span className="text-subtle text-sm">({listings.length})</span></span>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Page</th><th>Entry</th><th>Link</th><th>Order</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+              {listings.length === 0 ? (
+                <tr><td colSpan={6} className="td-muted">Nothing listed yet.</td></tr>
+              ) : listings.map(l => (
+                <tr key={l.id}>
+                  <td>{l.page}<div className="td-muted" style={{ fontSize: 11 }}>{l.section || "—"}</div></td>
+                  <td>
+                    <strong>{l.title}</strong>
+                    {l.event_date && (
+                      <div className="td-muted" style={{ fontSize: 11 }}>
+                        {l.event_date}{l.event_venue ? ` · ${l.event_venue}` : ""}
+                      </div>
+                    )}
+                  </td>
+                  <td className="td-muted" style={{ fontSize: 11, maxWidth: 200, overflow: "hidden" }}>
+                    {l.url || "—"}
+                    <div>{(LINK_RELS.find(([v]) => v === l.link_rel) || ["", l.link_rel])[1]}</div>
+                  </td>
+                  <td>{l.sort_order}</td>
+                  <td>
+                    <span className={`badge ${l.is_active ? "badge-green" : "badge-gray"}`}>
+                      {l.is_active ? "Visible" : "Hidden"}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="btn btn-ghost btn-xs" onClick={() => edit(l)}>Edit</button>
+                      <button className="btn btn-ghost btn-xs text-rose" onClick={() => remove(l)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Public Pages", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -2447,6 +2633,7 @@ export default function Admin() {
       {tab === "Suppliers"      && <SuppliersTab />}
       {tab === "Opportunities"  && <OpportunitiesTab />}
       {tab === "Finance"        && <FinanceTab />}
+      {tab === "Public Pages"   && <PublicPagesTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}
       {tab === "Referrals"        && <ReferralSettingsTab />}
       {tab === "Notify"         && <NotifyTab />}

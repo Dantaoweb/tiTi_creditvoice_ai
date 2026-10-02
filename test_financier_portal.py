@@ -229,8 +229,11 @@ def test_the_evidence_is_visible_but_not_our_fee_or_contacts(admin):
     aid = _application(admin, cook, pid)
     _fphone, cookies, _uid = _staff_login(admin, pid)
 
+    # Compare against the business's own figure rather than a fixed number: how
+    # the seeded days fall across months depends on today's date.
+    expected = client.get("/app/api/scorecard", cookies=cook).json()["metrics"]["avg_monthly_sales"]
     detail = client.get(f"/app/api/financier/applications/{aid}", cookies=cookies).json()
-    assert detail["snapshot"]["metrics"]["avg_monthly_sales"] == 600_000
+    assert detail["snapshot"]["metrics"]["avg_monthly_sales"] == expected > 0
     assert detail["kyc"]["legal_name"] == "Ade Owner"
     # Commission is ours alone.
     assert "commission_amount" not in detail and "commission_status" not in detail

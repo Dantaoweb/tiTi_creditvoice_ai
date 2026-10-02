@@ -365,6 +365,12 @@ def register_web_routes(app):
             include_in_schema=False,
         )
 
+    # ── Public, crawlable pages (/resources, /events) ─────────────────────────
+    # Deliberately NOT in the React app: that sits behind a login, so a link
+    # there is invisible to search engines.
+    from web_public_pages import register_public_pages
+    register_public_pages(app)
+
     # ── Financier portal (its own top-level path, not inside /app) ────────────
     # Financiers are not CreditVoice businesses; keeping them off /app means the
     # portal can never be mistaken for a user's own app, and their cookie is

@@ -1596,6 +1596,40 @@ class FinanceApplication(Base):
     updated_at      = Column(DateTime, nullable=True)
 
 
+class PublicListing(Base):
+    """An entry on a public, crawlable page: a resource, a sponsor, or an event.
+
+    These pages are rendered as real HTML on the server, NOT inside the React
+    app — the app sits behind a login, so a link there is invisible to search
+    engines and worthless to a partner who asked for one.
+
+    `page` and `section` are plain text so new groupings can be added from the
+    admin screen without a code change. `link_rel` decides how the link is
+    marked: an editorial recommendation passes authority, anything paid for or
+    exchanged is marked sponsored, as Google requires.
+    """
+
+    __tablename__ = "public_listings"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    page        = Column(String, default="resources", index=True)   # resources | events | …
+    section     = Column(String, nullable=True)      # e.g. "Sponsors", "Tools we like"
+    title       = Column(String, nullable=False)
+    url         = Column(String, nullable=True)      # optional: an event may have none
+    blurb       = Column(Text, nullable=True)        # the short write-up
+    # EDITORIAL (dofollow) | SPONSORED | NOFOLLOW
+    link_rel    = Column(String, default="EDITORIAL")
+    logo_url    = Column(String, nullable=True)
+    # Events only
+    event_date  = Column(DateTime, nullable=True)
+    event_venue = Column(String, nullable=True)
+    sort_order  = Column(Integer, default=0)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=utcnow)
+    updated_at  = Column(DateTime, nullable=True)
+    updated_by  = Column(String, nullable=True)
+
+
 class FinancierUser(Base):
     """A login for someone who works AT a financier (e.g. Gigmile's ops staff).
 
