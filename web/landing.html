@@ -143,7 +143,7 @@
                 padding-top:56px;padding-bottom:56px}
     .tag{display:inline-flex;align-items:center;gap:7px;background:var(--yellow-soft);color:var(--amber);
          border:1px solid #f6d79a;font-weight:700;font-size:12.5px;padding:6px 13px;border-radius:999px;margin-bottom:16px}
-    h1{font-size:42px;line-height:1.12;margin:0 0 14px;letter-spacing:-.8px}
+    h1{font-size:clamp(31px,5.2vw,46px);line-height:1.1;margin:0 0 14px;letter-spacing:-1px}
     h1 .hl{background:linear-gradient(180deg,transparent 62%,rgba(245,166,35,.45) 62%)}
     .lead{font-size:18px;color:var(--muted);margin:0 0 24px;max-width:560px}
     .cta{display:flex;gap:12px;flex-wrap:wrap}
@@ -178,6 +178,26 @@
       background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);border-radius:999px;
       padding:8px 16px;font-size:12.5px;font-weight:700;white-space:nowrap}
 
+    /* The numbers band. These are counted from the database and printed here —
+       the proof a stranger is owed before trusting us with their books. */
+    .statband{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:34px 0}
+    .stat{text-align:center;padding:4px 10px;position:relative}
+    .stat+.stat:before{content:"";position:absolute;left:0;top:14%;height:72%;width:1px;
+                       background:rgba(255,255,255,.16)}
+    .stat-n{display:block;font-size:clamp(26px,4.4vw,40px);font-weight:800;letter-spacing:-1px;
+            line-height:1.1;
+            background:linear-gradient(135deg,#fff 35%,var(--yellow));-webkit-background-clip:text;
+            background-clip:text;color:transparent}
+    .stat-l{display:block;margin-top:6px;color:#b9c8e6;font-size:13.5px;line-height:1.35}
+    @media (max-width:620px){
+      .stats{grid-template-columns:1fr;gap:0;padding:22px 0}
+      .stat{display:flex;align-items:baseline;gap:10px;text-align:left;padding:11px 4px}
+      .stat+.stat:before{left:4px;right:4px;top:0;width:auto;height:1px}
+      .stat-n{font-size:27px}
+      .stat-l{margin:0;font-size:13px}
+    }
+
     /* sections */
     section{padding:58px 0}
     section.alt{background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -187,7 +207,7 @@
       radial-gradient(620px 280px at 95% 85%, rgba(245,166,35,.09), transparent 65%)}
     #pricing{background:radial-gradient(700px 320px at 85% 0%, rgba(26,86,219,.05), transparent 65%)}
     .eyebrow{color:var(--brand);font-weight:800;font-size:12.5px;letter-spacing:1.2px;text-transform:uppercase;margin:0 0 8px}
-    h2{font-size:28px;margin:0 0 10px;letter-spacing:-.4px}
+    h2{font-size:clamp(24px,3.4vw,32px);margin:0 0 10px;letter-spacing:-.5px;line-height:1.2}
     .sub{color:var(--muted);margin:0 0 26px;max-width:620px}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
 
@@ -240,7 +260,28 @@
       .step:active{transform:scale(.985);box-shadow:var(--shadow)}
     }
 
-    /* pricing */
+    /* pricing — the yearly switch is a checkbox the CSS reads, so the prices
+       change with no JavaScript at all. */
+    .pricing-toggle{position:absolute;opacity:0;pointer-events:none}
+    .pricing-switch{display:inline-flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:22px;
+                    font-size:14.5px;font-weight:600;color:var(--muted);user-select:none}
+    .pricing-switch .track{width:50px;height:28px;border-radius:999px;background:#d8e1f2;
+                           position:relative;transition:background .2s ease;flex:none}
+    .pricing-switch .knob{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+                          background:#fff;box-shadow:0 2px 5px rgba(12,31,74,.25);transition:transform .2s ease}
+    .pricing-switch .opt.m{color:var(--ink)}
+    .pricing-switch b{color:var(--amber)}
+    .pricing-toggle:checked ~ .pricing-switch .track{background:var(--brand)}
+    .pricing-toggle:checked ~ .pricing-switch .knob{transform:translateX(22px)}
+    .pricing-toggle:checked ~ .pricing-switch .opt.m{color:var(--muted)}
+    .pricing-toggle:checked ~ .pricing-switch .opt.y{color:var(--ink)}
+    .pricing-toggle:focus-visible ~ .pricing-switch .track{outline:2px solid var(--brand);outline-offset:3px}
+    .per-y{display:none}
+    .pricing-toggle:checked ~ .plans .per-m{display:none}
+    .pricing-toggle:checked ~ .plans .per-y{display:inline}
+    .pricing-toggle:checked ~ .plans .plan-note.per-y{display:block}
+    .plan-note{font-size:12.5px;font-weight:700;color:var(--amber);margin:-2px 0 2px}
+
     .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:18px;align-items:stretch}
     .plan{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;
           display:flex;flex-direction:column;
@@ -316,6 +357,27 @@
           display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:13.5px}
     address{font-style:normal;display:inline}
 
+    /* Content settles in as it arrives. Nothing depends on it: without
+       JavaScript, or with reduced motion asked for, everything is simply there. */
+    @media (prefers-reduced-motion:no-preference){
+      .js-reveal [data-reveal]{opacity:0;transform:translateY(14px)}
+      .js-reveal [data-reveal].in{opacity:1;transform:none;
+        transition:opacity .5s ease, transform .5s cubic-bezier(.2,.7,.3,1)}
+      .js-reveal [data-reveal].in:nth-child(2){transition-delay:.06s}
+      .js-reveal [data-reveal].in:nth-child(3){transition-delay:.12s}
+      .js-reveal [data-reveal].in:nth-child(4){transition-delay:.18s}
+      .js-reveal [data-reveal].in:nth-child(5){transition-delay:.24s}
+      .js-reveal [data-reveal].in:nth-child(6){transition-delay:.3s}
+      /* Each phone keeps its own angle, so the float is written per phone. */
+      .phone.tilt{animation:float-a 7s ease-in-out infinite}
+      .phone.small{animation:float-b 7s ease-in-out infinite -3.5s}
+      @keyframes float-a{0%,100%{transform:rotate(-3deg) translateY(0)}
+                         50%{transform:rotate(-3deg) translateY(-10px)}}
+      @keyframes float-b{0%,100%{transform:rotate(4deg) translateY(16px)}
+                         50%{transform:rotate(4deg) translateY(4px)}}
+      @media (max-width:520px){ .phone.tilt{animation:none} }
+    }
+
     /* sticky mobile call to action */
     .sticky{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;gap:10px;padding:10px 16px;
             background:rgba(255,255,255,.96);border-top:1px solid var(--line);
@@ -390,38 +452,42 @@
   </div>
 </div>
 
+<div class="statband">
+  <div class="wrap"><!--STATS--></div>
+</div>
+
 <section id="features">
   <div class="wrap">
     <p class="eyebrow">What you get</p>
     <h2>Everything your shop needs, in one place</h2>
     <p class="sub">Built for shops, traders, artisans and service businesses — not for accountants.</p>
     <div class="grid">
-      <div class="card" tabindex="0">
+      <div class="card" tabindex="0" data-reveal>
         <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 10v4M18 10v4"/></svg></div>
         <h3>Record sales in seconds</h3>
         <p>Type it or send a voice note. Cash or credit, tiTi understands everyday language.</p>
       </div>
-      <div class="card" tabindex="0">
+      <div class="card" tabindex="0" data-reveal>
         <div class="ico y"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
         <h3>Never lose a debt again</h3>
         <p>See who owes you, how much and since when — so nobody is forgotten.</p>
       </div>
-      <div class="card" tabindex="0">
+      <div class="card" tabindex="0" data-reveal>
         <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12m0 0 9-4.5M12 12v9"/></svg></div>
         <h3>Stock that counts itself</h3>
         <p>Every sale reduces your stock. Low-stock alerts before you run out.</p>
       </div>
-      <div class="card" tabindex="0">
+      <div class="card" tabindex="0" data-reveal>
         <div class="ico y"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17l-2.5-1.6L14 21l-2-1.6L10 21l-2.5-1.6z"/><path d="M9 8h6M9 12h6"/></svg></div>
         <h3>Receipts and invoices</h3>
         <p>Send a clean receipt straight to your customer's phone, and keep a numbered record for yourself.</p>
       </div>
-      <div class="card" tabindex="0">
+      <div class="card" tabindex="0" data-reveal>
         <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 20v-6M12 20V8M17 20v-9"/></svg></div>
         <h3>Profit you can see</h3>
         <p>Daily, weekly and monthly sales, best sellers and margins on your dashboard.</p>
       </div>
-      <div class="card" tabindex="0">
+      <div class="card" tabindex="0" data-reveal>
         <div class="ico y"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 4.4 3.4 7.9 8 9 4.6-1.1 8-4.6 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div>
         <h3>A record that opens doors</h3>
         <p>Keep records and build a business scorecard financiers trust — for the tools you need.</p>
@@ -435,11 +501,11 @@
     <p class="eyebrow">How it works</p>
     <h2>Three steps, starting today</h2>
     <div class="steps">
-      <div class="step"><div class="n">1</div><strong>Say hello to tiTi</strong>
+      <div class="step" data-reveal><div class="n">1</div><strong>Say hello to tiTi</strong>
         <p><!--WA_STEP--></p></div>
-      <div class="step"><div class="n">2</div><strong>Record as you sell</strong>
+      <div class="step" data-reveal><div class="n">2</div><strong>Record as you sell</strong>
         <p>"Sold 2 bags rice 18,000 to Ade" — that's the whole thing.</p></div>
-      <div class="step"><div class="n">3</div><strong>See your money</strong>
+      <div class="step" data-reveal><div class="n">3</div><strong>See your money</strong>
         <p>Debtors, stock, receipts and reports, any time, on any phone.</p></div>
     </div>
   </div>
@@ -530,6 +596,57 @@
   <a class="btn" href="/app">Start free</a>
   <a class="btn ghost" href="#pricing">See pricing</a>
 </div>
+
+<script>
+/* Polish only. The page is complete and readable before this runs — the numbers
+   are already printed in the HTML and nothing here changes what they say. */
+(function () {
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || !("IntersectionObserver" in window)) return;
+  document.documentElement.className += " js-reveal";
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.className += " in";
+      io.unobserve(e.target);
+      if (e.target.className.indexOf("stats") > -1) countUp(e.target);
+    });
+  }, { rootMargin: "0px 0px -8% 0px", threshold: 0.15 });
+
+  var watched = document.querySelectorAll("[data-reveal], .stats");
+  [].forEach.call(watched, function (el) { io.observe(el); });
+
+  // Safety net: whatever has not been scrolled to within a few seconds is shown
+  // anyway. Nothing on this page may end up permanently invisible because an
+  // observer did not fire — a crawler or an odd browser must still see it all.
+  setTimeout(function () {
+    [].forEach.call(watched, function (el) {
+      if (el.className.indexOf(" in") === -1) { el.className += " in"; io.unobserve(el); }
+    });
+  }, 2500);
+
+  function countUp(root) {
+    [].forEach.call(root.querySelectorAll(".stat-n"), function (el) {
+      var final = el.getAttribute("data-to") || el.textContent;
+      var parts = final.match(/^(\D*)([\d.,]+)(\D*)$/);   // ₦ 2.4 m
+      if (!parts) return;
+      var target = parseFloat(parts[2].replace(/,/g, ""));
+      if (!isFinite(target)) return;
+      var decimals = (parts[2].split(".")[1] || "").length;
+      var started = performance.now();
+      (function frame(now) {
+        var p = Math.min(1, (now - started) / 900);
+        var value = target * (1 - Math.pow(1 - p, 3));
+        el.textContent = parts[1] + value.toLocaleString(undefined, {
+          minimumFractionDigits: decimals, maximumFractionDigits: decimals
+        }) + parts[3];
+        if (p < 1) requestAnimationFrame(frame); else el.textContent = final;
+      })(started);
+    });
+  }
+})();
+</script>
 
 </body>
 </html>

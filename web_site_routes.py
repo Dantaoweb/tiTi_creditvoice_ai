@@ -33,6 +33,7 @@ SETTING_KEYS = {
     "whatsapp_url":  "WhatsApp channel or chat link",
     "featured_reviews": "How many reviews to show on the landing page",
     "whatsapp_live": "WhatsApp approved by Meta and working (yes/no)",
+    "show_stats": "Show the live usage numbers on the homepage (yes/no)",
 }
 DEFAULT_FEATURED = 3
 
@@ -400,30 +401,134 @@ def _social_html(db):
 
 
 def _pricing_html(whatsapp=False):
+    """The plans, with the yearly saving shown rather than described.
+
+    The switch is a checkbox the CSS reads, so the prices change with no
+    JavaScript — the same reason every other number here is server-rendered.
+    """
     from messages import get_plan_price
     from plans import PLAN_BASIC, PLAN_GO, PLAN_PREMIUM, PLAN_PRO
 
     cards = []
     for plan in (PLAN_BASIC, PLAN_GO, PLAN_PRO, PLAN_PREMIUM):
         price = get_plan_price(plan)
+        yearly = get_plan_price(plan, "YEARLY")
         featured = ' featured' if plan == PLAN_PRO else ''
-        amount = "Free" if not price else f"₦{price:,}"
-        per = "" if not price else "<small> /month</small>"
+        if price:
+            amount = (f'<span class="per-m">₦{price:,}<small> /month</small></span>'
+                      f'<span class="per-y">₦{yearly:,}<small> /year</small></span>')
+        else:
+            amount = "Free"
         # Sending a reminder needs the approved WhatsApp number; listing it as a
         # paid-plan feature before then would be selling something undeliverable.
         lines = [b if whatsapp or b not in _WA_PLAN_BULLETS else _WA_PLAN_BULLETS[b]
                  for b in _PLAN_BULLETS.get(plan, [])]
         bullets = "".join(f"<li>{_esc(b)}</li>" for b in lines)
         cta = "Start free" if not price else f"Choose {_PLAN_NAMES[plan]}"
+        note = ('<div class="plan-note per-y">Two months free</div>'
+                if price and yearly else '')
         cards.append(
             f'<div class="plan{featured}">'
             f'<h3>{_PLAN_NAMES[plan]}</h3>'
-            f'<div class="price">{amount}{per}</div>'
+            f'<div class="price">{amount}</div>'
+            f'{note}'
             f'<ul>{bullets}</ul>'
             f'<a class="btn{"" if price else " ghost"}" href="/app">{cta}</a>'
             f'</div>'
         )
-    return f'<div class="plans">{"".join(cards)}</div>'
+    return (
+        '<div class="pricing-wrap">'
+        '<input type="checkbox" id="yearly-toggle" class="pricing-toggle" />'
+        '<label class="pricing-switch" for="yearly-toggle">'
+        '<span class="opt m">Monthly</span>'
+        '<span class="track"><span class="knob"></span></span>'
+        '<span class="opt y">Yearly <b>save 2 months</b></span>'
+        '</label>'
+        f'<div class="plans">{"".join(cards)}</div>'
+        '</div>'
+    )
+
+
+def _compact_money(amount):
+    """₦2.4m / ₦340k / ₦5,200 — a figure a trader reads at a glance."""
+    amount = int(amount or 0)
+    if amount >= 1_000_000_000:
+        return f"₦{amount / 1_000_000_000:.1f}b".replace(".0b", "b")
+    if amount >= 1_000_000:
+        return f"₦{amount / 1_000_000:.1f}m".replace(".0m", "m")
+    if amount >= 100_000:
+        return f"₦{amount // 1000:,}k"
+    return f"₦{amount:,}"
+
+
+def _compact_count(n):
+    n = int(n or 0)
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}m".replace(".0m", "m")
+    if n >= 10_000:
+        return f"{n // 1000:,}k"
+    return f"{n:,}"
+
+
+def _stats(db):
+    """What the platform has actually done, counted — never typed in by hand.
+
+    These are the numbers a visitor is owed: a stranger is being asked to trust
+    us with their books. Bumpa's homepage ships "Trusted by over 0 SMEs" because
+    their counter only runs in JavaScript; ours is counted here and printed into
+    the HTML, so it is right for crawlers, link previews and slow phones too.
+    """
+    from sqlalchemy import func
+
+    from models import Customer, Transaction, User
+
+    businesses = (
+        db.query(func.count(User.id))
+        .filter(User.parent_id.is_(None))
+        .scalar()
+    ) or 0
+    records = db.query(func.count(Transaction.id)).scalar() or 0
+    credit_tracked = (
+        db.query(func.coalesce(func.sum(Customer.balance), 0))
+        .filter(Customer.balance > 0)
+        .scalar()
+    ) or 0
+    return {
+        "businesses": int(businesses),
+        "records": int(records),
+        "credit_tracked": int(credit_tracked),
+    }
+
+
+def _stats_html(db):
+    """The band under the hero. Hidden only if an admin turns it off."""
+    if str(get_setting(db, "show_stats", "yes")).strip().lower() in ("no", "off", "0", "false"):
+        return ""
+    try:
+        s = _stats(db)
+    except Exception:
+        _log.exception("landing stats failed")
+        return ""
+
+    # A figure of zero is worse than no figure: it is the first thing a visitor
+    # reads and it says nobody is here. Empty ones are left out, and if nothing
+    # has happened yet the band does not appear at all.
+    cells = [
+        (s["businesses"], _compact_count(s["businesses"]), "businesses keeping their records"),
+        (s["records"], _compact_count(s["records"]), "sales and payments recorded"),
+        (s["credit_tracked"], _compact_money(s["credit_tracked"]), "in customer credit being tracked"),
+    ]
+    cells = [(value, label) for raw, value, label in cells if raw > 0]
+    if not cells:
+        return ""
+    # data-to lets the number count up on arrival; the final figure is already in
+    # the HTML, so it reads correctly with no JavaScript at all.
+    items = "".join(
+        f'<div class="stat"><span class="stat-n" data-to="{_esc(value)}">{_esc(value)}</span>'
+        f'<span class="stat-l">{_esc(label)}</span></div>'
+        for value, label in cells
+    )
+    return f'<div class="stats">{items}</div>'
 
 
 def _reviews_html(db):
@@ -469,13 +574,14 @@ def landing_fragments():
     # read, the page must still not promise a channel that isn't approved.
     from feature_flags import whatsapp_live
 
-    blocks = {"PRICING": "", "REVIEWS": "", "SOCIAL": ""}
+    blocks = {"PRICING": "", "REVIEWS": "", "SOCIAL": "", "STATS": ""}
     blocks.update(_WA_SOON)
     db = None
     live = False
     try:
         db = SessionLocal()
         live = whatsapp_live(db)
+        blocks["STATS"] = _stats_html(db)
         blocks["REVIEWS"] = _reviews_html(db)
         blocks["SOCIAL"] = _social_html(db)
         blocks.update(_whatsapp_blocks(db))
