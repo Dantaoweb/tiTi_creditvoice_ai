@@ -90,7 +90,10 @@ export default function Login() {
 
   // OTP / set-pin fields
   const [otpPhone, setOtpPhone] = useState("");
-  const [selectedChannel, setSelectedChannel] = useState("whatsapp"); // "email" | "whatsapp"
+  // Defaults to email: WhatsApp only becomes a choice once Meta has approved
+  // the number, otherwise people wait for a code that cannot be sent.
+  const [selectedChannel, setSelectedChannel] = useState("email"); // "email" | "whatsapp"
+  const [whatsappLive, setWhatsappLive] = useState(false);
   const [otpEmailInput, setOtpEmailInput] = useState("");   // email entered if not on account
   const [otpEmailHint, setOtpEmailHint] = useState(null);  // masked email from server
   const [otpHasEmail, setOtpHasEmail] = useState(false);
@@ -114,7 +117,11 @@ export default function Login() {
   const [info, setInfo] = useState("");
 
   useEffect(() => {
-    apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
+    apiFetch("auth/config").then(d => {
+      setTitiNumber(d.titi_whatsapp || "");
+      setWhatsappLive(!!d.whatsapp_live);
+      if (d.whatsapp_live) setSelectedChannel("whatsapp");
+    }).catch(() => {});
     apiFetch("auth/business-categories").then(d => setCategories(d.categories || [])).catch(() => {});
   }, []);
 
@@ -492,12 +499,15 @@ export default function Login() {
             <div className="form-group">
               <label className="form-label">Send code via</label>
               <div style={{ display: "flex", gap: 10 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 14 }}>
-                  <input type="radio" name="otp_channel" value="whatsapp"
-                    checked={selectedChannel === "whatsapp"}
-                    onChange={() => setSelectedChannel("whatsapp")} />
-                  WhatsApp
-                </label>
+                {/* WhatsApp appears as a choice only when it can actually deliver. */}
+                {whatsappLive && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 14 }}>
+                    <input type="radio" name="otp_channel" value="whatsapp"
+                      checked={selectedChannel === "whatsapp"}
+                      onChange={() => setSelectedChannel("whatsapp")} />
+                    WhatsApp
+                  </label>
+                )}
                 <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 14 }}>
                   <input type="radio" name="otp_channel" value="email"
                     checked={selectedChannel === "email"}
@@ -505,6 +515,12 @@ export default function Login() {
                   Email {otpEmailHint ? `(${otpEmailHint})` : ""}
                 </label>
               </div>
+              {!whatsappLive && (
+                <span className="form-hint">
+                  Codes by WhatsApp are coming soon. For now we send yours by email —
+                  enter one below if your account has none.
+                </span>
+              )}
             </div>
 
             {selectedChannel === "email" && !otpHasEmail && (

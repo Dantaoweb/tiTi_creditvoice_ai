@@ -2530,6 +2530,11 @@ const SETTING_FIELDS = [
   ["featured_reviews", "Reviews to show on the homepage", "3"],
 ];
 
+// Not a URL like the rest: this one decides what the whole site is allowed to
+// claim, so it gets its own control and its own explanation.
+const WA_LIVE_KEY = "whatsapp_live";
+const WA_ON = new Set(["1", "true", "yes", "on", "live"]);
+
 function SiteTab() {
   const [reviews, setReviews] = useState([]);
   const [counts, setCounts] = useState({});
@@ -2581,13 +2586,34 @@ function SiteTab() {
             These feed the <a href="/" target="_blank" rel="noopener">homepage</a> directly —
             no deploy needed. Leave a link blank to hide that icon.
           </div>
-          {settings === null ? <div className="text-subtle text-sm">Loading…</div> : SETTING_FIELDS.map(([key, label, ph]) => (
-            <div className="form-group" style={{ margin: 0 }} key={key}>
-              <label className="form-label">{label}</label>
-              <input value={settings[key] || ""} placeholder={ph}
-                onChange={e => setSettings(s => ({ ...s, [key]: e.target.value }))} />
+          {settings === null ? <div className="text-subtle text-sm">Loading…</div> : <>
+            {SETTING_FIELDS.map(([key, label, ph]) => (
+              <div className="form-group" style={{ margin: 0 }} key={key}>
+                <label className="form-label">{label}</label>
+                <input value={settings[key] || ""} placeholder={ph}
+                  onChange={e => setSettings(s => ({ ...s, [key]: e.target.value }))} />
+              </div>
+            ))}
+
+            <div style={{
+              border: "1px solid var(--border)", borderRadius: 10, padding: 12,
+              display: "grid", gap: 6,
+            }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
+                <input type="checkbox"
+                  checked={WA_ON.has(String(settings[WA_LIVE_KEY] || "").toLowerCase())}
+                  onChange={e => setSettings(s => ({ ...s, [WA_LIVE_KEY]: e.target.checked ? "yes" : "no" }))} />
+                WhatsApp is approved by Meta and working
+              </label>
+              <span className="text-subtle text-sm">
+                Leave this off until approval lands. While it is off, the homepage says
+                “tiTi on WhatsApp — coming soon” instead of promising it, the WhatsApp
+                buttons and footer icon are hidden, and login codes go by email only —
+                so nobody waits for a message that cannot be sent. Turn it on and all of
+                that comes back at once, with no deploy.
+              </span>
             </div>
-          ))}
+          </>}
         </div>
         <div className="modal-footer" style={{ gap: 10, alignItems: "center" }}>
           {saved && <span className="text-subtle text-sm">{saved}</span>}

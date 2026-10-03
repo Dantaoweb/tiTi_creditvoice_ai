@@ -13,7 +13,7 @@
   <!-- Open Graph (WhatsApp / Facebook / LinkedIn link previews) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CreditVoiceai" />
-  <meta property="og:title" content="CreditVoiceai — Run your business records from WhatsApp" />
+  <meta property="og:title" content="CreditVoiceai — Run your business records from your phone" />
   <meta property="og:description" content="Record sales by chat or voice, track who owes you, manage stock and send receipts. Free to start, no download." />
   <meta property="og:url" content="https://creditvoiceai.com/" />
   <meta property="og:image" content="https://creditvoiceai.com/app/og-image.png" />
@@ -22,7 +22,7 @@
   <meta property="og:locale" content="en_NG" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="CreditVoiceai — Run your business records from WhatsApp" />
+  <meta name="twitter:title" content="CreditVoiceai — Run your business records from your phone" />
   <meta name="twitter:description" content="Record sales by chat or voice, track who owes you, manage stock and send receipts. Free to start, no download." />
   <meta name="twitter:image" content="https://creditvoiceai.com/app/og-image.png" />
 
@@ -46,7 +46,7 @@
         "@type": "SoftwareApplication",
         "name": "CreditVoiceai",
         "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Web, WhatsApp, Android",
+        "operatingSystem": "Web, Android<!--WA_OS-->",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "NGN" }
       },
       {
@@ -60,7 +60,7 @@
           {
             "@type": "Question",
             "name": "Do I need to download an app?",
-            "acceptedAnswer": { "@type": "Answer", "text": "No. You can use CreditVoiceai entirely inside WhatsApp by chatting with tiTi. There is also a web dashboard you can install to your home screen." }
+            "acceptedAnswer": { "@type": "Answer", "text": "<!--WA_FAQ_JSONLD-->" }
           },
           {
             "@type": "Question",
@@ -122,6 +122,12 @@
     .btn.yellow:hover{background:#e5951a}
     .btn.light{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35);box-shadow:none}
     .btn.light:hover{background:rgba(255,255,255,.2)}
+    /* Not a button: WhatsApp is waiting on Meta's approval, so it must not look
+       like something you can press today. */
+    .soon{display:inline-flex;align-items:center;gap:8px;padding:13px 18px;border-radius:12px;
+          background:var(--yellow-soft);border:1px dashed #e8c88a;color:var(--amber);
+          font-weight:700;font-size:14.5px}
+    .soon b{font-weight:800}
 
     /* hero */
     .hero{background:
@@ -277,7 +283,7 @@
       </div>
       <div class="reassure">
         <span>✓ Free plan, no card</span>
-        <span>✓ Works on WhatsApp</span>
+        <!--WA_TRUST-->
         <span>✓ Built in Nigeria</span>
       </div>
     </div>
@@ -306,7 +312,7 @@
           <div class="bub me">sold 1 bag rice 68000 to mama bola, she paid 50000</div>
           <div class="bub ti">Recorded ✅<br />Mama Bola now owes ₦50,000. Receipt #42 sent.</div>
           <div class="bub me">who owes me</div>
-          <div class="bub ti">7 customers owe ₦214,500 in total. 2 are overdue — want me to remind them?</div>
+          <div class="bub ti">7 customers owe ₦214,500 in total. 2 are overdue — here is who to chase first.</div>
         </div>
       </div>
       <div class="stat-pill">Records today → financing tomorrow</div>
@@ -338,7 +344,7 @@
       <div class="card">
         <div class="ico y">✉</div>
         <h3>Receipts and invoices</h3>
-        <p>Send a clean receipt on WhatsApp and keep a numbered record for yourself.</p>
+        <p>Send a clean receipt straight to your customer's phone, and keep a numbered record for yourself.</p>
       </div>
       <div class="card">
         <div class="ico">◔</div>
@@ -360,7 +366,7 @@
     <h2>Three steps, starting today</h2>
     <div class="steps">
       <div class="step"><div class="n">1</div><strong>Say hello to tiTi</strong>
-        <p>Open the web app or message on WhatsApp. No download, no training.</p></div>
+        <p><!--WA_STEP--></p></div>
       <div class="step"><div class="n">2</div><strong>Record as you sell</strong>
         <p>"Sold 2 bags rice 18,000 to Ade" — that's the whole thing.</p></div>
       <div class="step"><div class="n">3</div><strong>See your money</strong>
@@ -392,7 +398,7 @@
     <p class="eyebrow">Questions</p>
     <h2>Frequently asked</h2>
     <details open><summary>What is CreditVoiceai?</summary><p>A financial assistant called tiTi that helps small and medium businesses record sales, track who owes them, manage stock and send receipts — with a dashboard for reports that becomes a credit scorecard over time.</p></details>
-    <details><summary>Do I need to download an app?</summary><p>No. You can use CreditVoiceai on the web or by chatting with tiTi on WhatsApp. You can install the web app to your home screen, and an Android app is coming.</p></details>
+    <details><summary>Do I need to download an app?</summary><p><!--WA_FAQ--></p></details>
     <details><summary>Is it free?</summary><p>Yes — the Basic plan is free. Paid plans add unlimited records, staff accounts, branches and more.</p></details>
     <details><summary>What can tiTi do?</summary><p>Record cash and credit sales, track debtors and send reminders, manage inventory with low-stock alerts, generate receipts and invoices, show reports and profit, and support staff, branches and partners.</p></details>
     <details><summary>Is my business data safe?</summary><p>Your records are yours. We follow the Nigeria Data Protection Act, and nothing is shared with a financing partner unless you choose to apply and agree to share it.</p></details>

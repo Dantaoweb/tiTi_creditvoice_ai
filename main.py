@@ -215,32 +215,31 @@ except OSError:
 # Prices, reviews and social links come from settings, so the page is built per
 # request — but it is the most-crawled URL we have, so the database part is
 # cached briefly. An admin change shows up within a minute.
-_LANDING_CACHE = {"at": 0.0, "blocks": None}
+_LANDING_CACHE = {"at": 0.0, "blocks": None, "version": -1}
 _LANDING_CACHE_SECONDS = 60
 
 
 def _landing_blocks():
+    from web_site_routes import landing_fragments, settings_version
+
     now = time.time()
-    if _LANDING_CACHE["blocks"] is None or now - _LANDING_CACHE["at"] > _LANDING_CACHE_SECONDS:
-        from web_site_routes import landing_fragments
-        _LANDING_CACHE["blocks"] = landing_fragments()
-        _LANDING_CACHE["at"] = now
+    version = settings_version()
+    stale = (
+        _LANDING_CACHE["blocks"] is None
+        or _LANDING_CACHE["version"] != version      # an admin just saved
+        or now - _LANDING_CACHE["at"] > _LANDING_CACHE_SECONDS
+    )
+    if stale:
+        _LANDING_CACHE.update(blocks=landing_fragments(), at=now, version=version)
     return _LANDING_CACHE["blocks"]
 
 
 def _render_landing():
-    wa = os.getenv("TITI_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
-    wa_button = (
-        f'<a class="btn ghost" href="https://wa.me/{wa}">Message tiTi on WhatsApp</a>'
-        if wa else ""
-    )
+    # Everything WhatsApp-related is decided in web_site_routes, because what the
+    # page may claim depends on whether Meta has approved the number.
     gsc = os.getenv("GOOGLE_SITE_VERIFICATION", "").strip()
     gsc_meta = f'<meta name="google-site-verification" content="{gsc}" />' if gsc else ""
-    page = (
-        _LANDING_RAW
-        .replace("<!--WA_BUTTON-->", wa_button)
-        .replace("<!--GSC_META-->", gsc_meta)
-    )
+    page = _LANDING_RAW.replace("<!--GSC_META-->", gsc_meta)
     for name, html_block in _landing_blocks().items():
         page = page.replace(f"<!--{name}-->", html_block)
     return page

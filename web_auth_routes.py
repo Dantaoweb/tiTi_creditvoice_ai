@@ -115,10 +115,15 @@ def register_auth_routes(app):
     @app.get("/app/api/auth/config")
     def web_auth_config():
         import os
-        titi_number = os.getenv("TITI_WHATSAPP", "").strip()
+        from feature_flags import whatsapp_live
         from web_push import VAPID_PUBLIC_KEY, push_enabled
+        # The number is withheld until Meta approves it, so no screen can offer
+        # a conversation that nothing on our side can answer.
+        live = whatsapp_live()
+        titi_number = os.getenv("TITI_WHATSAPP", "").strip() if live else ""
         return {
             "titi_whatsapp": titi_number,
+            "whatsapp_live": live,
             "push_enabled": push_enabled(),
             "vapid_public_key": VAPID_PUBLIC_KEY if push_enabled() else "",
         }

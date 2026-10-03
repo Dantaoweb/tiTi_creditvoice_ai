@@ -232,6 +232,7 @@ def web_login(db: Session, phone: str, pin: str, ip: str = None) -> dict:
 def get_otp_channels(db: Session, phone: str) -> dict:
     """Return what OTP delivery channels are available for this phone."""
     from email_service import mask_email
+    from feature_flags import whatsapp_live
     user = user_by_phone(db, phone)
     if not user:
         raise HTTPException(
@@ -240,7 +241,9 @@ def get_otp_channels(db: Session, phone: str) -> dict:
         )
     return {
         "email_hint": mask_email(user.email) if user.email else None,
-        "has_whatsapp": True,  # always — we can always send to their phone number
+        # We know their phone number, but offering WhatsApp before Meta has
+        # approved the number sends people to wait for a code that never comes.
+        "has_whatsapp": whatsapp_live(db),
         "has_email": bool(user.email),
     }
 
@@ -271,13 +274,19 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto", email: str =
             user.email = clean
             db.commit()
 
-    has_email = bool(user.email)
-    # WhatsApp is always available — we know their phone number
-    has_whatsapp = True
+    from feature_flags import whatsapp_live
 
-    # "auto" prefers both when email is available, otherwise just WhatsApp
+    has_email = bool(user.email)
+    # We know their phone number, but the number can only message them once Meta
+    # has approved it. Until then WhatsApp is not a delivery channel.
+    has_whatsapp = whatsapp_live(db)
+
+    # "auto" prefers both when email is available, otherwise whatever can deliver
     if channel == "auto":
-        channel = "both" if has_email else "whatsapp"
+        channel = "both" if has_email else ("whatsapp" if has_whatsapp else "email")
+
+    if channel == "whatsapp" and not has_whatsapp:
+        channel = "email"
 
     if channel == "email" and not has_email:
         raise HTTPException(status_code=400, detail="No email address on this account. Please enter your email below.")
@@ -327,14 +336,26 @@ def request_web_otp(db: Session, phone: str, channel: str = "auto", email: str =
         ).delete()
         db.commit()
         if channel == "email":
+            alternative = (" or switch to WhatsApp and try again"
+                           if has_whatsapp else ", then try again")
             raise HTTPException(
                 status_code=500,
-                detail="Could not send the code by email. Please check that your email address is correct, or switch to WhatsApp and try again.",
+                detail=f"Could not send the code by email. Please check that your email address is correct{alternative}.",
             )
         if has_email:
             raise HTTPException(
                 status_code=500,
                 detail="Could not send via WhatsApp. Please select Email delivery and try again.",
+            )
+        if not has_whatsapp:
+            # Nothing to fall back on: no email on the account, and WhatsApp is
+            # not approved yet. Say so plainly instead of blaming the delivery.
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "There is no email address on this account, and codes on WhatsApp are not "
+                    "available yet. Enter an email address below and we will send the code there."
+                ),
             )
         raise HTTPException(
             status_code=500,

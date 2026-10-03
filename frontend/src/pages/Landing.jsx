@@ -3,11 +3,14 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { Send, Package, Users, ShoppingCart, Bell, Mic, MicOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
+// The last line depends on WhatsApp: sending a reminder needs Meta's approval,
+// so until that lands we promise the part that works — knowing who to chase.
 const FEATURES = [
   { icon: ShoppingCart, text: "Record sales — cash or on credit" },
   { icon: Users,        text: "Track who owes you, receive payments" },
   { icon: Package,      text: "Manage your stock, know when to restock" },
-  { icon: Bell,         text: "Send payment reminders on WhatsApp" },
+  { icon: Bell,         text: "Send payment reminders on WhatsApp", needsWhatsapp: true,
+    fallback: "See who is due to pay, and when" },
 ];
 
 const TITI_INTRO =
@@ -23,6 +26,7 @@ export default function Landing() {
   const navigate = useNavigate();
 
   const [titiNumber, setTitiNumber] = useState("");
+  const [whatsappLive, setWhatsappLive] = useState(false);
   const [input, setInput]           = useState("");
   const [reply, setReply]           = useState(TITI_INTRO);
   const [busy, setBusy]             = useState(false);
@@ -33,7 +37,7 @@ export default function Landing() {
   useEffect(() => {
     fetch("/app/api/auth/config")
       .then(r => r.json())
-      .then(d => setTitiNumber(d.titi_whatsapp || ""))
+      .then(d => { setTitiNumber(d.titi_whatsapp || ""); setWhatsappLive(!!d.whatsapp_live); })
       .catch(() => {});
   }, []);
 
@@ -127,10 +131,10 @@ export default function Landing() {
         </p>
 
         <div className="landing-features">
-          {FEATURES.map(({ icon: Icon, text }) => (
+          {FEATURES.map(({ icon: Icon, text, needsWhatsapp, fallback }) => (
             <div key={text} className="landing-feature">
               <Icon size={18} className="landing-feature-icon" />
-              <span>{text}</span>
+              <span>{needsWhatsapp && !whatsappLive ? fallback : text}</span>
             </div>
           ))}
         </div>
@@ -185,10 +189,13 @@ export default function Landing() {
             <button className="btn btn-primary" onClick={() => navigate("/login?mode=register")}>
               Create Account
             </button>
-            {waLink && (
+            {waLink ? (
               <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
                 Start on WhatsApp
               </a>
+            ) : (
+              /* Named, but plainly not a button — it cannot be used yet. */
+              <span className="badge badge-amber">tiTi on WhatsApp — coming soon</span>
             )}
           </div>
         </div>

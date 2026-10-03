@@ -32,8 +32,17 @@ SETTING_KEYS = {
     "tiktok_url":    "TikTok profile URL",
     "whatsapp_url":  "WhatsApp channel or chat link",
     "featured_reviews": "How many reviews to show on the landing page",
+    "whatsapp_live": "WhatsApp approved by Meta and working (yes/no)",
 }
 DEFAULT_FEATURED = 3
+
+# Bumped whenever an admin saves a setting. The landing page caches its blocks
+# for a minute; this lets a change show up immediately instead.
+_settings_version = 0
+
+
+def settings_version():
+    return _settings_version
 
 
 class TestimonialRequest(BaseModel):
@@ -276,6 +285,12 @@ def register_site_routes(app):
             db.add(AuditLog(actor_id=user.id, actor_phone=user.phone,
                             action="ADMIN_SETTINGS_CHANGE", resource="site_settings"))
             db.commit()
+            # Turning WhatsApp on or off changes what the whole site may claim,
+            # so it has to take effect now rather than when a cache expires.
+            from feature_flags import clear_cache
+            clear_cache()
+            global _settings_version
+            _settings_version += 1
             return {"settings": {k: all_settings(db).get(k, "") for k in SETTING_KEYS}}
         finally:
             db.close()
@@ -287,12 +302,15 @@ def register_site_routes(app):
 # an env var — never by editing HTML.
 
 _PLAN_BULLETS = {
-    "BASIC":   ["Record sales and credit", "Who owes you, at a glance", "Receipts on WhatsApp"],
+    "BASIC":   ["Record sales and credit", "Who owes you, at a glance", "Receipts you can send"],
     "GO":      ["Unlimited records", "Stock and low-stock alerts", "Reminders sent for you", "Reports and profit"],
     "PRO":     ["Everything in Go", "Staff accounts", "One branch, partner and investor", "Business scorecard"],
     "PREMIUM": ["Everything in Pro", "Unlimited branches and staff", "Unlimited partners and investors", "Priority support"],
 }
 _PLAN_NAMES = {"BASIC": "Basic", "GO": "Go", "PRO": "Pro", "PREMIUM": "Premium"}
+
+# What a bullet says while WhatsApp is not approved yet.
+_WA_PLAN_BULLETS = {"Reminders sent for you": "Due dates and who to chase"}
 
 _SOCIAL_ICONS = {
     # The official single-path marks (Simple Icons, CC0), inlined so the page
@@ -308,9 +326,16 @@ _SOCIAL_ICONS = {
 def _social_links(db):
     """Link for each network: the admin setting first, then an env var, so a
     fresh deploy can carry links before anyone signs into the admin screen."""
+    from feature_flags import whatsapp_live
+
     values = all_settings(db)
+    live = whatsapp_live(db)
     out = []
     for key, (name, path) in _SOCIAL_ICONS.items():
+        if key == "whatsapp_url" and not live:
+            # An icon cannot say "coming soon", and a chat nobody can answer is
+            # worse than no icon at all.
+            continue
         url = (values.get(key) or os.getenv("SOCIAL_" + key.upper(), "")).strip()
         if key == "whatsapp_url" and not url:
             wa = os.getenv("TITI_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
@@ -318,6 +343,46 @@ def _social_links(db):
         if url.startswith(("http://", "https://")):
             out.append((name, path, url))
     return out
+
+
+# What the page says while Meta has not approved the number: the truth about
+# today, with WhatsApp named as coming rather than as something to press.
+_WA_SOON = {
+    "WA_BUTTON": '<span class="soon">💬 <b>tiTi on WhatsApp</b> — coming soon</span>',
+    "WA_TRUST": "<span>✓ Works in any phone browser</span>",
+    "WA_STEP": ("Open the web app in your browser — nothing to download, nothing to learn. "
+                "Chatting with tiTi on WhatsApp is coming soon."),
+    "WA_FAQ": ("No. CreditVoiceai runs in your browser and installs to your home screen like an app, "
+               "so it works on any phone. Chatting with tiTi on WhatsApp is coming soon, and an "
+               "Android app is on the way."),
+    "WA_FAQ_JSONLD": ("No. CreditVoiceai runs in your browser and can be installed to your home "
+                      "screen, so it works on any phone."),
+    "WA_OS": "",
+}
+
+
+def _whatsapp_blocks(db):
+    """Every line on the page that depends on WhatsApp being approved.
+
+    While it is not, the page says what is true today and marks WhatsApp as
+    coming — not as something a visitor can use now.
+    """
+    from feature_flags import whatsapp_live
+
+    if whatsapp_live(db):
+        wa = os.getenv("TITI_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
+        return {
+            "WA_BUTTON": (f'<a class="btn ghost" href="https://wa.me/{_esc(wa)}">Message tiTi on WhatsApp</a>'
+                          if wa else ""),
+            "WA_TRUST": "<span>✓ Works on WhatsApp</span>",
+            "WA_STEP": "Open the web app or message tiTi on WhatsApp. No download, no training.",
+            "WA_FAQ": ("No. You can use CreditVoiceai on the web or by chatting with tiTi on WhatsApp. "
+                       "You can install the web app to your home screen, and an Android app is coming."),
+            "WA_FAQ_JSONLD": ("No. You can use CreditVoiceai on the web or by chatting with tiTi on "
+                              "WhatsApp. You can also install the web app to your home screen."),
+            "WA_OS": ", WhatsApp",
+        }
+    return dict(_WA_SOON)
 
 
 def _social_html(db):
@@ -334,7 +399,7 @@ def _social_html(db):
     return f'<div class="social">{icons}</div>'
 
 
-def _pricing_html():
+def _pricing_html(whatsapp=False):
     from messages import get_plan_price
     from plans import PLAN_BASIC, PLAN_GO, PLAN_PREMIUM, PLAN_PRO
 
@@ -344,7 +409,11 @@ def _pricing_html():
         featured = ' featured' if plan == PLAN_PRO else ''
         amount = "Free" if not price else f"₦{price:,}"
         per = "" if not price else "<small> /month</small>"
-        bullets = "".join(f"<li>{_esc(b)}</li>" for b in _PLAN_BULLETS.get(plan, []))
+        # Sending a reminder needs the approved WhatsApp number; listing it as a
+        # paid-plan feature before then would be selling something undeliverable.
+        lines = [b if whatsapp or b not in _WA_PLAN_BULLETS else _WA_PLAN_BULLETS[b]
+                 for b in _PLAN_BULLETS.get(plan, [])]
+        bullets = "".join(f"<li>{_esc(b)}</li>" for b in lines)
         cta = "Start free" if not price else f"Choose {_PLAN_NAMES[plan]}"
         cards.append(
             f'<div class="plan{featured}">'
@@ -396,18 +465,26 @@ def _reviews_html(db):
 def landing_fragments():
     """{placeholder: html} for the landing page. Never raises — a broken
     database must not take the homepage down with it."""
+    # The WhatsApp defaults are the cautious ones: if the database cannot be
+    # read, the page must still not promise a channel that isn't approved.
+    from feature_flags import whatsapp_live
+
     blocks = {"PRICING": "", "REVIEWS": "", "SOCIAL": ""}
-    try:
-        blocks["PRICING"] = _pricing_html()
-    except Exception:
-        _log.exception("landing pricing block failed")
+    blocks.update(_WA_SOON)
     db = None
+    live = False
     try:
         db = SessionLocal()
+        live = whatsapp_live(db)
         blocks["REVIEWS"] = _reviews_html(db)
         blocks["SOCIAL"] = _social_html(db)
+        blocks.update(_whatsapp_blocks(db))
     except Exception:
         _log.exception("landing reviews/social block failed")
+    try:
+        blocks["PRICING"] = _pricing_html(live)
+    except Exception:
+        _log.exception("landing pricing block failed")
     finally:
         if db is not None:
             db.close()
