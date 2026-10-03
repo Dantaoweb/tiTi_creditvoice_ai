@@ -449,6 +449,88 @@ def _pricing_html(whatsapp=False):
     )
 
 
+def _finance_html(db):
+    """The one claim neither QuickBooks nor Bumpa can make.
+
+    They sell bookkeeping and an online store. We turn the bookkeeping into
+    evidence a financier will act on — so the page shows the actual scorecard
+    components and what each is worth, read from the live config rather than
+    typed in here, and says plainly who decides and who does not lend.
+    """
+    from business_scorecard import DEFAULT_CONFIG, config_for_partner
+    from models import FinancePartner
+
+    try:
+        _version, config, _rules = config_for_partner(db, None)
+    except Exception:
+        _log.exception("landing finance block fell back to the default config")
+        config = DEFAULT_CONFIG
+
+    components = sorted(
+        (c for c in (config.get("components") or {}).values() if c.get("weight")),
+        key=lambda c: -int(c.get("weight") or 0),
+    )[:5]
+    top = max((int(c.get("weight") or 0) for c in components), default=1) or 1
+    bars = "".join(
+        f'<div class="bar"><span class="bar-l">{_esc(c.get("label") or "")}</span>'
+        f'<span class="bar-t"><span class="bar-f" style="width:{round(100 * int(c["weight"]) / top)}%"></span></span>'
+        f'<span class="bar-w">{int(c["weight"])}%</span></div>'
+        for c in components
+    )
+
+    try:
+        partners = (
+            db.query(FinancePartner)
+            .filter(FinancePartner.is_active == True)      # noqa: E712
+            .count()
+        )
+    except Exception:
+        partners = 0
+    # Only a real count is worth printing; with none on board the proposition is
+    # still true — the score is yours either way — so the line simply goes.
+    partner_line = (
+        f'<p class="fin-count">{partners} financing partner{"s" if partners != 1 else ""} '
+        f'reviewing applications on CreditVoice</p>'
+        if partners else ""
+    )
+
+    return f"""
+    <div class="fin-grid">
+      <div class="fin-copy">
+        <p class="eyebrow light">What your records are worth</p>
+        <h2>Records today. Financing tomorrow.</h2>
+        <p class="fin-lead">
+          Every sale, debt and repayment you record builds a business scorecard — proof
+          that you trade, and how well. When you want a freezer, a generator, a bike or
+          stock on installments, that record is what speaks for you.
+        </p>
+        <ol class="fin-steps">
+          <li><b>You keep your records</b><span>Sales, credit, stock — the work you already do.</span></li>
+          <li><b>tiTi scores your business</b><span>And tells you exactly which part to improve.</span></li>
+          <li><b>A partner decides</b><span>They supply the asset; repayments are recorded here.</span></li>
+        </ol>
+        {partner_line}
+        <div class="cta">
+          <a class="btn yellow" href="/app">See your business score</a>
+          <a class="btn light" href="/app">Browse offers</a>
+        </div>
+        <p class="fin-note">
+          CreditVoice does not lend money and does not decide who is approved. Your records
+          are only shared with a partner when you apply and agree to share them.
+        </p>
+      </div>
+
+      <div class="fin-card" aria-hidden="true">
+        <div class="fin-card-top">
+          <span>Business score</span><span class="fin-tier">Strong</span>
+        </div>
+        <div class="fin-score"><b>72</b><span>/100</span></div>
+        <div class="fin-bars">{bars}</div>
+        <div class="fin-foot">What each part is worth, from the live scorecard</div>
+      </div>
+    </div>"""
+
+
 def _compact_money(amount):
     """₦2.4m / ₦340k / ₦5,200 — a figure a trader reads at a glance."""
     amount = int(amount or 0)
@@ -574,7 +656,7 @@ def landing_fragments():
     # read, the page must still not promise a channel that isn't approved.
     from feature_flags import whatsapp_live
 
-    blocks = {"PRICING": "", "REVIEWS": "", "SOCIAL": "", "STATS": ""}
+    blocks = {"PRICING": "", "REVIEWS": "", "SOCIAL": "", "STATS": "", "FINANCE": ""}
     blocks.update(_WA_SOON)
     db = None
     live = False
@@ -582,6 +664,7 @@ def landing_fragments():
         db = SessionLocal()
         live = whatsapp_live(db)
         blocks["STATS"] = _stats_html(db)
+        blocks["FINANCE"] = _finance_html(db)
         blocks["REVIEWS"] = _reviews_html(db)
         blocks["SOCIAL"] = _social_html(db)
         blocks.update(_whatsapp_blocks(db))
