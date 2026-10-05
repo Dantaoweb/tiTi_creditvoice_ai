@@ -747,6 +747,53 @@ def _check_subscription_expiry(db):
         db.commit()
 
 
+def _check_business_insights(db):
+    """Tell each business the one thing most worth knowing today.
+
+    These are the slow problems nobody has time to go looking for — a cost that
+    crept up while the price stood still, a shelf that empties on Thursday, a
+    regular who stopped coming. One per business per day at most: the value is
+    in being worth reading, and a daily list of four is a daily list nobody
+    reads.
+    """
+    from models import ProactiveLog, User
+
+    from business_insights import find_insights
+
+    owners = db.query(User).filter(
+        User.parent_id.is_(None),
+        User.phone.isnot(None),
+        User.deleted_at.is_(None),
+    ).all()
+
+    for owner in owners:
+        try:
+            insights = find_insights(db, owner.phone)
+            if not insights:
+                continue
+
+            # Each kind has its own cooldown, so a cost rise that is still true
+            # next week does not arrive every morning.
+            for insight in insights:
+                event_type = f"insight:{insight['key']}"
+                last = db.query(ProactiveLog).filter(
+                    ProactiveLog.owner_phone == owner.phone,
+                    ProactiveLog.event_type == event_type,
+                ).order_by(ProactiveLog.sent_at.desc()).first()
+                if last and (_utcnow() - last.sent_at).total_seconds() < 7 * 86400:
+                    continue
+
+                _notify(db, owner.phone, "insight", insight["title"], insight["body"],
+                        link=insight.get("link"))
+                db.add(ProactiveLog(owner_phone=owner.phone, event_type=event_type,
+                                    sent_at=_utcnow()))
+                db.commit()
+                break           # one a day, the most valuable one
+        except Exception as e:
+            db.rollback()
+            print(f"[proactive] insight error for {owner.phone}: {e}", flush=True)
+
+
 def _deliver_campaigns(db):
     """Put live campaign cards into the bell for the people they target.
 
@@ -765,6 +812,7 @@ _CHECKS = (
     _check_low_stock,
     _check_overdue_debt,
     _check_inactivity,
+    _check_business_insights,
     _deliver_campaigns,
     _check_reminder_automation,
     _check_delivery_due,
