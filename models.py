@@ -1326,6 +1326,34 @@ class StudentEnrolment(Base):
     enrolled_at  = Column(DateTime, default=utcnow)
 
 
+class PupilField(Base):
+    """A detail this particular school keeps about its pupils.
+
+    Every school asks for name, sex and age; after that they diverge. One keeps
+    blood group and allergies, another keeps the child's best colour for prize
+    day, a creche keeps who is allowed to collect them. Rather than guess, each
+    school builds its own list — picked from a library of common ones or typed
+    in — and the registration form draws itself from it.
+
+    The answers live on Customer.profile_json, the same place every other
+    business keeps its customer details.
+    """
+
+    __tablename__ = "pupil_fields"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone = Column(String, index=True)
+    key         = Column(String, nullable=False)       # stable: "best_colour"
+    label       = Column(String, nullable=False)       # shown: "Best colour"
+    field_type  = Column(String, default="text")       # text|number|date|choice|phone
+    options     = Column(Text, nullable=True)          # JSON list, for choice
+    is_required = Column(Boolean, default=False)
+    is_standard = Column(Boolean, default=False)       # seeded, not invented here
+    sort_order  = Column(Integer, default=0)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=utcnow)
+
+
 class FeeInvoice(Base):
     """What one pupil was charged for one term, and the transaction that carries it.
 

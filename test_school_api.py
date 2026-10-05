@@ -151,6 +151,51 @@ def test_charging_before_a_term_exists_says_so(head):
     assert "No term is open yet" in r.json()["detail"]
 
 
+def test_a_school_builds_its_own_registration_form(head):
+    form = _get("pupil-fields", head)
+    assert {f["key"] for f in form["fields"]} >= {"sex", "age"}
+    # The library offers the rest without imposing it.
+    suggested = {s["key"] for s in form["suggestions"]}
+    assert {"best_colour", "best_food", "hobby", "blood_group"} <= suggested
+
+    _post("pupil-fields", head, {"label": "Best colour"})
+    _post("pupil-fields", head, {"label": "Best food"})
+    _post("pupil-fields", head, {"label": "House", "field_type": "choice",
+                                 "options": ["Red", "Blue", "Green"]})
+
+    form = _get("pupil-fields", head)
+    assert {"best_colour", "best_food", "house"} <= {f["key"] for f in form["fields"]}
+    assert "best_colour" not in {s["key"] for s in form["suggestions"]}   # already added
+
+    pupil = _post("pupils", head, {
+        "name": "Aisha Bello",
+        "details": {"sex": "Female", "age": "9", "best_colour": "Blue",
+                    "best_food": "Jollof rice", "house": "Red"},
+    })
+    shown = {d["label"]: d["value"] for d in pupil["details"]}
+    assert shown["Best food"] == "Jollof rice"
+    assert shown["House"] == "Red"
+
+    statement = _get(f"pupils/{pupil['customer_id']}/statement", head)
+    assert {"key": "best_colour", "label": "Best colour", "value": "Blue"} in statement["details"]
+
+
+def test_the_form_refuses_an_answer_it_does_not_accept(head):
+    _post("pupil-fields", head, {"label": "House", "field_type": "choice",
+                                 "options": ["Red", "Blue"]})
+    r = client.post("/app/api/school/pupils", cookies=head, json={
+        "name": "Tunde Okoro", "details": {"sex": "Male", "house": "Yellow"}})
+    assert r.status_code == 400
+    assert "House must be one of" in r.json()["detail"]
+
+
+def test_an_unknown_field_type_is_refused(head):
+    r = client.post("/app/api/school/pupil-fields", cookies=head,
+                    json={"label": "Something", "field_type": "rainbow"})
+    assert r.status_code == 400
+    assert "Field type must be one of" in r.json()["detail"]
+
+
 def test_a_school_with_no_year_set_up_reads_empty_rather_than_breaking(head):
     assert _get("term-summary", head)["summary"] is None
     assert _get("defaulters", head)["defaulters"] == []

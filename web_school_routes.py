@@ -60,6 +60,24 @@ class PupilRequest(BaseModel):
     parent_name: Optional[str] = Field(default=None, max_length=120)
     parent_phone: Optional[str] = Field(default=None, max_length=20)
     admission_no: Optional[str] = Field(default=None, max_length=40)
+    details: dict = {}            # answers to this school's own questions
+
+
+class PupilFieldRequest(BaseModel):
+    label: str = Field(max_length=60)
+    field_type: str = Field(default="text", max_length=20)
+    options: Optional[list] = None
+    is_required: bool = False
+    key: Optional[str] = Field(default=None, max_length=40)
+
+
+class PupilFieldUpdateRequest(BaseModel):
+    label: Optional[str] = Field(default=None, max_length=60)
+    field_type: Optional[str] = Field(default=None, max_length=20)
+    options: Optional[list] = None
+    is_required: Optional[bool] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
 
 
 class PromoteRequest(BaseModel):
@@ -423,12 +441,72 @@ def register_school_routes(app):
                 customer, enrolment = school.register_pupil(
                     db, owner_phone, payload.name, class_id=payload.class_id,
                     parent_name=payload.parent_name, parent_phone=payload.parent_phone,
-                    admission_no=payload.admission_no,
+                    admission_no=payload.admission_no, details=payload.details or {},
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
             return {"customer_id": customer.id, "name": customer.name,
-                    "admission_no": enrolment.admission_no}
+                    "admission_no": enrolment.admission_no,
+                    "details": school.pupil_details(db, owner_phone, customer)}
+        finally:
+            db.close()
+
+    # ── What this school keeps about a pupil ──────────────────────────────────
+
+    @app.get("/app/api/school/pupil-fields")
+    def web_school_pupil_fields(session: dict = Depends(require_web_auth)):
+        """The registration form this school has built, plus the library of
+        common details it has not added yet."""
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            rows = school.pupil_fields(db, owner_phone, include_inactive=True)
+            taken = {r.key for r in rows}
+            return {
+                "fields": [school.field_dict(r) for r in rows],
+                "suggestions": [s for s in school.SUGGESTED_PUPIL_FIELDS
+                                if s["key"] not in taken],
+                "field_types": list(school.FIELD_TYPES),
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/school/pupil-fields")
+    def web_school_add_pupil_field(payload: PupilFieldRequest,
+                                   session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                row = school.add_pupil_field(
+                    db, owner_phone, payload.label, payload.field_type,
+                    payload.options, payload.is_required, payload.key)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            return school.field_dict(row)
+        finally:
+            db.close()
+
+    @app.put("/app/api/school/pupil-fields/{field_id}")
+    def web_school_update_pupil_field(field_id: str, payload: PupilFieldUpdateRequest,
+                                      session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                row = school.update_pupil_field(
+                    db, owner_phone, field_id,
+                    **{k: v for k, v in payload.dict().items() if v is not None})
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            if not row:
+                raise HTTPException(status_code=404, detail="Field not found.")
+            return school.field_dict(row)
         finally:
             db.close()
 

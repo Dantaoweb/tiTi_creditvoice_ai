@@ -14,18 +14,57 @@ and the school knows what they will be before anyone pays. Writing that down is
 what turns "unpaid" from "whatever somebody remembered to type" into a figure
 the bursar can chase.
 """
+import json
 import logging
+import re
 from datetime import datetime
 
 from models import (
-    AcademicSession, Customer, FeeInvoice, FeeItem, FeeSchedule, SchoolClass,
-    SchoolTerm, StudentEnrolment, Transaction, TransactionItem, utcnow,
+    AcademicSession, Customer, FeeInvoice, FeeItem, FeeSchedule, PupilField,
+    SchoolClass, SchoolTerm, StudentEnrolment, Transaction, TransactionItem, utcnow,
 )
 
 _log = logging.getLogger(__name__)
 
 TERM_NAMES = ("First Term", "Second Term", "Third Term")
 FEE_KINDS = ("FEE", "LEVY", "BOOK", "UNIFORM", "OTHER")
+FIELD_TYPES = ("text", "number", "date", "choice", "phone")
+
+# What every school is asked on day one. Seeded so a school can register a
+# pupil before configuring anything, and removable like any other field —
+# a driving school has no use for "Class teacher's remark".
+STANDARD_PUPIL_FIELDS = [
+    {"key": "sex", "label": "Sex", "field_type": "choice",
+     "options": ["Male", "Female"], "is_required": True},
+    {"key": "date_of_birth", "label": "Date of birth", "field_type": "date"},
+    {"key": "age", "label": "Age", "field_type": "number"},
+    {"key": "address", "label": "Home address", "field_type": "text"},
+]
+
+# Offered, not imposed: a school ticks what it wants to keep. Everything here
+# is something Nigerian schools actually ask for, plus the lighter ones a
+# primary school uses for prize day and birthdays.
+SUGGESTED_PUPIL_FIELDS = [
+    {"key": "blood_group", "label": "Blood group", "field_type": "choice",
+     "options": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]},
+    {"key": "genotype", "label": "Genotype", "field_type": "choice",
+     "options": ["AA", "AS", "AC", "SS", "SC"]},
+    {"key": "allergies", "label": "Allergies / health notes", "field_type": "text"},
+    {"key": "religion", "label": "Religion", "field_type": "text"},
+    {"key": "state_of_origin", "label": "State of origin", "field_type": "text"},
+    {"key": "previous_school", "label": "Previous school", "field_type": "text"},
+    {"key": "parent_occupation", "label": "Parent's occupation", "field_type": "text"},
+    {"key": "second_phone", "label": "Second contact number", "field_type": "phone"},
+    {"key": "emergency_contact", "label": "Emergency contact", "field_type": "phone"},
+    {"key": "collected_by", "label": "Who may collect the child", "field_type": "text"},
+    {"key": "best_colour", "label": "Best colour", "field_type": "text"},
+    {"key": "best_food", "label": "Best food", "field_type": "text"},
+    {"key": "best_subject", "label": "Best subject", "field_type": "text"},
+    {"key": "hobby", "label": "Hobby", "field_type": "text"},
+    {"key": "house", "label": "School house", "field_type": "text"},
+    {"key": "transport", "label": "Transport", "field_type": "choice",
+     "options": ["Walks", "School bus", "Parent drops", "Other"]},
+]
 
 
 # ── Session and term ─────────────────────────────────────────────────────────
@@ -97,15 +136,201 @@ def next_admission_no(db, owner_phone, session=None):
     return f"{year}/{count + 1:04d}"
 
 
+# ── What this school keeps about a pupil ─────────────────────────────────────
+
+def _slug(label):
+    cleaned = re.sub(r"[^a-z0-9]+", "_", (label or "").strip().lower()).strip("_")
+    return cleaned[:40] or "field"
+
+
+def pupil_fields(db, owner_phone, include_inactive=False):
+    """This school's registration form, seeding the standard fields the first
+    time it is asked for — a school can register a pupil before configuring
+    anything."""
+    q = db.query(PupilField).filter(PupilField.owner_phone == owner_phone)
+    rows = q.all()
+    # Seeded when the standard set has never been laid down — not merely when
+    # the table is empty for this school. A school that adds "Best colour"
+    # before the form is first opened must still be asked for sex and age.
+    # Deactivated rows still count as seeded, so a field someone dropped on
+    # purpose does not come back.
+    if not any(r.is_standard for r in rows):
+        for position, spec in enumerate(STANDARD_PUPIL_FIELDS):
+            db.add(PupilField(
+                owner_phone=owner_phone, key=spec["key"], label=spec["label"],
+                field_type=spec["field_type"],
+                options=json.dumps(spec["options"]) if spec.get("options") else None,
+                is_required=bool(spec.get("is_required")),
+                is_standard=True, sort_order=position,
+            ))
+        db.commit()
+        rows = q.all()
+    if not include_inactive:
+        rows = [r for r in rows if r.is_active]
+    rows.sort(key=lambda r: (r.sort_order or 0, r.label or ""))
+    return rows
+
+
+def field_dict(row):
+    try:
+        options = json.loads(row.options) if row.options else []
+    except (TypeError, ValueError):
+        options = []
+    return {
+        "id": row.id, "key": row.key, "label": row.label,
+        "field_type": row.field_type or "text", "options": options,
+        "is_required": bool(row.is_required), "is_standard": bool(row.is_standard),
+        "sort_order": row.sort_order or 0, "is_active": bool(row.is_active),
+    }
+
+
+def add_pupil_field(db, owner_phone, label, field_type="text", options=None,
+                    is_required=False, key=None):
+    """Add a detail this school wants to keep. Adding one that already exists
+    switches it back on rather than making a second copy of it."""
+    field_type = (field_type or "text").lower()
+    if field_type not in FIELD_TYPES:
+        raise ValueError(f"Field type must be one of: {', '.join(FIELD_TYPES)}")
+    if not (label or "").strip():
+        raise ValueError("A field needs a label.")
+
+    key = (key or _slug(label))
+    existing = (db.query(PupilField)
+                .filter(PupilField.owner_phone == owner_phone,
+                        PupilField.key == key).first())
+    if existing:
+        existing.is_active = True
+        existing.label = label.strip()
+        existing.field_type = field_type
+        existing.is_required = bool(is_required)
+        if options:
+            existing.options = json.dumps(list(options))
+        db.commit()
+        return existing
+
+    pupil_fields(db, owner_phone)        # make sure the standards exist first
+    highest = db.query(PupilField).filter(
+        PupilField.owner_phone == owner_phone).count()
+    row = PupilField(owner_phone=owner_phone, key=key, label=label.strip(),
+                     field_type=field_type,
+                     options=json.dumps(list(options)) if options else None,
+                     is_required=bool(is_required), sort_order=highest)
+    db.add(row)
+    db.commit()
+    return row
+
+
+def update_pupil_field(db, owner_phone, field_id, **changes):
+    row = (db.query(PupilField)
+           .filter(PupilField.owner_phone == owner_phone,
+                   PupilField.id == field_id).first())
+    if not row:
+        return None
+    if "label" in changes and (changes["label"] or "").strip():
+        row.label = changes["label"].strip()
+    if "field_type" in changes and changes["field_type"]:
+        field_type = str(changes["field_type"]).lower()
+        if field_type not in FIELD_TYPES:
+            raise ValueError(f"Field type must be one of: {', '.join(FIELD_TYPES)}")
+        row.field_type = field_type
+    if "options" in changes and changes["options"] is not None:
+        row.options = json.dumps(list(changes["options"])) or None
+    if "is_required" in changes:
+        row.is_required = bool(changes["is_required"])
+    if "is_active" in changes:
+        row.is_active = bool(changes["is_active"])
+    if "sort_order" in changes and changes["sort_order"] is not None:
+        row.sort_order = int(changes["sort_order"])
+    db.commit()
+    return row
+
+
+def validate_details(db, owner_phone, details, partial=False):
+    """Check what was typed against what this school asks for.
+
+    Answers to fields the school does not keep are dropped rather than stored:
+    a form that quietly accepts anything is how a pupil record ends up holding
+    three spellings of the same question.
+    """
+    fields = {f.key: f for f in pupil_fields(db, owner_phone)}
+    cleaned, problems = {}, []
+
+    for key, raw in (details or {}).items():
+        field = fields.get(key)
+        if not field:
+            continue
+        value = ("" if raw is None else str(raw)).strip()
+        if not value:
+            continue
+        kind = field.field_type or "text"
+        if kind == "number":
+            try:
+                value = str(int(float(value)))
+            except ValueError:
+                problems.append(f"{field.label} must be a number.")
+                continue
+        elif kind == "date":
+            parsed = None
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    parsed = datetime.strptime(value, fmt)
+                    break
+                except ValueError:
+                    continue
+            if parsed is None:
+                problems.append(f"{field.label} must be a date like 2015-04-23.")
+                continue
+            value = parsed.strftime("%Y-%m-%d")
+        elif kind == "choice":
+            try:
+                options = json.loads(field.options) if field.options else []
+            except (TypeError, ValueError):
+                options = []
+            if options:
+                match = next((o for o in options if o.lower() == value.lower()), None)
+                if match is None:
+                    problems.append(f"{field.label} must be one of: {', '.join(options)}")
+                    continue
+                value = match
+        cleaned[key] = value
+
+    if not partial:
+        for field in fields.values():
+            if field.is_required and not cleaned.get(field.key):
+                problems.append(f"{field.label} is required.")
+    return cleaned, problems
+
+
+def pupil_details(db, owner_phone, customer):
+    """What is on record for this pupil, labelled, in the school's own order."""
+    try:
+        stored = json.loads(customer.profile_json) if customer.profile_json else {}
+    except (TypeError, ValueError):
+        stored = {}
+    out = []
+    for field in pupil_fields(db, owner_phone):
+        value = stored.get(field.key)
+        if value in (None, ""):
+            continue
+        out.append({"key": field.key, "label": field.label, "value": value})
+    return out
+
+
 def register_pupil(db, owner_phone, name, class_id=None, parent_name=None,
                    parent_phone=None, admission_no=None, session_id=None,
-                   branch_id=None):
+                   branch_id=None, details=None):
     """Register a pupil: a Customer to carry the money, an enrolment to carry
     the class. Re-registering an existing pupil moves them rather than making a
     second record of the same child."""
     name = (name or "").strip()
     if not name:
         raise ValueError("A pupil needs a name.")
+
+    # Validated before anything is written: a half-registered pupil with a
+    # rejected date of birth is worse than a refused form.
+    cleaned, problems = validate_details(db, owner_phone, details, partial=True)
+    if problems:
+        raise ValueError(" ".join(problems))
 
     session = (db.query(AcademicSession).filter(
         AcademicSession.id == session_id).first() if session_id
@@ -115,6 +340,23 @@ def register_pupil(db, owner_phone, name, class_id=None, parent_name=None,
                 .filter(Customer.owner_phone == owner_phone,
                         Customer.name.ilike(name))
                 .first())
+
+    # Required details are judged on what the pupil will have on file, not on
+    # what this one form sent — correcting a hobby must not demand their sex
+    # again. And a caller that sends no details at all (a quick registration
+    # from WhatsApp, say) is not filling the form, so it is not held to it.
+    if details:
+        try:
+            on_file = json.loads(customer.profile_json) if (
+                customer and customer.profile_json) else {}
+        except (TypeError, ValueError):
+            on_file = {}
+        merged = {**on_file, **cleaned}
+        missing = [f.label for f in pupil_fields(db, owner_phone)
+                   if f.is_required and not merged.get(f.key)]
+        if missing:
+            raise ValueError(" ".join(f"{label} is required." for label in missing))
+
     if customer is None:
         customer = Customer(owner_phone=owner_phone, name=name, balance=0,
                             customer_phone=(parent_phone or "").strip() or None,
@@ -123,6 +365,15 @@ def register_pupil(db, owner_phone, name, class_id=None, parent_name=None,
         db.flush()
     elif parent_phone and not customer.customer_phone:
         customer.customer_phone = parent_phone.strip()
+
+    if cleaned:
+        # Merged, not replaced — editing one detail must not wipe the rest.
+        try:
+            stored = json.loads(customer.profile_json) if customer.profile_json else {}
+        except (TypeError, ValueError):
+            stored = {}
+        stored.update(cleaned)
+        customer.profile_json = json.dumps(stored)
 
     enrolment = (db.query(StudentEnrolment)
                  .filter(StudentEnrolment.owner_phone == owner_phone,
@@ -509,6 +760,7 @@ def student_statement(db, owner_phone, customer_id):
         "admission_no": enrolment.admission_no if enrolment else None,
         "class_name": school_class.name if school_class else None,
         "balance": int(customer.balance or 0),
+        "details": pupil_details(db, owner_phone, customer),
         "entries": entries,
     }
 
