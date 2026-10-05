@@ -719,6 +719,16 @@ def handle_natural_language_query(
     if scored:
         return scored
 
+    # ── 0b. Registered business facts ─────────────────────────────────────────
+    # Runs before the product patterns below because those read "cost of rice"
+    # as a selling-price question — right for "price of rice", wrong for
+    # "average cost of rice", which is about what they pay. The registry only
+    # answers when its trigger matched, so everything else still falls through.
+    from business_facts import answer as _business_fact
+    fact = _business_fact(db, owner_phone, t, recorded_by_id)
+    if fact:
+        return fact
+
     # ── 0. Aggregate / list / meta queries (counts, debtors, stock, sales) ─────
     agg = _answer_aggregate(db, owner_phone, t, recorded_by_id)
     if agg:
