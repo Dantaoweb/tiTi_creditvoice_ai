@@ -1217,6 +1217,137 @@ class PushSubscription(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class AcademicSession(Base):
+    """A school year, e.g. "2025/2026".
+
+    Fees are owed per term within a session, which is why a school's books
+    cannot be a flat list of debts: last session's unpaid fees are a different
+    thing from this term's, and only the term they belong to can tell them
+    apart.
+    """
+
+    __tablename__ = "academic_sessions"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone = Column(String, index=True)
+    name        = Column(String, nullable=False)          # "2025/2026"
+    is_current  = Column(Boolean, default=False)
+    created_at  = Column(DateTime, default=utcnow)
+
+
+class SchoolTerm(Base):
+    """First, Second or Third term of a session."""
+
+    __tablename__ = "school_terms"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone = Column(String, index=True)
+    session_id  = Column(String, ForeignKey("academic_sessions.id"), index=True)
+    name        = Column(String, nullable=False)          # "First Term"
+    position    = Column(Integer, default=1)              # 1, 2, 3 — for ordering
+    starts_on   = Column(DateTime, nullable=True)
+    ends_on     = Column(DateTime, nullable=True)
+    is_current  = Column(Boolean, default=False)
+    invoiced_at = Column(DateTime, nullable=True)         # when fees were raised
+    created_at  = Column(DateTime, default=utcnow)
+
+
+class SchoolClass(Base):
+    """A class or stream — "JSS 2A", "Primary 4", "Beginners"."""
+
+    __tablename__ = "school_classes"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone = Column(String, index=True)
+    name        = Column(String, nullable=False)
+    level_order = Column(Integer, default=0)      # so classes list in school order
+    teacher_id  = Column(Integer, ForeignKey("school_teachers.id"), nullable=True)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=utcnow)
+
+
+class FeeItem(Base):
+    """Something a school charges for: tuition, PTA levy, uniform, a textbook.
+
+    `is_optional` is what separates a textbook from tuition — every pupil is
+    charged tuition when the term opens, but a book is only owed once the pupil
+    takes it.
+    """
+
+    __tablename__ = "fee_items"
+
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone    = Column(String, index=True)
+    name           = Column(String, nullable=False)
+    kind           = Column(String, default="FEE")     # FEE | LEVY | BOOK | UNIFORM | OTHER
+    default_amount = Column(Integer, nullable=True)
+    is_optional    = Column(Boolean, default=False)
+    is_active      = Column(Boolean, default=True)
+    created_at     = Column(DateTime, default=utcnow)
+
+
+class FeeSchedule(Base):
+    """What one class owes for one item in one term.
+
+    This is the part that makes "unpaid" mean something: until the school says
+    what it expects, the app can only report what somebody remembered to type.
+    """
+
+    __tablename__ = "fee_schedules"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone = Column(String, index=True)
+    term_id     = Column(String, ForeignKey("school_terms.id"), index=True)
+    class_id    = Column(String, ForeignKey("school_classes.id"), index=True)
+    fee_item_id = Column(String, ForeignKey("fee_items.id"), index=True)
+    amount      = Column(Integer, default=0)
+    created_at  = Column(DateTime, default=utcnow)
+
+
+class StudentEnrolment(Base):
+    """A pupil in a class for a session.
+
+    The pupil themselves is a Customer, so every balance, receipt, reminder and
+    debtor report already works for them. This records which class they sit in
+    this session — a new row each session, which is what makes promotion a
+    record rather than an overwrite.
+    """
+
+    __tablename__ = "student_enrolments"
+
+    id           = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone  = Column(String, index=True)
+    customer_id  = Column(Integer, ForeignKey("customers.id"), index=True)
+    class_id     = Column(String, ForeignKey("school_classes.id"), index=True)
+    session_id   = Column(String, ForeignKey("academic_sessions.id"), index=True)
+    admission_no = Column(String, nullable=True)
+    parent_name  = Column(String, nullable=True)
+    status       = Column(String, default="ACTIVE")   # ACTIVE | LEFT | GRADUATED
+    enrolled_at  = Column(DateTime, default=utcnow)
+
+
+class FeeInvoice(Base):
+    """What one pupil was charged for one term, and the transaction that carries it.
+
+    The charge is an ordinary credit transaction, so the pupil's balance, their
+    receipts and the debtors list all behave exactly as they do for any other
+    customer. This row only records that the term was raised for them, so
+    opening a term twice cannot charge anybody twice.
+    """
+
+    __tablename__ = "fee_invoices"
+
+    id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone    = Column(String, index=True)
+    customer_id    = Column(Integer, ForeignKey("customers.id"), index=True)
+    term_id        = Column(String, ForeignKey("school_terms.id"), index=True)
+    class_id       = Column(String, ForeignKey("school_classes.id"), nullable=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    total          = Column(Integer, default=0)
+    kind           = Column(String, default="TERM")    # TERM | EXTRA (books taken later)
+    created_at     = Column(DateTime, default=utcnow)
+
+
 class SchoolTeacher(Base):
     """Teacher roster for school businesses — record only, no app access.
     Basic plan: max 3. Go/Pro: unlimited.
