@@ -714,6 +714,88 @@ def defaulters(db, owner_phone, term_id, class_id=None, limit=200):
     return out[:limit]
 
 
+def queue_fee_reminders(db, owner_phone, term_id, class_id=None):
+    """Put a fee reminder in the owner's review queue for every parent who owes.
+
+    It reuses the reminder queue every other business uses, so the bursar
+    reviews and sends them in one place — and when a message cannot be
+    delivered (WhatsApp only allows a free-form message to someone who wrote
+    first, and the number is not approved yet), that queue already hands back a
+    link to send it from the school's own phone.
+
+    Worded as a parent would need it: whose fees, which class, which term, and
+    what is left — not "your outstanding balance".
+    """
+    from models import ReminderQueue, ReminderSendLog, User
+    from reminder_automation import today_key
+
+    term = db.query(SchoolTerm).filter(SchoolTerm.owner_phone == owner_phone,
+                                       SchoolTerm.id == term_id).first()
+    if not term:
+        raise ValueError("That term does not exist.")
+
+    owner = db.query(User).filter(User.phone == owner_phone).first()
+    school_name = (owner.name if owner else "") or "the school"
+
+    owing = defaulters(db, owner_phone, term_id, class_id)
+    queued, no_phone, already = 0, 0, 0
+
+    for pupil in owing:
+        customer_id = pupil["customer_id"]
+        if not pupil.get("phone"):
+            no_phone += 1
+            continue
+        pending = db.query(ReminderQueue).filter(
+            ReminderQueue.owner_phone == owner_phone,
+            ReminderQueue.source_type == "SCHOOL_FEE",
+            ReminderQueue.source_id == customer_id,
+            ReminderQueue.status.in_(["PENDING_OWNER_CONFIRMATION", "EDITING"]),
+        ).first()
+        sent_today = db.query(ReminderSendLog).filter(
+            ReminderSendLog.owner_phone == owner_phone,
+            ReminderSendLog.source_type == "SCHOOL_FEE",
+            ReminderSendLog.source_id == customer_id,
+            ReminderSendLog.sent_date == today_key(),
+        ).first()
+        if pending or sent_today:
+            already += 1
+            continue
+
+        enrolment = (db.query(StudentEnrolment)
+                     .filter(StudentEnrolment.owner_phone == owner_phone,
+                             StudentEnrolment.customer_id == customer_id)
+                     .order_by(StudentEnrolment.enrolled_at.desc()).first())
+        greeting = (enrolment.parent_name or "").strip() if enrolment else ""
+        paid = max(int(pupil["billed"]) - int(pupil["outstanding"]), 0)
+
+        message = (
+            f"Good day{' ' + greeting if greeting else ''},\n\n"
+            f"This is a reminder about school fees for *{pupil['name'].title()}* "
+            f"({pupil['class_name']}), {term.name}.\n\n"
+            f"Billed: N{int(pupil['billed']):,}\n"
+            + (f"Paid so far: N{paid:,}\n" if paid else "")
+            + f"*Outstanding: N{int(pupil['outstanding']):,}*\n\n"
+            f"Kindly settle at the school office. Thank you.\n{school_name}"
+        )
+
+        db.add(ReminderQueue(
+            owner_phone=owner_phone,
+            customer_phone=pupil["phone"],
+            customer_name=pupil["name"],
+            balance=int(pupil["outstanding"]),
+            reminder_type="DUE",
+            source_type="SCHOOL_FEE",
+            source_id=customer_id,
+            message_text=message,
+            status="PENDING_OWNER_CONFIRMATION",
+        ))
+        queued += 1
+
+    db.commit()
+    return {"queued": queued, "owing": len(owing), "no_phone": no_phone,
+            "already_queued": already, "term": term.name}
+
+
 def student_statement(db, owner_phone, customer_id):
     """Everything charged and paid for one pupil — what a parent asks for."""
     customer = db.query(Customer).filter(Customer.owner_phone == owner_phone,

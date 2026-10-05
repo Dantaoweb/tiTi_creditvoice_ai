@@ -151,6 +151,53 @@ def test_charging_before_a_term_exists_says_so(head):
     assert "No term is open yet" in r.json()["detail"]
 
 
+def test_fee_reminders_are_queued_for_the_parents_who_owe(head):
+    session = _post("sessions", head, {"name": "2025/2026"})
+    term1 = session["terms"][0]["id"]
+    jss2 = _post("classes", head, {"name": "JSS 2"})["id"]
+    tuition = _post("fee-items", head, {"name": "Tuition"})["id"]
+    _post("schedule", head, {"term_id": term1, "class_id": jss2,
+                             "amounts": {tuition: 45_000}})
+
+    owing = _post("pupils", head, {"name": "Aisha Bello", "class_id": jss2,
+                                   "parent_name": "Mr Bello",
+                                   "parent_phone": "08031112222",
+                                   "details": {"sex": "Female"}})
+    paid_up = _post("pupils", head, {"name": "Tunde Okoro", "class_id": jss2,
+                                     "parent_name": "Mrs Okoro",
+                                     "parent_phone": "08039998888",
+                                     "details": {"sex": "Male"}})
+    no_phone = _post("pupils", head, {"name": "Chidi Eze", "class_id": jss2,
+                                      "details": {"sex": "Male"}})
+    _post(f"terms/{term1}/open", head, {})
+    _post("payments", head, {"customer_id": paid_up["customer_id"], "amount": 45_000})
+
+    result = _post("fee-reminders", head, {})
+    assert result["queued"] == 1                  # only the one who owes, with a phone
+    assert result["no_phone"] == 1                # Chidi's parent has no number
+    assert result["owing"] == 2
+
+    # Asking twice does not queue the same parent twice.
+    assert _post("fee-reminders", head, {})["already_queued"] == 1
+
+    queue = client.get("/app/api/reminders", cookies=head).json()
+    item = next(r for r in queue.get("reminders", [])
+                if r.get("customer_name") == "Aisha Bello")
+    message = item["message_text"]
+    assert "Mr Bello" in message                  # the parent, not the pupil
+    assert "Aisha Bello" in message and "JSS 2" in message
+    assert "First Term" in message
+    assert "N45,000" in message
+    assert "Bright Star School" in message        # signed by the school
+    assert paid_up["name"] not in str(queue)      # nobody paid-up is chased
+
+
+def test_reminding_before_a_term_exists_says_so(head):
+    r = client.post("/app/api/school/fee-reminders", cookies=head, json={})
+    assert r.status_code == 400
+    assert "No term is open yet" in r.json()["detail"]
+
+
 def test_a_school_builds_its_own_registration_form(head):
     form = _get("pupil-fields", head)
     assert {f["key"] for f in form["fields"]} >= {"sex", "age"}

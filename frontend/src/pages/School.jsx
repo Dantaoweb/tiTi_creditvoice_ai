@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  GraduationCap, Users, Wallet, Settings, AlertCircle, Check, Plus, BookOpen,
+  GraduationCap, Users, Wallet, Settings, AlertCircle, Check, Plus, BookOpen, Bell,
 } from "lucide-react";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull } from "../lib/format";
@@ -416,6 +416,19 @@ function ThisTerm({ setup, announce, setErr }) {
   }
   useEffect(load, [setup?.current_term_id]);
 
+  async function remindParents() {
+    setBusy(true);
+    try {
+      const res = await apiPost("school/fee-reminders", {});
+      const parts = [];
+      if (res.queued) parts.push(`${res.queued} reminder(s) ready to review on Reminders`);
+      if (res.already_queued) parts.push(`${res.already_queued} already waiting`);
+      if (res.no_phone) parts.push(`${res.no_phone} parent(s) have no phone number saved`);
+      announce(parts.join(" · ") || "Nothing to send — everyone has paid.");
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
   async function openTerm() {
     if (!setup?.current_term_id) return;
     if (!window.confirm("Charge every pupil what their class owes this term?")) return;
@@ -481,10 +494,17 @@ function ThisTerm({ setup, announce, setErr }) {
       </div>
 
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
           <span className="card-title">
             Still owing <span className="text-subtle text-sm">({owing.length})</span>
           </span>
+          {owing.length > 0 && (
+            <button className="btn btn-ghost btn-sm" disabled={busy}
+              onClick={remindParents}
+              style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Bell size={14} /> Remind parents
+            </button>
+          )}
         </div>
         <div className="table-scroll">
           <table>

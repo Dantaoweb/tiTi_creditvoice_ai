@@ -92,6 +92,11 @@ class ChargeRequest(BaseModel):
     items: list = []                                      # [{fee_item_id, quantity}]
 
 
+class FeeReminderRequest(BaseModel):
+    term_id: Optional[str] = Field(default=None, max_length=64)
+    class_id: Optional[str] = Field(default=None, max_length=64)
+
+
 class FeePaymentRequest(BaseModel):
     customer_id: int
     amount: int
@@ -626,6 +631,32 @@ def register_school_routes(app):
             if not term_id:
                 return {"summary": None}
             return {"summary": school.term_summary(db, owner_phone, term_id)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/school/fee-reminders")
+    def web_school_fee_reminders(payload: FeeReminderRequest,
+                                 session: dict = Depends(require_web_auth)):
+        """Queue a fee reminder for every parent who owes, for review on the
+        Reminders page — nothing is sent from here."""
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            # Chasing money owed is not a sale; the monthly cap must not stop a
+            # school from asking for its fees.
+            _require_can_record(db, session, count_sale=False)
+            term_id = payload.term_id
+            if not term_id:
+                current = school.current_term(db, owner_phone)
+                term_id = current.id if current else None
+            if not term_id:
+                raise HTTPException(status_code=400, detail="No term is open yet.")
+            try:
+                return school.queue_fee_reminders(db, owner_phone, term_id,
+                                                  payload.class_id or None)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
         finally:
             db.close()
 
