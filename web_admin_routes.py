@@ -95,6 +95,35 @@ def register_admin_routes(app):
         finally:
             db.close()
 
+    # ── Admin: what to teach tiTi next ────────────────────────────────────────
+    @app.get("/app/api/admin/parse-gaps")
+    def web_admin_parse_gaps(
+        days: int = Query(default=90, ge=1, le=365),
+        limit: int = Query(default=40, ge=1, le=200),
+        session: dict = Depends(require_web_auth),
+    ):
+        """The failures, grouped by what was being asked rather than by wording.
+
+        Ranked by how many separate businesses hit each one, so the list reads
+        as a work queue instead of a log.
+        """
+        from admin import is_app_admin
+        from parse_gaps import misreadings, summary, unanswered
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(user.phone, db):
+                raise HTTPException(status_code=403, detail="Admin only")
+            if not _admin_rate_check(user.phone):
+                raise HTTPException(status_code=429, detail="Too many admin requests. Slow down.")
+            return {
+                "summary": summary(db, days=days),
+                "unanswered": unanswered(db, days=days, limit=limit),
+                "misreadings": misreadings(db, days=days, limit=limit),
+            }
+        finally:
+            db.close()
+
     # ── Admin: failed parse log ───────────────────────────────────────────────
     @app.get("/app/api/admin/failed-parses")
     def web_admin_failed_parses(

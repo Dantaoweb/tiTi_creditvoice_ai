@@ -51,6 +51,119 @@ function StatCard({ label, value, sub, color }) {
 
 // ── failed parses tab ────────────────────────────────────────────────────────
 
+// What to teach tiTi next, read off what people actually asked and it missed.
+// Grouped by what was being asked, ranked by how many businesses hit it — one
+// person sending the same thing twenty times is a support conversation, twenty
+// people sending it once is a feature.
+function ParseGaps() {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(90);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    setData(null);
+    apiFetch("admin/parse-gaps", { days, limit: 40 })
+      .then(setData).catch(e => setErr(e.message));
+  }, [days]);
+
+  if (err) return <div style={{ color: "var(--rose)" }}>{err}</div>;
+  if (!data) return <div className="text-subtle text-sm">Reading what people asked…</div>;
+
+  const s = data.summary || {};
+  const SHAPES = {
+    question: ["badge-blue", "question"],
+    transaction: ["badge-amber", "recording"],
+    unclear: ["badge-gray", "unclear"],
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 16, marginBottom: 20 }}>
+      <div className="card">
+        <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
+          <span className="card-title">What tiTi could not answer</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[7, 30, 90].map(d => (
+              <button key={d} className={`btn btn-xs ${days === d ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => setDays(d)}>{d}d</button>
+            ))}
+          </div>
+        </div>
+        <div className="card-body">
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 13 }}>
+            <span><strong>{s.messages || 0}</strong> messages missed</span>
+            <span><strong>{s.distinct_questions || 0}</strong> distinct things asked</span>
+            <span><strong>{s.businesses_affected || 0}</strong> businesses affected</span>
+            <span className="text-subtle">
+              {s.questions || 0} questions · {s.transactions || 0} recordings · {s.unclear || 0} unclear
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">
+            Asked most, answered least
+            <span className="text-subtle text-sm"> — fix the top of this list first</span>
+          </span>
+        </div>
+        <div className="card-body" style={{ display: "grid", gap: 10 }}>
+          {(data.unanswered || []).length === 0 ? (
+            <div className="text-subtle text-sm">Nothing missed in this period.</div>
+          ) : data.unanswered.map(g => (
+            <div key={g.signature} style={{
+              border: "1px solid var(--border)", borderRadius: 10, padding: 10,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <span className={`badge ${(SHAPES[g.shape] || SHAPES.unclear)[0]}`}>
+                  {(SHAPES[g.shape] || SHAPES.unclear)[1]}
+                </span>
+                <span className="text-subtle text-sm">
+                  {g.businesses} business(es) · {g.count} time(s)
+                </span>
+              </div>
+              <div style={{ marginTop: 6, display: "grid", gap: 3 }}>
+                {g.examples.map((ex, i) => (
+                  <div key={i} style={{ fontSize: 13, fontStyle: "italic" }}>“{ex}”</div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {(data.misreadings || []).length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">
+              Read wrong, then corrected
+              <span className="text-subtle text-sm"> — the right answer is in the second line</span>
+            </span>
+          </div>
+          <div className="card-body" style={{ display: "grid", gap: 10 }}>
+            {data.misreadings.map(g => (
+              <div key={g.signature} style={{
+                border: "1px solid var(--border)", borderRadius: 10, padding: 10,
+              }}>
+                <div className="text-subtle text-sm" style={{ marginBottom: 4 }}>
+                  {g.businesses} business(es) · {g.count} time(s)
+                  {g.parsed_type ? ` · read as ${g.parsed_type}` : ""}
+                </div>
+                {g.pairs.map((p, i) => (
+                  <div key={i} style={{ fontSize: 13 }}>
+                    <div>they said: <em>“{p.said}”</em></div>
+                    <div style={{ color: "var(--brand)" }}>they meant: <em>“{p.meant}”</em></div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FailedParsesTab() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +185,7 @@ function FailedParsesTab() {
           <Download size={14} /> Export CSV
         </button>
       </div>
+      <ParseGaps />
       {loading ? (
         <p style={{ color: "var(--text-muted)" }}>Loading…</p>
       ) : rows.length === 0 ? (
