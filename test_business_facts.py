@@ -272,6 +272,133 @@ def test_a_broken_fact_never_breaks_the_reply(shop, monkeypatch):
         db.close()
 
 
+# ── Profit: only what can honestly be counted ────────────────────────────────
+
+def _sale(phone, product, amount, quantity=1, days_ago=1):
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.phone == phone).first()
+        cust = db.query(Customer).filter(Customer.owner_phone == phone).first()
+        if not cust:
+            cust = Customer(owner_phone=phone, name="Regular", balance=0)
+            db.add(cust)
+            db.flush()
+        db.add(Transaction(customer_id=cust.id, type="SALE", amount=amount,
+                           product=product, quantity=quantity,
+                           recorded_by_id=user.id,
+                           created_at=utcnow() - timedelta(days=days_ago)))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_profit_is_revenue_minus_what_it_cost(shop):
+    item_id = _item(shop, name="Rice", sell=80_000)
+    _stock_in(shop, item_id, 10, 68_000)
+    _sale(shop, "Rice", 80_000, quantity=1)
+    _sale(shop, "Rice", 80_000, quantity=1)
+
+    reply = _ask(shop, "how much profit did i make this month")
+    assert "₦160,000" in reply           # revenue
+    assert "₦24,000" in reply            # 2 × (80,000 − 68,000)
+
+
+def test_sales_without_a_known_cost_are_excluded_not_counted_as_pure_profit(shop):
+    item_id = _item(shop, name="Rice", sell=80_000)
+    _stock_in(shop, item_id, 10, 68_000)
+    _sale(shop, "Rice", 80_000, quantity=1)
+    _sale(shop, "Firewood", 20_000, quantity=1)      # never stocked, no cost
+
+    reply = _ask(shop, "how much profit did i make this month")
+    assert "₦12,000" in reply            # only the rice is counted
+    assert "₦20,000" in reply            # and the uncounted part is named
+    assert "no cost recorded" in reply.lower()
+
+
+def test_profit_without_any_costs_says_so(shop):
+    _item(shop, name="Rice", sell=80_000)
+    _sale(shop, "Rice", 80_000)
+    reply = _ask(shop, "am i making profit this month")
+    assert "cannot work out your profit" in reply.lower()
+    assert "₦80,000" in reply            # but the sales figure is still given
+
+
+# ── Running out: from this shop's own pace ───────────────────────────────────
+
+def test_when_a_product_runs_out_is_predicted_from_its_own_sales(shop):
+    item_id = _item(shop, name="Rice", qty=30)
+    for day in range(0, 30):                       # exactly 2 bags a day
+        _sale(shop, "Rice", 80_000, quantity=2, days_ago=day)
+    reply = _ask(shop, "when will rice run out")
+    assert "2.0 a day" in reply
+    assert "15 days" in reply
+    assert "restock" not in reply.lower()          # 15 days is not urgent
+
+
+def test_running_out_soon_says_to_restock(shop):
+    item_id = _item(shop, name="Rice", qty=4)
+    for day in range(1, 31):
+        _sale(shop, "Rice", 80_000, quantity=2, days_ago=day)
+    reply = _ask(shop, "do i need to restock rice")
+    assert "restock" in reply.lower()
+
+
+def test_no_recent_sales_means_no_prediction_rather_than_a_guess(shop):
+    _item(shop, name="Rice", qty=30)
+    reply = _ask(shop, "when will rice run out")
+    assert "cannot say" in reply.lower()
+
+
+# ── Stock value and quiet customers ──────────────────────────────────────────
+
+def test_stock_value_uses_what_was_paid(shop):
+    item_id = _item(shop, name="Rice", sell=80_000, qty=10)
+    _stock_in(shop, item_id, 10, 68_000)
+    reply = _ask(shop, "what is the value of my stock")
+    assert f"₦{10 * 68_000:,}" in reply
+    assert f"₦{10 * 80_000:,}" in reply
+
+
+def test_quiet_customers_are_listed_with_when_they_were_last_seen(shop):
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.phone == shop).first()
+        old = Customer(owner_phone=shop, name="Gone Quiet", balance=5_000,
+                       last_transaction_at=utcnow() - timedelta(days=120))
+        recent = Customer(owner_phone=shop, name="Still Here", balance=0)
+        db.add_all([old, recent])
+        db.flush()
+        db.add(Transaction(customer_id=recent.id, type="SALE", amount=1_000,
+                           recorded_by_id=user.id,
+                           created_at=utcnow() - timedelta(days=2)))
+        db.commit()
+    finally:
+        db.close()
+    reply = _ask(shop, "which customers have stopped buying")
+    assert "Gone Quiet" in reply
+    assert "Still Here" not in reply
+    assert "owes ₦5,000" in reply
+
+
+# ── Sales totals: filling the gap without shadowing what works ───────────────
+
+def test_sales_for_a_period_the_old_handler_cannot_do(shop):
+    _sale(shop, "Rice", 50_000, days_ago=1)
+    reply = _ask(shop, "how much did i sell yesterday")
+    assert reply and "₦50,000" in reply
+
+
+def test_today_is_left_to_the_handler_that_already_answers_it(shop):
+    _sale(shop, "Rice", 8_000, days_ago=0)
+    db = SessionLocal()
+    try:
+        # The registry declines, so the established answer is what comes back.
+        assert facts.answer(db, shop, "how much did i sell today") is None
+    finally:
+        db.close()
+    assert "8,000" in _ask(shop, "how much did i sell today")
+
+
 # ── The phrasings people actually use ────────────────────────────────────────
 
 @pytest.mark.parametrize("question", [

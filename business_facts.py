@@ -325,6 +325,242 @@ def _fact_dead_stock(db, owner_phone, ask):
     return "\n".join(lines)
 
 
+def _avg_cost_by_name(db, owner_phone):
+    """Every product's weighted average cost, keyed by lowercase name.
+
+    One pass instead of a query per sale line — a busy month is thousands of
+    lines, and this runs while someone waits for a reply.
+    """
+    from sqlalchemy import func
+
+    rows = (
+        db.query(InventoryItem.name,
+                 func.sum(InventoryMovement.quantity * InventoryMovement.unit_price),
+                 func.sum(InventoryMovement.quantity))
+        .join(InventoryMovement, InventoryMovement.item_id == InventoryItem.id)
+        .filter(InventoryItem.owner_phone == owner_phone,
+                InventoryMovement.movement_type == "IN",
+                InventoryMovement.unit_price.isnot(None),
+                InventoryMovement.unit_price > 0,
+                InventoryMovement.quantity > 0)
+        .group_by(InventoryItem.name).all()
+    )
+    costs = {}
+    for name, spent, qty in rows:
+        if name and qty:
+            costs[name.strip().lower()] = float(spent) / float(qty)
+    # An item with no movement history can still carry a cost price typed in by
+    # hand — better than nothing, and clearly marked as the fallback.
+    for item in db.query(InventoryItem).filter(
+            InventoryItem.owner_phone == owner_phone,
+            InventoryItem.cost_price.isnot(None),
+            InventoryItem.cost_price > 0).all():
+        costs.setdefault((item.name or "").strip().lower(), float(item.cost_price))
+    return costs
+
+
+def _sale_lines(db, owner_phone, period):
+    """(product, quantity, revenue) for each thing sold in the period.
+
+    Reads the itemised lines where a sale has them and falls back to the sale
+    itself where it does not, so a quick one-line sale still counts.
+    """
+    from models import TransactionItem
+    from reports import get_owner_transaction_query
+
+    q = get_owner_transaction_query(db, owner_phone)
+    start, end = _range_for(period)
+    if start is not None:
+        q = q.filter(Transaction.created_at >= start, Transaction.created_at < end)
+    sales = q.filter(Transaction.type.in_(("SALE", "BUY"))).all()
+    if not sales:
+        return []
+
+    ids = [s.id for s in sales]
+    items_by_tx = {}
+    for line in db.query(TransactionItem).filter(
+            TransactionItem.transaction_id.in_(ids)).all():
+        items_by_tx.setdefault(line.transaction_id, []).append(line)
+
+    lines = []
+    for sale in sales:
+        rows = items_by_tx.get(sale.id)
+        if rows:
+            for row in rows:
+                lines.append(((row.product or "").strip().lower(),
+                              float(row.quantity or 1), float(row.total or 0)))
+        else:
+            lines.append(((sale.product or "").strip().lower(),
+                          float(sale.quantity or 1), float(sale.amount or 0)))
+    return lines
+
+
+def _fact_profit(db, owner_phone, ask):
+    """What was actually made, not what was taken in.
+
+    Only the part with a known cost can be counted, so the reply says how much
+    of the revenue that covers rather than quietly treating unknown costs as
+    zero — which would report every unpriced sale as pure profit.
+    """
+    lines = _sale_lines(db, owner_phone, ask.period)
+    if not lines:
+        return f"No sales recorded {_period_label(ask.period)}."
+
+    costs = _avg_cost_by_name(db, owner_phone)
+    revenue = sum(rev for _n, _q, rev in lines)
+    known_revenue, cost_total = 0.0, 0.0
+    for name, qty, rev in lines:
+        unit_cost = costs.get(name)
+        if unit_cost is None:
+            continue
+        known_revenue += rev
+        cost_total += qty * unit_cost
+
+    if known_revenue <= 0:
+        return (f"You sold *{_money(revenue)}* {_period_label(ask.period)}, but I cannot work "
+                f"out your profit — no cost prices are recorded for what you sold.\n\n"
+                f"Add a cost when you add stock and I can tell you what you are making.")
+
+    profit = known_revenue - cost_total
+    pct = round(100.0 * profit / known_revenue) if known_revenue else 0
+    lines_out = [f"{_period_label(ask.period).capitalize()} you sold *{_money(revenue)}* "
+                 f"and made about *{_money(profit)}* profit ({pct}%)."]
+    lines_out.append(f"That is {_money(known_revenue)} of sales minus {_money(cost_total)} "
+                     f"it cost you.")
+    if known_revenue < revenue * 0.99:
+        missing = revenue - known_revenue
+        lines_out.append(f"⚠️ {_money(missing)} of your sales have no cost recorded, so they "
+                         f"are not counted in that profit.")
+    return "\n".join(lines_out)
+
+
+def _fact_sales_total(db, owner_phone, ask):
+    """Sales for the periods the older handler cannot do.
+
+    It already answers today, this week and this month, and answers them well —
+    this covers yesterday, last week, last month, the year and "last N days".
+    """
+    if ask.period in (None, "today", "this_week", "this_month"):
+        return None                        # let the existing answer stand
+    from reports import get_owner_transaction_query
+
+    start, end = _range_for(ask.period)
+    q = get_owner_transaction_query(db, owner_phone)
+    if start is not None:
+        q = q.filter(Transaction.created_at >= start, Transaction.created_at < end)
+    rows = q.all()
+    if not rows:
+        return f"No sales recorded {_period_label(ask.period)}."
+
+    cash = sum(r.amount or 0 for r in rows if r.type == "SALE")
+    credit = sum(r.amount or 0 for r in rows if r.type == "BUY")
+    paid = sum(r.amount or 0 for r in rows if r.type == "PAY")
+    return (f"Sales {_period_label(ask.period)}: *{_money(cash + credit)}*\n"
+            f"• Cash/direct: {_money(cash)}\n"
+            f"• Credit sales: {_money(credit)}\n"
+            f"• Payments received: {_money(paid)}\n"
+            f"• Transactions: {len(rows)}")
+
+
+def _fact_stock_value(db, owner_phone, ask):
+    """What is sitting on the shelf, at what it cost and what it would fetch."""
+    items = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.quantity > 0).all()
+    if not items:
+        return "You have nothing in stock right now."
+
+    costs = _avg_cost_by_name(db, owner_phone)
+    at_cost, at_selling, unpriced = 0.0, 0.0, 0
+    for item in items:
+        qty = float(item.quantity or 0)
+        unit_cost = costs.get((item.name or "").strip().lower())
+        if unit_cost:
+            at_cost += qty * unit_cost
+        else:
+            unpriced += 1
+        if item.selling_price:
+            at_selling += qty * float(item.selling_price)
+
+    lines = [f"You have *{len(items)} product(s)* in stock."]
+    if at_cost:
+        lines.append(f"They cost you about *{_money(at_cost)}*.")
+    if at_selling:
+        lines.append(f"Sold at your prices they would bring in {_money(at_selling)}"
+                     + (f" — about {_money(at_selling - at_cost)} profit." if at_cost else "."))
+    if unpriced:
+        lines.append(f"({unpriced} product(s) have no cost recorded, so they are not "
+                     f"counted in the cost figure.)")
+    return "\n".join(lines)
+
+
+def _fact_runs_out(db, owner_phone, ask):
+    """When the shelf empties, from how fast it has actually been selling.
+
+    Thirty days of this product's own sales, not a guess and not a fixed
+    threshold — a shop selling four bags a day and one selling four a month
+    should not be told the same thing.
+    """
+    item = ask.item
+    name = (item.name or "").strip().lower()
+    since = utcnow() - timedelta(days=30)
+    lines = [l for l in _sale_lines(db, owner_phone, "days:30") if l[0] == name]
+    sold = sum(qty for _n, qty, _rev in lines)
+    on_hand = float(item.quantity or 0)
+    unit = item.unit or "unit"
+
+    if sold <= 0:
+        if on_hand <= 0:
+            return f"You have no *{item.name.title()}* left, and none has sold in 30 days."
+        return (f"You have *{on_hand:g} {unit}(s)* of {item.name.title()}, but none has sold "
+                f"in the last 30 days — so I cannot say when it will run out.")
+
+    per_day = sold / 30.0
+    if on_hand <= 0:
+        return (f"You have no *{item.name.title()}* left. You were selling about "
+                f"{per_day:.1f} {unit}(s) a day — worth restocking.")
+    days_left = on_hand / per_day
+    when = "today" if days_left < 1 else (
+        "tomorrow" if days_left < 2 else f"in about {int(round(days_left))} days")
+    reply = (f"*{item.name.title()}*: {on_hand:g} {unit}(s) left, selling about "
+             f"{per_day:.1f} a day — you run out *{when}*.")
+    if days_left < 7:
+        reply += "\n⚠️ Time to restock."
+    return reply
+
+
+def _fact_quiet_customers(db, owner_phone, ask):
+    """Customers who used to buy and have gone quiet."""
+    from models import Customer
+    from reports import get_owner_transaction_query
+
+    since = utcnow() - timedelta(days=60)
+    recent_ids = {
+        row[0] for row in get_owner_transaction_query(db, owner_phone)
+        .filter(Transaction.created_at >= since,
+                Transaction.customer_id.isnot(None))
+        .with_entities(Transaction.customer_id).distinct().all()
+    }
+    customers = db.query(Customer).filter(Customer.owner_phone == owner_phone).all()
+    quiet = [c for c in customers
+             if c.id not in recent_ids and (c.last_transaction_at or c.created_at)]
+    if not customers:
+        return "You have no customers on record yet."
+    if not quiet:
+        return "Every customer on your list has bought something in the last 60 days ✓"
+
+    quiet.sort(key=lambda c: c.last_transaction_at or c.created_at or utcnow())
+    lines = [f"*{len(quiet)} customer(s)* have not bought in 60 days:"]
+    for c in quiet[:10]:
+        last = c.last_transaction_at or c.created_at
+        when = f" — last seen {last.strftime('%d %b %Y')}" if last else ""
+        owing = f", owes {_money(c.balance)}" if (c.balance or 0) > 0 else ""
+        lines.append(f"• {c.name.title()}{when}{owing}")
+    if len(quiet) > 10:
+        lines.append(f"…and {len(quiet) - 10} more")
+    return "\n".join(lines)
+
+
 # ── The registry ─────────────────────────────────────────────────────────────
 # `triggers` are what the question sounds like, including the way people
 # actually type on a phone. `needs_product` says the fact is about one item, so
@@ -370,12 +606,60 @@ METRICS = [
         ],
     },
     {
+        # About one product. The whole-business version of this question is the
+        # `profit` fact, which is why nothing here fires without a product word.
         "key": "margin", "needs_product": True, "compute": _fact_margin,
         "triggers": [
-            r"\b(?:profit|margin|gain)\b.*\b(?:on|per|for)\b",
-            r"\bhow much (?:do|am) i mak(?:e|ing)\b",
-            r"\bam i making (?:money|profit|anything)\b",
+            r"\b(?:profit|margin|gain)\s+(?:on|per|from)\b",
+            r"\bhow much (?:do|am) i mak(?:e|ing)\s+(?:on|per|from)\b",
             r"\bmy margin\b",
+        ],
+    },
+    {
+        "key": "runs_out", "needs_product": True, "compute": _fact_runs_out,
+        "triggers": [
+            r"\b(?:when|how long).*\b(?:run out|finish|last)\b",
+            r"\bwill .* (?:run out|finish)\b",
+            r"\bdo i need to (?:restock|buy|order)\b",
+            r"\bshould i (?:restock|reorder|buy more)\b",
+            r"\bhow (?:long|many days) (?:will|before)\b",
+        ],
+    },
+    {
+        "key": "profit", "needs_product": False, "compute": _fact_profit,
+        "triggers": [
+            r"\b(?:how much|what).*\bprofit\b",
+            r"\bmy profit\b", r"\bprofit (?:this|last|today|yesterday)\b",
+            r"\b(?:did|am|have) i (?:make|made|making|gain|gained)\b.*\b(?:profit|money|anything)\b",
+            r"\bam i (?:making|losing) money\b",
+            r"\bhow much did i (?:gain|clear)\b",
+        ],
+    },
+    {
+        "key": "stock_value", "needs_product": False, "compute": _fact_stock_value,
+        "triggers": [
+            r"\b(?:value|worth)\s+of\s+(?:my\s+)?(?:stock|inventory|goods)\b",
+            r"\b(?:stock|inventory)\s+(?:value|worth)\b",
+            r"\bhow much (?:is|are) my (?:stock|goods|inventory) worth\b",
+            r"\bhow much (?:money )?(?:do i have )?(?:tied up|in stock)\b",
+        ],
+    },
+    {
+        "key": "quiet_customers", "needs_product": False, "compute": _fact_quiet_customers,
+        "triggers": [
+            r"\bcustomers?\b.*\b(?:stopped|not|haven'?t|hasn'?t|no longer)\b.*\b(?:buy|buying|bought|coming|come)\b",
+            r"\b(?:who|which customers?)\b.*\b(?:gone quiet|stopped buying|not been)\b",
+            r"\blost customers?\b", r"\bquiet customers?\b",
+            r"\bcustomers?\b.*\bnot (?:seen|bought)\b",
+        ],
+    },
+    {
+        "key": "sales_total", "needs_product": False, "compute": _fact_sales_total,
+        "triggers": [
+            r"\bhow much did i (?:sell|make|earn)\b",
+            r"\b(?:total|my)\s+(?:sales|revenue|income)\b",
+            r"\bwhat did i (?:sell|make)\b",
+            r"\bsales\s+(?:yesterday|last week|last month|this year)\b",
         ],
     },
     {
@@ -416,12 +700,15 @@ def _clean_product_text(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _match_metric(text):
+def _matching_metrics(text):
+    """Every metric whose trigger fires, in registry order."""
+    hits = []
     for metric in METRICS:
         for trigger in metric["triggers"]:
             if re.search(trigger, text, re.IGNORECASE):
-                return metric
-    return None
+                hits.append(metric)
+                break
+    return hits
 
 
 def answer(db, owner_phone, text, recorded_by_id=None):
@@ -430,22 +717,26 @@ def answer(db, owner_phone, text, recorded_by_id=None):
     falls through rather than guessing."""
     if not text or not owner_phone:
         return None
-    lowered = " " + text.strip().lower() + " "
-    metric = _match_metric(lowered)
-    if not metric:
+    candidates = _matching_metrics(" " + text.strip().lower() + " ")
+    if not candidates:
         return None
 
-    period, remainder = _detect_period(lowered)
-    ask = Ask(metric=metric["key"], period=period)
-
-    if metric["needs_product"]:
+    period, remainder = _detect_period(" " + text.strip().lower() + " ")
+    product_name = _clean_product_text(remainder)
+    item = None
+    if product_name:
         from query_handler import _find_product
-        name = _clean_product_text(remainder)
-        ask.product_text = name
-        item = _find_product(db, owner_phone, name) if name else None
-        if not item:
-            # The question was clear, the product was not. Asking is better than
-            # guessing, and far better than "I don't understand".
+        item = _find_product(db, owner_phone, product_name)
+
+    # "Am I making profit this month" and "what do I make on rice" share words.
+    # A metric about one product only wins when a product was actually named,
+    # so an unnamed product never turns a question about the whole business
+    # into "which product do you mean?".
+    ordered = ([m for m in candidates if not m["needs_product"] or item]
+               + [m for m in candidates if m["needs_product"] and not item])
+
+    for metric in ordered:
+        if metric["needs_product"] and not item:
             known = (db.query(InventoryItem)
                      .filter(InventoryItem.owner_phone == owner_phone)
                      .order_by(InventoryItem.id.desc()).limit(5).all())
@@ -454,10 +745,15 @@ def answer(db, owner_phone, text, recorded_by_id=None):
             examples = ", ".join(i.name.title() for i in known)
             return (f"Which product do you mean? For example: {examples}.\n\n"
                     f"Try \"average cost of {known[0].name.lower()}\".")
-        ask.item = item
-
-    try:
-        return metric["compute"](db, owner_phone, ask)
-    except Exception:
-        _log.exception("business fact %s failed", metric["key"])
-        return None
+        ask = Ask(metric=metric["key"], period=period,
+                  product_text=product_name, item=item)
+        try:
+            reply = metric["compute"](db, owner_phone, ask)
+        except Exception:
+            _log.exception("business fact %s failed", metric["key"])
+            return None
+        if reply:
+            return reply
+        # The metric declined (it knows another handler answers this better) —
+        # try the next one that matched.
+    return None
