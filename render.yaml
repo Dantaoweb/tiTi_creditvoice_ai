@@ -2,7 +2,10 @@ services:
   - type: web
     name: creditvoice-ai
     runtime: python
-    buildCommand: pip install -r requirements.txt && cd frontend && npm install && npm run build
+    # npm ci, not npm install: it installs exactly what package-lock.json says.
+    # `npm install` is free to resolve newer versions and rewrite the lockfile on
+    # the build machine, so a deploy could ship something never tested here.
+    buildCommand: pip install -r requirements.txt && cd frontend && npm ci && npm run build
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /health
     envVars:
