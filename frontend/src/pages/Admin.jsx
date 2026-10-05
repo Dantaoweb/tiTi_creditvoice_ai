@@ -2694,7 +2694,303 @@ function SiteTab() {
   );
 }
 
-const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Referrals", "Notify", "Failed Messages"];
+// ── In-app campaign cards ───────────────────────────────────────────────────
+// The pop-up over the dashboard. Targeting matters more than the artwork: a
+// card shown to the wrong person, or too often, costs more than it earns.
+
+const BLANK_CAMPAIGN = {
+  key: "", title: "", body: "", image_url: "", theme: "navy",
+  cta_label: "", cta_link: "", goal: "", owners_only: true, plans: "",
+  min_transactions: 0, min_days_active: 0, starts_at: "", ends_at: "",
+  is_active: false, max_shows: 3, snooze_days: 14, priority: 0,
+  also_notify: true, also_whatsapp: false,
+};
+
+// Ready-made starting points. The review one is the reason this exists: it asks
+// people who have actually used the app, and stops the moment they write one.
+const CAMPAIGN_TEMPLATES = {
+  "Ask for a review": {
+    key: "review-ask", theme: "navy", goal: "review",
+    title: "Your shop, on our homepage",
+    body: "Tell other business owners what CreditVoice does for you. If we feature it, your business name, town and phone number go on our homepage — a free advert.",
+    cta_label: "Write my review", cta_link: "/profile",
+    owners_only: true, min_transactions: 30, min_days_active: 14,
+    max_shows: 3, snooze_days: 14, priority: 10,
+  },
+  "Upgrade nudge": {
+    key: "upgrade-nudge", theme: "amber", goal: "upgrade",
+    title: "You have outgrown the free plan",
+    body: "Unlimited records, stock alerts and reports. Pay yearly and get two months free.",
+    cta_label: "See the plans", cta_link: "/upgrade",
+    owners_only: true, plans: "BASIC", min_transactions: 50, min_days_active: 21,
+    max_shows: 4, snooze_days: 21, priority: 5,
+  },
+  "Plain announcement": {
+    key: "", theme: "green", goal: "",
+    title: "", body: "", cta_label: "Open", cta_link: "/",
+    owners_only: true, min_transactions: 0, min_days_active: 1,
+    max_shows: 2, snooze_days: 30, priority: 0,
+  },
+};
+
+function CampaignsTab() {
+  const [rows, setRows] = useState([]);
+  const [form, setForm] = useState(BLANK_CAMPAIGN);
+  const [editingId, setEditingId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function load() {
+    apiFetch("admin/campaigns").then(d => setRows(d.campaigns || []))
+      .catch(e => setErr(e.message));
+  }
+  useEffect(load, []);
+
+  async function save() {
+    setBusy(true); setErr("");
+    try {
+      const body = {
+        ...form,
+        min_transactions: Number(form.min_transactions) || 0,
+        min_days_active: Number(form.min_days_active) || 0,
+        max_shows: Number(form.max_shows) || 0,
+        snooze_days: Number(form.snooze_days) || 0,
+        priority: Number(form.priority) || 0,
+      };
+      if (editingId) await apiPut(`admin/campaigns/${editingId}`, body);
+      else await apiPost("admin/campaigns", body);
+      setForm(BLANK_CAMPAIGN); setEditingId(null); load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function remove(row) {
+    if (!window.confirm(`Delete "${row.title}"? Its results are deleted too.`)) return;
+    try { await apiDelete(`admin/campaigns/${row.id}`); load(); }
+    catch (e) { setErr(e.message); }
+  }
+
+  async function toggle(row) {
+    try { await apiPut(`admin/campaigns/${row.id}`, { ...row, is_active: !row.is_active }); load(); }
+    catch (e) { setErr(e.message); }
+  }
+
+  function edit(row) {
+    setEditingId(row.id);
+    setForm({ ...BLANK_CAMPAIGN, ...row, image_url: row.image_url || "",
+              cta_label: row.cta_label || "", cta_link: row.cta_link || "",
+              goal: row.goal || "", plans: row.plans || "" });
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {err && <div style={{ color: "var(--rose)" }}>{err}</div>}
+      <div className="card card-body text-subtle text-sm">
+        These cards appear over the dashboard. Only one is ever shown at a time, it can always
+        be closed, and a card with a goal stops by itself once the person does what it asked.
+      </div>
+
+      <div className="card">
+        <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
+          <span className="card-title">{editingId ? "Edit card" : "New card"}</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {!editingId && Object.keys(CAMPAIGN_TEMPLATES).map(name => (
+              <button key={name} className="btn btn-ghost btn-xs"
+                onClick={() => setForm({ ...BLANK_CAMPAIGN, ...CAMPAIGN_TEMPLATES[name] })}>
+                {name}
+              </button>
+            ))}
+            {editingId && (
+              <button className="btn btn-ghost btn-sm"
+                onClick={() => { setEditingId(null); setForm(BLANK_CAMPAIGN); }}>Cancel</button>
+            )}
+          </div>
+        </div>
+        <div className="card-body" style={{ display: "grid", gap: 10 }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Title *</label>
+            <input value={form.title} onChange={e => set("title", e.target.value)}
+              placeholder="Your shop, on our homepage" />
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Text *</label>
+            <textarea rows={3} value={form.body} onChange={e => set("body", e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 160px" }}>
+              <label className="form-label">Button text</label>
+              <input value={form.cta_label} onChange={e => set("cta_label", e.target.value)}
+                placeholder="Write my review" />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 160px" }}>
+              <label className="form-label">Button goes to</label>
+              <input value={form.cta_link} onChange={e => set("cta_link", e.target.value)}
+                placeholder="/profile" />
+              <span className="form-hint">An in-app path like /profile, or a full https:// link.</span>
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "0 1 130px" }}>
+              <label className="form-label">Colour</label>
+              <select value={form.theme} onChange={e => set("theme", e.target.value)}>
+                <option value="navy">Navy</option>
+                <option value="amber">Amber</option>
+                <option value="green">Green</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Picture (optional)</label>
+            <input value={form.image_url} onChange={e => set("image_url", e.target.value)}
+              placeholder="https://… (leave blank for a plain coloured card)" />
+          </div>
+
+          <div className="text-subtle text-sm" style={{ fontWeight: 700, marginTop: 4 }}>Who sees it</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+              <label className="form-label">Recorded at least</label>
+              <input inputMode="numeric" value={form.min_transactions}
+                onChange={e => set("min_transactions", e.target.value)} />
+              <span className="form-hint">entries. Keeps it away from brand-new accounts.</span>
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+              <label className="form-label">Signed up at least</label>
+              <input inputMode="numeric" value={form.min_days_active}
+                onChange={e => set("min_days_active", e.target.value)} />
+              <span className="form-hint">days ago.</span>
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+              <label className="form-label">Plans (blank = all)</label>
+              <input value={form.plans} onChange={e => set("plans", e.target.value)}
+                placeholder="BASIC,GO" />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+              <label className="form-label">Stops when</label>
+              <select value={form.goal} onChange={e => set("goal", e.target.value)}>
+                <option value="">Never (plain announcement)</option>
+                <option value="review">They write a review</option>
+                <option value="upgrade">They leave the free plan</option>
+              </select>
+            </div>
+          </div>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+            <input type="checkbox" checked={!!form.owners_only}
+              onChange={e => set("owners_only", e.target.checked)} />
+            Owners only (never staff)
+          </label>
+
+          <div className="text-subtle text-sm" style={{ fontWeight: 700, marginTop: 4 }}>How often, and when</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 120px" }}>
+              <label className="form-label">Show at most</label>
+              <input inputMode="numeric" value={form.max_shows}
+                onChange={e => set("max_shows", e.target.value)} />
+              <span className="form-hint">times per person.</span>
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 120px" }}>
+              <label className="form-label">Quiet for</label>
+              <input inputMode="numeric" value={form.snooze_days}
+                onChange={e => set("snooze_days", e.target.value)} />
+              <span className="form-hint">days after they close it.</span>
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 120px" }}>
+              <label className="form-label">Priority</label>
+              <input inputMode="numeric" value={form.priority}
+                onChange={e => set("priority", e.target.value)} />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+              <label className="form-label">Start (optional)</label>
+              <input type="date" value={(form.starts_at || "").slice(0, 10)}
+                onChange={e => set("starts_at", e.target.value)} />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+              <label className="form-label">End (optional)</label>
+              <input type="date" value={(form.ends_at || "").slice(0, 10)}
+                onChange={e => set("ends_at", e.target.value)} />
+            </div>
+          </div>
+          <div className="text-subtle text-sm" style={{ fontWeight: 700, marginTop: 4 }}>Where else it goes</div>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13 }}>
+            <input type="checkbox" checked={!!form.also_notify}
+              onChange={e => set("also_notify", e.target.checked)} />
+            <span>
+              Also put it in the bell (and send a push). The card only reaches people who open
+              the dashboard — this reaches the rest, once each, and stays after they close it.
+            </span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13 }}>
+            <input type="checkbox" checked={!!form.also_whatsapp}
+              onChange={e => set("also_whatsapp", e.target.checked)} />
+            <span>
+              Also send on WhatsApp — skipped automatically until Meta approves the number.
+            </span>
+          </label>
+
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+            <input type="checkbox" checked={!!form.is_active}
+              onChange={e => set("is_active", e.target.checked)} />
+            Live — start showing it
+          </label>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-primary" disabled={busy || !form.title.trim() || !form.body.trim()}
+            onClick={save}>{busy ? "Saving…" : editingId ? "Save changes" : "Create card"}</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Cards <span className="text-subtle text-sm">({rows.length})</span></span>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Card</th><th>Who</th><th>Seen</th><th>Clicked</th><th>Closed</th><th>Done</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={8} className="td-muted">No cards yet.</td></tr>
+              ) : rows.map(c => (
+                <tr key={c.id}>
+                  <td>
+                    <strong>{c.title}</strong>
+                    <div className="td-muted" style={{ fontSize: 11 }}>{c.key}</div>
+                  </td>
+                  <td className="td-muted" style={{ fontSize: 11 }}>
+                    {c.min_transactions > 0 ? `${c.min_transactions}+ entries` : "anyone"}
+                    {c.min_days_active > 0 ? `, ${c.min_days_active}d+` : ""}
+                    {c.plans ? `, ${c.plans}` : ""}
+                  </td>
+                  <td>{c.stats?.shows || 0}<div className="td-muted" style={{ fontSize: 11 }}>{c.stats?.people || 0} people</div></td>
+                  <td>{c.stats?.clicked || 0}</td>
+                  <td>{c.stats?.dismissed || 0}</td>
+                  <td>{c.stats?.completed || 0}</td>
+                  <td>
+                    <span className={`badge ${c.is_active ? "badge-green" : "badge-gray"}`}>
+                      {c.is_active ? "Live" : "Off"}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="btn btn-ghost btn-xs" onClick={() => toggle(c)}>
+                        {c.is_active ? "Pause" : "Start"}
+                      </button>
+                      <button className="btn btn-ghost btn-xs" onClick={() => edit(c)}>Edit</button>
+                      <button className="btn btn-ghost btn-xs text-rose" onClick={() => remove(c)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -2833,6 +3129,7 @@ export default function Admin() {
       {tab === "Finance"        && <FinanceTab />}
       {tab === "Public Pages"   && <PublicPagesTab />}
       {tab === "Site"           && <SiteTab />}
+      {tab === "Campaigns"      && <CampaignsTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}
       {tab === "Referrals"        && <ReferralSettingsTab />}
       {tab === "Notify"         && <NotifyTab />}

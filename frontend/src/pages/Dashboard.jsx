@@ -11,6 +11,7 @@ import { TxTypeBadge } from "../components/Badge";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
 import GettingStarted from "../components/GettingStarted";
+import PromoCard from "../components/PromoCard";
 import { usePlan } from "../lib/usePlan";
 import { useToast } from "../components/Toast";
 import { Lock } from "lucide-react";
@@ -403,6 +404,7 @@ export default function Dashboard() {
   return (
     <>
       <WhatsAppNudge titiNumber={titiNumber} />
+      <PromoCard />
       <GettingStarted />
       <StaleDataBanner isStale={isStale} />
 

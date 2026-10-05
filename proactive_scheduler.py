@@ -26,7 +26,7 @@ def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _notify(db, owner_phone, event_type, title, body, send_whatsapp=True):
+def _notify(db, owner_phone, event_type, title, body, send_whatsapp=True, link=None):
     """Save a frontend notification AND optionally send via WhatsApp."""
     from models import AppNotification
     from whatsapp_client import send_whatsapp_message
@@ -36,6 +36,7 @@ def _notify(db, owner_phone, event_type, title, body, send_whatsapp=True):
         event_type=event_type,
         title=title,
         body=body,
+        link=link,
         is_read=0,
         created_at=_utcnow(),
     ))
@@ -49,7 +50,12 @@ def _notify(db, owner_phone, event_type, title, body, send_whatsapp=True):
     except Exception:
         pass
 
+    # Until Meta approves the number, a WhatsApp send is a message that never
+    # arrives — the bell and the push above still do their job.
     if send_whatsapp:
+        from feature_flags import whatsapp_live
+        if not whatsapp_live(db):
+            return
         try:
             send_whatsapp_message(owner_phone, f"*{title}*\n\n{body}")
         except Exception as e:
@@ -741,10 +747,25 @@ def _check_subscription_expiry(db):
         db.commit()
 
 
+def _deliver_campaigns(db):
+    """Put live campaign cards into the bell for the people they target.
+
+    The card itself only reaches someone who opens the dashboard; this reaches
+    everyone else, once each, and leaves the message somewhere they can find it
+    again after closing the card.
+    """
+    from campaigns import deliver_notifications
+
+    sent = deliver_notifications(db)
+    if sent:
+        print(f"[proactive] campaign notifications: {sent}", flush=True)
+
+
 _CHECKS = (
     _check_low_stock,
     _check_overdue_debt,
     _check_inactivity,
+    _deliver_campaigns,
     _check_reminder_automation,
     _check_delivery_due,
     _check_supplier_due,

@@ -369,6 +369,10 @@ def register_web_routes(app):
     from web_site_routes import register_site_routes
     register_site_routes(app)
 
+    # ── In-app campaign cards (the dashboard pop-up, admin-created) ───────────
+    from web_campaign_routes import register_campaign_routes
+    register_campaign_routes(app)
+
     # ── Public, crawlable pages (/resources, /events) ─────────────────────────
     # Deliberately NOT in the React app: that sits behind a login, so a link
     # there is invisible to search engines.

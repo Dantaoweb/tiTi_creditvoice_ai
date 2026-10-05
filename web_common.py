@@ -301,13 +301,16 @@ def _session_subscription(db, session: dict):
     return cache["sub"]
 
 
-def _add_notification(db, owner_phone, event_type, title, body):
+def _add_notification(db, owner_phone, event_type, title, body, link=None):
     """Insert an in-app notification for the business owner (shown in the bell)
     and fire a Web Push to their subscribed devices. The caller is responsible
-    for committing the row; the push is fire-and-forget on a background thread."""
+    for committing the row; the push is fire-and-forget on a background thread.
+
+    `link` is where tapping it goes — an in-app path like /inventory."""
     from models import AppNotification
     db.add(AppNotification(
         owner_phone=owner_phone, event_type=event_type, title=title, body=body,
+        link=link,
         is_read=0, created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ))
     try:

@@ -3922,3 +3922,70 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .welcome-step-body { font-size: 13px; line-height: 1.45; color: var(--ink-2); margin-top: 2px; }
 
 .welcome-cta { width: 100%; justify-content: center; font-size: 15px; padding: 12px; }
+
+/* ── In-app campaign card ──────────────────────────────────────────────────
+   The card that appears over the dashboard. It is a promotion, so it is built
+   to be closed easily: the overlay closes it, the × closes it, and there is a
+   plain "Maybe later" under the button for people who do not trust an ×. */
+
+.promo-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(10, 22, 48, .55);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: promo-fade .22s ease;
+}
+.promo-leaving { animation: promo-fade .18s ease reverse forwards; }
+@keyframes promo-fade { from { opacity: 0 } to { opacity: 1 } }
+
+.promo-card {
+  position: relative; width: 100%; max-width: 360px;
+  border-radius: 22px; padding: 26px 24px 20px;
+  text-align: center; color: #fff;
+  box-shadow: 0 24px 60px rgba(8, 20, 45, .45);
+  animation: promo-rise .28s cubic-bezier(.2, .8, .3, 1);
+}
+@keyframes promo-rise { from { transform: translateY(16px) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
+.promo-leaving .promo-card { transform: scale(.98); opacity: .5; transition: all .18s ease; }
+
+.promo-navy  { background: linear-gradient(160deg, #13306e 0%, #0c1f4a 100%); }
+.promo-amber { background: linear-gradient(160deg, #f5a623 0%, #c97d0b 100%); color: #2e1d00; }
+.promo-green { background: linear-gradient(160deg, #10794f 0%, #0a5134 100%); }
+
+.promo-close {
+  position: absolute; top: 12px; right: 12px;
+  width: 30px; height: 30px; border-radius: 50%; border: 0;
+  background: rgba(255, 255, 255, .18); color: inherit;
+  font-size: 19px; line-height: 1; cursor: pointer;
+}
+.promo-close:hover { background: rgba(255, 255, 255, .3); }
+
+.promo-art { display: block; margin: 4px auto 16px; max-width: 100%; border-radius: 14px; }
+.promo-art-drawn { display: grid; place-items: center; }
+.promo-amber .promo-art-drawn svg rect { stroke: rgba(0, 0, 0, .25); fill: rgba(255, 255, 255, .25); }
+
+.promo-title { margin: 0 0 8px; font-size: 21px; line-height: 1.25; font-weight: 800; letter-spacing: -.3px; }
+.promo-body  { margin: 0 0 20px; font-size: 14.5px; line-height: 1.5; opacity: .9; }
+
+.promo-cta {
+  width: 100%; border: 0; cursor: pointer;
+  background: #f5a623; color: #3a2500;
+  font-weight: 800; font-size: 15.5px;
+  padding: 14px 18px; border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(245, 166, 35, .35);
+  transition: transform .12s ease, background .15s ease;
+}
+.promo-cta:hover { background: #e5951a; transform: translateY(-1px); }
+.promo-cta:active { transform: scale(.985); }
+.promo-amber .promo-cta { background: #2e1d00; color: #ffd08a; box-shadow: none; }
+
+.promo-later {
+  display: block; margin: 12px auto 0; border: 0; background: none; cursor: pointer;
+  color: inherit; opacity: .65; font-size: 13px; padding: 6px 10px;
+}
+.promo-later:hover { opacity: 1; text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-overlay, .promo-card { animation: none; }
+}

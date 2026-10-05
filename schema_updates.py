@@ -1109,6 +1109,47 @@ def ensure_schema_updates(engine):
                     "ADD COLUMN billing_period VARCHAR DEFAULT 'MONTHLY'"
                 ))
 
+    # ── Notifications can carry a destination ────────────────────────────────
+    # A notification that names a problem but cannot take you to it wastes the
+    # tap. Campaign cards need it too: the whole card is its button.
+    if "app_notifications" in inspector.get_table_names():
+        notification_columns = {
+            column["name"] for column in inspector.get_columns("app_notifications")
+        }
+        if "link" not in notification_columns:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "ALTER TABLE app_notifications ADD COLUMN link VARCHAR"
+                ))
+
+    # ── Campaign cards gain their quiet delivery channels ────────────────────
+    # The tables themselves are created by metadata; these are the columns added
+    # after the first release.
+    if "campaigns" in inspector.get_table_names():
+        campaign_columns = {
+            column["name"] for column in inspector.get_columns("campaigns")
+        }
+        campaign_updates = {
+            "also_notify": f"BOOLEAN DEFAULT {boolean_false_c}",
+            "also_whatsapp": f"BOOLEAN DEFAULT {boolean_false_c}",
+        }
+        with engine.begin() as connection:
+            for column_name, column_type in campaign_updates.items():
+                if column_name not in campaign_columns:
+                    connection.execute(text(
+                        f"ALTER TABLE campaigns ADD COLUMN {column_name} {column_type}"
+                    ))
+
+    if "campaign_views" in inspector.get_table_names():
+        view_columns = {
+            column["name"] for column in inspector.get_columns("campaign_views")
+        }
+        if "notified_at" not in view_columns:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "ALTER TABLE campaign_views ADD COLUMN notified_at TIMESTAMP"
+                ))
+
     # ── One-time grandfather: existing PRO subscribers → PREMIUM ─────────────
     # The plan ladder gained a 4th tier (Premium). Today's PRO capabilities
     # (unlimited branches/partners/investors) moved up to PREMIUM, and PRO

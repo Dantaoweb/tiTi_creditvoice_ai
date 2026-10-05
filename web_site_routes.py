@@ -181,6 +181,9 @@ def register_site_routes(app):
             row.reviewed_by = None
             db.commit()
             db.refresh(row)
+            # Any campaign that was asking for this has got what it wanted.
+            from campaigns import mark_goal_done
+            mark_goal_done(db, "review", user)
             return {"review": _dict(row), "message": "Thank you — we'll review it shortly."}
         finally:
             db.close()

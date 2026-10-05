@@ -1194,6 +1194,9 @@ class AppNotification(Base):
     event_type = Column(String)        # "low_stock" | "overdue_debt" | "inactivity"
     title = Column(String)
     body = Column(Text)
+    # Where tapping it should take them, e.g. /inventory. A notification that
+    # names a problem and then cannot take you to it wastes the tap.
+    link = Column(String, nullable=True)
     is_read = Column(Integer, default=0)   # 0 = unread, 1 = read
     created_at = Column(DateTime, default=utcnow)
 
@@ -1594,6 +1597,76 @@ class FinanceApplication(Base):
 
     created_at      = Column(DateTime, default=utcnow, index=True)
     updated_at      = Column(DateTime, nullable=True)
+
+
+class Campaign(Base):
+    """An in-app card — the one that appears over the dashboard with a picture,
+    a line of copy and one button.
+
+    Everything about who sees it lives here rather than in code: a campaign that
+    asks for a review should only reach someone who has actually used the app
+    for a while, and should stop the moment they write one. A card nobody can
+    dismiss, or that returns forever, trains people to close the app.
+    """
+
+    __tablename__ = "campaigns"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    key         = Column(String, index=True)          # short slug, e.g. "review-ask"
+    title       = Column(String, nullable=False)
+    body        = Column(Text, nullable=False)
+    image_url   = Column(String, nullable=True)       # optional artwork; themed card without it
+    theme       = Column(String, default="navy")      # navy | amber | green
+    cta_label   = Column(String, nullable=True)
+    cta_link    = Column(String, nullable=True)       # in-app path, e.g. /profile
+    # When the campaign has got what it asked for, it stops by itself.
+    goal        = Column(String, nullable=True)       # review | upgrade | None
+
+    # Who it reaches
+    owners_only      = Column(Boolean, default=True)
+    plans            = Column(String, nullable=True)  # CSV of plans; empty = every plan
+    min_transactions = Column(Integer, default=0)     # asking a brand-new user is noise
+    min_days_active  = Column(Integer, default=0)
+
+    # When it runs
+    starts_at   = Column(DateTime, nullable=True)
+    ends_at     = Column(DateTime, nullable=True)
+    is_active   = Column(Boolean, default=False)
+
+    # How often one person may see it
+    max_shows   = Column(Integer, default=3)
+    snooze_days = Column(Integer, default=14)         # after they close it
+
+    # The quiet channels. The card only reaches someone who opens the dashboard;
+    # the bell and a push reach the rest, and survive a dismissal.
+    also_notify   = Column(Boolean, default=False)
+    also_whatsapp = Column(Boolean, default=False)    # still subject to whatsapp_live
+
+    priority    = Column(Integer, default=0)          # highest wins when several fit
+    created_at  = Column(DateTime, default=utcnow)
+    created_by  = Column(String, nullable=True)
+
+
+class CampaignView(Base):
+    """What one person has seen and done with one campaign.
+
+    Also what makes the admin screen honest: without clicks and dismissals you
+    cannot tell a campaign that works from one everybody closes.
+    """
+
+    __tablename__ = "campaign_views"
+
+    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    campaign_id   = Column(String, ForeignKey("campaigns.id"), index=True)
+    user_phone    = Column(String, index=True)
+    shown_count   = Column(Integer, default=0)
+    first_shown_at = Column(DateTime, nullable=True)
+    last_shown_at  = Column(DateTime, nullable=True)
+    clicked_at    = Column(DateTime, nullable=True)
+    dismissed_at  = Column(DateTime, nullable=True)
+    snooze_until  = Column(DateTime, nullable=True)
+    completed_at  = Column(DateTime, nullable=True)   # they did the thing it asked
+    notified_at   = Column(DateTime, nullable=True)   # bell/push sent, so never twice
 
 
 class Testimonial(Base):

@@ -46,6 +46,7 @@ def register_notification_routes(app):
                 {
                     "id": r.id, "event_type": r.event_type,
                     "title": r.title, "body": r.body,
+                    "link": r.link,
                     "is_read": bool(r.is_read),
                     "created_at": r.created_at.isoformat() if r.created_at else None,
                 }

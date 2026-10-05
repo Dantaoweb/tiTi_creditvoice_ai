@@ -69,15 +69,29 @@ def register_admin_routes(app):
             db.commit()
 
             sent_wa = 0
+            whatsapp_skipped = False
             if payload.also_whatsapp:
-                from whatsapp_client import send_whatsapp_message
-                for ph in phones:
-                    try:
-                        if send_whatsapp_message(ph, f"*{title}*\n\n{body}"):
-                            sent_wa += 1
-                    except Exception:
-                        pass
-            return {"ok": True, "recipients": len(phones), "whatsapp_sent": sent_wa}
+                # Meta has to approve the number first; until then a send is a
+                # message nobody receives, so say so rather than report a lie.
+                from feature_flags import whatsapp_live
+                if not whatsapp_live(db):
+                    whatsapp_skipped = True
+                else:
+                    from whatsapp_client import send_whatsapp_message
+                    for ph in phones:
+                        try:
+                            if send_whatsapp_message(ph, f"*{title}*\n\n{body}"):
+                                sent_wa += 1
+                        except Exception:
+                            pass
+            return {
+                "ok": True,
+                "recipients": len(phones),
+                "whatsapp_sent": sent_wa,
+                "whatsapp_skipped": whatsapp_skipped,
+                "message": ("Saved to everyone's notifications. WhatsApp was skipped — "
+                            "the number is not approved yet." if whatsapp_skipped else None),
+            }
         finally:
             db.close()
 

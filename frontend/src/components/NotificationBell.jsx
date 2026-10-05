@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell, X, Trash2, BellRing, BellOff, Volume2, VolumeX } from "lucide-react";
 import { apiFetch, apiPost, apiDelete } from "../lib/api";
 import { getPushState, enablePush, disablePush } from "../lib/webpush";
@@ -50,6 +51,14 @@ export default function NotificationBell() {
   const [soundOn, setSoundOn] = useState(soundPref);
   const panelRef = useRef(null);
   const seenIds = useRef(null);   // null until the first load, so it never chimes on open
+  const navigate = useNavigate();
+
+  function openLink(link) {
+    setOpen(false);
+    if (!link) return;
+    if (link.startsWith("http")) window.open(link, "_blank", "noopener");
+    else navigate(link);
+  }
 
   useEffect(() => {
     if (open && push === null) getPushState().then(setPush).catch(() => setPush({ available: false }));
@@ -285,6 +294,18 @@ export default function NotificationBell() {
                       }}>
                         {n.body}
                       </div>
+                      {/* A notification that names something should be able to
+                          take you to it. Shown once expanded so a tap to read
+                          never navigates by accident. */}
+                      {isOpen && n.link && (
+                        <button
+                          className="btn btn-primary btn-xs"
+                          style={{ marginTop: 8 }}
+                          onClick={(e) => { e.stopPropagation(); openLink(n.link); }}
+                        >
+                          Open
+                        </button>
+                      )}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
                       <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
