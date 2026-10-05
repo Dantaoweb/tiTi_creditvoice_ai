@@ -10,6 +10,7 @@ import Chat         from "./pages/Chat";
 import Dashboard    from "./pages/Dashboard";
 import Insights     from "./pages/Insights";
 import Poultry      from "./pages/Poultry";
+import School       from "./pages/School";
 import Customers    from "./pages/Customers";
 import Transactions from "./pages/Transactions";
 import Inventory    from "./pages/Inventory";
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="dashboard"    element={<Dashboard />}    />
           <Route path="insights"     element={<Insights />}     />
           <Route path="poultry"      element={<Poultry />}      />
+          <Route path="school"       element={<School />}       />
           <Route path="capture"      element={<Capture />}      />
           <Route path="pos"          element={<POS />}          />
           <Route path="pos/receipt/:id" element={<Receipt />}   />

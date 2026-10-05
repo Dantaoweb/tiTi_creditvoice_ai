@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -49,6 +49,7 @@ function buildNav(L, group) {
     { to: "/home",         label: "Chat with tiTi",  icon: MessageSquare,   tab: true  },
     { to: "/capture",      label: L.record,           icon: PlusCircle,      tab: true  },
     { to: "/poultry",      label: "Egg & Feed",       icon: Egg,             poultryOnly: true },
+    { to: "/school",       label: "School fees",      icon: GraduationCap,   schoolOnly: true },
     { to: "/pos",          label: L.pos,              icon: ShoppingCart,    tab: !noProducts },
     { to: "/inventory",    label: L.stock,            icon: Package,         tab: !noProducts },
     { to: "/customers",    label: L.navCustomers,     icon: Users,           tab: true  },
@@ -125,8 +126,10 @@ export default function Layout() {
   const FUEL_TYPES = ["filling_station", "fuel_marketer", "kerosene_diesel", "lpg_gas", "lubricants", "other_energy"];
   const isFuel = user?.business_category === "energy_fuel" || FUEL_TYPES.includes(user?.business_type);
   const isPoultry = user?.business_type === "poultry_farm";
+  const isSchool = user?.menu_group === "school";
   const NAV = buildNav(L, user?.menu_group).filter(item =>
-    (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel) && (!item.poultryOnly || isPoultry));
+    (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel) && (!item.poultryOnly || isPoultry)
+    && (!item.schoolOnly || isSchool));
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {
@@ -142,6 +145,7 @@ export default function Layout() {
     "/dashboard":    "Dashboard",
     "/insights":     "Insights",
     "/poultry":      "Egg & Feed",
+    "/school":       "School fees",
     "/transactions": "Transactions",
     "/suppliers":    "Suppliers",
     "/staff":        "Staff",
