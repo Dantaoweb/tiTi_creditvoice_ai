@@ -268,7 +268,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
     name: "", unit: "", quantity: "",
     cost_price: "", selling_price: "", low_stock_alert: "",
     retail_unit: "", retail_per_base: "", retail_price: "",
-    wholesale_price: "", wholesale_min_qty: "",
+    wholesale_price: "", wholesale_min_qty: "", barcode: "",
   });
   const [attrs, setAttrs] = useState({});
   const [saving, setSaving] = useState(false);
@@ -298,6 +298,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
         retail_price: (!isService && form.retail_price !== "") ? parseAmt(form.retail_price) : null,
         wholesale_price: (!isService && form.wholesale_price !== "") ? parseAmt(form.wholesale_price) : null,
         wholesale_min_qty: (!isService && form.wholesale_min_qty !== "") ? parseAmt(form.wholesale_min_qty) : null,
+        barcode: form.barcode.trim() || null,
         attributes: isService ? {} : attrs,
       });
       onSaved(item);
@@ -388,6 +389,21 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
               <label className="form-label">Low-stock alert</label>
               <MoneyInput value={form.low_stock_alert} onChange={v => set("low_stock_alert", v)} placeholder="optional" />
             </div>
+          </div>
+        )}
+
+        {!isService && (
+          <div className="form-group">
+            <label className="form-label">Barcode</label>
+            <input
+              value={form.barcode}
+              onChange={e => set("barcode", e.target.value)}
+              placeholder="Scan the packet, or leave empty"
+            />
+            <span className="form-hint">
+              Click here and scan the product — the scanner types it for you. Goods sold
+              loose have no barcode; leave it empty and sell by name as usual.
+            </span>
           </div>
         )}
 

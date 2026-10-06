@@ -87,6 +87,7 @@ class AddInventoryRequest(BaseModel):
     retail_price: Optional[int] = None
     wholesale_price: Optional[int] = None
     wholesale_min_qty: Optional[int] = None
+    barcode: Optional[str] = Field(default=None, max_length=48)
     attributes: dict = Field(default_factory=dict)   # per-business custom stock fields
 
 
@@ -102,6 +103,7 @@ class EditInventoryRequest(BaseModel):
     retail_price: Optional[int] = None
     wholesale_price: Optional[int] = None
     wholesale_min_qty: Optional[int] = None
+    barcode: Optional[str] = Field(default=None, max_length=48)
     attributes: Optional[dict] = None
 
 
@@ -238,6 +240,7 @@ def register_inventory_routes(app):
                         "retail_price": item.retail_price,
                         "wholesale_price": item.wholesale_price,
                         "wholesale_min_qty": item.wholesale_min_qty,
+                        "barcode": item.barcode,
                         "attributes": _load_attributes(item),
                         "updated_at": _iso(item.updated_at),
                     }
@@ -287,6 +290,15 @@ def register_inventory_routes(app):
                 wholesale_min_qty=None if payload.is_service else payload.wholesale_min_qty,
                 attributes_json=_clean_attributes(owner_user, payload.attributes),
             )
+            if payload.barcode:
+                import barcodes
+                if not barcodes.is_plausible(payload.barcode):
+                    raise HTTPException(status_code=400,
+                                        detail="That does not look like a barcode.")
+                try:
+                    item.barcode = barcodes.assert_free(db, owner_phone, payload.barcode)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
             db.add(item)
             if not payload.is_service and _qty:
                 db.flush()
@@ -454,6 +466,20 @@ def register_inventory_routes(app):
                 item.name = payload.name.strip().lower()
             if payload.unit is not None:
                 item.unit = payload.unit.strip() or None
+            if payload.barcode is not None:
+                import barcodes
+                code = barcodes.clean(payload.barcode)
+                if not code:
+                    item.barcode = None            # cleared on purpose
+                elif not barcodes.is_plausible(code):
+                    raise HTTPException(status_code=400,
+                                        detail="That does not look like a barcode.")
+                else:
+                    try:
+                        item.barcode = barcodes.assert_free(db, owner_phone, code,
+                                                            item_id=item.id)
+                    except ValueError as exc:
+                        raise HTTPException(status_code=400, detail=str(exc))
             if payload.cost_price is not None:
                 item.cost_price = payload.cost_price
             if payload.selling_price is not None:

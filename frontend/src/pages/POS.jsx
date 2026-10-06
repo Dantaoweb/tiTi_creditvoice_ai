@@ -46,6 +46,58 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
       .finally(() => setLoading(false));
   }, [ownerPhone, branchId, attempt]);
 
+  // ── Scanning ──────────────────────────────────────────────────────────────
+  // A barcode scanner is a keyboard: it types the code into whatever has focus
+  // and presses Enter. So Enter means "this might be a scan" — matched against
+  // the catalogue already on the phone first, which keeps scanning working when
+  // the connection drops mid-shift.
+  const [scan, setScan] = useState({ code: "", busy: false });
+
+  function addByScan(product) {
+    // Scanning the same item again means two of them, not a second line.
+    onSetQty(product, qtyFor(product) + 1);
+    setQ("");
+    setScan({ code: "", busy: false });
+  }
+
+  async function onSearchKey(e) {
+    if (e.key !== "Enter") return;
+    const code = q.trim();
+    if (!code) return;
+    e.preventDefault();
+
+    const onPhone = products.find(p => p.barcode && p.barcode === code);
+    if (onPhone) { addByScan(onPhone); return; }
+
+    // Not in what we loaded — it may be new, or another branch's. Ask.
+    setScan({ code, busy: true });
+    try {
+      const res = await apiFetch("pos/scan", { code, ...branchParam });
+      if (res.found && res.product.sellable) {
+        addByScan({ ...res.product, id: res.product.id });
+      } else if (res.found) {
+        setScan({ code: "", busy: false });
+        setLoadError(`${res.product.name} has no price set — add one in Inventory.`);
+      } else {
+        setScan({ code, busy: false });     // offer to attach it
+      }
+    } catch {
+      setScan({ code: "", busy: false });   // offline: leave it as a plain search
+    }
+  }
+
+  async function attachTo(product) {
+    try {
+      await apiPost("pos/scan/attach", { item_id: product.id, code: scan.code });
+      setProducts(list => list.map(p =>
+        p.id === product.id ? { ...p, barcode: scan.code } : p));
+      addByScan(product);
+    } catch (err) {
+      setLoadError(err.message);
+      setScan({ code: "", busy: false });
+    }
+  }
+
   const term = q.trim();
   useEffect(() => {
     if (!catalogue.truncated || !term) return;
@@ -109,7 +161,8 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
           className="pos-search-input"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Search product…"
+          onKeyDown={onSearchKey}
+          placeholder="Search or scan product…"
         />
         {q && (
           <button className="pos-search-clear" onClick={() => setQ("")}>
@@ -117,6 +170,34 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
           </button>
         )}
       </div>
+
+      {/* A scanner types the code and presses Enter, so an unknown one lands
+          here rather than in a blank result list. Attaching it to a product is
+          one tap — which is how a shop builds its barcode list while selling. */}
+      {scan.code && (
+        <div className="pos-grid-msg" style={{ display: "grid", gap: 8 }}>
+          {scan.busy ? `Looking up ${scan.code}…` : (
+            <>
+              <strong>Not recognised: {scan.code}</strong>
+              <span className="text-subtle text-sm">
+                Search for the product below, then attach this code to it.
+              </span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {filtered.slice(0, 4).map(p => (
+                  <button key={p.id} className="btn btn-secondary btn-sm"
+                    onClick={() => attachTo(p)}>
+                    Attach to {p.name}
+                  </button>
+                ))}
+                <button className="btn btn-ghost btn-sm"
+                  onClick={() => setScan({ code: "", busy: false })}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="pos-grid-scroll" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {loading ? (

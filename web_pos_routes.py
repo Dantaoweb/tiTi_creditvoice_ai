@@ -20,11 +20,17 @@ from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _money, _iso, _scoped_read, _session_user,
     _require_tx_in_scope, _send_web_receipt, _require_can_record, _like_pattern,
+    _require_stock_manager,
 )
 
 # Priced products the POS preloads for on-phone search. ~5,000 gzips to roughly
 # what 1,000 used to cost uncompressed; bigger catalogues fall back to `q`.
 POS_CATALOGUE_LIMIT = 5000
+
+
+class AttachBarcodeRequest(BaseModel):
+    item_id: int
+    code: str = Field(max_length=48)
 
 
 class PosCartItem(BaseModel):
@@ -118,6 +124,9 @@ def register_pos_routes(app):
                         "retail_price": _money(item.retail_price) if item.retail_price else None,
                         "wholesale_price": _money(item.wholesale_price) if item.wholesale_price else None,
                         "wholesale_min_qty": item.wholesale_min_qty or None,
+                        # The POS matches a scan against this on the phone, so
+                        # scanning keeps working when the connection drops.
+                        "barcode": item.barcode,
                     }
                     for item in rows
                 ],
@@ -125,6 +134,56 @@ def register_pos_routes(app):
                 "truncated": total > len(rows),
                 "monthly_transactions": {"count": _count, "limit": _limit, "remaining": _remaining},
             }
+        finally:
+            db.close()
+
+    @app.get("/app/api/pos/scan")
+    def web_pos_scan(
+        code: str = Query(max_length=48),
+        branch_id: Optional[int] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        """What a scan means. The POS matches against its own catalogue first;
+        this is for a code it has not got — a product added since it loaded, or
+        one belonging to another branch."""
+        import barcodes
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            eff_branch = _selling_branch(db, session, owner_phone, branch_id)
+            item = barcodes.find(db, owner_phone, code, eff_branch)
+            if not item:
+                return {"found": False, "code": barcodes.clean(code)}
+            return {
+                "found": True,
+                "product": {
+                    "id": item.id, "name": item.name, "unit": item.unit,
+                    "quantity": item.quantity or 0,
+                    "selling_price": _money(item.selling_price),
+                    "barcode": item.barcode,
+                    "sellable": item.selling_price is not None and bool(item.is_available),
+                },
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/pos/scan/attach")
+    def web_pos_attach_barcode(
+        payload: AttachBarcodeRequest,
+        session: dict = Depends(require_web_auth),
+    ):
+        """Teach a product the code just scanned — how a shop builds its
+        barcode list at the till rather than in a data-entry session."""
+        import barcodes
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            try:
+                item = barcodes.attach(db, owner_phone, payload.item_id, payload.code)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            return {"id": item.id, "name": item.name, "barcode": item.barcode}
         finally:
             db.close()
 

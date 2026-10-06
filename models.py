@@ -395,6 +395,11 @@ class InventoryItem(Base):
     # Wholesale (quantity-break) pricing on the BASE unit: when a sale's quantity
     # reaches wholesale_min_qty, each unit is priced at wholesale_price instead of
     # selling_price. Both NULL = no wholesale tier (behaves exactly as before).
+    # The code printed on the packet, or one the shop prints itself. Indexed
+    # because a scan looks a product up by it at the till, and unique per
+    # business so two products can never answer the same scan.
+    barcode = Column(String, nullable=True, index=True)
+
     wholesale_price = Column(Integer, nullable=True)
 
     wholesale_min_qty = Column(Integer, nullable=True)
