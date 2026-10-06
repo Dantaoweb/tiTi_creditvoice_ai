@@ -110,6 +110,15 @@ class ChargeRequest(BaseModel):
     items: list = []                                      # [{fee_item_id, quantity}]
 
 
+class ExemptionRequest(BaseModel):
+    customer_id: int
+    kind: str = Field(default="EXEMPT", max_length=20)
+    value: int = 0
+    fee_item_id: Optional[str] = Field(default=None, max_length=64)   # blank = all fees
+    term_id: Optional[str] = Field(default=None, max_length=64)       # blank = every term
+    reason: Optional[str] = Field(default=None, max_length=120)
+
+
 class FeeReminderRequest(BaseModel):
     term_id: Optional[str] = Field(default=None, max_length=64)
     class_id: Optional[str] = Field(default=None, max_length=64)
@@ -649,6 +658,64 @@ def register_school_routes(app):
             if not term_id:
                 return {"summary": None}
             return {"summary": school.term_summary(db, owner_phone, term_id)}
+        finally:
+            db.close()
+
+    # ── Excusing a child ──────────────────────────────────────────────────────
+    # The class schedule is the default, never a rule: a staff child or a pupil
+    # on scholarship stays on the register and is billed what was agreed.
+
+    @app.get("/app/api/school/pupils/{customer_id}/fees")
+    def web_school_fee_preview(customer_id: int, term_id: str = "",
+                               session: dict = Depends(require_web_auth)):
+        """What this pupil will be charged, beside what their class owes."""
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            if not term_id:
+                current = school.current_term(db, owner_phone)
+                term_id = current.id if current else ""
+            if not term_id:
+                return {"preview": None}
+            return {"preview": school.fee_preview(db, owner_phone, customer_id, term_id)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/school/exemptions")
+    def web_school_set_exemption(payload: ExemptionRequest,
+                                 session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            user = _session_user(db, session)
+            try:
+                row = school.set_exemption(
+                    db, owner_phone, payload.customer_id, payload.kind, payload.value,
+                    fee_item_id=payload.fee_item_id or None,
+                    term_id=payload.term_id or None, reason=payload.reason,
+                    created_by=user.phone if user else None)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            return {"id": row.id, "kind": row.kind, "value": row.value,
+                    "reason": row.reason}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/school/exemptions/{exemption_id}")
+    def web_school_remove_exemption(exemption_id: str,
+                                    session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                return school.remove_exemption(db, owner_phone, exemption_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
         finally:
             db.close()
 

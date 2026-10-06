@@ -268,6 +268,7 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [feesFor, setFeesFor] = useState(null);
   const [classFilter, setClassFilter] = useState("");
 
   useEffect(() => {
@@ -442,6 +443,10 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
                   </td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
+                      <button className="btn btn-ghost btn-xs"
+                        onClick={() => setFeesFor(feesFor === p.customer_id ? null : p)}>
+                        Fees
+                      </button>
                       <button className="btn btn-ghost btn-xs" onClick={() => startEdit(p)}>
                         Edit
                       </button>
@@ -456,6 +461,175 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {feesFor && (
+        <PupilFees pupil={feesFor} setup={setup} onClose={() => setFeesFor(null)}
+          announce={announce} setErr={setErr} />
+      )}
+    </div>
+  );
+}
+
+// ── What one child actually pays ────────────────────────────────────────────
+// The class fee is a default, not a rule. Staff children, scholarship pupils,
+// siblings on a discount and families having a hard term all stay on the
+// register and are billed what was agreed.
+
+function PupilFees({ pupil, setup, onClose, announce, setErr }) {
+  const [preview, setPreview] = useState(null);
+  const [form, setForm] = useState({ kind: "EXEMPT", value: "", fee_item_id: "",
+                                     term_id: "", reason: "" });
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    apiFetch(`school/pupils/${pupil.customer_id}/fees`)
+      .then(d => setPreview(d.preview)).catch(e => setErr(e.message));
+  }
+  useEffect(load, [pupil.customer_id]);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await apiPost("school/exemptions", {
+        customer_id: pupil.customer_id,
+        kind: form.kind,
+        value: toInt(form.value),
+        fee_item_id: form.fee_item_id || null,
+        term_id: form.term_id || null,
+        reason: form.reason || null,
+      });
+      announce(`${pupil.name}'s fees updated.`);
+      setForm({ kind: "EXEMPT", value: "", fee_item_id: "", term_id: "", reason: "" });
+      load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function drop(id) {
+    try {
+      await apiDelete(`school/exemptions/${id}`);
+      announce("Arrangement removed — back to the class fee.");
+      load();
+    } catch (e) { setErr(e.message); }
+  }
+
+  const needsValue = form.kind !== "EXEMPT";
+
+  return (
+    <div className="card">
+      <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
+        <span className="card-title">{pupil.name} — fees this term</span>
+        <button className="btn btn-ghost btn-xs" onClick={onClose}>Close</button>
+      </div>
+      <div className="card-body" style={{ display: "grid", gap: 12 }}>
+        {!preview ? (
+          <span className="text-subtle text-sm">No term is open yet.</span>
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Item</th><th>Class fee</th><th>This pupil</th><th>Why</th></tr></thead>
+                <tbody>
+                  {preview.lines.map(l => (
+                    <tr key={l.fee_item_id}>
+                      <td>{l.name}</td>
+                      <td className="td-muted">{nairaFull(l.class_amount)}</td>
+                      <td className={l.amount < l.class_amount ? "text-green" : ""}>
+                        {nairaFull(l.amount)}
+                      </td>
+                      <td className="td-muted" style={{ fontSize: 12 }}>
+                        {l.exempt_reason || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td><strong>Total</strong></td>
+                    <td className="td-muted">{nairaFull(preview.class_total)}</td>
+                    <td><strong>{nairaFull(preview.pupil_total)}</strong></td>
+                    <td className="td-muted" style={{ fontSize: 12 }}>
+                      {preview.excused > 0 ? `${nairaFull(preview.excused)} excused` : ""}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {preview.exemptions.length > 0 && (
+              <div style={{ display: "grid", gap: 6 }}>
+                {preview.exemptions.map(x => (
+                  <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center",
+                                           fontSize: 13 }}>
+                    <span style={{ flex: 1 }}>
+                      {x.kind === "EXEMPT" ? "Pays nothing"
+                        : x.kind === "PERCENT" ? `${x.value}% off`
+                        : x.kind === "AMOUNT" ? `${nairaFull(x.value)} off the bill`
+                        : `Pays ${nairaFull(x.value)}`}
+                      {x.fee_item_id ? " · one item only" : " · all fees"}
+                      {x.term_id ? " · this term" : " · every term"}
+                      {x.reason ? ` — ${x.reason}` : ""}
+                    </span>
+                    <button className="btn btn-ghost btn-xs text-rose" onClick={() => drop(x.id)}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+                <label className="form-label">Arrangement</label>
+                <select value={form.kind}
+                  onChange={e => setForm(f => ({ ...f, kind: e.target.value }))}>
+                  <option value="EXEMPT">Pays nothing</option>
+                  <option value="PERCENT">Percentage off</option>
+                  <option value="AMOUNT">Amount off the bill</option>
+                  <option value="FIXED">Pays an agreed amount</option>
+                </select>
+              </div>
+              {needsValue && (
+                <div className="form-group" style={{ margin: 0, flex: "0 1 110px" }}>
+                  <label className="form-label">
+                    {form.kind === "PERCENT" ? "Percent" : "Amount"}
+                  </label>
+                  <input inputMode="numeric" value={form.value}
+                    onChange={e => setForm(f => ({ ...f, value: e.target.value }))} />
+                </div>
+              )}
+              <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+                <label className="form-label">Applies to</label>
+                <select value={form.fee_item_id}
+                  onChange={e => setForm(f => ({ ...f, fee_item_id: e.target.value }))}>
+                  <option value="">All fees</option>
+                  {(setup?.fee_items || []).map(i => (
+                    <option key={i.id} value={i.id}>{i.name} only</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group" style={{ margin: 0, flex: "1 1 150px" }}>
+                <label className="form-label">For how long</label>
+                <select value={form.term_id}
+                  onChange={e => setForm(f => ({ ...f, term_id: e.target.value }))}>
+                  <option value="">Every term</option>
+                  <option value={setup?.current_term_id || ""}>This term only</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ margin: 0, flex: "1 1 170px" }}>
+                <label className="form-label">Reason</label>
+                <input value={form.reason} placeholder="Staff child, scholarship…"
+                  onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
+              </div>
+              <button className="btn btn-primary" disabled={busy} onClick={save}>
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+            <span className="form-hint">
+              Changes apply the next time this term is charged. Fees already billed stay
+              as they are — correct those with a payment or a fresh charge.
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

@@ -20,8 +20,9 @@ import re
 from datetime import datetime
 
 from models import (
-    AcademicSession, Customer, FeeInvoice, FeeItem, FeeSchedule, PupilField,
-    SchoolClass, SchoolTerm, StudentEnrolment, Transaction, TransactionItem, utcnow,
+    AcademicSession, Customer, FeeExemption, FeeInvoice, FeeItem, FeeSchedule,
+    PupilField, SchoolClass, SchoolTerm, StudentEnrolment, Transaction,
+    TransactionItem, utcnow,
 )
 
 _log = logging.getLogger(__name__)
@@ -682,6 +683,160 @@ def schedule_for(db, owner_phone, term_id, class_id):
 
 # ── Opening a term ───────────────────────────────────────────────────────────
 
+# ── Excusing a child ─────────────────────────────────────────────────────────
+
+EXEMPTION_KINDS = ("EXEMPT", "PERCENT", "AMOUNT", "FIXED")
+
+
+def set_exemption(db, owner_phone, customer_id, kind="EXEMPT", value=0,
+                  fee_item_id=None, term_id=None, reason=None, created_by=None):
+    """Excuse a pupil from all or part of what their class is charged.
+
+    Leaving fee_item_id empty covers every charge, and leaving term_id empty
+    covers every term — a staff child is usually both.
+    """
+    kind = (kind or "EXEMPT").upper()
+    if kind not in EXEMPTION_KINDS:
+        raise ValueError(f"Kind must be one of: {', '.join(EXEMPTION_KINDS)}")
+    if kind == "PERCENT" and not (0 < int(value or 0) <= 100):
+        raise ValueError("A percentage discount must be between 1 and 100.")
+    if kind in ("AMOUNT", "FIXED") and int(value or 0) < 0:
+        raise ValueError("An amount cannot be negative.")
+    if not db.query(Customer).filter(Customer.owner_phone == owner_phone,
+                                     Customer.id == customer_id).first():
+        raise ValueError("Unknown pupil.")
+
+    existing = (db.query(FeeExemption)
+                .filter(FeeExemption.owner_phone == owner_phone,
+                        FeeExemption.customer_id == customer_id,
+                        FeeExemption.fee_item_id == fee_item_id,
+                        FeeExemption.term_id == term_id)
+                .first())
+    if existing:
+        existing.kind = kind
+        existing.value = int(value or 0)
+        existing.reason = (reason or "").strip() or None
+        existing.is_active = True
+        db.commit()
+        return existing
+
+    row = FeeExemption(owner_phone=owner_phone, customer_id=customer_id,
+                       fee_item_id=fee_item_id, term_id=term_id, kind=kind,
+                       value=int(value or 0), reason=(reason or "").strip() or None,
+                       created_by=created_by)
+    db.add(row)
+    db.commit()
+    return row
+
+
+def remove_exemption(db, owner_phone, exemption_id):
+    row = (db.query(FeeExemption)
+           .filter(FeeExemption.owner_phone == owner_phone,
+                   FeeExemption.id == exemption_id).first())
+    if not row:
+        raise ValueError("Exemption not found.")
+    db.delete(row)
+    db.commit()
+    return {"deleted": True}
+
+
+def exemptions_for(db, owner_phone, customer_id, term_id=None):
+    """Everything excusing this pupil, narrowest first so the most specific
+    rule wins — "no PTA levy this term" beats "half fees always"."""
+    rows = (db.query(FeeExemption)
+            .filter(FeeExemption.owner_phone == owner_phone,
+                    FeeExemption.customer_id == customer_id,
+                    FeeExemption.is_active == True)          # noqa: E712
+            .all())
+    if term_id:
+        rows = [r for r in rows if r.term_id in (None, term_id)]
+    rows.sort(key=lambda r: ((0 if r.fee_item_id else 1), (0 if r.term_id else 1)))
+    return rows
+
+
+def _is_whole_bill_discount(rule):
+    """"Take ₦10,000 off" with no item named means off the bill, once."""
+    return rule.kind == "AMOUNT" and not rule.fee_item_id
+
+
+def _apply_exemptions(amount, fee_item_id, exemptions):
+    """What this pupil pays for one line. Returns (amount, reason)."""
+    for rule in exemptions:
+        if _is_whole_bill_discount(rule):
+            continue                      # handled once, against the total
+        if rule.fee_item_id and rule.fee_item_id != fee_item_id:
+            continue
+        if rule.kind == "EXEMPT":
+            return 0, rule.reason or "Exempt"
+        if rule.kind == "PERCENT":
+            return int(round(amount * (100 - int(rule.value or 0)) / 100.0)), \
+                   rule.reason or f"{rule.value}% off"
+        if rule.kind == "AMOUNT":
+            return max(amount - int(rule.value or 0), 0), \
+                   rule.reason or f"N{int(rule.value or 0):,} off"
+        if rule.kind == "FIXED":
+            return max(int(rule.value or 0), 0), rule.reason or "Agreed amount"
+    return amount, None
+
+
+def bill_lines(schedule_rows, rules):
+    """This pupil's bill: the class schedule with their arrangements applied.
+
+    One place, used both to charge a term and to preview it, so what a bursar
+    is shown cannot drift from what is billed.
+    """
+    lines = []
+    for row in schedule_rows:
+        amount, reason = _apply_exemptions(row["amount"], row["fee_item_id"], rules)
+        lines.append({**row, "class_amount": row["amount"], "amount": amount,
+                      "exempt_reason": reason})
+
+    # An amount off the whole bill is taken once, spread across the lines until
+    # it is used up — ₦10,000 off a ₦47,000 bill is ₦37,000, not ₦10,000 off
+    # every line.
+    blanket = next((r for r in rules if _is_whole_bill_discount(r)), None)
+    if blanket:
+        remaining = int(blanket.value or 0)
+        for line in lines:
+            if remaining <= 0:
+                break
+            taken = min(line["amount"], remaining)
+            if taken:
+                line["amount"] -= taken
+                remaining -= taken
+                line["exempt_reason"] = (blanket.reason
+                                         or f"N{int(blanket.value or 0):,} off")
+    return lines
+
+
+def fee_preview(db, owner_phone, customer_id, term_id):
+    """What this pupil will be charged, line by line, against what their class
+    owes — so a bursar can see the effect of an exemption before the term is
+    opened, and explain it afterwards."""
+    enrolment = (db.query(StudentEnrolment)
+                 .filter(StudentEnrolment.owner_phone == owner_phone,
+                         StudentEnrolment.customer_id == customer_id)
+                 .order_by(StudentEnrolment.enrolled_at.desc()).first())
+    class_id = enrolment.class_id if enrolment else None
+    schedule = schedule_for(db, owner_phone, term_id, class_id) if class_id else []
+    rules = exemptions_for(db, owner_phone, customer_id, term_id)
+
+    compulsory = [row for row in schedule if not row["is_optional"]]
+    lines = bill_lines(compulsory, rules)
+    class_total = sum(line["class_amount"] for line in lines)
+    pupil_total = sum(line["amount"] for line in lines)
+    return {
+        "customer_id": customer_id,
+        "class_total": class_total,
+        "pupil_total": pupil_total,
+        "excused": class_total - pupil_total,
+        "lines": lines,
+        "exemptions": [{"id": r.id, "fee_item_id": r.fee_item_id, "term_id": r.term_id,
+                        "kind": r.kind, "value": r.value, "reason": r.reason}
+                       for r in rules],
+    }
+
+
 def _charge(db, owner_phone, customer, term, class_id, lines, kind, recorded_by_id=None):
     """Write one charge as an ordinary credit transaction, itemised.
 
@@ -738,13 +893,13 @@ def open_term(db, owner_phone, term_id, recorded_by_id=None):
             FeeInvoice.kind == "TERM").all()
     }
 
-    charged, skipped, total = 0, 0, 0
+    charged, skipped, total, excused_total, excused_pupils = 0, 0, 0, 0, 0
     classes = db.query(SchoolClass).filter(SchoolClass.owner_phone == owner_phone,
                                            SchoolClass.is_active == True).all()  # noqa: E712
     for school_class in classes:
-        lines = [row for row in schedule_for(db, owner_phone, term_id, school_class.id)
-                 if not row["is_optional"] and row["amount"] > 0]
-        if not lines:
+        schedule = [row for row in schedule_for(db, owner_phone, term_id, school_class.id)
+                    if not row["is_optional"] and row["amount"] > 0]
+        if not schedule:
             continue
         for enrolment in pupils_in_class(db, owner_phone, school_class.id, term.session_id):
             if enrolment.customer_id in already:
@@ -754,6 +909,21 @@ def open_term(db, owner_phone, term_id, recorded_by_id=None):
                 Customer.id == enrolment.customer_id).first()
             if not customer:
                 continue
+
+            # The class schedule is the default. Each pupil's own exemptions are
+            # applied on top, so a staff child or a pupil on scholarship can
+            # stay on the register and still be billed correctly.
+            rules = exemptions_for(db, owner_phone, customer.id, term_id)
+            priced = bill_lines(schedule, rules)
+            class_total = sum(line["class_amount"] for line in priced)
+            lines = [line for line in priced if line["amount"] > 0]
+            billed = sum(line["amount"] for line in lines)
+            if billed < class_total:
+                excused_total += class_total - billed
+                excused_pupils += 1
+            if not lines:
+                continue                 # excused from everything — nothing to charge
+
             invoice = _charge(db, owner_phone, customer, term, school_class.id,
                               lines, "TERM", recorded_by_id)
             if invoice:
@@ -762,6 +932,7 @@ def open_term(db, owner_phone, term_id, recorded_by_id=None):
     term.invoiced_at = utcnow()
     db.commit()
     return {"charged": charged, "already_charged": skipped, "total": total,
+            "excused_pupils": excused_pupils, "excused_total": excused_total,
             "term": term.name}
 
 
@@ -788,6 +959,10 @@ def charge_items(db, owner_phone, customer_id, term_id, items, recorded_by_id=No
     priced = {row["fee_item_id"]: row["amount"]
               for row in (schedule_for(db, owner_phone, term_id, class_id) if class_id else [])}
 
+    # A pupil excused from fees is excused here too — a scholarship that stops
+    # at the classroom door and charges for the textbook is not a scholarship.
+    rules = exemptions_for(db, owner_phone, customer_id, term_id)
+
     lines = []
     for entry in items or []:
         item = db.query(FeeItem).filter(FeeItem.owner_phone == owner_phone,
@@ -795,6 +970,7 @@ def charge_items(db, owner_phone, customer_id, term_id, items, recorded_by_id=No
         if not item:
             continue
         amount = priced.get(item.id) or item.default_amount or 0
+        amount, _reason = _apply_exemptions(int(amount), item.id, rules)
         if amount <= 0:
             continue
         lines.append({"name": item.name, "amount": int(amount),

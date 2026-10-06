@@ -259,6 +259,56 @@ def test_what_money_depends_on_is_closed_rather_than_deleted(head):
     assert summary["expected"] == 45_000
 
 
+def test_a_child_can_be_excused_from_the_class_fee(head):
+    session = _post("sessions", head, {"name": "2025/2026"})
+    term1 = session["terms"][0]["id"]
+    jss2 = _post("classes", head, {"name": "JSS 2"})["id"]
+    tuition = _post("fee-items", head, {"name": "Tuition"})["id"]
+    _post("schedule", head, {"term_id": term1, "class_id": jss2,
+                             "amounts": {tuition: 45_000}})
+
+    staff_child = _post("pupils", head, {"name": "Staff Child", "class_id": jss2,
+                                         "details": {"sex": "Female"}})
+    ordinary = _post("pupils", head, {"name": "Ordinary Pupil", "class_id": jss2,
+                                      "details": {"sex": "Male"}})
+
+    _post("exemptions", head, {"customer_id": staff_child["customer_id"],
+                               "kind": "PERCENT", "value": 50,
+                               "reason": "Staff child"})
+
+    preview = _get(f"pupils/{staff_child['customer_id']}/fees", head)["preview"]
+    assert preview["class_total"] == 45_000
+    assert preview["pupil_total"] == 22_500
+    assert preview["lines"][0]["exempt_reason"] == "Staff child"
+
+    result = _post(f"terms/{term1}/open", head, {})
+    assert result["excused_pupils"] == 1
+    assert result["excused_total"] == 22_500
+
+    pupils = {p["name"]: p for p in _get("pupils", head)["pupils"]}
+    assert pupils["Staff Child"]["balance"] == 22_500
+    assert pupils["Ordinary Pupil"]["balance"] == 45_000      # everyone else unchanged
+
+    # Undoing it puts them back on the class fee next time the term is charged.
+    exemption_id = preview["exemptions"][0]["id"]
+    assert client.delete(f"/app/api/school/exemptions/{exemption_id}",
+                         cookies=head).json()["deleted"] is True
+    after = _get(f"pupils/{staff_child['customer_id']}/fees", head)["preview"]
+    assert after["pupil_total"] == 45_000
+
+
+def test_a_nonsense_arrangement_is_refused(head):
+    _post("sessions", head, {"name": "2025/2026"})
+    jss2 = _post("classes", head, {"name": "JSS 2"})["id"]
+    pupil = _post("pupils", head, {"name": "Aisha Bello", "class_id": jss2,
+                                   "details": {"sex": "Female"}})
+    r = client.post("/app/api/school/exemptions", cookies=head,
+                    json={"customer_id": pupil["customer_id"],
+                          "kind": "PERCENT", "value": 150})
+    assert r.status_code == 400
+    assert "between 1 and 100" in r.json()["detail"]
+
+
 def test_a_question_can_be_renamed_and_dropped(head):
     field = _post("pupil-fields", head, {"label": "Best colour"})
     r = client.put(f"/app/api/school/pupil-fields/{field['id']}", cookies=head,

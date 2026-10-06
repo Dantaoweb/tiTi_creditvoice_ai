@@ -1354,6 +1354,34 @@ class PupilField(Base):
     created_at  = Column(DateTime, default=utcnow)
 
 
+class FeeExemption(Base):
+    """One child excused from part of what their class is charged.
+
+    A class schedule is the default, not a rule: schools carry staff children,
+    scholarship pupils, siblings on a discount, and families going through a
+    hard term. Without this the only way to be fair is to leave them off the
+    register, which loses the child from the school's own records.
+
+    Scope widens as the fields are left empty — no fee_item_id means every
+    charge, no term_id means every term until it is switched off.
+    """
+
+    __tablename__ = "fee_exemptions"
+
+    id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_phone = Column(String, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), index=True)
+    fee_item_id = Column(String, ForeignKey("fee_items.id"), nullable=True)
+    term_id     = Column(String, ForeignKey("school_terms.id"), nullable=True)
+    # EXEMPT (pay nothing) | PERCENT (off) | AMOUNT (off) | FIXED (pay this instead)
+    kind        = Column(String, default="EXEMPT")
+    value       = Column(Integer, default=0)
+    reason      = Column(String, nullable=True)      # "Staff child", "Scholarship"
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=utcnow)
+    created_by  = Column(String, nullable=True)
+
+
 class FeeInvoice(Base):
     """What one pupil was charged for one term, and the transaction that carries it.
 
