@@ -80,6 +80,24 @@ class PupilFieldUpdateRequest(BaseModel):
     sort_order: Optional[int] = None
 
 
+class PupilUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=120)
+    class_id: Optional[str] = Field(default=None, max_length=64)
+    parent_name: Optional[str] = Field(default=None, max_length=120)
+    parent_phone: Optional[str] = Field(default=None, max_length=20)
+    admission_no: Optional[str] = Field(default=None, max_length=40)
+    status: Optional[str] = Field(default=None, max_length=20)
+    details: Optional[dict] = None
+
+
+class FeeItemUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=80)
+    kind: Optional[str] = Field(default=None, max_length=20)
+    default_amount: Optional[int] = None
+    is_optional: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
 class PromoteRequest(BaseModel):
     customer_id: int
     class_id: str = Field(max_length=64)
@@ -674,5 +692,117 @@ def register_school_routes(app):
                 return {"defaulters": []}
             return {"defaulters": school.defaulters(db, owner_phone, term_id,
                                                     class_id or None)}
+        finally:
+            db.close()
+
+    # ── Correcting what was entered ───────────────────────────────────────────
+    # Everything typed into this screen can be typed again. Where money depends
+    # on a record it is closed rather than deleted, and the reason is returned
+    # so the screen can say why.
+
+    @app.put("/app/api/school/pupils/{customer_id}")
+    def web_school_update_pupil(customer_id: int, payload: PupilUpdateRequest,
+                                session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                customer, enrolment = school.update_pupil(
+                    db, owner_phone, customer_id,
+                    name=payload.name, class_id=payload.class_id,
+                    parent_name=payload.parent_name, parent_phone=payload.parent_phone,
+                    admission_no=payload.admission_no, details=payload.details,
+                    status=payload.status,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            return {"customer_id": customer.id, "name": customer.name,
+                    "class_id": enrolment.class_id if enrolment else None,
+                    "admission_no": enrolment.admission_no if enrolment else None,
+                    "details": school.pupil_details(db, owner_phone, customer)}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/school/pupils/{customer_id}")
+    def web_school_remove_pupil(customer_id: int,
+                                session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                return school.remove_pupil(db, owner_phone, customer_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+        finally:
+            db.close()
+
+    @app.delete("/app/api/school/classes/{class_id}")
+    def web_school_delete_class(class_id: str,
+                                session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                return school.delete_class(db, owner_phone, class_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+        finally:
+            db.close()
+
+    @app.put("/app/api/school/fee-items/{item_id}")
+    def web_school_update_fee_item(item_id: str, payload: FeeItemUpdateRequest,
+                                   session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                row = school.update_fee_item(
+                    db, owner_phone, item_id, name=payload.name, kind=payload.kind,
+                    default_amount=payload.default_amount,
+                    is_optional=payload.is_optional, is_active=payload.is_active)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            if not row:
+                raise HTTPException(status_code=404, detail="Fee item not found.")
+            return {"id": row.id, "name": row.name, "kind": row.kind,
+                    "is_optional": bool(row.is_optional), "is_active": bool(row.is_active)}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/school/fee-items/{item_id}")
+    def web_school_delete_fee_item(item_id: str,
+                                   session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                return school.delete_fee_item(db, owner_phone, item_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+        finally:
+            db.close()
+
+    @app.delete("/app/api/school/pupil-fields/{field_id}")
+    def web_school_delete_pupil_field(field_id: str,
+                                      session: dict = Depends(require_web_auth)):
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            _require_can_record(db, session, count_sale=False)
+            try:
+                return school.delete_pupil_field(db, owner_phone, field_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
         finally:
             db.close()

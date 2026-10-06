@@ -396,6 +396,213 @@ def register_pupil(db, owner_phone, name, class_id=None, parent_name=None,
     return customer, enrolment
 
 
+def update_pupil(db, owner_phone, customer_id, name=None, class_id=None,
+                 parent_name=None, parent_phone=None, admission_no=None,
+                 details=None, status=None):
+    """Correct a pupil's record. Everything typed when they were registered can
+    be typed again — a misspelled name, the wrong class, a parent's new number,
+    or any of the school's own questions."""
+    customer = db.query(Customer).filter(Customer.owner_phone == owner_phone,
+                                         Customer.id == customer_id).first()
+    if not customer:
+        raise ValueError("Unknown pupil.")
+
+    cleaned, problems = validate_details(db, owner_phone, details, partial=True)
+    if problems:
+        raise ValueError(" ".join(problems))
+
+    if name is not None and name.strip():
+        clash = (db.query(Customer)
+                 .filter(Customer.owner_phone == owner_phone,
+                         Customer.name.ilike(name.strip()),
+                         Customer.id != customer_id).first())
+        if clash:
+            raise ValueError(f"Another pupil is already called {name.strip()}.")
+        customer.name = name.strip()
+    if parent_phone is not None:
+        customer.customer_phone = parent_phone.strip() or None
+    if cleaned:
+        try:
+            stored = json.loads(customer.profile_json) if customer.profile_json else {}
+        except (TypeError, ValueError):
+            stored = {}
+        stored.update(cleaned)
+        customer.profile_json = json.dumps(stored)
+
+    enrolment = (db.query(StudentEnrolment)
+                 .filter(StudentEnrolment.owner_phone == owner_phone,
+                         StudentEnrolment.customer_id == customer_id)
+                 .order_by(StudentEnrolment.enrolled_at.desc()).first())
+    if enrolment:
+        if class_id is not None:
+            enrolment.class_id = class_id or None
+        if parent_name is not None:
+            enrolment.parent_name = parent_name.strip() or None
+        if admission_no is not None and admission_no.strip():
+            enrolment.admission_no = admission_no.strip()
+        if status:
+            enrolment.status = status.upper()
+    db.commit()
+    return customer, enrolment
+
+
+def remove_pupil(db, owner_phone, customer_id):
+    """Take a pupil off the register.
+
+    One that has been charged or has paid is marked as left rather than
+    deleted: their fees are part of the school's books, and deleting the pupil
+    would quietly change what the term collected.
+    """
+    customer = db.query(Customer).filter(Customer.owner_phone == owner_phone,
+                                         Customer.id == customer_id).first()
+    if not customer:
+        raise ValueError("Unknown pupil.")
+
+    has_money = db.query(Transaction).filter(
+        Transaction.customer_id == customer_id).first() is not None
+    enrolments = db.query(StudentEnrolment).filter(
+        StudentEnrolment.owner_phone == owner_phone,
+        StudentEnrolment.customer_id == customer_id).all()
+
+    if has_money:
+        for enrolment in enrolments:
+            enrolment.status = "LEFT"
+        db.commit()
+        return {"deleted": False, "marked_left": True,
+                "reason": "This pupil has fees on record, so they are marked as left "
+                          "rather than deleted — removing them would change what the "
+                          "term collected."}
+
+    for enrolment in enrolments:
+        db.delete(enrolment)
+    db.query(FeeInvoice).filter(FeeInvoice.owner_phone == owner_phone,
+                                FeeInvoice.customer_id == customer_id).delete()
+    db.delete(customer)
+    db.commit()
+    return {"deleted": True, "marked_left": False}
+
+
+def update_class(db, owner_phone, class_id, name=None, level_order=None,
+                 teacher_id=None, is_active=None):
+    row = db.query(SchoolClass).filter(SchoolClass.owner_phone == owner_phone,
+                                       SchoolClass.id == class_id).first()
+    if not row:
+        return None
+    if name is not None and name.strip():
+        row.name = name.strip()
+    if level_order is not None:
+        row.level_order = int(level_order)
+    if teacher_id is not None:
+        row.teacher_id = teacher_id or None
+    if is_active is not None:
+        row.is_active = bool(is_active)
+    db.commit()
+    return row
+
+
+def delete_class(db, owner_phone, class_id):
+    """Remove a class, or close it if pupils have been through it.
+
+    A class that has been invoiced is part of the record of a term; closing it
+    keeps the history and stops it appearing on new forms.
+    """
+    row = db.query(SchoolClass).filter(SchoolClass.owner_phone == owner_phone,
+                                       SchoolClass.id == class_id).first()
+    if not row:
+        raise ValueError("Class not found.")
+
+    enrolled = db.query(StudentEnrolment).filter(
+        StudentEnrolment.owner_phone == owner_phone,
+        StudentEnrolment.class_id == class_id).count()
+    invoiced = db.query(FeeInvoice).filter(
+        FeeInvoice.owner_phone == owner_phone,
+        FeeInvoice.class_id == class_id).count()
+
+    if enrolled or invoiced:
+        row.is_active = False
+        db.commit()
+        return {"deleted": False, "closed": True,
+                "reason": (f"{enrolled} pupil(s) have been in this class, so it is closed "
+                           f"rather than deleted — their records keep the class they sat in.")}
+
+    db.query(FeeSchedule).filter(FeeSchedule.owner_phone == owner_phone,
+                                 FeeSchedule.class_id == class_id).delete()
+    db.delete(row)
+    db.commit()
+    return {"deleted": True, "closed": False}
+
+
+def update_fee_item(db, owner_phone, item_id, name=None, kind=None,
+                    default_amount=None, is_optional=None, is_active=None):
+    row = db.query(FeeItem).filter(FeeItem.owner_phone == owner_phone,
+                                   FeeItem.id == item_id).first()
+    if not row:
+        return None
+    if name is not None and name.strip():
+        row.name = name.strip()
+    if kind:
+        kind = kind.upper()
+        if kind not in FEE_KINDS:
+            raise ValueError(f"Kind must be one of: {', '.join(FEE_KINDS)}")
+        row.kind = kind
+    if default_amount is not None:
+        row.default_amount = int(default_amount) or None
+    if is_optional is not None:
+        row.is_optional = bool(is_optional)
+    if is_active is not None:
+        row.is_active = bool(is_active)
+    db.commit()
+    return row
+
+
+def delete_fee_item(db, owner_phone, item_id):
+    """Remove something the school charges for, or retire it once it has been
+    charged — a fee already on a pupil's bill cannot be unsaid."""
+    row = db.query(FeeItem).filter(FeeItem.owner_phone == owner_phone,
+                                   FeeItem.id == item_id).first()
+    if not row:
+        raise ValueError("Fee item not found.")
+
+    scheduled = db.query(FeeSchedule).filter(
+        FeeSchedule.owner_phone == owner_phone,
+        FeeSchedule.fee_item_id == item_id).all()
+    charged = db.query(TransactionItem).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).join(Customer, Customer.id == Transaction.customer_id).filter(
+        Customer.owner_phone == owner_phone,
+        TransactionItem.product == row.name).first() is not None
+
+    if charged:
+        row.is_active = False
+        db.commit()
+        return {"deleted": False, "retired": True,
+                "reason": "This has already been charged to a pupil, so it is retired "
+                          "rather than deleted — their bills keep what they were charged."}
+
+    for schedule in scheduled:
+        db.delete(schedule)
+    db.delete(row)
+    db.commit()
+    return {"deleted": True, "retired": False}
+
+
+def delete_pupil_field(db, owner_phone, field_id):
+    """Remove one of the school's own questions. Answers already given stay on
+    the pupils who gave them; the question simply stops being asked."""
+    row = db.query(PupilField).filter(PupilField.owner_phone == owner_phone,
+                                      PupilField.id == field_id).first()
+    if not row:
+        raise ValueError("Field not found.")
+    if row.is_standard:
+        row.is_active = False
+        db.commit()
+        return {"deleted": False, "hidden": True,
+                "reason": "A standard question is switched off rather than deleted."}
+    db.delete(row)
+    db.commit()
+    return {"deleted": True, "hidden": False}
+
+
 def promote(db, owner_phone, customer_id, to_class_id, session_id):
     """Move a pupil into the next class for a new session, keeping the old
     record — a promotion is history, not an edit."""

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import {
-  GraduationCap, Users, Wallet, Settings, AlertCircle, Check, Plus, BookOpen, Bell,
+  GraduationCap, Users, Wallet, Settings, AlertCircle, Check, Plus, BookOpen, Bell, Trash2,
 } from "lucide-react";
-import { apiFetch, apiPost, apiPut } from "../lib/api";
+import { apiDelete, apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import MetricCard from "../components/MetricCard";
 
@@ -267,6 +267,7 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
   const [details, setDetails] = useState({});
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [classFilter, setClassFilter] = useState("");
 
   useEffect(() => {
@@ -275,18 +276,59 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
 
   const shown = classFilter ? pupils.filter(p => p.class_id === classFilter) : pupils;
 
-  async function register(e) {
+  function startNew() {
+    setEditingId(null);
+    setForm({ name: "", class_id: classFilter || "", parent_name: "", parent_phone: "" });
+    setDetails({});
+    setOpen(true);
+  }
+
+  async function startEdit(pupil) {
+    setEditingId(pupil.customer_id);
+    setForm({
+      name: pupil.name, class_id: pupil.class_id || "",
+      parent_name: pupil.parent_name || "", parent_phone: pupil.parent_phone || "",
+      admission_no: pupil.admission_no || "",
+    });
+    setOpen(true);
+    // The pupil's own answers come from their statement, so the form opens
+    // filled in rather than asking for everything again.
+    try {
+      const statement = await apiFetch(`school/pupils/${pupil.customer_id}/statement`);
+      const filled = {};
+      (statement.details || []).forEach(d => { filled[d.key] = d.value; });
+      setDetails(filled);
+    } catch { /* an edit with blank details is still better than no edit */ }
+  }
+
+  async function save(e) {
     e.preventDefault();
     setBusy(true);
     try {
-      const res = await apiPost("school/pupils", { ...form, details });
-      announce(`${res.name} registered — admission number ${res.admission_no}.`);
+      if (editingId) {
+        const res = await apiPut(`school/pupils/${editingId}`, { ...form, details });
+        announce(`${res.name} updated.`);
+      } else {
+        const res = await apiPost("school/pupils", { ...form, details });
+        announce(`${res.name} registered — admission number ${res.admission_no}.`);
+      }
       setForm({ name: "", class_id: form.class_id, parent_name: "", parent_phone: "" });
       setDetails({});
       setOpen(false);
+      setEditingId(null);
       reload();
     } catch (e2) { setErr(e2.message); }
     finally { setBusy(false); }
+  }
+
+  async function remove(pupil) {
+    if (!window.confirm(`Remove ${pupil.name} from the register?`)) return;
+    try {
+      const res = await apiDelete(`school/pupils/${pupil.customer_id}`);
+      announce(res.deleted ? `${pupil.name} removed.`
+                           : `${pupil.name} marked as left. ${res.reason}`);
+      reload();
+    } catch (e) { setErr(e.message); }
   }
 
   return (
@@ -301,7 +343,7 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
-            <button className="btn btn-primary btn-sm" onClick={() => setOpen(o => !o)}
+            <button className="btn btn-primary btn-sm" onClick={startNew}
               style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <Plus size={14} /> Register pupil
             </button>
@@ -309,7 +351,12 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
         </div>
 
         {open && (
-          <form onSubmit={register} className="card-body" style={{ display: "grid", gap: 10 }}>
+          <form onSubmit={save} className="card-body" style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <strong>{editingId ? "Edit pupil" : "New pupil"}</strong>
+              <button type="button" className="btn btn-ghost btn-xs"
+                onClick={() => { setOpen(false); setEditingId(null); }}>Cancel</button>
+            </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <div className="form-group" style={{ margin: 0, flex: "1 1 200px" }}>
                 <label className="form-label">Pupil's name *</label>
@@ -367,7 +414,7 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
 
             <div>
               <button className="btn btn-primary" disabled={busy || !form.name.trim()}>
-                {busy ? "Saving…" : "Register"}
+                {busy ? "Saving…" : editingId ? "Save changes" : "Register"}
               </button>
             </div>
           </form>
@@ -376,11 +423,11 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
         <div className="table-scroll">
           <table>
             <thead>
-              <tr><th>Pupil</th><th>Class</th><th>Admission no.</th><th>Parent</th><th>Balance</th></tr>
+              <tr><th>Pupil</th><th>Class</th><th>Admission no.</th><th>Parent</th><th>Balance</th><th></th></tr>
             </thead>
             <tbody>
               {shown.length === 0 ? (
-                <tr><td colSpan={5} className="td-muted">No pupils yet.</td></tr>
+                <tr><td colSpan={6} className="td-muted">No pupils yet.</td></tr>
               ) : shown.map(p => (
                 <tr key={p.customer_id}>
                   <td><strong>{p.name}</strong></td>
@@ -392,6 +439,17 @@ function Pupils({ setup, pupils, reload, announce, setErr }) {
                   </td>
                   <td className={p.balance > 0 ? "text-rose" : ""}>
                     {p.balance > 0 ? nairaFull(p.balance) : "—"}
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="btn btn-ghost btn-xs" onClick={() => startEdit(p)}>
+                        Edit
+                      </button>
+                      <button className="btn btn-ghost btn-xs text-rose"
+                        onClick={() => remove(p)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -566,6 +624,17 @@ function Setup({ setup, reload, announce, setErr }) {
     catch (e) { setErr(e.message); }
   }
 
+  async function removeThing(path, confirmText) {
+    if (!window.confirm(confirmText)) return;
+    try {
+      const res = await apiDelete(path);
+      // Records money depends on are closed rather than deleted, and the
+      // server says why — pass that straight on instead of inventing wording.
+      announce(res.deleted ? "Removed." : res.reason || "Closed.");
+      reload();
+    } catch (e) { setErr(e.message); }
+  }
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div className="card">
@@ -607,9 +676,26 @@ function Setup({ setup, reload, announce, setErr }) {
       <div className="card">
         <div className="card-header"><span className="card-title">Classes</span></div>
         <div className="card-body" style={{ display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: 6 }}>
             {(setup?.classes || []).map(c => (
-              <span key={c.id} className="badge badge-gray">{c.name}</span>
+              <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input defaultValue={c.name} style={{ flex: 1 }}
+                  onBlur={e => {
+                    const name = e.target.value.trim();
+                    if (name && name !== c.name) {
+                      call(() => apiPut(`school/classes/${c.id}`,
+                                        { name, level_order: c.level_order,
+                                          teacher_id: c.teacher_id, is_active: c.is_active }),
+                           `Renamed to ${name}.`);
+                    }
+                  }} />
+                {!c.is_active && <span className="badge badge-gray">Closed</span>}
+                <button className="btn btn-ghost btn-xs text-rose"
+                  onClick={() => removeThing(`school/classes/${c.id}`,
+                                             `Remove ${c.name}?`)}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
             ))}
             {(setup?.classes || []).length === 0 && (
               <span className="text-subtle text-sm">No classes yet.</span>
@@ -633,12 +719,37 @@ function Setup({ setup, reload, announce, setErr }) {
           <div className="text-subtle text-sm">
             Mark books and extras as optional — a pupil owes those only when they take one.
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: 6 }}>
             {(setup?.fee_items || []).map(i => (
-              <span key={i.id} className={`badge ${i.is_optional ? "badge-amber" : "badge-blue"}`}>
-                {i.name}{i.is_optional ? " (optional)" : ""}
-              </span>
+              <div key={i.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input defaultValue={i.name} style={{ flex: 1 }}
+                  onBlur={e => {
+                    const name = e.target.value.trim();
+                    if (name && name !== i.name) {
+                      call(() => apiPut(`school/fee-items/${i.id}`, { name }),
+                           `Renamed to ${name}.`);
+                    }
+                  }} />
+                <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 12 }}>
+                  <input type="checkbox" checked={i.is_optional}
+                    onChange={e => call(
+                      () => apiPut(`school/fee-items/${i.id}`,
+                                   { is_optional: e.target.checked }),
+                      e.target.checked
+                        ? `${i.name} is now charged only when taken.`
+                        : `${i.name} is now charged to everyone when the term opens.`)} />
+                  optional
+                </label>
+                {!i.is_active && <span className="badge badge-gray">Retired</span>}
+                <button className="btn btn-ghost btn-xs text-rose"
+                  onClick={() => removeThing(`school/fee-items/${i.id}`, `Remove ${i.name}?`)}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
             ))}
+            {(setup?.fee_items || []).length === 0 && (
+              <span className="text-subtle text-sm">Nothing set up yet.</span>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
             <input value={item.name} style={{ flex: "1 1 160px" }}
@@ -711,17 +822,38 @@ function Setup({ setup, reload, announce, setErr }) {
           </div>
           <div style={{ display: "grid", gap: 6 }}>
             {fields.map(f => (
-              <label key={f.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
-                <input type="checkbox" checked={f.is_active}
+              <div key={f.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" checked={f.is_active} title="Ask this question"
                   onChange={e => {
                     apiPut(`school/pupil-fields/${f.id}`, { is_active: e.target.checked })
                       .then(loadFields).catch(err => setErr(err.message));
                   }} />
-                {f.label}
-                <span className="text-subtle text-sm">
-                  {f.field_type}{f.is_required ? " · required" : ""}
-                </span>
-              </label>
+                <input defaultValue={f.label} style={{ flex: 1 }}
+                  onBlur={e => {
+                    const label = e.target.value.trim();
+                    if (label && label !== f.label) {
+                      apiPut(`school/pupil-fields/${f.id}`, { label })
+                        .then(loadFields).catch(err => setErr(err.message));
+                    }
+                  }} />
+                <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 12 }}>
+                  <input type="checkbox" checked={f.is_required}
+                    onChange={e => {
+                      apiPut(`school/pupil-fields/${f.id}`, { is_required: e.target.checked })
+                        .then(loadFields).catch(err => setErr(err.message));
+                    }} />
+                  required
+                </label>
+                <span className="text-subtle text-sm">{f.field_type}</span>
+                <button className="btn btn-ghost btn-xs text-rose"
+                  onClick={() => {
+                    if (!window.confirm(`Stop asking "${f.label}"?`)) return;
+                    apiDelete(`school/pupil-fields/${f.id}`)
+                      .then(loadFields).catch(err => setErr(err.message));
+                  }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
             ))}
           </div>
 

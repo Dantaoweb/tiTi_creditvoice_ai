@@ -192,6 +192,84 @@ def test_fee_reminders_are_queued_for_the_parents_who_owe(head):
     assert paid_up["name"] not in str(queue)      # nobody paid-up is chased
 
 
+def test_everything_entered_can_be_corrected_over_the_api(head):
+    session = _post("sessions", head, {"name": "2025/2026"})
+    term1 = session["terms"][0]["id"]
+    jss2 = _post("classes", head, {"name": "JS2"})["id"]
+    pry4 = _post("classes", head, {"name": "Primary 4"})["id"]
+    tuition = _post("fee-items", head, {"name": "Tutition"})["id"]   # typo on purpose
+    pupil = _post("pupils", head, {"name": "Aisah Bello", "class_id": jss2,
+                                   "parent_phone": "08031112222",
+                                   "details": {"sex": "Female"}})
+
+    # A class, a fee item and a pupil, all corrected.
+    r = client.put(f"/app/api/school/classes/{jss2}", cookies=head,
+                   json={"name": "JSS 2", "level_order": 2, "is_active": True})
+    assert r.status_code == 200, r.text
+    r = client.put(f"/app/api/school/fee-items/{tuition}", cookies=head,
+                   json={"name": "Tuition"})
+    assert r.status_code == 200, r.text
+    r = client.put(f"/app/api/school/pupils/{pupil['customer_id']}", cookies=head,
+                   json={"name": "Aisha Bello", "class_id": pry4,
+                         "parent_name": "Mr Bello"})
+    assert r.status_code == 200, r.text
+
+    listed = _get("pupils", head)["pupils"][0]
+    assert listed["name"] == "Aisha Bello"
+    assert listed["class_name"] == "Primary 4"
+    assert listed["parent_name"] == "Mr Bello"
+    assert {c["name"] for c in _get("setup", head)["classes"]} == {"JSS 2", "Primary 4"}
+
+    # What the class owes can be rewritten, including removing an item.
+    _post("schedule", head, {"term_id": term1, "class_id": pry4,
+                             "amounts": {tuition: 45_000}})
+    _post("schedule", head, {"term_id": term1, "class_id": pry4,
+                             "amounts": {tuition: 50_000}})
+    assert _get("schedule", head, term_id=term1, class_id=pry4)["total"] == 50_000
+
+    # An empty class goes outright.
+    assert client.delete(f"/app/api/school/classes/{jss2}",
+                         cookies=head).json()["deleted"] is True
+
+
+def test_what_money_depends_on_is_closed_rather_than_deleted(head):
+    session = _post("sessions", head, {"name": "2025/2026"})
+    term1 = session["terms"][0]["id"]
+    jss2 = _post("classes", head, {"name": "JSS 2"})["id"]
+    tuition = _post("fee-items", head, {"name": "Tuition"})["id"]
+    _post("schedule", head, {"term_id": term1, "class_id": jss2,
+                             "amounts": {tuition: 45_000}})
+    pupil = _post("pupils", head, {"name": "Aisha Bello", "class_id": jss2,
+                                   "details": {"sex": "Female"}})
+    _post(f"terms/{term1}/open", head, {})
+
+    charged = client.delete(f"/app/api/school/pupils/{pupil['customer_id']}",
+                            cookies=head).json()
+    assert charged["deleted"] is False and charged["marked_left"] is True
+
+    klass = client.delete(f"/app/api/school/classes/{jss2}", cookies=head).json()
+    assert klass["deleted"] is False and klass["closed"] is True
+
+    item = client.delete(f"/app/api/school/fee-items/{tuition}", cookies=head).json()
+    assert item["deleted"] is False and item["retired"] is True
+    assert "already been charged" in item["reason"]
+
+    # The money is still on the books after all three.
+    summary = _get("term-summary", head)["summary"]
+    assert summary["expected"] == 45_000
+
+
+def test_a_question_can_be_renamed_and_dropped(head):
+    field = _post("pupil-fields", head, {"label": "Best colour"})
+    r = client.put(f"/app/api/school/pupil-fields/{field['id']}", cookies=head,
+                   json={"label": "Favourite colour", "is_required": True})
+    assert r.status_code == 200 and r.json()["label"] == "Favourite colour"
+
+    assert client.delete(f"/app/api/school/pupil-fields/{field['id']}",
+                         cookies=head).json()["deleted"] is True
+    assert "best_colour" not in {f["key"] for f in _get("pupil-fields", head)["fields"]}
+
+
 def test_reminding_before_a_term_exists_says_so(head):
     r = client.post("/app/api/school/fee-reminders", cookies=head, json={})
     assert r.status_code == 400
