@@ -52,12 +52,19 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   // the catalogue already on the phone first, which keeps scanning working when
   // the connection drops mid-shift.
   const [scan, setScan] = useState({ code: "", busy: false });
+  const [lastScan, setLastScan] = useState(null);
+  const searchRef = useRef(null);
 
   function addByScan(product) {
     // Scanning the same item again means two of them, not a second line.
     onSetQty(product, qtyFor(product) + 1);
     setQ("");
     setScan({ code: "", busy: false });
+    // Hold it where the cashier can see it: twelve of something is one scan
+    // and a typed number, not twelve scans. Focus goes back to the box so the
+    // next scan lands without touching the screen.
+    setLastScan(product);
+    requestAnimationFrame(() => searchRef.current?.focus());
   }
 
   async function onSearchKey(e) {
@@ -158,6 +165,7 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
       <div className="pos-pgrid-search">
         <Search size={15} className="pos-search-icon" />
         <input
+          ref={searchRef}
           className="pos-search-input"
           value={q}
           onChange={e => setQ(e.target.value)}
@@ -198,6 +206,47 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
           )}
         </div>
       )}
+
+      {/* Just scanned — change the number here instead of scanning twelve
+          times. Stays until the next scan, so the box keeps the cashier's
+          focus for the one after that. */}
+      {lastScan && !scan.code && (() => {
+        const live = products.find(p => p.id === lastScan.id) || lastScan;
+        const n = qtyFor(live);
+        if (n <= 0) return null;          // removed from the cart; nothing to show
+        return (
+          <div className="pos-grid-msg" style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            borderColor: "#2563eb", background: "rgba(37,99,235,0.08)",
+          }}>
+            <span style={{ flex: 1, minWidth: 120, textAlign: "left" }}>
+              <strong>{live.name}</strong>
+              <div className="text-subtle text-sm">
+                {nairaFull(live.selling_price)} each · {nairaFull(live.selling_price * n)}
+              </div>
+            </span>
+            <div className="pos-qty">
+              <button onClick={() => onSetQty(live, Math.max(0, n - 1))}
+                disabled={n <= 0} aria-label="decrease">
+                <Minus size={13} />
+              </button>
+              <input
+                type="number" min={0} inputMode="numeric"
+                value={n}
+                onChange={e => onSetQty(live, Math.max(0, parseInt(e.target.value) || 0))}
+                onFocus={e => e.target.select()}
+                aria-label={`quantity of ${live.name}`}
+              />
+              <button onClick={() => onSetQty(live, n + 1)} aria-label="increase">
+                <Plus size={13} />
+              </button>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setLastScan(null)}>
+              Done
+            </button>
+          </div>
+        );
+      })()}
 
       <div className="pos-grid-scroll" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {loading ? (
