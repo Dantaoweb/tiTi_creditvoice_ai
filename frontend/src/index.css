@@ -4036,3 +4036,105 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   line-height: 1.45;
   color: var(--text-muted);
 }
+
+/* ── Invoices ──────────────────────────────────────────────────────────────
+   An invoice asks to be paid; it is not a debt and moves no stock until the
+   goods are delivered or the money comes in, so the page shows where it
+   stands and what can happen next above the document itself. */
+.invoice-form input:not([type="checkbox"]):not([type="date"]) { width: 100%; }
+.invoice-form input[type="date"] { width: 100%; }
+.invoice-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: var(--line-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.invoice-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.invoice-line-total {
+  flex: 0 0 90px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 13px;
+}
+.invoice-suggest {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.invoice-suggest button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line-2);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.invoice-suggest button:hover { background: var(--line-2); }
+.invoice-state {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.invoice-state__text {
+  margin: 10px 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.invoice-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.invoice-flag--done { color: #166534; }
+.invoice-pay {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.invoice-pay__result { font-size: 13px; font-weight: 600; }
+.invoice-stamp {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 12px;
+  border: 2px solid #166534;
+  border-radius: 6px;
+  color: #166534;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  transform: rotate(-4deg);
+}
+.invoice-stamp--void { border-color: #64748b; color: #64748b; }
+@media (max-width: 560px) {
+  .invoice-line { padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
+  .invoice-line-total { flex: 1 0 auto; }
+}

@@ -786,6 +786,9 @@ def register_customer_routes(app):
             # Voiding a sale returns the stock it deducted (no-op for payments).
             from inventory_suppliers import restore_inventory_for_voided_sale
             restored = restore_inventory_for_voided_sale(db, owner_phone, tx.id, user.id)
+            # An invoice paid by this sale is waiting for payment again.
+            from invoices import reopen_invoice_for_voided_sale
+            reopen_invoice_for_voided_sale(db, tx.id)
             db.add(TransactionNote(
                 transaction_id=tx.id,
                 author_user_id=user.id,

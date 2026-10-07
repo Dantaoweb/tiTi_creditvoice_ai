@@ -97,13 +97,17 @@ def test_branch_admin_sees_whole_branch_not_others():
 
 
 def test_invoice_actions_scoped_to_staff():
-    # A regular staff can only invoice their OWN sales; a branch admin any sale
-    # in their branch; the owner any sale.
+    # The older invoices (numbers on credit sales): a regular staff can only
+    # open their OWN; a branch admin any in their branch; the owner any.
     owner_phone, staff_phone, admin_phone = _setup()
     db = SessionLocal()
-    txs = {t.amount: t.id for t in db.query(Transaction)
-           .join(Customer, Transaction.customer_id == Customer.id)
-           .filter(Customer.owner_phone == owner_phone).all()}
+    rows = (db.query(Transaction)
+            .join(Customer, Transaction.customer_id == Customer.id)
+            .filter(Customer.owner_phone == owner_phone).all())
+    for n, t in enumerate(rows, start=1):
+        t.invoice_number = n
+    db.commit()
+    txs = {t.amount: t.id for t in rows}
     db.close()
     tx_own, tx_colleague_A, tx_branch_B = txs[5000], txs[7000], txs[3000]
 
@@ -119,6 +123,39 @@ def test_invoice_actions_scoped_to_staff():
     owner_c = _login(owner_phone, "5678")
     assert client.post(f"/app/api/invoices/{tx_branch_B}/issue", cookies=owner_c).status_code == 200
 
+
+
+def test_new_invoices_scoped_to_staff():
+    # An invoice written by a regular staff is theirs; a branch admin sees the
+    # branch's; another branch's is invisible; the owner sees everything.
+    owner_phone, staff_phone, admin_phone = _setup()
+    staff = _login(staff_phone, "1234")
+    admin = _login(admin_phone, "1234")
+    owner_c = _login(owner_phone, "5678")
+    db = SessionLocal()
+    cust = {c.name: c.id for c in db.query(Customer).filter(Customer.owner_phone == owner_phone)}
+    lekki = db.query(Branch).filter(Branch.owner_phone == owner_phone, Branch.name == "Lekki").first().id
+    db.close()
+    item = [{"name": "Repair", "qty": 1, "unit_price": 1000}]
+
+    mine = client.post("/app/api/invoices/new", cookies=staff,
+                       json={"customer_id": cust["AdaA"], "items": item}).json()["id"]
+    colleague = client.post("/app/api/invoices/new", cookies=admin,
+                            json={"customer_id": cust["AdaA2"], "items": item}).json()["id"]
+    other_branch = client.post("/app/api/invoices/new", cookies=owner_c,
+                               json={"customer_id": cust["BolaB"], "items": item,
+                                     "branch_id": lekki}).json()["id"]
+
+    def visible(cookies):
+        return {r["id"] for r in client.get("/app/api/invoices", cookies=cookies).json()["invoices"]
+                if r["kind"] == "invoice"}
+
+    assert visible(staff) == {mine}
+    assert client.get(f"/app/api/invoices/doc/{colleague}", cookies=staff).status_code == 404
+    assert visible(admin) == {mine, colleague}
+    assert client.post(f"/app/api/invoices/doc/{other_branch}/pay", cookies=admin,
+                       json={"amount": 1000}).status_code == 404
+    assert visible(owner_c) == {mine, colleague, other_branch}
 
 def test_owner_sees_all_branches():
     owner_phone, _s, _a = _setup()

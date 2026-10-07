@@ -114,7 +114,7 @@ RECEIPTS (web app):
 - Every sale AND every debtor payment has a receipt. When a debtor pays, a payment receipt is produced showing the amount paid and the remaining balance (or credit); if the customer has no phone saved it still exists to print. The Receipts page lists all past receipts to view or reprint. Printing shows only the receipt with the business name, not the app.
 
 INVOICES (web app, PRO/GO):
-- A credit sale can be shown as a formal INVOICE with its own number (INV-0001). Open the customer's history (or a receipt) and choose "View as Invoice".
+- INVOICES (web app → Invoices → New invoice) ask a customer to pay, with their own number (INV-0001). An invoice is not a debt and moves no stock: stock goes out when it is marked delivered, and recording the payment turns it into a sale — any unpaid part becomes the customer's debt.
 - The Invoices page lists them with status Open / Overdue / Paid, shows what's outstanding, and lets you send an invoice to the customer's WhatsApp. An invoice is a request for payment (it does not say "keep this receipt").
 
 BRANCHES / MULTIPLE LOCATIONS (web app ONLY — not WhatsApp):

@@ -42,24 +42,57 @@ def next_receipt_number(db, owner_phone):
     return owner.receipt_counter
 
 
-def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
-                  branch_id=None, due_date=None, customer_name=None, customer_phone=None,
-                  service_date=None):
+def deduct_stock_for_items(db, owner_phone, items, user_id, source_type, source_id, note):
+    """Take sold goods out of stock: one OUT movement per stocked line.
+
+    Service items are skipped. Harmonised with quick sale and item
+    customization: prefer the explicitly-linked item, but fall back to matching
+    by name so a line typed by name still deducts from the same stock when a
+    same-named item exists — the same find_matching_inventory_item the other
+    sale paths use, so identical names deduct identically everywhere.
     """
-    Save a POS sale and deduct inventory.
+    from inventory_suppliers import find_matching_inventory_item
+    for it in items:
+        item_id = it.get("inventory_item_id")
+        inv = db.query(InventoryItem).filter(InventoryItem.id == item_id).first() if item_id else None
+        if not inv:
+            name = (it.get("name") or "").strip()
+            inv = find_matching_inventory_item(db, owner_phone, name, it.get("unit")) if name else None
+        if not inv:
+            continue
+        if inv.quantity is None or inv.category == "service":
+            continue  # service items have no stock to deduct
+        qty = float(it.get("qty", 1))
+        sold_unit = (it.get("sold_unit") or "").lower().strip()
 
-    Transaction type rules:
-    - No customer → SALE
-    - Customer + fully paid → SALE
-    - Customer + partial payment → BUY (total) + PAY (paid amount)
-    - Customer + zero payment → BUY (full debt)
+        # Retail sub-unit sale: deduct a fraction of one base unit per piece
+        if sold_unit and inv.retail_unit and sold_unit == inv.retail_unit.lower() and inv.retail_per_base:
+            deduct = qty / inv.retail_per_base
+        else:
+            # Fraction prefix sale: "half", "quarter", "1/8" sent from POS as a multiplier
+            fraction = float(it.get("fraction", 1.0) or 1.0)
+            deduct = qty * fraction
 
-    A customer not yet on the list can be added inline: pass `customer_name`
-    (and optionally `customer_phone`) with no `customer_id`. An existing
-    customer with that name is reused; otherwise a new one is created. This
-    lets part payments be recorded for walk-ins who aren't on the list yet.
+        inv.quantity = max(0.0, (inv.quantity or 0.0) - deduct)
+        inv.updated_at = utcnow()
+        db.add(InventoryMovement(
+            owner_phone=owner_phone,
+            item_id=inv.id,
+            movement_type="OUT",
+            quantity=deduct,
+            unit_price=int(it.get("unit_price", 0)) or None,
+            source_type=source_type,
+            source_id=source_id,
+            recorded_by_id=user_id,
+            note=note,
+        ))
 
-    Returns receipt dict.
+
+def resolve_sale_customer(db, owner_phone, customer_id, customer_name=None, customer_phone=None):
+    """The customer a sale or invoice is for, as an id (or None for a walk-in).
+
+    A supplied id must belong to this business. With no id, a typed name reuses
+    an existing customer (case-insensitive) or adds a new one.
     """
     # A supplied customer_id MUST belong to this business — otherwise a caller
     # could attach a sale/debt to another business's customer (cross-tenant IDOR).
@@ -70,22 +103,10 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         ).first()
         if not owned:
             raise ValueError("Customer not found for this business.")
-
-    # Reject non-positive quantities/prices — a negative line would create a
-    # negative-amount transaction that corrupts reports and can be abused to wipe
-    # a customer's debt or invent credit.
-    for _it in items:
-        try:
-            _q = float(_it.get("qty", 1)); _p = int(_it.get("unit_price", 0))
-        except (TypeError, ValueError):
-            raise ValueError("Invalid item quantity or price.")
-        if _q <= 0 or _p < 0:
-            raise ValueError("Item quantity must be positive and price cannot be negative.")
-    if int(payment_amount or 0) < 0:
-        raise ValueError("Payment cannot be negative.")
+        return customer_id
 
     # Resolve an inline (unlisted) customer by name when no id was selected.
-    if not customer_id and customer_name and customer_name.strip():
+    if customer_name and customer_name.strip():
         cname = customer_name.strip()
         cphone = (customer_phone or "").strip() or None
         # Case-insensitive so "mama bola" reuses "Mama Bola" instead of splitting
@@ -107,6 +128,47 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
             db.add(new_customer)
             db.flush()
             customer_id = new_customer.id
+    return customer_id
+
+
+def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
+                  branch_id=None, due_date=None, customer_name=None, customer_phone=None,
+                  service_date=None, deduct_stock=True, commit=True, label=None):
+    """
+    Save a POS sale and deduct inventory.
+
+    `deduct_stock=False` records the sale without touching stock — for an
+    invoice being paid, whose goods leave stock when they are delivered.
+    `commit=False` leaves the commit to the caller so it can save its own
+    changes in the same transaction.
+
+    Transaction type rules:
+    - No customer → SALE
+    - Customer + fully paid → SALE
+    - Customer + partial payment → BUY (total) + PAY (paid amount)
+    - Customer + zero payment → BUY (full debt)
+
+    A customer not yet on the list can be added inline: pass `customer_name`
+    (and optionally `customer_phone`) with no `customer_id`. An existing
+    customer with that name is reused; otherwise a new one is created. This
+    lets part payments be recorded for walk-ins who aren't on the list yet.
+
+    Returns receipt dict.
+    """
+    # Reject non-positive quantities/prices — a negative line would create a
+    # negative-amount transaction that corrupts reports and can be abused to wipe
+    # a customer's debt or invent credit.
+    for _it in items:
+        try:
+            _q = float(_it.get("qty", 1)); _p = int(_it.get("unit_price", 0))
+        except (TypeError, ValueError):
+            raise ValueError("Invalid item quantity or price.")
+        if _q <= 0 or _p < 0:
+            raise ValueError("Item quantity must be positive and price cannot be negative.")
+    if int(payment_amount or 0) < 0:
+        raise ValueError("Payment cannot be negative.")
+
+    customer_id = resolve_sale_customer(db, owner_phone, customer_id, customer_name, customer_phone)
 
     total = sum(float(it.get("qty", 1)) * int(it.get("unit_price", 0)) for it in items)
     paid = min(int(payment_amount or 0), total)
@@ -120,7 +182,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         customer_id=customer_id,
         type=tx_type,
         amount=total,
-        product=f"POS Sale ({len(items)} item{'s' if len(items) != 1 else ''})",
+        product=label or f"POS Sale ({len(items)} item{'s' if len(items) != 1 else ''})",
         recorded_by_id=user_id,
         message_id=f"web-pos-{uuid.uuid4()}",
         branch_id=branch_id,
@@ -168,48 +230,14 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         db.flush()
         pay_tx_id = pay_tx.id
 
-    # Deduct inventory (skip service items). Harmonised with quick sale and item
-    # customization: prefer the explicitly-linked item, but fall back to matching
-    # by name so a POS line typed by name still deducts from the same stock when
-    # a same-named item exists — the same find_matching_inventory_item the other
-    # sale paths use, so identical names deduct identically everywhere.
-    from inventory_suppliers import find_matching_inventory_item
-    for it in items:
-        item_id = it.get("inventory_item_id")
-        inv = db.query(InventoryItem).filter(InventoryItem.id == item_id).first() if item_id else None
-        if not inv:
-            name = (it.get("name") or "").strip()
-            inv = find_matching_inventory_item(db, owner_phone, name, it.get("unit")) if name else None
-        if not inv:
-            continue
-        if inv.quantity is None or inv.category == "service":
-            continue  # service items have no stock to deduct
-        qty = float(it.get("qty", 1))
-        sold_unit = (it.get("sold_unit") or "").lower().strip()
+    if deduct_stock:
+        deduct_stock_for_items(db, owner_phone, items, user_id,
+                               source_type="POS", source_id=main_tx.id, note="POS sale")
 
-        # Retail sub-unit sale: deduct a fraction of one base unit per piece
-        if sold_unit and inv.retail_unit and sold_unit == inv.retail_unit.lower() and inv.retail_per_base:
-            deduct = qty / inv.retail_per_base
-        else:
-            # Fraction prefix sale: "half", "quarter", "1/8" sent from POS as a multiplier
-            fraction = float(it.get("fraction", 1.0) or 1.0)
-            deduct = qty * fraction
-
-        inv.quantity = max(0.0, (inv.quantity or 0.0) - deduct)
-        inv.updated_at = utcnow()
-        db.add(InventoryMovement(
-            owner_phone=owner_phone,
-            item_id=inv.id,
-            movement_type="OUT",
-            quantity=deduct,
-            unit_price=int(it.get("unit_price", 0)) or None,
-            source_type="POS",
-            source_id=main_tx.id,
-            recorded_by_id=user_id,
-            note="POS sale",
-        ))
-
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
 
     return {
         "receipt_id": main_tx.id,

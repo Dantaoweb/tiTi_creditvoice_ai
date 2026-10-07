@@ -260,6 +260,56 @@ class TransactionItem(Base):
     )
 
 
+class Invoice(Base):
+    """A request to pay, written before any money or goods change hands.
+
+    It is not a debt and does not move stock. Two things happen to it later,
+    each at most once and in either order:
+      - delivered → the goods leave stock (InventoryMovement OUT, source INVOICE)
+      - paid      → it becomes an ordinary sale (`transaction_id`) with a
+                    receipt; whatever was not paid becomes the customer's debt.
+    The number shares one per-business INV sequence with the older invoices
+    that were numbers stamped on credit sales (Transaction.invoice_number).
+    """
+
+    __tablename__ = "invoices"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone     = Column(String, index=True)
+    branch_id       = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    customer_id     = Column(Integer, ForeignKey("customers.id"), index=True)
+    number          = Column(Integer, nullable=True)
+    total           = Column(Integer, default=0)
+    due_date        = Column(DateTime, nullable=True)
+    note            = Column(String, nullable=True)
+    created_by_id   = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=utcnow)
+    sent_at         = Column(DateTime, nullable=True)
+    delivered_at    = Column(DateTime, nullable=True)
+    delivered_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    # The sale it became when paid, and how much was paid then.
+    transaction_id  = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    amount_paid     = Column(Integer, default=0)
+    paid_at         = Column(DateTime, nullable=True)
+    cancelled_at    = Column(DateTime, nullable=True)
+
+
+class InvoiceItem(Base):
+
+    __tablename__ = "invoice_items"
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    invoice_id        = Column(Integer, ForeignKey("invoices.id"), index=True)
+    inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+    product           = Column(String)
+    quantity          = Column(Float, default=1)
+    unit              = Column(String, nullable=True)
+    sold_unit         = Column(String, nullable=True)
+    fraction          = Column(Float, nullable=True)
+    unit_price        = Column(Integer, default=0)
+    total             = Column(Integer, default=0)
+
+
 class TransactionNote(Base):
 
     __tablename__ = "transaction_notes"

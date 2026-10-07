@@ -421,7 +421,7 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
         ) : (
           <table className="history-table">
             <thead>
-              <tr><th>Date</th><th>Type</th><th>Amount</th><th>Description</th><th>Due Date</th><th>Staff</th><th>Invoice</th></tr>
+              <tr><th>Date</th><th>Type</th><th>Amount</th><th>Description</th><th>Due Date</th><th>Staff</th><th>Receipt</th></tr>
             </thead>
             <tbody>
               {data.transactions.map(tx => (
@@ -433,10 +433,10 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
                   <DueDateCell tx={tx} onUpdated={handleDueDateUpdated} />
                   <td className="td-muted">{tx.recorded_by || "—"}</td>
                   <td>
-                    {tx.type === "BUY" ? (
-                      <button className="btn btn-ghost btn-sm" title="View or create invoice"
-                        onClick={() => navigate(`/pos/receipt/${tx.id}?doc=invoice`)}>
-                        <FileText size={13} /> Invoice
+                    {tx.type === "BUY" || tx.type === "SALE" ? (
+                      <button className="btn btn-ghost btn-sm" title="View receipt"
+                        onClick={() => navigate(`/pos/receipt/${tx.id}`)}>
+                        <FileText size={13} /> Receipt
                       </button>
                     ) : "—"}
                   </td>

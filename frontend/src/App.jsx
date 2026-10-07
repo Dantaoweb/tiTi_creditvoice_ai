@@ -29,6 +29,8 @@ import SupplierReceipt from "./pages/SupplierReceipt";
 import Receipts     from "./pages/Receipts";
 import NewReceipt   from "./pages/NewReceipt";
 import Invoices     from "./pages/Invoices";
+import InvoiceEditor from "./pages/InvoiceEditor";
+import InvoiceView  from "./pages/InvoiceView";
 import Deliveries   from "./pages/Deliveries";
 import Wallet       from "./pages/Wallet";
 import Thrift        from "./pages/Thrift";
@@ -80,6 +82,9 @@ export default function App() {
           <Route path="receipts"     element={<Receipts />}     />
           <Route path="receipts/new" element={<NewReceipt />}   />
           <Route path="invoices"     element={<Invoices />}     />
+          <Route path="invoices/new" element={<InvoiceEditor />} />
+          <Route path="invoices/:id" element={<InvoiceView />}  />
+          <Route path="invoices/:id/edit" element={<InvoiceEditor />} />
           <Route path="deliveries"   element={<Deliveries />}   />
           <Route path="customers"    element={<Customers />}    />
           <Route path="transactions" element={<Transactions />} />

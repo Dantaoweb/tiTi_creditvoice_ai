@@ -144,13 +144,26 @@ def test_previous_balance_is_fixed_at_the_time_of_sale():
     assert _balance(cid) == 0
 
 
+
+def _number_as_old_invoice(tx_id):
+    """An older invoice: a number put on a credit sale. New ones are not made
+    this way any more, but those that exist still print and send."""
+    from models import Transaction
+    db = SessionLocal()
+    try:
+        db.query(Transaction).filter(Transaction.id == tx_id).first().invoice_number = 1
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_invoice_text_shows_previous_balance():
     from invoices import format_invoice_text
     phone, cook = _owner()
     cid = _customer(phone, cook, "Tunde")
     _sell(phone, cook, cid, 5000)                      # earlier debt
     rid = _sell(phone, cook, cid, 3000, paid=1000)     # this invoice
-    assert client.post(f"/app/api/invoices/{rid}/issue", cookies=cook).status_code == 200
+    _number_as_old_invoice(rid)
     text = format_invoice_text(_receipt(cook, rid))
     assert "Amount due (this invoice): N2,000" in text
     assert "Previous balance:          N5,000" in text
@@ -162,7 +175,7 @@ def test_invoice_text_unchanged_without_previous_balance():
     phone, cook = _owner()
     cid = _customer(phone, cook, "Sola")
     rid = _sell(phone, cook, cid, 3000, paid=1000)
-    assert client.post(f"/app/api/invoices/{rid}/issue", cookies=cook).status_code == 200
+    _number_as_old_invoice(rid)
     text = format_invoice_text(_receipt(cook, rid))
     assert "*Amount due: N2,000*" in text
     assert "Previous balance" not in text and "Total due now" not in text

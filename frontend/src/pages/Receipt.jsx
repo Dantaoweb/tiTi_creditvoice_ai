@@ -11,7 +11,6 @@ export default function Receipt() {
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [issuing, setIssuing] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState("");
   const [shareMsg, setShareMsg] = useState("");
@@ -23,21 +22,10 @@ export default function Receipt() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Arriving directly in invoice mode (e.g. from a customer's history) for a
-  // credit sale with no number yet: assign it so the document shows INV-xxxx.
+  // An older invoice — a number once put on a credit sale — can still be shown
+  // as the invoice it was. New invoices are written on the Invoices page; a
+  // sale already recorded is not turned into one.
   const invoiceMode = searchParams.get("doc") === "invoice";
-  useEffect(() => {
-    if (!receipt || issuing) return;
-    const owedAmt = receipt.balance_owed ?? 0;
-    const canInvoice = receipt.type === "BUY" && owedAmt > 0;
-    if (invoiceMode && canInvoice && !receipt.invoice_number) {
-      setIssuing(true);
-      apiPost(`invoices/${id}/issue`, {})
-        .then(setReceipt)
-        .catch(() => {})
-        .finally(() => setIssuing(false));
-    }
-  }, [receipt, invoiceMode, id, issuing]);
 
   if (loading) return <div className="page-loading">Loading receipt…</div>;
   if (err || !receipt) return <div className="pos-error" style={{ margin: 24 }}>{err || "Receipt not found."}</div>;
@@ -63,31 +51,12 @@ export default function Receipt() {
   const owedNow = receipt.total_owed_now ?? owed;
   const typeLabel = isPayment ? "Payment" : (isCredit ? "Credit Sale" : "Cash Sale");
 
-  // ── Invoice mode ────────────────────────────────────────────────────────────
-  // The same document can be shown as an invoice ("amount due") for a credit
-  // sale. A sale is invoiceable when the customer owes on it.
-  const isInvoice   = invoiceMode;
-  const invoiceable = isCredit && owed > 0;
+  // ── Invoice mode (older invoices only) ──────────────────────────────────────
+  const isInvoice   = invoiceMode && !!receipt.invoice_number;
   const invoiceNo   = receipt.invoice_number ? `INV-${String(receipt.invoice_number).padStart(4, "0")}` : null;
   const dueStr = receipt.due_date
     ? new Date(receipt.due_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
     : null;
-
-  async function viewAsInvoice() {
-    setIssuing(true);
-    try {
-      // Assign the invoice number if this sale doesn't have one yet.
-      const updated = receipt.invoice_number
-        ? receipt
-        : await apiPost(`invoices/${id}/issue`, {});
-      setReceipt(updated);
-      setSearchParams({ doc: "invoice" });
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setIssuing(false);
-    }
-  }
 
   const hasCustomerPhone = !!(receipt.customer && receipt.customer.phone);
   const sentAt = receipt.invoice_sent_at;
@@ -166,9 +135,9 @@ export default function Receipt() {
         <button className="btn btn-ghost" onClick={() => navigate("/pos")}>
           <ArrowLeft size={15} /> New Sale
         </button>
-        {invoiceable && !isInvoice && (
-          <button className="btn btn-ghost" onClick={viewAsInvoice} disabled={issuing}>
-            <FileText size={15} /> {issuing ? "Preparing…" : "View as Invoice"}
+        {receipt.invoice_number && !isInvoice && (
+          <button className="btn btn-ghost" onClick={() => setSearchParams({ doc: "invoice" })}>
+            <FileText size={15} /> View as Invoice
           </button>
         )}
         {isInvoice && (

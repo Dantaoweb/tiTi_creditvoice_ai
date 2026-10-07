@@ -56,6 +56,26 @@ class PosSaveRequest(BaseModel):
     service_date: Optional[datetime] = None   # promised delivery / ready-by date
 
 
+class InvoiceCreateRequest(BaseModel):
+    customer_id: Optional[int] = None
+    customer_name: Optional[str] = Field(default=None, max_length=120)
+    customer_phone: Optional[str] = Field(default=None, max_length=20)
+    items: list[PosCartItem] = Field(max_length=200)
+    due_date: Optional[datetime] = None
+    note: Optional[str] = Field(default=None, max_length=500)
+    branch_id: Optional[int] = None
+
+
+class InvoiceUpdateRequest(BaseModel):
+    items: list[PosCartItem] = Field(max_length=200)
+    due_date: Optional[datetime] = None
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class InvoicePayRequest(BaseModel):
+    amount: int = 0
+
+
 def _selling_branch(db, session, owner_phone, requested_branch_id):
     """The branch a sale is happening from — you can only sell stock that belongs
     to it. Branch staff are locked to their own branch; an owner may pick any of
@@ -72,6 +92,43 @@ def _selling_branch(db, session, owner_phone, requested_branch_id):
             return b.id
     from transaction_save import _get_default_branch_id
     return _get_default_branch_id(db, owner_phone)
+
+
+def _recording_branch(db, session, owner_phone, requested_branch_id):
+    """The branch a sale or invoice is recorded into. Don't trust a
+    client-supplied branch: a branch staff records into THEIR branch; an owner
+    may pick a branch but only one of their own."""
+    scope_branch, _rec = _scoped_read(db, session)
+    if scope_branch is not None:
+        return scope_branch
+    if requested_branch_id is not None:
+        b = db.query(Branch).filter(
+            Branch.id == requested_branch_id, Branch.owner_phone == owner_phone
+        ).first()
+        return b.id if b else None
+    from transaction_save import _get_recording_branch_id
+    return _get_recording_branch_id(db, owner_phone, _session_user(db, session))
+
+
+def _require_items_in_branch(db, owner_phone, items, eff_branch):
+    """You cannot sell an item that belongs to a different branch. Business-wide
+    items (no branch) are sellable from anywhere."""
+    if eff_branch is None:
+        return
+    ids = [it["inventory_item_id"] for it in items if it.get("inventory_item_id")]
+    if not ids:
+        return
+    wrong = db.query(InventoryItem).filter(
+        InventoryItem.owner_phone == owner_phone,
+        InventoryItem.id.in_(ids),
+        InventoryItem.branch_id != None,
+        InventoryItem.branch_id != eff_branch,
+    ).first()
+    if wrong:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{wrong.name.title()}' belongs to another branch and can't be sold from here.",
+        )
 
 
 def register_pos_routes(app):
@@ -197,37 +254,8 @@ def register_pos_routes(app):
             _require_can_record(db, session)
             owner_phone = _session_owner_phone(db, session)
             items = [it.model_dump() for it in payload.items]
-            # Don't trust a client-supplied branch: a branch staff records into
-            # THEIR branch; an owner may pick a branch but only one of their own.
-            scope_branch, _rec = _scoped_read(db, session)
-            if scope_branch is not None:
-                eff_branch = scope_branch
-            elif payload.branch_id is not None:
-                _b = db.query(Branch).filter(
-                    Branch.id == payload.branch_id, Branch.owner_phone == owner_phone
-                ).first()
-                eff_branch = _b.id if _b else None
-            else:
-                from transaction_save import _get_recording_branch_id
-                eff_branch = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
-
-            # Enforce branch gating server-side: you cannot sell an item that
-            # belongs to a different branch. Business-wide items (no branch) are
-            # sellable from anywhere.
-            if eff_branch is not None:
-                ids = [it["inventory_item_id"] for it in items if it.get("inventory_item_id")]
-                if ids:
-                    wrong = db.query(InventoryItem).filter(
-                        InventoryItem.owner_phone == owner_phone,
-                        InventoryItem.id.in_(ids),
-                        InventoryItem.branch_id != None,
-                        InventoryItem.branch_id != eff_branch,
-                    ).first()
-                    if wrong:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"'{wrong.name.title()}' belongs to another branch and can't be sold from here.",
-                        )
+            eff_branch = _recording_branch(db, session, owner_phone, payload.branch_id)
+            _require_items_in_branch(db, owner_phone, items, eff_branch)
             # What the customer owed BEFORE this sale — the ceiling for a
             # "settle previous debt" payment. Read now: once the sale is saved
             # the balance also carries this sale's unpaid part, and capping
@@ -365,30 +393,176 @@ def register_pos_routes(app):
 
     @app.get("/app/api/invoices")
     def web_list_invoices(status: str = None, session: dict = Depends(require_web_auth)):
-        """List this business's issued invoices with a derived status.
-        Optional ?status=open|overdue|paid filter."""
+        """Every invoice this business has: the ones written on the Invoices
+        page, and the older ones that were numbers put on credit sales.
+        Optional ?status=open|overdue|part_paid|paid|cancelled filter."""
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
-            from invoices import list_business_invoices
-            status_filter = status.lower() if status else None
-            if status_filter and status_filter not in ("open", "overdue", "paid"):
-                status_filter = None
-            invoices = list_business_invoices(db, owner_phone, status_filter)
-            summary = {"open": 0, "overdue": 0, "paid": 0, "total_due": 0}
-            # Summary is computed over all invoices, independent of the filter.
-            for row in (list_business_invoices(db, owner_phone) if status_filter else invoices):
-                summary[row["status"]] += 1
-                summary["total_due"] += row["outstanding"]
-            return {"invoices": invoices, "summary": summary}
+            from invoices import list_business_invoices, list_new_invoices
+            scope_branch, scope_rec = _scoped_read(db, session)
+            rows = list_new_invoices(db, owner_phone, branch_id=scope_branch, created_by_id=scope_rec)
+            rows += [dict(r, kind="sale", delivered=True) for r in list_business_invoices(db, owner_phone)]
+            rows.sort(key=lambda r: (r["invoice_number"] or 0), reverse=True)
+
+            # "Open" is everything still waiting for money that isn't late yet.
+            open_states = ("draft", "sent", "open")
+            summary = {"open": 0, "overdue": 0, "part_paid": 0, "paid": 0, "cancelled": 0, "total_due": 0}
+            for r in rows:
+                summary["open" if r["status"] in open_states else r["status"]] += 1
+                summary["total_due"] += r["outstanding"]
+
+            want = (status or "").lower()
+            if want == "open":
+                rows = [r for r in rows if r["status"] in open_states]
+            elif want in ("overdue", "part_paid", "paid", "cancelled"):
+                rows = [r for r in rows if r["status"] == want]
+            return {"invoices": rows, "summary": summary}
+        finally:
+            db.close()
+
+    def _load_invoice(db, session, invoice_id):
+        """This business's invoice, within the caller's branch / own-records
+        scope. 404 otherwise, so it doesn't reveal that the invoice exists."""
+        from models import Invoice
+        owner_phone = _session_owner_phone(db, session)
+        inv = db.query(Invoice).filter(
+            Invoice.id == invoice_id, Invoice.owner_phone == owner_phone,
+        ).first()
+        if not inv:
+            raise HTTPException(status_code=404, detail="Invoice not found.")
+        scope_branch, scope_rec = _scoped_read(db, session)
+        if scope_branch is not None and inv.branch_id != scope_branch:
+            raise HTTPException(status_code=404, detail="Invoice not found.")
+        if scope_rec is not None and inv.created_by_id != scope_rec:
+            raise HTTPException(status_code=404, detail="Invoice not found.")
+        return inv
+
+    def _invoice_action(fn):
+        """Run an invoice change, turning a refusal into a message for the user."""
+        from invoices import InvoiceError
+        try:
+            return fn()
+        except InvoiceError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/app/api/invoices/new")
+    def web_create_invoice(payload: InvoiceCreateRequest, session: dict = Depends(require_web_auth)):
+        """Write an invoice. It is not a sale and not a debt: nothing is owed
+        and no stock moves until it is paid or delivered."""
+        db = SessionLocal()
+        try:
+            _require_can_record(db, session, count_sale=False)
+            owner_phone = _session_owner_phone(db, session)
+            items = [it.model_dump() for it in payload.items]
+            eff_branch = _recording_branch(db, session, owner_phone, payload.branch_id)
+            _require_items_in_branch(db, owner_phone, items, eff_branch)
+            from invoices import create_invoice, invoice_document
+            inv = _invoice_action(lambda: create_invoice(
+                db, owner_phone, session["user_id"], payload.customer_id, items,
+                due_date=payload.due_date, note=payload.note, branch_id=eff_branch,
+                customer_name=payload.customer_name, customer_phone=payload.customer_phone,
+            ))
+            return invoice_document(db, inv)
+        finally:
+            db.close()
+
+    @app.get("/app/api/invoices/doc/{invoice_id}")
+    def web_get_invoice(invoice_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            from invoices import invoice_document
+            return invoice_document(db, _load_invoice(db, session, invoice_id))
+        finally:
+            db.close()
+
+    @app.put("/app/api/invoices/doc/{invoice_id}")
+    def web_update_invoice(invoice_id: int, payload: InvoiceUpdateRequest,
+                           session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            _require_can_record(db, session, count_sale=False)
+            inv = _load_invoice(db, session, invoice_id)
+            items = [it.model_dump() for it in payload.items]
+            _require_items_in_branch(db, inv.owner_phone, items, inv.branch_id)
+            from invoices import update_invoice, invoice_document
+            _invoice_action(lambda: update_invoice(db, inv, items, due_date=payload.due_date, note=payload.note))
+            return invoice_document(db, inv)
+        finally:
+            db.close()
+
+    @app.post("/app/api/invoices/doc/{invoice_id}/send")
+    def web_send_invoice_doc(invoice_id: int, session: dict = Depends(require_web_auth)):
+        """Send the invoice to the customer's WhatsApp and record when."""
+        db = SessionLocal()
+        try:
+            inv = _load_invoice(db, session, invoice_id)
+            from invoices import invoice_document, format_invoice_doc_text
+            doc = invoice_document(db, inv)
+            if doc["status"] == "cancelled":
+                raise HTTPException(status_code=400, detail="This invoice was cancelled.")
+            phone = (doc.get("customer") or {}).get("phone")
+            if not phone:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No phone on file for this customer. You can still print or download the invoice.",
+                )
+            from whatsapp_client import send_whatsapp_message
+            send_whatsapp_message(phone, format_invoice_doc_text(doc))
+            inv.sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            return invoice_document(db, inv)
+        finally:
+            db.close()
+
+    @app.post("/app/api/invoices/doc/{invoice_id}/deliver")
+    def web_deliver_invoice(invoice_id: int, session: dict = Depends(require_web_auth)):
+        """The goods have gone to the customer — take them out of stock."""
+        db = SessionLocal()
+        try:
+            _require_can_record(db, session, count_sale=False)
+            inv = _load_invoice(db, session, invoice_id)
+            from invoices import deliver_invoice, invoice_document
+            _invoice_action(lambda: deliver_invoice(db, inv, session["user_id"]))
+            return invoice_document(db, inv)
+        finally:
+            db.close()
+
+    @app.post("/app/api/invoices/doc/{invoice_id}/pay")
+    def web_pay_invoice(invoice_id: int, payload: InvoicePayRequest,
+                        session: dict = Depends(require_web_auth)):
+        """Record what the customer paid. The invoice becomes a sale with a
+        receipt; whatever was not paid becomes their debt."""
+        db = SessionLocal()
+        try:
+            _require_can_record(db, session)
+            inv = _load_invoice(db, session, invoice_id)
+            from invoices import pay_invoice, invoice_document
+            _inv, result = _invoice_action(lambda: pay_invoice(db, inv, session["user_id"], payload.amount))
+            _send_web_receipt(db, inv.owner_phone, result.get("receipt_id"))
+            return invoice_document(db, inv)
+        finally:
+            db.close()
+
+    @app.post("/app/api/invoices/doc/{invoice_id}/cancel")
+    def web_cancel_invoice(invoice_id: int, session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            _require_can_record(db, session, count_sale=False)
+            inv = _load_invoice(db, session, invoice_id)
+            from invoices import cancel_invoice, invoice_document
+            _invoice_action(lambda: cancel_invoice(db, inv))
+            return invoice_document(db, inv)
         finally:
             db.close()
 
     @app.post("/app/api/invoices/{tx_id}/issue")
     def web_issue_invoice(tx_id: int, session: dict = Depends(require_web_auth)):
-        """Assign a sale its formal invoice number (once) and return the invoice
-        document. The number is system-generated per business — never typed by a
-        user — so two invoices can never collide."""
+        """Return an older invoice — a number once put on a credit sale. New
+        numbers are no longer handed out this way: a sale already recorded is
+        not a request to pay, so invoices are written on the Invoices page."""
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
@@ -403,12 +577,12 @@ def register_pos_routes(app):
                 recorder_phone = parent.phone if parent else recorder_phone
             if recorder_phone != owner_phone:
                 raise HTTPException(status_code=404, detail="Sale not found.")
-            # A limited staff may only invoice sales within their own scope.
             _require_tx_in_scope(db, session, tx)
-
-            from invoices import issue_invoice_number
-            issue_invoice_number(db, tx, owner_phone)
-            db.commit()
+            if not tx.invoice_number:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invoices are written on the Invoices page now, not made from a sale.",
+                )
 
             session_user = db.query(User).filter(User.id == session["user_id"]).first()
             owner_user = db.query(User).filter(User.phone == owner_phone).first()
@@ -421,8 +595,8 @@ def register_pos_routes(app):
 
     @app.post("/app/api/invoices/{tx_id}/send")
     def web_send_invoice(tx_id: int, session: dict = Depends(require_web_auth)):
-        """Send the invoice to the customer's WhatsApp and record it as sent.
-        Assigns the invoice number first if needed."""
+        """Send an older invoice (a number once put on a credit sale) to the
+        customer's WhatsApp and record it as sent."""
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
@@ -446,9 +620,12 @@ def register_pos_routes(app):
                     detail="No phone on file for this customer. You can still print or download the invoice.",
                 )
 
-            from invoices import issue_invoice_number, format_invoice_text
-            issue_invoice_number(db, tx, owner_phone)
-            db.commit()
+            if not tx.invoice_number:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invoices are written on the Invoices page now, not made from a sale.",
+                )
+            from invoices import format_invoice_text
 
             owner_user = db.query(User).filter(User.phone == owner_phone).first()
             session_user = db.query(User).filter(User.id == session["user_id"]).first()
