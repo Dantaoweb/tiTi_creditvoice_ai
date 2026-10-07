@@ -910,7 +910,7 @@ def handle_pending_actions(
             "unit": pending.unit,
             "unit_price": pending.unit_price,
             "due_date": pending.due_date,
-            "invoice_items": [],
+            "sale_items": [],
         }
         confirm_msg = build_customer_confirm_message(customer, parsed_like, user)
         balance_line = build_projected_balance_line(

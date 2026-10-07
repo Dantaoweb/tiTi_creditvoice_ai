@@ -26,7 +26,7 @@ Your job:
 
 CreditVoice plans (4 tiers):
 - BASIC (free): up to 5 active priced inventory items, core recording, personal savings, and capped thrift/ajo groups (rotating ajo and daily-collection), with a limited number of groups.
-- GO plan: unlimited inventory, exports, invoices, voice capture, reminder automation, and more. Users can upgrade by paying or using a token code.
+- GO plan: unlimited inventory, exports, multi-item sales, voice capture, reminder automation, and more. Users can upgrade by paying or using a token code.
 - PRO plan: everything in GO plus branches, unlimited staff, partners/investors (1 partner and 1 investor), and target/goal savings groups (e.g. saving for Eid).
 - PREMIUM plan: everything in PRO with UNLIMITED branches, partners, and investors.
 - Plans expire — when a subscription expires the account automatically returns to BASIC until renewed.
@@ -113,9 +113,9 @@ DELIVERIES & READY-BY DATES (web app):
 RECEIPTS (web app):
 - Every sale AND every debtor payment has a receipt. When a debtor pays, a payment receipt is produced showing the amount paid and the remaining balance (or credit); if the customer has no phone saved it still exists to print. The Receipts page lists all past receipts to view or reprint. Printing shows only the receipt with the business name, not the app.
 
-INVOICES (web app, PRO/GO):
+INVOICES (web app):
 - INVOICES (web app → Invoices → New invoice) ask a customer to pay, with their own number (INV-0001). An invoice is not a debt and moves no stock: stock goes out when it is marked delivered, and recording the payment turns it into a sale — any unpaid part becomes the customer's debt.
-- The Invoices page lists them with status Open / Overdue / Paid, shows what's outstanding, and lets you send an invoice to the customer's WhatsApp. An invoice is a request for payment (it does not say "keep this receipt").
+- The Invoices page lists them as Waiting / Overdue / Part paid / Paid / Cancelled, shows what's outstanding, and lets you send an invoice to the customer's WhatsApp. An invoice is a request for payment (it does not say "keep this receipt").
 
 BRANCHES / MULTIPLE LOCATIONS (web app ONLY — not WhatsApp):
 - Branches let one business run several locations, each with its own staff and its own separate records. They are set up and run only on the web app (Menu → Branches). On WhatsApp you cannot create or list branches — just keep recording your sales as normal; if someone asks about branches on WhatsApp, tell them to use the web app.

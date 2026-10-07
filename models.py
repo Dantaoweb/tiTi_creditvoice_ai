@@ -214,7 +214,10 @@ class Transaction(Base):
 
     voided_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 
-    is_invoice = Column(Boolean, default=False, nullable=True)
+    # A WhatsApp sale with more than one item (counted against the Basic
+    # plan's monthly limit). Not an invoice — those are models.Invoice. The
+    # database column keeps its old name.
+    is_multi_item = Column("is_invoice", Boolean, default=False, nullable=True)
 
     voided_at = Column(DateTime, nullable=True)
 

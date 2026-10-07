@@ -212,7 +212,7 @@ def build_plan_payment_message(plan, period="MONTHLY"):
             "- Unlimited customers\n"
             "- Unlimited transactions\n"
             "- Direct sales\n"
-            "- Invoice sales\n"
+            "- Multi-item sales\n"
             "- Inventory and stock value\n"
             "- Supplier debt and payment records\n"
             "- Product reports\n"
@@ -754,7 +754,7 @@ def _build_understood_summary(pending):
         if pending.due_date:
             lines.append(f"  Due: {pending.due_date.strftime('%d/%m/%Y')}")
 
-        # Invoice items
+        # Items of a multi-item sale
         try:
             import json as _json
             items = _json.loads(pending.items_json or "[]")

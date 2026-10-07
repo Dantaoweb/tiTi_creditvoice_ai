@@ -9,7 +9,7 @@ const FEATURES = [
   { label: "Customers",              basic: "Up to 50",       go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: Users },
   { label: "Transactions / month",   basic: "Up to 100",      go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: Zap },
   { label: "Inventory items",        basic: "Up to 5",        go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: Package },
-  { label: "Invoice / multi-item",   basic: "5 / month",      go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: null },
+  { label: "Multi-item sales",       basic: "5 / month",      go: "Unlimited",  pro: "Unlimited",  premium: "Unlimited",  icon: null },
   { label: "Debt reminders",         basic: true,             go: true,         pro: true,         premium: true },
   { label: "POS",                    basic: true,             go: true,         pro: true,         premium: true },
   { label: "Exports (Excel/PDF)",    basic: false,            go: true,         pro: true,         premium: true,         icon: Download },

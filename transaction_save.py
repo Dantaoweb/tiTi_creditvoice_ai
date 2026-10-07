@@ -426,7 +426,7 @@ def save_customer_pending(
                 message_id=message_id,
                 created_at=_utcnow(),
                 branch_id=_default_branch_id,
-                is_invoice=(_pending_items_count > 1),
+                is_multi_item=(_pending_items_count > 1),
                 receipt_number=next_receipt_number(db, business_owner_phone),
             )
             db.add(tx)

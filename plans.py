@@ -38,7 +38,7 @@ PLAN_LIMITS = {
     PLAN_BASIC: {
         "customers":              50,
         "monthly_transactions":   100,
-        "monthly_invoice_uses":   5,    # multi-item invoice sessions per month
+        "monthly_multi_item_sales": 5,    # sales with more than one item, per month
         "thrift_participants":    10,
         "thrift_groups":          3,    # rotating/target savings groups you can run
         "active_inventory_items": 5,    # items with selling_price set
@@ -52,7 +52,7 @@ PLAN_LIMITS = {
     PLAN_GO: {
         "customers":              None,
         "monthly_transactions":   None,
-        "monthly_invoice_uses":   None,
+        "monthly_multi_item_sales":   None,
         "thrift_participants":    None,
         "thrift_groups":          None,
         "active_inventory_items": None,
@@ -66,7 +66,7 @@ PLAN_LIMITS = {
     PLAN_PRO: {
         "customers":              None,
         "monthly_transactions":   None,
-        "monthly_invoice_uses":   None,
+        "monthly_multi_item_sales":   None,
         "thrift_participants":    None,
         "thrift_groups":          None,
         "active_inventory_items": None,
@@ -80,7 +80,7 @@ PLAN_LIMITS = {
     PLAN_PREMIUM: {
         "customers":              None,
         "monthly_transactions":   None,
-        "monthly_invoice_uses":   None,
+        "monthly_multi_item_sales":   None,
         "thrift_participants":    None,
         "thrift_groups":          None,
         "active_inventory_items": None,
@@ -104,7 +104,7 @@ FEATURE_MIN_PLAN = {
     "REMINDER_AUTOMATION":    PLAN_BASIC,
     "WALLET":                 PLAN_BASIC,
     "SCHOOL_TEACHER_ROSTER":  PLAN_BASIC,   # school-only; 3 on Basic, unlimited on Pro
-    "INVOICE":                PLAN_BASIC,   # Basic: 5 multi-item invoice uses/month
+    "MULTI_ITEM_SALE":        PLAN_BASIC,   # Basic: 5 multi-item sales/month
 
     # ── Available on Go ──────────────────────────────────────────────────────
     "EXPORT":                 PLAN_GO,

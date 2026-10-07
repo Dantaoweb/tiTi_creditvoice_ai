@@ -11,7 +11,7 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
-from parser import parse_invoice_item, parse_message
+from parser import parse_sale_item, parse_message
 from select_product_commands import build_product_list_message
 
 
@@ -22,27 +22,27 @@ class _Item:
 
 # ── Product-before-quantity ordering ──────────────────────────────────────────
 
-def test_invoice_item_product_first_with_unit_and_total():
-    assert parse_invoice_item("egg 3 crates for 15000") == {
+def test_sale_item_product_first_with_unit_and_total():
+    assert parse_sale_item("egg 3 crates for 15000") == {
         "product": "egg", "quantity": 3, "unit": "crate",
         "unit_price": 5000, "total": 15000,
     }
 
 
-def test_invoice_item_product_first_each():
-    assert parse_invoice_item("egg 3 crates at 5000 each") == {
+def test_sale_item_product_first_each():
+    assert parse_sale_item("egg 3 crates at 5000 each") == {
         "product": "egg", "quantity": 3, "unit": "crate",
         "unit_price": 5000, "total": 15000,
     }
 
 
-def test_invoice_item_qty_first_still_works():
-    assert parse_invoice_item("3 crates egg for 15000")["product"] == "egg"
+def test_sale_item_qty_first_still_works():
+    assert parse_sale_item("3 crates egg for 15000")["product"] == "egg"
 
 
 def test_product_with_number_is_not_treated_as_quantity():
     # "a4 paper" must not read "4"/"paper" as qty/unit
-    r = parse_invoice_item("a4 paper 2000")
+    r = parse_sale_item("a4 paper 2000")
     assert r["product"] == "a4 paper" and r["quantity"] == 1
 
 

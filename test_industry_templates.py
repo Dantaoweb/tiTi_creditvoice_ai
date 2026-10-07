@@ -306,7 +306,7 @@ def test_item_normalization_handles_common_shop_variants():
         assert parsed["total"] == total
 
 
-def test_unitless_invoice_item_matches_single_stock_unit():
+def test_unitless_sale_item_matches_single_stock_unit():
     db = make_test_db()
     owner_phone = "2348000000886"
     add_inventory_movement(
@@ -685,7 +685,7 @@ if __name__ == "__main__":
     test_supplier_list_aliases_parse()
     test_pack_stock_purchase_and_customer_sale_match_inventory()
     test_item_normalization_handles_common_shop_variants()
-    test_unitless_invoice_item_matches_single_stock_unit()
+    test_unitless_sale_item_matches_single_stock_unit()
     test_bulk_supplier_purchase_can_add_retail_units_to_stock()
     test_bulk_supplier_save_records_retail_stock_quantity()
     test_bulk_sale_can_deduct_from_converted_retail_stock()

@@ -705,7 +705,7 @@ def extract_artisan_transaction(text):
             "unit": None,
             "product": "service/job",
             "unit_price": total_amount,
-            "invoice_items": None,
+            "sale_items": None,
             "total": total_amount,
             "due_date": due_date,
             "artisan_note": f"Paid N{paid_amount:,}, balance N{balance_amount:,}"
@@ -736,7 +736,7 @@ def extract_artisan_transaction(text):
             "unit": None,
             "product": product,
             "unit_price": total_amount,
-            "invoice_items": None,
+            "sale_items": None,
             "total": total_amount,
             "due_date": due_date,
             "artisan_note": f"{product.title()}: paid N{paid_amount:,}, balance N{balance_amount:,}"
@@ -767,7 +767,7 @@ def extract_artisan_transaction(text):
             "unit": None,
             "product": product,
             "unit_price": total_amount,
-            "invoice_items": None,
+            "sale_items": None,
             "total": total_amount,
             "due_date": due_date,
             "artisan_note": f"{product.title()}: paid N{paid_amount:,}, balance N{max(total_amount - paid_amount, 0):,}"
@@ -792,7 +792,7 @@ def extract_artisan_transaction(text):
             "unit": None,
             "product": i_was_paid_match.group("description").strip(),
             "unit_price": amount,
-            "invoice_items": None,
+            "sale_items": None,
             "total": amount,
             "due_date": None,
             "artisan_note": "Service income, no customer debt"
@@ -824,7 +824,7 @@ def extract_artisan_transaction(text):
             "unit": None,
             "product": product,
             "unit_price": amount,
-            "invoice_items": None,
+            "sale_items": None,
             "total": amount,
             "due_date": None,
             "artisan_note": "Service income, no customer debt"
@@ -854,7 +854,7 @@ def extract_artisan_transaction(text):
             "unit": None,
             "product": product,
             "unit_price": amount,
-            "invoice_items": None,
+            "sale_items": None,
             "total": amount,
             "due_date": None,
             "artisan_note": "Service income, no customer debt"
@@ -881,7 +881,7 @@ def extract_artisan_transaction(text):
                 "unit": None,
                 "product": product,
                 "unit_price": amount,
-                "invoice_items": None,
+                "sale_items": None,
                 "total": amount,
                 "due_date": None,
                 "artisan_note": "Walk-in / cash patient, no customer debt"
@@ -906,7 +906,7 @@ def extract_artisan_transaction(text):
     return None
 
 
-def parse_invoice_item(item_text):
+def parse_sale_item(item_text):
     clean = item_text.lower().replace(",", "").replace("#", "").replace("₦", "").strip()
     clean = re.sub(r"\b(per\s+unit|per\s+piece)\b", "each", clean).strip()
 
@@ -981,7 +981,7 @@ def parse_invoice_item(item_text):
     }
 
 
-def parse_invoice_items(items_text):
+def parse_sale_items(items_text):
     parts = [
         part.strip()
         for part in re.split(r"\s*,\s*|\s*;\s*", items_text)
@@ -992,7 +992,7 @@ def parse_invoice_items(items_text):
 
     items = []
     for part in parts:
-        item = parse_invoice_item(part)
+        item = parse_sale_item(part)
         if not item:
             return None
         items.append(item)
@@ -1003,7 +1003,7 @@ def parse_invoice_items(items_text):
     }
 
 
-def format_invoice_items(items):
+def format_sale_items(items):
     lines = []
     for index, item in enumerate(items, start=1):
         if item.get("unit"):
@@ -3225,7 +3225,7 @@ def parse_message(text):
     # 🧹 CLEAN TEXT
     # =========================
 
-    invoice_clean_text = text.lower().strip()
+    sale_clean_text = text.lower().strip()
     clean_text = _normalize_text_for_parsing(text)
 
     words = clean_text.split()
@@ -3257,7 +3257,7 @@ def parse_message(text):
         r"(?:due\s+to\s+pay|due|will\s+pay|pay|balance|will\s+balance)"
         r"\s+\d{1,2}/\d{1,2}/\d{2,4}\b"
     )
-    invoice_clean_text = re.sub(due_clause_pattern, "", invoice_clean_text).strip()
+    sale_clean_text = re.sub(due_clause_pattern, "", sale_clean_text).strip()
     clean_text = re.sub(due_clause_pattern, "", clean_text, flags=re.IGNORECASE).strip()
 
     # ── Cost-price update intercept ───────────────────────────────────────────
@@ -3333,40 +3333,40 @@ def parse_message(text):
             rf"(?:the\s+)?(?:payment\s+of\s+|cash\s+of\s+)?"
             rf"|(?:\s+(?:and\s+)?(?:each\s+)?paid\s+)"
             rf")(?P<paid_sfx>{_amt_pat})\s*$",
-            invoice_clean_text, re.I,
+            sale_clean_text, re.I,
         )
         if not _pay_sfx:
             # "N paid" / "and N paid" at end (reversed order)
             _pay_sfx = re.search(
                 rf"(?:\s+and)?\s+(?P<paid_sfx>{_amt_pat})\s+paid\s*$",
-                invoice_clean_text, re.I,
+                sale_clean_text, re.I,
             )
         _direct_paid = 0
-        _invoice_clean_stripped = invoice_clean_text
+        _sale_clean_stripped = sale_clean_text
         if _pay_sfx:
             _direct_paid = parse_amount_token(_pay_sfx.group("paid_sfx")) or 0
-            _invoice_clean_stripped = invoice_clean_text[:_pay_sfx.start()].strip()
+            _sale_clean_stripped = sale_clean_text[:_pay_sfx.start()].strip()
 
         sale_body = re.sub(
             r"^(?:i\s+)?(?:sold|sell|supply|supplied|deliver|delivered)\s+",
             "",
-            _invoice_clean_stripped,
+            _sale_clean_stripped,
             count=1
         ).strip()
-        invoice = parse_invoice_items(sale_body)
-        if invoice:
+        sale_lines = parse_sale_items(sale_body)
+        if sale_lines:
             return {
                 "type": "TRANSACTION",
                 "name": "",
                 "action": "SALE",
-                "buy_amount": invoice["total"],
+                "buy_amount": sale_lines["total"],
                 "paid_amount": _direct_paid,
                 "quantity": None,
                 "unit": None,
                 "product": None,
                 "unit_price": None,
-                "invoice_items": invoice["items"],
-                "total": invoice["total"],
+                "sale_items": sale_lines["items"],
+                "total": sale_lines["total"],
                 "due_date": None
             }
 
@@ -3407,63 +3407,63 @@ def parse_message(text):
             "unit": _resolved_sale_details["unit"],
             "product": _resolved_sale_details["product"],
             "unit_price": _resolved_sale_details["unit_price"],
-            "invoice_items": None,
+            "sale_items": None,
             "total": _resolved_sale_details["total"],
             "due_date": None
         }
 
-    customer_invoice_match = re.match(
+    customer_sale_match = re.match(
         r"(?P<name>.+?)\s+(?:bought|buy|purchase|purchased|collect|collected|took|take|carry|carried)\s+(?P<items>.+)",
-        invoice_clean_text
+        sale_clean_text
     )
-    if customer_invoice_match and has_pay:
+    if customer_sale_match and has_pay:
         payment_split = re.search(
             r"\b(?:paid|pay|settle|settled|clear|cleared|gave|give|send|sent|transfer|transferred|transfered|deposit|deposited|contribute|contributed|contribution|contributions|save|saved|thrift|ajo|esusu)\b(?P<payment>.+)$",
-            customer_invoice_match.group("items")
+            customer_sale_match.group("items")
         )
         if payment_split:
-            items_text = customer_invoice_match.group("items")[:payment_split.start()].strip()
+            items_text = customer_sale_match.group("items")[:payment_split.start()].strip()
             items_text = re.sub(r"[\s,;]+$", "", items_text).strip()
             payment_amounts = extract_amounts(payment_split.group("payment"))
-            invoice = parse_invoice_items(items_text)
-            # Single-item transactions (no comma) return None from parse_invoice_items.
+            sale_lines = parse_sale_items(items_text)
+            # Single-item transactions (no comma) return None from parse_sale_items.
             # Fall back to the singular parser so "a bag of feed at 15000 paid 10000"
             # doesn't leak into extract_item_details and produce a fantasy total.
-            if not invoice:
-                _single = parse_invoice_item(items_text)
+            if not sale_lines:
+                _single = parse_sale_item(items_text)
                 if _single:
-                    invoice = {"items": [_single], "total": _single["total"]}
-            if invoice and payment_amounts:
+                    sale_lines = {"items": [_single], "total": _single["total"]}
+            if sale_lines and payment_amounts:
                 return {
                     "type": "TRANSACTION",
-                    "name": customer_invoice_match.group("name").strip(),
+                    "name": customer_sale_match.group("name").strip(),
                     "action": "COMBINED",
-                    "buy_amount": invoice["total"],
+                    "buy_amount": sale_lines["total"],
                     "paid_amount": payment_amounts[0],
                     "quantity": None,
                     "unit": None,
                     "product": None,
                     "unit_price": None,
-                    "invoice_items": invoice["items"],
-                    "total": invoice["total"],
+                    "sale_items": sale_lines["items"],
+                    "total": sale_lines["total"],
                     "due_date": due_date
                 }
 
-    if customer_invoice_match and not has_pay:
-        invoice = parse_invoice_items(customer_invoice_match.group("items"))
-        if invoice:
+    if customer_sale_match and not has_pay:
+        sale_lines = parse_sale_items(customer_sale_match.group("items"))
+        if sale_lines:
             return {
                 "type": "TRANSACTION",
-                "name": customer_invoice_match.group("name").strip(),
+                "name": customer_sale_match.group("name").strip(),
                 "action": "BUY",
-                "buy_amount": invoice["total"],
+                "buy_amount": sale_lines["total"],
                 "paid_amount": 0,
                 "quantity": None,
                 "unit": None,
                 "product": None,
                 "unit_price": None,
-                "invoice_items": invoice["items"],
-                "total": invoice["total"],
+                "sale_items": sale_lines["items"],
+                "total": sale_lines["total"],
                 "due_date": due_date
             }
 
@@ -3580,7 +3580,7 @@ def parse_message(text):
         "unit": unit,
         "product": product,
         "unit_price": unit_price,
-        "invoice_items": None,
+        "sale_items": None,
         "total": total if total is not None else buy_amount,
         "due_date": due_date,
         "stock_price_needed": stock_price_needed,

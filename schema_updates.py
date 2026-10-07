@@ -281,6 +281,8 @@ def ensure_schema_updates(engine):
         "void_reason": "VARCHAR",
         "voided_by_id": "VARCHAR",
         "voided_at":   "TIMESTAMP",
+        # Old name kept: the column is Transaction.is_multi_item (a sale with
+        # more than one item), not an invoice.
         "is_invoice":  f"BOOLEAN DEFAULT {boolean_false}",
         "service_date": "TIMESTAMP",
         "receipt_number": "INTEGER",

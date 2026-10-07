@@ -141,8 +141,8 @@ def check_monthly_transaction_limit(db, owner_phone, subscription):
     )
 
 
-def check_monthly_invoice_limit(db, owner_phone, subscription):
-    limit = subscription["limits"].get("monthly_invoice_uses")
+def check_monthly_multi_item_limit(db, owner_phone, subscription):
+    limit = subscription["limits"].get("monthly_multi_item_sales")
     if limit is None:
         return True, None
     count = (
@@ -150,7 +150,7 @@ def check_monthly_invoice_limit(db, owner_phone, subscription):
         .join(Customer, Transaction.customer_id == Customer.id)
         .filter(
             Customer.owner_phone == owner_phone,
-            Transaction.is_invoice == True,
+            Transaction.is_multi_item == True,
             Transaction.created_at >= get_month_start(),
         )
         .count()
@@ -158,8 +158,8 @@ def check_monthly_invoice_limit(db, owner_phone, subscription):
     if count < limit:
         return True, None
     return False, (
-        f"You've used {limit} multi-item invoices this month (Basic limit).\n\n"
-        "Upgrade to Go for unlimited invoice-style transactions."
+        f"You've used {limit} multi-item sales this month (Basic limit).\n\n"
+        "Upgrade to Go for unlimited multi-item sales."
     )
 
 

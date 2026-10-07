@@ -3,9 +3,9 @@ import json
 from constants import ACTION_AWAITING_STOCK_PRICE, ACTION_SELECT_TX_UNIT
 from messages import apply_voice_confirmation_options
 from models import Customer, CustomerMemory, InventoryItem, ParseLog, PendingAction, Transaction
-from parser import format_invoice_items
+from parser import format_sale_items
 from reports import get_balance, get_owner_transaction_query
-from subscriptions import check_customer_limit, check_monthly_invoice_limit, ensure_feature_allowed, get_month_start
+from subscriptions import check_customer_limit, check_monthly_multi_item_limit, ensure_feature_allowed, get_month_start
 
 
 def log_parse(db, phone, owner_phone, raw_input, parsed, source="text", user=None):
@@ -189,8 +189,8 @@ def _at_hint(qty, unit_price):
 
 
 def direct_sale_item_line(parsed):
-    if parsed.get("invoice_items"):
-        return f"{format_invoice_items(parsed['invoice_items'])}\n\nTotal: N{parsed['total']:,}"
+    if parsed.get("sale_items"):
+        return f"{format_sale_items(parsed['sale_items'])}\n\nTotal: N{parsed['total']:,}"
     qty = parsed.get("quantity")
     unit_price = parsed.get("unit_price")
     total = parsed.get("total")
@@ -211,16 +211,16 @@ def build_customer_confirm_message(customer, parsed, user=None):
         _amount = parsed.get("total") or parsed.get("buy_amount") or 0
         _credit = f"\n\n{customer.name.title()} is owing you N{_amount:,}"
 
-        if parsed.get("invoice_items"):
-            item_line = f"{format_invoice_items(parsed['invoice_items'])}\n\nTotal: N{parsed['total']:,}"
+        if parsed.get("sale_items"):
+            item_line = f"{format_sale_items(parsed['sale_items'])}\n\nTotal: N{parsed['total']:,}"
             if parsed["due_date"]:
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
                 return (
-                    f"Confirm invoice for {customer.name}:\n{item_line}\n"
+                    f"Confirm credit sale for {customer.name}:\n{item_line}\n"
                     f"Due: {due_date_text}{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
                 )
             return (
-                f"Confirm invoice for {customer.name}:\n{item_line}"
+                f"Confirm credit sale for {customer.name}:\n{item_line}"
                 f"{_credit}\n\nReply YES or 1 to save, EDIT or 2 to change."
             )
 
@@ -267,9 +267,9 @@ def build_customer_confirm_message(customer, parsed, user=None):
     if action == "COMBINED":
         hint = ""
         total_label = cfg["total_label"]
-        if parsed.get("invoice_items"):
+        if parsed.get("sale_items"):
             item_line = (
-                f"\n{format_invoice_items(parsed['invoice_items'])}\n\n"
+                f"\n{format_sale_items(parsed['sale_items'])}\n\n"
                 f"{total_label}: N{parsed['buy_amount']:,}"
             )
         elif parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
@@ -382,7 +382,7 @@ def handle_transaction_setup(
                 quantity=parsed.get("quantity"),
                 unit=parsed.get("unit"),
                 unit_price=parsed.get("unit_price"),
-                items_json=json.dumps(parsed.get("invoice_items") or []),
+                items_json=json.dumps(parsed.get("sale_items") or []),
                 source_text=voice_transcript_text,
             )
         )
@@ -411,11 +411,11 @@ def handle_transaction_setup(
             send_message(phone, "No previous customer found.")
             return {"status": "no_memory"}
 
-    if len(parsed.get("invoice_items") or []) > 1:
-        allowed, upgrade_msg = check_monthly_invoice_limit(db, business_owner_phone, subscription)
+    if len(parsed.get("sale_items") or []) > 1:
+        allowed, upgrade_msg = check_monthly_multi_item_limit(db, business_owner_phone, subscription)
         if not allowed:
             send_message(phone, upgrade_msg)
-            return {"status": "invoice_plan_blocked"}
+            return {"status": "multi_item_plan_blocked"}
 
     # Case-insensitive match: the parser lowercases the typed name ("Ade" →
     # "ade"), but web-added customers are stored mixed-case ("Ade"). A
@@ -457,7 +457,7 @@ def handle_transaction_setup(
     # If the product has several stock variants (e.g. rice by bag / congo / cup)
     # and the trader didn't say which, ask which one. A single match is accepted
     # as-is. The typed amount is kept regardless of the variant's price.
-    if parsed.get("product") and not parsed.get("unit") and not (parsed.get("invoice_items") or []):
+    if parsed.get("product") and not parsed.get("unit") and not (parsed.get("sale_items") or []):
         variants = _stock_variants(db, business_owner_phone, parsed["product"])
         if len(variants) > 1:
             lines = "\n".join(
@@ -506,7 +506,7 @@ def handle_transaction_setup(
             quantity=parsed.get("quantity"),
             unit=parsed.get("unit"),
             unit_price=parsed.get("unit_price"),
-            items_json=json.dumps(parsed.get("invoice_items") or []),
+            items_json=json.dumps(parsed.get("sale_items") or []),
             source_text=voice_transcript_text,
             due_date=parsed["due_date"],
         )
@@ -538,7 +538,7 @@ def handle_transaction_setup(
 
     no_details_hint = ""
     from biz_language import get_lang
-    if get_lang(user)["show_product_tip"] and not parsed.get("product") and not parsed.get("invoice_items"):
+    if get_lang(user)["show_product_tip"] and not parsed.get("product") and not parsed.get("sale_items"):
         cname = customer.name.title()
         no_details_hint = (
             "\n\n⚠️ No product details captured.\n"
