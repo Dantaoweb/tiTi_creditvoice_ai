@@ -67,12 +67,7 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
     requestAnimationFrame(() => searchRef.current?.focus());
   }
 
-  async function onSearchKey(e) {
-    if (e.key !== "Enter") return;
-    const code = q.trim();
-    if (!code) return;
-    e.preventDefault();
-
+  async function handleScannedCode(code) {
     const onPhone = products.find(p => p.barcode && p.barcode === code);
     if (onPhone) { addByScan(onPhone); return; }
 
@@ -92,6 +87,64 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
       setScan({ code: "", busy: false });   // offline: leave it as a plain search
     }
   }
+
+  function onSearchKey(e) {
+    if (e.key !== "Enter") return;
+    const code = q.trim();
+    if (!code) return;
+    e.preventDefault();
+    handleScannedCode(code);
+  }
+
+  // A Bluetooth or USB scanner types wherever the focus happens to be, so a
+  // cashier who tapped the cart first would scan into nothing. This catches it
+  // anywhere on the page.
+  //
+  // A scanner is told apart from a person by speed: it fires keystrokes a few
+  // milliseconds apart and finishes with Enter, where even a fast typist leaves
+  // much longer gaps. Nothing is intercepted while the cursor is in a field —
+  // there the keystrokes belong to whoever is typing.
+  // Kept in a ref so the window listener below is bound once and still calls
+  // the current handler — writing it in an effect, never during render.
+  const scanHandler = useRef(handleScannedCode);
+  useEffect(() => { scanHandler.current = handleScannedCode; });
+
+  useEffect(() => {
+    const MAX_GAP_MS = 60;        // between keystrokes of one scan
+    const MIN_LENGTH = 4;         // shorter than a real barcode
+    let buffer = "";
+    let lastKeyAt = 0;
+
+    function typingInAField() {
+      const el = document.activeElement;
+      if (!el) return false;
+      return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+    }
+
+    function onKeyDown(e) {
+      if (typingInAField()) { buffer = ""; return; }
+      const now = Date.now();
+      if (now - lastKeyAt > MAX_GAP_MS) buffer = "";
+      lastKeyAt = now;
+
+      if (e.key === "Enter") {
+        const code = buffer.trim();
+        buffer = "";
+        if (code.length >= MIN_LENGTH) {
+          e.preventDefault();
+          scanHandler.current(code);
+          // Put the cursor back in the box so the next scan takes the normal
+          // path and the cashier can see what was read.
+          searchRef.current?.focus();
+        }
+        return;
+      }
+      if (e.key.length === 1) buffer += e.key;
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   async function attachTo(product) {
     try {
