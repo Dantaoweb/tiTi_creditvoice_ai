@@ -3989,3 +3989,12 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 @media (prefers-reduced-motion: reduce) {
   .promo-overlay, .promo-card { animation: none; }
 }
+
+/* A product with no barcode yet — muted, because it is a gap to fill when
+   convenient, not a problem. Only shown once a shop uses barcodes at all. */
+.svc-chip--muted {
+  background: var(--bg-2, #f8fafc);
+  color: var(--text-muted);
+  border-color: var(--border);
+  font-weight: 500;
+}

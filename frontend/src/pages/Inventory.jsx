@@ -870,6 +870,10 @@ export default function Inventory() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  // A shop is "using barcodes" once any product has one. Until then the tag
+  // stays hidden: a trader selling by the congo should not be nagged about a
+  // feature that cannot help them.
+  const usesBarcodes = rows.some(r => !!r.barcode);
   const [summary, setSummary] = useState(null);   // whole-catalogue counts from the server
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1068,6 +1072,13 @@ export default function Inventory() {
                       <ChevronRight size={14} className="name-chip__chev" />
                     </button>
                     {r.is_service && <span className="svc-chip">service</span>}
+                    {/* Only once this shop uses barcodes at all — a shop that
+                        scans nothing should not be told what it is missing. */}
+                    {usesBarcodes && !r.is_service && (
+                      r.barcode
+                        ? <span className="svc-chip" title={r.barcode}>scannable</span>
+                        : <span className="svc-chip svc-chip--muted">no barcode</span>
+                    )}
                     {attrLine && <div className="td-attr-line">{attrLine}</div>}
                   </span>
                 );
