@@ -96,6 +96,44 @@ def featured_reviews(db, limit=None):
     )
 
 
+def pending_review_count(db):
+    """Reviews waiting on a decision. This is the number an admin is chasing —
+    not "unread", which would clear itself by being glanced at."""
+    return db.query(Testimonial).filter(Testimonial.status == "PENDING").count()
+
+
+def _tell_admins_about(db, review):
+    """A review nobody is told about sits unapproved for weeks.
+
+    It goes to the bell and a push for every app admin, which is the quiet
+    channel they already watch — the red count on the Admin menu is the loud
+    one. Never fatal: a notification that fails must not lose the review.
+    """
+    try:
+        from admin import app_admin_phones
+        from web_common import _add_notification
+
+        waiting = pending_review_count(db)
+        title = "📝 A business wrote a review"
+        body = (f"{review.business_name} wrote a review"
+                + (f" ({review.location})" if review.location else "")
+                + ".\n\n"
+                + f"“{(review.quote or '')[:140]}”\n\n"
+                + (f"{waiting} review(s) now waiting for approval."
+                   if waiting > 1 else "Approve it to show it on the homepage."))
+
+        seen = set()
+        for phone in app_admin_phones():
+            if not phone or phone in seen:
+                continue
+            seen.add(phone)
+            _add_notification(db, phone, "review", title, body, link="/admin")
+        if seen:
+            db.commit()
+    except Exception:
+        _log.exception("could not tell the admins about a new review")
+
+
 def _dict(t, include_owner=False):
     out = {
         "id": t.id,
@@ -184,6 +222,7 @@ def register_site_routes(app):
             # Any campaign that was asking for this has got what it wanted.
             from campaigns import mark_goal_done
             mark_goal_done(db, "review", user)
+            _tell_admins_about(db, row)
             return {"review": _dict(row), "message": "Thank you — we'll review it shortly."}
         finally:
             db.close()
@@ -203,6 +242,23 @@ def register_site_routes(app):
             db.close()
 
     # ── Admin: moderate, feature, and set the site settings ───────────────
+    @app.get("/app/api/admin/pending-counts")
+    def admin_pending_counts(session: dict = Depends(require_web_auth)):
+        """What is waiting for an admin, for the red count on the menu.
+
+        Deliberately cheap and quiet: no rate-limit error and no 403 noise for
+        a non-admin, because the menu asks for this on every page change.
+        """
+        db = SessionLocal()
+        try:
+            from admin import is_app_admin
+            user = db.query(User).filter(User.id == session["user_id"]).first()
+            if not user or not is_app_admin(user.phone, db):
+                return {"reviews": 0}
+            return {"reviews": pending_review_count(db)}
+        finally:
+            db.close()
+
     @app.get("/app/api/admin/reviews")
     def admin_reviews(session: dict = Depends(require_web_auth), status: str = ""):
         db = SessionLocal()

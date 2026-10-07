@@ -22,7 +22,7 @@ import main
 import web_auth
 from database import SessionLocal
 from main import app
-from models import SiteSetting, Testimonial
+from models import AppNotification, SiteSetting, Testimonial
 
 client = TestClient(app, raise_server_exceptions=True)
 
@@ -134,6 +134,69 @@ def test_owner_can_withdraw(owner, admin):
 
 
 # ── Moderation ───────────────────────────────────────────────────────────────
+
+def test_the_admins_are_told_when_a_review_arrives(owner, admin):
+    """A review nobody is told about sits unapproved for weeks."""
+    db = SessionLocal()
+    try:
+        db.query(AppNotification).filter(
+            AppNotification.owner_phone == ADMIN_PHONE).delete()
+        db.commit()
+    finally:
+        db.close()
+
+    _write(owner)
+
+    db = SessionLocal()
+    try:
+        note = (db.query(AppNotification)
+                .filter(AppNotification.owner_phone == ADMIN_PHONE,
+                        AppNotification.event_type == "review")
+                .order_by(AppNotification.created_at.desc()).first())
+        assert note is not None
+        assert "Ade Stores" in note.body
+        assert REVIEW["quote"][:30] in note.body      # what they actually said
+        assert note.link == "/admin"                  # one tap to go and approve
+    finally:
+        db.close()
+
+
+def test_a_failed_notification_does_not_lose_the_review(owner, monkeypatch):
+    def boom(*a, **kw):
+        raise RuntimeError("bell is broken")
+    monkeypatch.setattr("web_common._add_notification", boom)
+    assert _write(owner).status_code == 200
+    assert client.get("/app/api/my-review", cookies=owner).json()["review"] is not None
+
+
+def test_the_waiting_count_is_what_an_admin_is_chasing(owner, admin):
+    db = SessionLocal()
+    try:
+        db.query(Testimonial).delete()
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.get("/app/api/admin/pending-counts",
+                      cookies=admin).json()["reviews"] == 0
+
+    review_id = _write(owner).json()["review"]["id"]
+    assert client.get("/app/api/admin/pending-counts",
+                      cookies=admin).json()["reviews"] == 1
+
+    # It clears when the work is done, not when the page is opened.
+    client.patch(f"/app/api/admin/reviews/{review_id}", cookies=admin,
+                 json={"status": "APPROVED"})
+    assert client.get("/app/api/admin/pending-counts",
+                      cookies=admin).json()["reviews"] == 0
+
+
+def test_the_count_tells_a_non_admin_nothing(owner):
+    _write(owner)
+    r = client.get("/app/api/admin/pending-counts", cookies=owner)
+    assert r.status_code == 200          # quiet, not an error — the menu asks often
+    assert r.json()["reviews"] == 0
+
 
 def test_featuring_requires_approval_first(owner, admin):
     rid = _write(owner).json()["review"]["id"]

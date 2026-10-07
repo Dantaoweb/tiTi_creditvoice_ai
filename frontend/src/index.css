@@ -3998,3 +3998,41 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   border-color: var(--border);
   font-weight: 500;
 }
+
+/* ── Consent to be published ───────────────────────────────────────────────
+   Permission to put someone's business name and phone number on a public page
+   is the most consequential thing on that form, so it is the most visible part
+   of it — a body-text tick box was being missed entirely. */
+.consent-box {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: var(--bg-2, #f8fafc);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.consent-box:hover { border-color: var(--brand); }
+.consent-box--on {
+  border-style: solid;
+  border-color: var(--brand);
+  background: rgba(37, 99, 235, 0.06);
+}
+.consent-box input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+.consent-box strong { display: block; font-size: 14.5px; }
+.consent-box__detail {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}

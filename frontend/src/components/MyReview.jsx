@@ -144,22 +144,34 @@ export default function MyReview() {
               </div>
             </div>
 
-            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13 }}>
+            {/* The permission to publish someone's name and phone number is the
+                most important thing on this form, so it is the most visible —
+                a tick box the size of body text was being missed entirely, and
+                the send button looked broken for no stated reason. */}
+            <label className={`consent-box${form.consent_public ? " consent-box--on" : ""}`}>
               <input type="checkbox" checked={!!form.consent_public} disabled={busy}
                 onChange={e => set("consent_public", e.target.checked)} />
               <span>
-                I agree that my business name, town, words and the contact above can be shown
-                publicly on the CreditVoice website. I can remove it any time.
+                <strong>Yes, show my business publicly</strong>
+                <span className="consent-box__detail">
+                  My business name, town, words and the contact above can appear on the
+                  CreditVoice homepage. I can remove it any time.
+                </span>
               </span>
             </label>
 
             {err && <div className="login-error">{err}</div>}
 
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <button type="submit" className="btn btn-primary"
                 disabled={busy || !form.consent_public || !form.quote.trim() || !form.business_name.trim()}>
                 {busy ? "Sending…" : review ? "Send the change" : "Send my review"}
               </button>
+              {!form.consent_public && (
+                <span className="text-subtle text-sm">
+                  Tick the box above to send it.
+                </span>
+              )}
               <button type="button" className="btn btn-ghost" disabled={busy}
                 onClick={() => { setOpen(false); setErr(""); }}>Cancel</button>
             </div>

@@ -86,6 +86,7 @@ export default function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [titiNumber, setTitiNumber] = useState("");
   const [oppsUnread, setOppsUnread] = useState(0);
+  const [adminPending, setAdminPending] = useState(0);
   // Remember whether "More" was expanded, per device.
   const [moreOpen, setMoreOpen] = useState(() => localStorage.getItem("cv_more_open") === "1");
   const [navUsage, setNavUsage] = useState(readNavUsage);
@@ -123,6 +124,17 @@ export default function Layout() {
 
   const L = getBizLabels(user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
+
+  // What is waiting for an admin to act on — reviews a business has written
+  // and nobody has approved yet. Unlike the opportunities badge this is not
+  // "have you looked": it clears when the work is done, not when the page is
+  // opened, so a review cannot sit unapproved because someone glanced at it.
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiFetch("admin/pending-counts")
+      .then(d => setAdminPending(d.reviews || 0))
+      .catch(() => {});
+  }, [location.pathname, isAdmin]);
   const FUEL_TYPES = ["filling_station", "fuel_marketer", "kerosene_diesel", "lpg_gas", "lubricants", "other_energy"];
   const isFuel = user?.business_category === "energy_fuel" || FUEL_TYPES.includes(user?.business_type);
   const isPoultry = user?.business_type === "poultry_farm";
@@ -232,6 +244,12 @@ export default function Layout() {
         {item.to === "/opportunities" && oppsUnread > 0 && (
           <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
         )}
+        {item.to === "/admin" && adminPending > 0 && (
+          <span className="nav-badge nav-badge-alert"
+            title={`${adminPending} review(s) waiting for approval`}>
+            {adminPending}
+          </span>
+        )}
       </NavLink>
     );
   }
@@ -290,9 +308,12 @@ export default function Layout() {
               {!moreOpen && oppsUnread > 0 && moreItems.some(i => i.to === "/opportunities") && (
                 <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
               )}
+              {!moreOpen && adminPending > 0 && moreItems.some(i => i.to === "/admin") && (
+                <span className="nav-badge nav-badge-alert">{adminPending}</span>
+              )}
               <ChevronDown
                 size={15}
-                style={{ marginLeft: !moreOpen && oppsUnread > 0 ? 6 : "auto",
+                style={{ marginLeft: !moreOpen && (oppsUnread > 0 || adminPending > 0) ? 6 : "auto",
                          transform: moreOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
               />
             </button>
