@@ -248,6 +248,7 @@ def register_site_routes(app):
                 pending_opportunity_applications, pending_payments, pending_supplier_applications,
             )
             from finance_alerts import pending_finance_count
+            from supplier_alerts import stale_supplier_requests
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 return {"reviews": 0, "suppliers": 0, "opportunities": 0, "finance": 0,
@@ -255,7 +256,8 @@ def register_site_routes(app):
             # Keyed by what is waiting; each admin tab shows its own count.
             counts = {
                 "reviews": pending_review_count(db),
-                "suppliers": pending_supplier_applications(db),
+                # Applications to decide, plus requests a supplier has left unanswered.
+                "suppliers": pending_supplier_applications(db) + stale_supplier_requests(db),
                 "opportunities": pending_opportunity_applications(db),
                 "finance": pending_finance_count(db),
                 "payments": pending_payments(db),

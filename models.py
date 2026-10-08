@@ -1701,6 +1701,8 @@ class SupplierContactMessage(Base):
     # Contacts are revealed and rating unlocked only once accepted.
     connection_status  = Column(String, default="forwarded")
     created_at         = Column(DateTime, default=utcnow)
+    # When the supplier was reminded about a request left unanswered (once).
+    reminded_at        = Column(DateTime, nullable=True)
 
 
 class SupplierRating(Base):

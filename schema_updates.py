@@ -1113,6 +1113,11 @@ def ensure_schema_updates(engine):
                     "ALTER TABLE supplier_contact_messages "
                     "ADD COLUMN connection_status VARCHAR DEFAULT 'forwarded'"
                 ))
+        if "reminded_at" not in _scm_cols:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "ALTER TABLE supplier_contact_messages ADD COLUMN reminded_at TIMESTAMP"
+                ))
 
     # ── billing_period on subscription_payments (monthly vs yearly) ──────────
     if "subscription_payments" in inspector.get_table_names():

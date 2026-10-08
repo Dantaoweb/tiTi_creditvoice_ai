@@ -66,19 +66,6 @@ def _require_admin(db: Session, phone: str):
         raise HTTPException(status_code=403, detail="Admin only.")
 
 
-def _admin_phones(db: Session):
-    """Every app-admin phone: the env allow-list plus active DB-managed roles."""
-    from admin import app_admin_phones, ROLE_APP_ADMIN
-    from models import AppAdminRole
-    phones = set(app_admin_phones())
-    for r in db.query(AppAdminRole).filter(
-        AppAdminRole.role == ROLE_APP_ADMIN, AppAdminRole.is_active == True
-    ).all():
-        if r.phone:
-            phones.add(r.phone)
-    return [p for p in phones if p]
-
-
 # What the applicant is told when an admin moves their opportunity application.
 _APPLICANT_UPDATES = {
     "reviewing": ("Your application is being reviewed",
@@ -488,13 +475,13 @@ def register_supplier_routes(app, get_db=None):
                 f"{biz} wants to connect{interest}. Open Suppliers → Supplier Profile "
                 f"to Accept or Decline. Their contact is shared once you accept.",
             )
-            for ap in _admin_phones(db):
-                _notify_phone(
-                    db, ap, "supplier_enquiry_admin",
-                    "Supplier enquiry",
-                    f"{biz} → {sup_biz}{interest}. Auto-forwarded; block from Admin if needed.",
-                    whatsapp=False,
-                )
+            from admin_alerts import notify_admins
+            notify_admins(
+                db, "supplier_enquiry_admin", "Supplier enquiry",
+                f"{biz} → {sup_biz}{interest}. Sent straight to the supplier; block it from "
+                "Admin if it looks wrong.",
+                tab="Suppliers",
+            )
             return {"ok": True, "message": "Request sent. We'll let you know when the supplier responds."}
         finally:
             db.close()
@@ -933,6 +920,7 @@ def register_supplier_routes(app, get_db=None):
             user = db.query(User).filter(User.phone == phone).first()
             biz  = (user.business_type_label or user.name or phone) if user else phone
 
+            newly_low = payload.rating <= 2 and (not existing or (existing.rating or 0) > 2)
             if existing:
                 existing.rating = payload.rating
                 existing.review = payload.review or None
@@ -946,6 +934,18 @@ def register_supplier_routes(app, get_db=None):
                     review             = payload.review or None,
                 ))
             db.commit()
+            if newly_low:
+                from admin_alerts import notify_admins
+                sup = db.query(User).filter(User.phone == vs.owner_phone).first()
+                sup_name = (sup.business_type_label or sup.name) if sup else vs.owner_phone
+                stars = "★" * payload.rating + "☆" * (5 - payload.rating)
+                notify_admins(
+                    db, "supplier_low_rating", f"⚠️ {sup_name} rated {payload.rating}/5",
+                    f"{biz} gave {sup_name} {stars}"
+                    + (f": “{(payload.review or '')[:200]}”" if payload.review else ".")
+                    + " Check whether they should stay verified.",
+                    tab="Suppliers",
+                )
             return {"ok": True}
         finally:
             db.close()

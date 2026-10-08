@@ -808,6 +808,11 @@ def _deliver_campaigns(db):
         print(f"[proactive] campaign notifications: {sent}", flush=True)
 
 
+def _check_unanswered_supplier_requests(db):
+    from supplier_alerts import check_unanswered_supplier_requests
+    check_unanswered_supplier_requests(db)
+
+
 _CHECKS = (
     _check_low_stock,
     _check_overdue_debt,
@@ -820,6 +825,7 @@ _CHECKS = (
     _check_savings_due,
     _check_target_savings,
     _check_subscription_expiry,
+    _check_unanswered_supplier_requests,
     _reconcile_balances,
     _purge_old_logs,
     _purge_old_notifications,

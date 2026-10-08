@@ -720,10 +720,13 @@ function ConnectionRequests() {
     try {
       await fetch(`/app/api/admin/supplier-connections/${id}/block`, { method: "POST", credentials: "include" });
       load(filter);
+      announcePendingChanged();
     } finally { setBusy(null); }
   }
 
   const CS = { forwarded: "#d97706", accepted: "#059669", declined: "#6b7280", blocked: "#dc2626" };
+  // A request the supplier has left unanswered: the buyer is still waiting.
+  const daysWaiting = c => c.created_at ? Math.floor((Date.now() - new Date(c.created_at + "Z").getTime()) / 86400000) : 0;
 
   return (
     <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 16, marginBottom: 24 }}>
@@ -760,7 +763,14 @@ function ConnectionRequests() {
                   <td style={{ padding: "6px 8px" }}>{c.from_business_name}<br /><span style={{ color: "var(--text-muted)", fontSize: 11 }}>{c.from_phone}</span></td>
                   <td style={{ padding: "6px 8px" }}>{c.supplier_name}</td>
                   <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{c.product_interest || "—"}</td>
-                  <td style={{ padding: "6px 8px", fontWeight: 700, color: CS[c.connection_status] || "#666" }}>{c.connection_status}</td>
+                  <td style={{ padding: "6px 8px", fontWeight: 700, color: CS[c.connection_status] || "#666" }}>
+                    {c.connection_status}
+                    {c.connection_status === "forwarded" && daysWaiting(c) >= 3 && (
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#dc2626" }}>
+                        No answer for {daysWaiting(c)} days
+                      </div>
+                    )}
+                  </td>
                   <td style={{ padding: "6px 8px", textAlign: "right" }}>
                     {c.connection_status !== "blocked" && (
                       <button onClick={() => block(c.id)} disabled={busy === c.id} style={{
