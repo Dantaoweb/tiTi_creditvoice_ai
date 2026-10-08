@@ -51,6 +51,7 @@ class PosSaveRequest(BaseModel):
     items: list[PosCartItem] = Field(max_length=200)  # max 200 line items per sale
     payment_amount: int = 0
     debt_payment: int = 0   # extra collected at checkout to clear the customer's prior debt
+    discount: int = 0       # naira off the whole sale
     branch_id: Optional[int] = None
     due_date: Optional[datetime] = None
     service_date: Optional[datetime] = None   # promised delivery / ready-by date
@@ -281,6 +282,7 @@ def register_pos_routes(app):
                 customer_name=payload.customer_name,
                 customer_phone=payload.customer_phone,
                 service_date=payload.service_date,
+                discount=payload.discount,
             )
             # Settle the customer's prior debt in the same checkout, when they paid
             # extra to clear it (POS "Settle previous debt" line). Recorded as a

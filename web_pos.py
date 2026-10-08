@@ -133,14 +133,16 @@ def resolve_sale_customer(db, owner_phone, customer_id, customer_name=None, cust
 
 def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
                   branch_id=None, due_date=None, customer_name=None, customer_phone=None,
-                  service_date=None, deduct_stock=True, commit=True, label=None):
+                  service_date=None, deduct_stock=True, commit=True, label=None,
+                  discount=0):
     """
     Save a POS sale and deduct inventory.
 
     `deduct_stock=False` records the sale without touching stock — for an
     invoice being paid, whose goods leave stock when they are delivered.
     `commit=False` leaves the commit to the caller so it can save its own
-    changes in the same transaction.
+    changes in the same transaction. `discount` is naira off the whole sale;
+    the lines keep their prices and the sale is recorded at lines − discount.
 
     Transaction type rules:
     - No customer → SALE
@@ -170,7 +172,14 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
 
     customer_id = resolve_sale_customer(db, owner_phone, customer_id, customer_name, customer_phone)
 
-    total = sum(float(it.get("qty", 1)) * int(it.get("unit_price", 0)) for it in items)
+    lines_total = sum(float(it.get("qty", 1)) * int(it.get("unit_price", 0)) for it in items)
+    try:
+        discount = int(discount or 0)
+    except (TypeError, ValueError):
+        raise ValueError("Invalid discount.")
+    if discount < 0 or discount > lines_total:
+        raise ValueError("The discount must be between zero and the sale total.")
+    total = lines_total - discount
     paid = min(int(payment_amount or 0), total)
 
     has_customer = bool(customer_id)
@@ -189,6 +198,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         due_date=due_date if is_credit else None,
         service_date=service_date,
         receipt_number=next_receipt_number(db, owner_phone),
+        discount_amount=discount or None,
     )
     db.add(main_tx)
     db.flush()
@@ -247,6 +257,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         "balance_owed": int(total - paid) if has_customer else 0,
         "transaction_type": tx_type,
         "pay_tx_id": pay_tx_id,
+        "discount": discount,
     }
 
 
@@ -396,6 +407,8 @@ def get_pos_receipt(db, tx_id, user=None):
         "branch_address": branch_address,
         "receipt_number": tx.receipt_number,
         "config": config,
+        "discount": int(tx.discount_amount or 0),
+        "subtotal": int(sum((it.total or 0) for it in items)),
         "invoice_number": tx.invoice_number,
         "invoice_sent_at": tx.invoice_sent_at.isoformat() if tx.invoice_sent_at else None,
         "items": [
@@ -443,6 +456,10 @@ def format_receipt_text(receipt):
             lines.append(f"{(it.get('product') or '').title()}")
             lines.append(f"  x{it.get('qty', 1)} @ N{int(it.get('unit_price', 0)):,} = N{int(it.get('total', 0)):,}")
         lines.append("--------------------")
+        discount = int(receipt.get("discount") or 0)
+        if discount:
+            lines.append(f"Subtotal: N{int(receipt.get('subtotal') or total + discount):,}")
+            lines.append(f"Discount: -N{discount:,}")
         lines.append(f"{cfg.get('amount_label', 'Total')}: N{total:,}")
         lines.append(f"Paid:  N{paid:,}")
         if bal > 0:

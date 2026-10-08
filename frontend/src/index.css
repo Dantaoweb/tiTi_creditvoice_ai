@@ -1518,6 +1518,48 @@ tr.low-stock td { background: #fffbeb; }
   font-weight: 800;
   color: var(--ink);
 }
+.pos-total-row--muted {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+/* A discount off the whole sale: an amount in naira, or a percentage. */
+.pos-discount-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.pos-discount-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pos-discount-input input {
+  width: 96px;
+  text-align: right;
+}
+.pos-discount-mode {
+  min-width: 34px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+.pos-discount-mode.on {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
 
 .pos-change {
   margin-top: 6px;

@@ -224,6 +224,10 @@ class Transaction(Base):
     # Per-business receipt number (1, 2, 3…), assigned when the sale is recorded.
     receipt_number = Column(Integer, nullable=True)
 
+    # Naira taken off the whole sale. The lines keep their own prices, so
+    # amount = lines − discount_amount; receipts print it so they add up.
+    discount_amount = Column(Integer, nullable=True)
+
     # Formal invoice: per-business sequential number (INV-0001), assigned the
     # first time an invoice document is issued for this sale. Null until then.
     invoice_number = Column(Integer, nullable=True)

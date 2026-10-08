@@ -172,7 +172,7 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
 def build_customer_receipt(
     business_name, customer_name, cart, total, paid,
     balance, due_date_str, tx_id, config=None, show_discount=False,
-    business_phone=None, receipt_no=None,
+    business_phone=None, receipt_no=None, overall_discount=0,
 ):
     cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
@@ -210,6 +210,10 @@ def build_customer_receipt(
             )
 
     lines.append("--------------------")
+    # A discount off the whole sale, or the lines would not add up to the total.
+    if overall_discount:
+        lines.append(f"Subtotal: N{total + overall_discount:,}")
+        lines.append(f"Discount: -N{overall_discount:,}")
     lines.append(f"{cfg['amount_label']}:    N{total:,}")
     if show_discount and total_saved > 0:
         lines.append(f"You saved: N{total_saved:,}")
@@ -739,6 +743,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             message_id=f"{message_id}_sp_buy",
             created_at=_utcnow(),
             receipt_number=next_receipt_number(db, business_owner_phone),
+            discount_amount=overall_discount or None,
         )
         db.add(buy_tx)
         db.flush()
@@ -847,6 +852,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             due_date_str, buy_tx.id, receipt_cfg, show_discount=show_discount,
             business_phone=business_owner_phone,
             receipt_no=getattr(buy_tx, "receipt_number", None),
+            overall_discount=overall_discount,
         )
         send_message(customer_phone, customer_receipt)
     else:

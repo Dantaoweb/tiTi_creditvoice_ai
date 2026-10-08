@@ -45,6 +45,7 @@ export default function Receipt() {
   const paid      = receipt.paid ?? receipt.total;
   const owed      = receipt.balance_owed ?? 0;
   const priorDebt = receipt.prior_debt_paid ?? 0;   // old debt cleared in this checkout
+  const discount  = receipt.discount ?? 0;          // taken off the whole sale
   // Debt carried from earlier sales, and everything owed as at this receipt —
   // "Balance" alone only covers this sale and hides the rest.
   const prevBalance = receipt.previous_balance ?? 0;
@@ -81,6 +82,10 @@ export default function Receipt() {
         (it.attributes || []).forEach(a => L.push(`   ${a.label}: ${a.value}`));
       });
       L.push("--------------------");
+      if (discount > 0) {
+        L.push(`Subtotal: ${nairaFull(receipt.subtotal ?? receipt.total + discount)}`);
+        L.push(`Discount: -${nairaFull(discount)}`);
+      }
       L.push(`Total: ${nairaFull(receipt.total)}`);
       if (!isInvoice) L.push(`Paid: ${nairaFull(paid)}`);
       if (owed > 0) {
@@ -265,6 +270,19 @@ export default function Receipt() {
             ))}
           </tbody>
           <tfoot>
+            {/* A discount off the whole sale, so the lines add up to the total. */}
+            {discount > 0 && (
+              <>
+                <tr>
+                  <td colSpan={3}>Subtotal</td>
+                  <td className="receipt-right">{nairaFull(receipt.subtotal ?? receipt.total + discount)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={3}>Discount</td>
+                  <td className="receipt-right">−{nairaFull(discount)}</td>
+                </tr>
+              </>
+            )}
             <tr className="receipt-total-row">
               <td colSpan={3}>Total</td>
               <td className="receipt-right">{nairaFull(receipt.total)}</td>

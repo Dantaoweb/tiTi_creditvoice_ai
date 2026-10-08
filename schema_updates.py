@@ -289,6 +289,7 @@ def ensure_schema_updates(engine):
         "invoice_number": "INTEGER",
         "invoiced_at": "TIMESTAMP",
         "invoice_sent_at": "TIMESTAMP",
+        "discount_amount": "INTEGER",
     }
     with engine.begin() as connection:
         for column_name, column_type in transaction_updates.items():

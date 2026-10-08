@@ -491,6 +491,8 @@ export default function POS() {
   const [customer, setCustomer] = useState(null);
   const [custQuery, setCustQuery] = useState("");   // typed-but-unselected search text
   const [payment, setPayment] = useState("");
+  const [discountInput, setDiscountInput] = useState("");
+  const [discountPct, setDiscountPct] = useState(false);
   const [settleDebt, setSettleDebt] = useState(true);   // fold prior debt into checkout
   const [dueDate, setDueDate] = useState("");
   const [serviceDate, setServiceDate] = useState("");
@@ -520,7 +522,12 @@ export default function POS() {
       .catch(() => {});
   }, [isOwner]);
 
-  const total    = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
+  const subtotal = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
+  // A discount off the whole sale: naira, or a percentage of the subtotal.
+  const discountRaw = parseAmt(discountInput);
+  const discount = Math.min(subtotal, Math.max(0, Math.round(
+    discountPct ? subtotal * Math.min(discountRaw, 100) / 100 : discountRaw)));
+  const total    = subtotal - discount;
   const prevDebt = (customer && customer.balance > 0) ? customer.balance : 0;
   const debtDue  = settleDebt ? prevDebt : 0;      // debt folded into this checkout
   const amountDue = total + debtDue;
@@ -650,6 +657,7 @@ export default function POS() {
       })),
       payment_amount: paid,
       debt_payment: debtPaid,
+      discount,
       branch_id: branchId,
       due_date: (customer && owed > 0 && dueDate) ? dueDate : null,
       service_date: serviceDate || null,
@@ -662,6 +670,7 @@ export default function POS() {
         const label = `POS sale — ${cart.length} item(s), ${nairaFull(paid)}`;
         enqueue("pos/save", payload, label);
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
+        setDiscountInput("");
         setSaving(false);
         navigate("/capture", {
           state: { offlineMsg: "No internet — POS sale saved offline. It will sync when you reconnect." },
@@ -821,6 +830,26 @@ export default function POS() {
           </div>
 
           <div className="pos-summary-section">
+            {subtotal > 0 && (
+              <div className="pos-discount-row">
+                <span>Discount</span>
+                <div className="pos-discount-input">
+                  <input inputMode="decimal" placeholder="0" aria-label="Discount"
+                    value={discountInput}
+                    onChange={e => setDiscountInput(discountPct ? e.target.value.replace(/[^\d.]/g, "") : fmtAmt(e.target.value))} />
+                  <button type="button" className={`pos-discount-mode${discountPct ? "" : " on"}`}
+                    onClick={() => { setDiscountPct(false); setDiscountInput(""); }}>₦</button>
+                  <button type="button" className={`pos-discount-mode${discountPct ? " on" : ""}`}
+                    onClick={() => { setDiscountPct(true); setDiscountInput(""); }}>%</button>
+                </div>
+              </div>
+            )}
+            {discount > 0 && (
+              <div className="pos-total-row pos-total-row--muted">
+                <span>Subtotal {nairaFull(subtotal)}</span>
+                <span>−{nairaFull(discount)}</span>
+              </div>
+            )}
             <div className="pos-total-row">
               <span>Total</span>
               <span>{nairaFull(total)}</span>
