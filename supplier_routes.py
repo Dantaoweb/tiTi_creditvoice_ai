@@ -79,7 +79,7 @@ def _admin_phones(db: Session):
     return [p for p in phones if p]
 
 
-def _notify_phone(db, phone, event_type, title, body, whatsapp=True):
+def _notify_phone(db, phone, event_type, title, body, whatsapp=True, link=None):
     """In-app notification + web push (+ optional WhatsApp) to one business.
     Reuses the proactive scheduler's notifier so web owners and WhatsApp users
     are all reached. Best-effort — never raises into the request."""
@@ -87,7 +87,7 @@ def _notify_phone(db, phone, event_type, title, body, whatsapp=True):
         return
     try:
         from proactive_scheduler import _notify
-        _notify(db, phone, event_type, title, body, send_whatsapp=whatsapp)
+        _notify(db, phone, event_type, title, body, send_whatsapp=whatsapp, link=link)
     except Exception:
         pass
 
@@ -202,6 +202,8 @@ def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True, inc
         "delivery_notes": vs.delivery_notes or "",
         "cac_number": vs.cac_number or "",
         "verification_status": vs.verification_status,
+        "reapplied_at": vs.reapplied_at.isoformat() if vs.reapplied_at else None,
+        "previous_rejection_reason": vs.previous_rejection_reason or "",
         "rejection_reason": vs.rejection_reason or "",
         "reviewed_at": vs.reviewed_at.isoformat() if vs.reviewed_at else None,
         "created_at": vs.created_at.isoformat() if vs.created_at else None,
@@ -327,7 +329,11 @@ def register_supplier_routes(app, get_db=None):
                 )
 
             # Upsert (re-apply after rejection)
+            reapplied = bool(existing)
             if existing:
+                # Keep what was wrong last time, so the admin can check it was fixed.
+                existing.previous_rejection_reason = existing.rejection_reason
+                existing.reapplied_at     = _utcnow()
                 existing.supplier_type    = payload.supplier_type
                 existing.bio              = payload.bio or None
                 existing.states_covered   = json.dumps(payload.states_covered)
@@ -370,6 +376,18 @@ def register_supplier_routes(app, get_db=None):
                 ))
 
             db.commit()
+
+            from admin_alerts import notify_admins
+            biz = (user.business_type_label or user.name or phone) if user else phone
+            notify_admins(
+                db, "supplier_application",
+                "🏭 Supplier re-applied" if reapplied else "🏭 New supplier application",
+                f"{biz} {'applied again' if reapplied else 'applied'} to the supplier directory "
+                f"({dict(SUPPLIER_TYPES).get(payload.supplier_type, payload.supplier_type)}, "
+                f"{len(payload.products)} product{'s' if len(payload.products) != 1 else ''}). "
+                "They were told it would be reviewed within 48 hours.",
+                tab="Suppliers",
+            )
             return {"ok": True, "message": "Application submitted. Admin will review within 48 hours."}
         finally:
             db.close()
@@ -731,6 +749,13 @@ def register_supplier_routes(app, get_db=None):
             vs.rejection_reason    = None
             vs.reviewed_at         = _utcnow()
             db.commit()
+            _notify_phone(
+                db, vs.owner_phone, "supplier_approved",
+                "✅ You're a verified supplier",
+                "Your supplier directory application was approved. Retailers can now "
+                "find your business and send you enquiries.",
+                link="/suppliers",
+            )
             return {"ok": True}
         finally:
             db.close()
@@ -748,6 +773,13 @@ def register_supplier_routes(app, get_db=None):
             vs.rejection_reason    = payload.reason or None
             vs.reviewed_at         = _utcnow()
             db.commit()
+            _notify_phone(
+                db, vs.owner_phone, "supplier_rejected",
+                "Supplier application not approved",
+                (f"Reason: {vs.rejection_reason}\n\n" if vs.rejection_reason else "")
+                + "You can fix this and apply again from the Suppliers page.",
+                link="/suppliers",
+            )
             return {"ok": True}
         finally:
             db.close()

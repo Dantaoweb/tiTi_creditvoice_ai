@@ -156,7 +156,7 @@ def test_the_admins_are_told_when_a_review_arrives(owner, admin):
         assert note is not None
         assert "Ade Stores" in note.body
         assert REVIEW["quote"][:30] in note.body      # what they actually said
-        assert note.link == "/admin"                  # one tap to go and approve
+        assert note.link == "/admin?tab=Site"         # one tap to go and approve
     finally:
         db.close()
 

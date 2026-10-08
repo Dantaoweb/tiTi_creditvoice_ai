@@ -125,15 +125,19 @@ export default function Layout() {
   const L = getBizLabels(user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
 
-  // What is waiting for an admin to act on — reviews a business has written
-  // and nobody has approved yet. Unlike the opportunities badge this is not
+  // What is waiting for an admin to act on — reviews, supplier applications
+  // and the like that nobody has decided yet. Unlike the opportunities badge this is not
   // "have you looked": it clears when the work is done, not when the page is
   // opened, so a review cannot sit unapproved because someone glanced at it.
   useEffect(() => {
     if (!isAdmin) return;
-    apiFetch("admin/pending-counts")
-      .then(d => setAdminPending(d.reviews || 0))
+    const load = () => apiFetch("admin/pending-counts")
+      .then(d => setAdminPending(d.total || 0))
       .catch(() => {});
+    load();
+    // The admin page announces when something waiting was decided.
+    window.addEventListener("cv-admin-pending", load);
+    return () => window.removeEventListener("cv-admin-pending", load);
   }, [location.pathname, isAdmin]);
   const FUEL_TYPES = ["filling_station", "fuel_marketer", "kerosene_diesel", "lpg_gas", "lubricants", "other_energy"];
   const isFuel = user?.business_category === "energy_fuel" || FUEL_TYPES.includes(user?.business_type);
@@ -246,7 +250,7 @@ export default function Layout() {
         )}
         {item.to === "/admin" && adminPending > 0 && (
           <span className="nav-badge nav-badge-alert"
-            title={`${adminPending} review(s) waiting for approval`}>
+            title={`${adminPending} waiting for an admin`}>
             {adminPending}
           </span>
         )}

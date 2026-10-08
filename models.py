@@ -1658,6 +1658,10 @@ class VerifiedSupplier(Base):
     reviewed_at      = Column(DateTime, nullable=True)
     created_at       = Column(DateTime, default=utcnow)
     updated_at       = Column(DateTime, nullable=True)
+    # Set when a rejected supplier applies again, so the admin can see it is a
+    # second try and what was wrong the first time.
+    reapplied_at     = Column(DateTime, nullable=True)
+    previous_rejection_reason = Column(Text, nullable=True)
 
 
 class VerifiedSupplierProduct(Base):

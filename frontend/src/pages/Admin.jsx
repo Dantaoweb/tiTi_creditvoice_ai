@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiFetch, apiPost, apiPut, apiPatch, apiDelete } from "../lib/api";
 import { nairaFull, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
@@ -805,6 +806,7 @@ function SuppliersTab() {
     try {
       await fetch(`/app/api/admin/supplier-applications/${id}/approve`, { method: "POST", credentials: "include" });
       load(filter);
+      announcePendingChanged();
     } finally { setBusy(null); }
   }
 
@@ -818,6 +820,7 @@ function SuppliersTab() {
       });
       setRejectId(null); setRejectReason("");
       load(filter);
+      announcePendingChanged();
     } finally { setBusy(null); }
   }
 
@@ -886,7 +889,15 @@ function SuppliersTab() {
       ) : apps.map(a => (
         <div key={a.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: 16, marginBottom: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-            <strong style={{ fontSize: 15 }}>{a.business_name}</strong>
+            <strong style={{ fontSize: 15 }}>
+              {a.business_name}
+              {a.reapplied_at && a.verification_status === "pending" && (
+                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#b45309",
+                  background: "rgba(245,158,11,0.14)", borderRadius: 99, padding: "2px 8px" }}>
+                  Re-applied
+                </span>
+              )}
+            </strong>
             <span style={{ fontSize: 12, fontWeight: 700, color: STATUS_COLORS[a.verification_status] || "#666",
               background: "#f9fafb", borderRadius: 99, padding: "3px 10px", border: "1px solid var(--border)" }}>
               {a.verification_status}
@@ -898,6 +909,11 @@ function SuppliersTab() {
             {a.cac_number && <span>CAC: {a.cac_number}</span>}
             {a.states_covered?.length > 0 && <span>States: {a.states_covered.join(", ")}</span>}
           </div>
+          {a.reapplied_at && a.verification_status === "pending" && (
+            <p style={{ fontSize: 12, color: "#b45309", marginBottom: 8 }}>
+              Rejected before{a.previous_rejection_reason ? <> — reason: <em>{a.previous_rejection_reason}</em></> : ""}. Check it was fixed.
+            </p>
+          )}
           {a.bio && <p style={{ fontSize: 13, marginBottom: 8, color: "var(--text-secondary)" }}>{a.bio}</p>}
           {a.products?.length > 0 && (
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
@@ -2671,7 +2687,7 @@ function SiteTab() {
 
   async function patch(row, body) {
     setErr("");
-    try { await apiPatch(`admin/reviews/${row.id}`, body); loadReviews(); }
+    try { await apiPatch(`admin/reviews/${row.id}`, body); loadReviews(); announcePendingChanged(); }
     catch (e) { setErr(e.message); }
   }
 
@@ -3104,12 +3120,33 @@ function CampaignsTab() {
   );
 }
 
+// Admin tabs that hold a queue, and the pending-counts key for each.
+const TAB_PENDING = { Suppliers: "suppliers", Site: "reviews" };
+
+// Something waiting for an admin was decided: the menu badge and the tab
+// counts listen for this and ask again.
+function announcePendingChanged() {
+  window.dispatchEvent(new Event("cv-admin-pending"));
+}
+
 const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [tab, setTab] = useState("Overview");
+  // The tab lives in the URL, so an alert can open the queue it is about
+  // (/admin?tab=Suppliers).
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.includes(params.get("tab")) ? params.get("tab") : "Overview";
+  const setTab = t => setParams(t === "Overview" ? {} : { tab: t }, { replace: true });
+  const [pending, setPending] = useState({});
+
+  useEffect(() => {
+    const load = () => apiFetch("admin/pending-counts").then(setPending).catch(() => {});
+    load();
+    window.addEventListener("cv-admin-pending", load);
+    return () => window.removeEventListener("cv-admin-pending", load);
+  }, [tab]);
 
   function loadStats() {
     setStatsLoading(true);
@@ -3125,7 +3162,7 @@ export default function Admin() {
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
 
       {/* Tab nav */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border)", paddingBottom: 0, overflowX: "auto" }}>
         {TABS.map(t => (
           <button
             key={t}
@@ -3135,10 +3172,16 @@ export default function Admin() {
               padding: "8px 16px", fontWeight: tab === t ? 700 : 500,
               color: tab === t ? "var(--brand)" : "var(--text-muted)",
               borderBottom: tab === t ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -1, fontSize: 14,
+              marginBottom: -1, fontSize: 14, whiteSpace: "nowrap",
             }}
           >
             {t}
+            {pending[TAB_PENDING[t]] > 0 && (
+              <span className="nav-badge nav-badge-alert" style={{ marginLeft: 6 }}
+                title={`${pending[TAB_PENDING[t]]} waiting for you`}>
+                {pending[TAB_PENDING[t]]}
+              </span>
+            )}
           </button>
         ))}
         <button

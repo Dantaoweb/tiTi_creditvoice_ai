@@ -871,9 +871,21 @@ def ensure_schema_updates(engine):
                     rejection_reason TEXT,
                     reviewed_at      TIMESTAMP,
                     created_at       TIMESTAMP {_now},
-                    updated_at       TIMESTAMP
+                    updated_at       TIMESTAMP,
+                    reapplied_at     TIMESTAMP,
+                    previous_rejection_reason TEXT
                 )
             """))
+    else:
+        # A re-application after rejection — added to existing DBs.
+        vs_columns = {c["name"] for c in inspector.get_columns("verified_suppliers")}
+        with engine.begin() as connection:
+            for column_name, column_type in (("reapplied_at", "TIMESTAMP"),
+                                             ("previous_rejection_reason", "TEXT")):
+                if column_name not in vs_columns:
+                    connection.execute(text(
+                        f"ALTER TABLE verified_suppliers ADD COLUMN {column_name} {column_type}"
+                    ))
 
     if "verified_supplier_products" not in existing_tables:
         with engine.begin() as connection:

@@ -110,8 +110,7 @@ def _tell_admins_about(db, review):
     one. Never fatal: a notification that fails must not lose the review.
     """
     try:
-        from admin import app_admin_phones
-        from web_common import _add_notification
+        from admin_alerts import notify_admins
 
         waiting = pending_review_count(db)
         title = "📝 A business wrote a review"
@@ -122,14 +121,7 @@ def _tell_admins_about(db, review):
                 + (f"{waiting} review(s) now waiting for approval."
                    if waiting > 1 else "Approve it to show it on the homepage."))
 
-        seen = set()
-        for phone in app_admin_phones():
-            if not phone or phone in seen:
-                continue
-            seen.add(phone)
-            _add_notification(db, phone, "review", title, body, link="/admin")
-        if seen:
-            db.commit()
+        notify_admins(db, "review", title, body, tab="Site")
     except Exception:
         _log.exception("could not tell the admins about a new review")
 
@@ -252,10 +244,17 @@ def register_site_routes(app):
         db = SessionLocal()
         try:
             from admin import is_app_admin
+            from admin_alerts import pending_supplier_applications
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
-                return {"reviews": 0}
-            return {"reviews": pending_review_count(db)}
+                return {"reviews": 0, "suppliers": 0, "total": 0}
+            # Keyed by what is waiting; each admin tab shows its own count.
+            counts = {
+                "reviews": pending_review_count(db),
+                "suppliers": pending_supplier_applications(db),
+            }
+            counts["total"] = sum(counts.values())
+            return counts
         finally:
             db.close()
 

@@ -179,6 +179,9 @@ def phone_candidates(phone: str) -> list:
     norm = normalize_phone(raw)
     if norm:
         candidates.add(norm)
+        # And back the other way: 234803… was written, 0803… is stored.
+        if norm.startswith("234") and len(norm) == 13:
+            candidates.add("0" + norm[3:])
     candidates.discard("")
     return list(candidates)
 
