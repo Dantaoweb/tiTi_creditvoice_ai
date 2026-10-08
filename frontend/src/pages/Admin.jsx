@@ -2259,6 +2259,7 @@ function ApplicationsPanel() {
   function load() {
     apiFetch("admin/finance-applications", status ? { status } : {})
       .then(setData).catch(e => setErr(e.message));
+    announcePendingChanged();   // a stage move or confirmed repayment changes what waits
   }
   useEffect(load, [status]);
 
@@ -3129,7 +3130,7 @@ function CampaignsTab() {
 }
 
 // Admin tabs that hold a queue, and the pending-counts key for each.
-const TAB_PENDING = { Suppliers: "suppliers", Opportunities: "opportunities", Site: "reviews" };
+const TAB_PENDING = { Suppliers: "suppliers", Opportunities: "opportunities", Finance: "finance", Site: "reviews" };
 
 // Something waiting for an admin was decided: the menu badge and the tab
 // counts listen for this and ask again.

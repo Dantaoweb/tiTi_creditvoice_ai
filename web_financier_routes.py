@@ -371,6 +371,7 @@ def register_financier_routes(app):
             if payload.decline_reason is not None:
                 row.decline_reason = payload.decline_reason.strip() or None
 
+            old_status = row.status
             if payload.status:
                 new = payload.status.upper()
                 allowed = _FINANCIER_TRANSITIONS.get(row.status, set())
@@ -401,6 +402,8 @@ def register_financier_routes(app):
                    f"application:{row.id}:{row.status}")
             db.commit()
             db.refresh(row)
+            from finance_alerts import after_stage_change
+            after_stage_change(db, row, partner, old_status, moved_by="financier")
             return _row_dict(row, full=True)
         finally:
             db.close()

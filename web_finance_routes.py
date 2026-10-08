@@ -529,6 +529,7 @@ def register_finance_routes(app):
             if payload.decline_reason is not None:
                 r.decline_reason = payload.decline_reason.strip() or None
 
+            old_status = r.status
             if payload.status:
                 new = payload.status.upper()
                 if new not in _TRANSITIONS:
@@ -565,6 +566,8 @@ def register_finance_routes(app):
             _audit(db, user, "ADMIN_SETTINGS_CHANGE", f"finance_application:{r.id}:{r.status}")
             db.commit()
             db.refresh(r)
+            from finance_alerts import after_stage_change
+            after_stage_change(db, r, partner, old_status, moved_by="admin")
             amount, reason = calculate_commission(partner, r)
             out = _admin_application_dict(r, partner, None, reason)
             out["commission_calculated"] = amount
@@ -835,6 +838,13 @@ def register_finance_routes(app):
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
             db.commit()
+            from finance_alerts import tell_admins, tell_financier
+            partner = db.query(FinancePartner).filter(FinancePartner.id == application.partner_id).first()
+            line = (f"{application.business_name or owner_phone} ({application.application_code}) says they "
+                    f"paid N{int(payload.amount):,} for installment {payload.installment_no}. "
+                    "Confirm it once the money is seen.")
+            tell_admins(db, "finance_repayment", "💵 Repayment to confirm", line)
+            tell_financier(db, application, partner, "Repayment to confirm", line)
             return {
                 "ok": True,
                 "awaiting_confirmation": True,
@@ -1153,6 +1163,16 @@ def register_finance_routes(app):
             db.add(application)
             db.commit()
             db.refresh(application)
+            from finance_alerts import tell_admins
+            tell_admins(
+                db, "finance_application", "💰 New finance request",
+                f"{application.business_name or owner_phone} ({application.application_code}) asked "
+                f"{partner.name} for {application.asset_requested or 'financing'}"
+                + (f" worth N{application.asset_value:,}" if application.asset_value else "")
+                + f". Scorecard {application.snapshot_score if application.snapshot_score is not None else '—'}"
+                + (f" ({application.snapshot_tier})" if application.snapshot_tier else "")
+                + ". Share it with the financier to start.",
+            )
             return _application_dict(application, partner)
         finally:
             db.close()
@@ -1192,11 +1212,20 @@ def register_finance_routes(app):
                     detail=f"This request is already {r.status.lower()} and can no longer be withdrawn.",
                 )
             now = utcnow()
+            was_shared = r.status != "SUBMITTED"
             r.status = "WITHDRAWN"
             r.consent_revoked_at = now
             r.updated_at = now
             db.commit()
             db.refresh(r)
+            from finance_alerts import tell_admins, tell_financier
+            partner = db.query(FinancePartner).filter(FinancePartner.id == r.partner_id).first()
+            line = (f"{r.business_name or owner_phone} withdrew request {r.application_code} "
+                    f"({partner.name if partner else 'financier'}) and no longer consents to sharing "
+                    "their record.")
+            tell_admins(db, "finance_withdrawn", "Finance request withdrawn", line)
+            if was_shared:
+                tell_financier(db, r, partner, "Finance request withdrawn", line)
             return _application_dict(r)
         finally:
             db.close()
