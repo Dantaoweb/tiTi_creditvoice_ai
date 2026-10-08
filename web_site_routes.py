@@ -102,7 +102,7 @@ def pending_review_count(db):
     return db.query(Testimonial).filter(Testimonial.status == "PENDING").count()
 
 
-def _tell_admins_about(db, review):
+def _tell_admins_about(db, review, was_live=False, was_approved=False):
     """A review nobody is told about sits unapproved for weeks.
 
     It goes to the bell and a push for every app admin, which is the quiet
@@ -113,8 +113,16 @@ def _tell_admins_about(db, review):
         from admin_alerts import notify_admins
 
         waiting = pending_review_count(db)
-        title = "📝 A business wrote a review"
-        body = (f"{review.business_name} wrote a review"
+        if was_live:
+            title = "✏️ A homepage review was edited"
+            did = "edited their review — it was on the homepage and has come off until you re-approve it"
+        elif was_approved:
+            title = "✏️ An approved review was edited"
+            did = "edited their approved review"
+        else:
+            title = "📝 A business wrote a review"
+            did = "wrote a review"
+        body = (f"{review.business_name} {did}"
                 + (f" ({review.location})" if review.location else "")
                 + ".\n\n"
                 + f"“{(review.quote or '')[:140]}”\n\n"
@@ -124,6 +132,29 @@ def _tell_admins_about(db, review):
         notify_admins(db, "review", title, body, tab="Site")
     except Exception:
         _log.exception("could not tell the admins about a new review")
+
+
+def _tell_owner_about_decision(db, review, before):
+    """The business hears when its review is approved, goes on the homepage,
+    or is not published (with the admin's reason). Nothing for a reorder."""
+    old_status, old_featured = before
+    if review.is_featured and not old_featured:
+        title, body = ("🎉 Your review is on our homepage",
+                       "Customers visiting CreditVoice can now see your business, town and contact.")
+    elif review.status == "APPROVED" and old_status != "APPROVED":
+        title, body = ("✅ Your review was approved",
+                       "It is approved and waiting for a slot on our homepage.")
+    elif review.status == "REJECTED" and old_status != "REJECTED":
+        title = "Your review was not published"
+        body = (f"Reason: {review.admin_note}\n\n" if review.admin_note else "") \
+            + "You can change it on your Profile page and send it again."
+    else:
+        return
+    try:
+        from proactive_scheduler import _notify
+        _notify(db, review.owner_phone, "review_decision", title, body, link="/profile")
+    except Exception:
+        _log.exception("could not tell the owner about their review")
 
 
 def _dict(t, include_owner=False):
@@ -141,6 +172,8 @@ def _dict(t, include_owner=False):
         "consent_public": bool(t.consent_public),
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
+    if t.status == "REJECTED":
+        out["rejection_reason"] = t.admin_note
     if include_owner:
         out["owner_phone"] = t.owner_phone
         out["admin_note"] = t.admin_note
@@ -195,6 +228,8 @@ def register_site_routes(app):
                 raise HTTPException(status_code=400, detail="A link must start with http:// or https://")
 
             row = db.query(Testimonial).filter(Testimonial.owner_phone == owner_phone).first()
+            was_live = bool(row and row.is_featured)
+            was_approved = bool(row and row.status == "APPROVED")
             if row is None:
                 row = Testimonial(owner_phone=owner_phone)
                 db.add(row)
@@ -214,7 +249,7 @@ def register_site_routes(app):
             # Any campaign that was asking for this has got what it wanted.
             from campaigns import mark_goal_done
             mark_goal_done(db, "review", user)
-            _tell_admins_about(db, row)
+            _tell_admins_about(db, row, was_live=was_live, was_approved=was_approved)
             return {"review": _dict(row), "message": "Thank you — we'll review it shortly."}
         finally:
             db.close()
@@ -292,6 +327,7 @@ def register_site_routes(app):
             row = db.query(Testimonial).filter(Testimonial.id == review_id).first()
             if not row:
                 raise HTTPException(status_code=404, detail="Review not found.")
+            before = (row.status, bool(row.is_featured))
             if payload.status:
                 status = payload.status.upper()
                 if status not in ("PENDING", "APPROVED", "REJECTED"):
@@ -314,6 +350,7 @@ def register_site_routes(app):
                             resource=f"review:{row.id}:{row.status}:featured={row.is_featured}"))
             db.commit()
             db.refresh(row)
+            _tell_owner_about_decision(db, row, before)
             return _dict(row, include_owner=True)
         finally:
             db.close()

@@ -99,6 +99,12 @@ export default function MyReview() {
             {review.contact_phone && (
               <div className="text-subtle text-sm">Contact shown: {review.contact_phone}</div>
             )}
+            {review.status === "REJECTED" && (
+              <div className="text-sm" style={{ marginTop: 8, color: "var(--rose)" }}>
+                {review.rejection_reason ? `Why: ${review.rejection_reason}. ` : ""}
+                Change it and send it again to be reconsidered.
+              </div>
+            )}
           </div>
         )}
 

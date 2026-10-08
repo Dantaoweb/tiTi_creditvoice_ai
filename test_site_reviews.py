@@ -333,3 +333,73 @@ def test_no_placeholders_left_in_the_served_page():
     import re
     body = client.get("/").text
     assert re.findall(r"<!--[A-Z_]+-->", body) == []
+
+
+# ── The business hears the decision; an edit of a live review says so ─────────
+
+OWNER_PHONE = "2348090022101"
+
+
+def _owner_notes():
+    db = SessionLocal()
+    try:
+        return (db.query(AppNotification)
+                .filter(AppNotification.owner_phone == OWNER_PHONE,
+                        AppNotification.event_type == "review_decision")
+                .order_by(AppNotification.id.asc()).all())
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def no_whatsapp(monkeypatch):
+    monkeypatch.setattr("whatsapp_client.send_whatsapp_message", lambda *a, **k: None)
+    db = SessionLocal()
+    try:
+        db.query(AppNotification).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_approve_and_show_in_one_tap_tells_the_owner_once(owner, admin, no_whatsapp):
+    rid = _write(owner).json()["review"]["id"]
+    r = client.patch(f"/app/api/admin/reviews/{rid}", cookies=admin,
+                     json={"status": "APPROVED", "is_featured": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["is_featured"] is True
+    notes = _owner_notes()
+    assert len(notes) == 1 and "homepage" in notes[0].title and notes[0].link == "/profile"
+
+
+def test_approve_only_then_feature_tells_the_owner_each_step(owner, admin, no_whatsapp):
+    rid = _write(owner).json()["review"]["id"]
+    client.patch(f"/app/api/admin/reviews/{rid}", cookies=admin, json={"status": "APPROVED"})
+    client.patch(f"/app/api/admin/reviews/{rid}", cookies=admin, json={"sort_order": 3})   # no message
+    client.patch(f"/app/api/admin/reviews/{rid}", cookies=admin, json={"is_featured": True})
+    titles = [n.title for n in _owner_notes()]
+    assert len(titles) == 2 and "approved" in titles[0] and "homepage" in titles[1]
+
+
+def test_reject_with_a_reason_reaches_the_owner(owner, admin, no_whatsapp):
+    rid = _write(owner).json()["review"]["id"]
+    client.patch(f"/app/api/admin/reviews/{rid}", cookies=admin,
+                 json={"status": "REJECTED", "admin_note": "Please remove the price you quoted"})
+    notes = _owner_notes()
+    assert len(notes) == 1 and "Please remove the price you quoted" in notes[0].body
+    mine = client.get("/app/api/my-review", cookies=owner).json()["review"]
+    assert mine["rejection_reason"] == "Please remove the price you quoted"
+
+
+def test_editing_a_homepage_review_says_it_was_live(owner, admin, no_whatsapp):
+    rid = _write(owner).json()["review"]["id"]
+    _feature(admin, rid)
+    _write(owner, quote="Even better now: my staff record sales too.")
+    db = SessionLocal()
+    try:
+        note = (db.query(AppNotification)
+                .filter(AppNotification.owner_phone == ADMIN_PHONE, AppNotification.event_type == "review")
+                .order_by(AppNotification.id.desc()).first())
+    finally:
+        db.close()
+    assert "edited" in note.title.lower() and "homepage" in note.body

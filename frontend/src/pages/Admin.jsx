@@ -2833,6 +2833,9 @@ function SiteTab() {
                 </div>
               </div>
               <div style={{ fontStyle: "italic" }}>“{r.quote}”</div>
+              {r.status === "REJECTED" && r.admin_note && (
+                <div className="text-sm" style={{ color: "var(--rose)" }}>Reason given: {r.admin_note}</div>
+              )}
               <div className="text-subtle text-sm">
                 Shown contact: {r.contact_phone || "none"}
                 {r.contact_link ? ` · ${r.contact_link}` : ""}
@@ -2841,7 +2844,13 @@ function SiteTab() {
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {r.status !== "APPROVED" && (
                   <button className="btn btn-xs btn-primary"
-                    onClick={() => patch(r, { status: "APPROVED" })}>Approve</button>
+                    onClick={() => patch(r, { status: "APPROVED", is_featured: true })}>
+                    Approve &amp; show on homepage
+                  </button>
+                )}
+                {r.status !== "APPROVED" && (
+                  <button className="btn btn-xs btn-ghost"
+                    onClick={() => patch(r, { status: "APPROVED" })}>Approve only</button>
                 )}
                 {r.status === "APPROVED" && (
                   <button className="btn btn-xs btn-ghost"
@@ -2851,7 +2860,11 @@ function SiteTab() {
                 )}
                 {r.status !== "REJECTED" && (
                   <button className="btn btn-xs btn-ghost text-rose"
-                    onClick={() => patch(r, { status: "REJECTED" })}>Reject</button>
+                    onClick={() => {
+                      const reason = window.prompt(
+                        "Reject this review? Tell the business why (optional) — they will see it.", "");
+                      if (reason !== null) patch(r, { status: "REJECTED", admin_note: reason });
+                    }}>Reject</button>
                 )}
                 <input style={{ width: 90, padding: "4px 8px", fontSize: 12 }} placeholder="Order"
                   defaultValue={r.sort_order}
