@@ -79,6 +79,17 @@ def _admin_phones(db: Session):
     return [p for p in phones if p]
 
 
+# What the applicant is told when an admin moves their opportunity application.
+_APPLICANT_UPDATES = {
+    "reviewing": ("Your application is being reviewed",
+                  "Your application for {name} is now being reviewed."),
+    "approved":  ("🎉 Your application was approved",
+                  "Your application for {name} was approved."),
+    "declined":  ("Update on your application",
+                  "Your application for {name} was not successful this time."),
+}
+
+
 def _notify_phone(db, phone, event_type, title, body, whatsapp=True, link=None):
     """In-app notification + web push (+ optional WhatsApp) to one business.
     Reuses the proactive scheduler's notifier so web owners and WhatsApp users
@@ -799,6 +810,11 @@ def register_supplier_routes(app, get_db=None):
                 db.query(OpportunityApplication.opportunity_id, _func.count(OpportunityApplication.id))
                 .group_by(OpportunityApplication.opportunity_id).all()
             )
+            new_counts = dict(
+                db.query(OpportunityApplication.opportunity_id, _func.count(OpportunityApplication.id))
+                .filter(OpportunityApplication.status == "submitted")
+                .group_by(OpportunityApplication.opportunity_id).all()
+            )
             return {
                 "opportunities": [
                     {
@@ -811,6 +827,7 @@ def register_supplier_routes(app, get_db=None):
                         "is_active": bool(o.is_active),
                         "finance_partner_id": o.finance_partner_id,
                         "application_count": int(counts.get(o.id, 0)),
+                        "new_count": int(new_counts.get(o.id, 0)),
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
                     for o in opps
@@ -987,6 +1004,16 @@ def register_supplier_routes(app, get_db=None):
                 answers         = json.dumps(payload.answers),
             ))
             db.commit()
+
+            from admin_alerts import notify_admins
+            who = (user.business_type_label or user.name or phone) if user else phone
+            notify_admins(
+                db, "opportunity_application",
+                "📋 New opportunity application",
+                f"{who} applied for “{opp.title}”"
+                + (f" ({opp.partner_name})" if opp.partner_name else "") + ".",
+                tab="Opportunities",
+            )
             return {"ok": True, "message": "Application submitted successfully."}
         finally:
             db.close()
@@ -1110,10 +1137,21 @@ def register_supplier_routes(app, get_db=None):
             app = db.query(OpportunityApplication).filter(OpportunityApplication.id == app_id).first()
             if not app:
                 raise HTTPException(status_code=404)
+            moved = app.status != payload.status
             app.status      = payload.status
             app.admin_notes = payload.admin_notes or None
             app.updated_at  = _utcnow()
             db.commit()
+            if moved and payload.status in _APPLICANT_UPDATES:
+                opp = db.query(Opportunity).filter(Opportunity.id == app.opportunity_id).first()
+                title, line = _APPLICANT_UPDATES[payload.status]
+                name = f"“{opp.title}”" if opp else "the opportunity"
+                _notify_phone(
+                    db, app.applicant_phone, "opportunity_status", title,
+                    line.format(name=name)
+                    + (f"\n\nNote from CreditVoice: {app.admin_notes}" if app.admin_notes else ""),
+                    link="/opportunities",
+                )
             return {"ok": True}
         finally:
             db.close()

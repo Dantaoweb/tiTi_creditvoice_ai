@@ -244,14 +244,15 @@ def register_site_routes(app):
         db = SessionLocal()
         try:
             from admin import is_app_admin
-            from admin_alerts import pending_supplier_applications
+            from admin_alerts import pending_opportunity_applications, pending_supplier_applications
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
-                return {"reviews": 0, "suppliers": 0, "total": 0}
+                return {"reviews": 0, "suppliers": 0, "opportunities": 0, "total": 0}
             # Keyed by what is waiting; each admin tab shows its own count.
             counts = {
                 "reviews": pending_review_count(db),
                 "suppliers": pending_supplier_applications(db),
+                "opportunities": pending_opportunity_applications(db),
             }
             counts["total"] = sum(counts.values())
             return counts

@@ -59,6 +59,11 @@ def notify_admins(db, event_type, title, body, tab=None):
         return []
 
 
+def pending_opportunity_applications(db):
+    from models import OpportunityApplication
+    return db.query(OpportunityApplication).filter(OpportunityApplication.status == "submitted").count()
+
+
 def pending_supplier_applications(db):
     from models import VerifiedSupplier
     return db.query(VerifiedSupplier).filter(VerifiedSupplier.verification_status == "pending").count()

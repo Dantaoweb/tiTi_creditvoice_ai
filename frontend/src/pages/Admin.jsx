@@ -1086,6 +1086,8 @@ function OpportunitiesTab() {
         body: JSON.stringify({ status, admin_notes: notes }),
       });
       setOppApps(prev => prev.map(a => a.id === appId ? { ...a, status, admin_notes: notes } : a));
+      load();                       // the "new" count on each opportunity
+      announcePendingChanged();
     } finally { setUpdatingApp(null); }
   }
 
@@ -1255,6 +1257,12 @@ function OpportunitiesTab() {
               color: o.application_count > 0 ? "#fff" : "var(--brand)",
               borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
               Applications{o.application_count > 0 ? ` (${o.application_count})` : ""}
+              {o.new_count > 0 && (
+                <span className="nav-badge nav-badge-alert" style={{ marginLeft: 6 }}
+                  title="Submitted and not looked at yet">
+                  {o.new_count} new
+                </span>
+              )}
             </button>
             <button onClick={() => startEdit(o)} style={{ background: "none", border: "1px solid var(--border)",
               borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>Edit</button>
@@ -3121,7 +3129,7 @@ function CampaignsTab() {
 }
 
 // Admin tabs that hold a queue, and the pending-counts key for each.
-const TAB_PENDING = { Suppliers: "suppliers", Site: "reviews" };
+const TAB_PENDING = { Suppliers: "suppliers", Opportunities: "opportunities", Site: "reviews" };
 
 // Something waiting for an admin was decided: the menu badge and the tab
 // counts listen for this and ask again.
