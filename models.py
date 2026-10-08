@@ -286,7 +286,8 @@ class Invoice(Base):
     branch_id       = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
     customer_id     = Column(Integer, ForeignKey("customers.id"), index=True)
     number          = Column(Integer, nullable=True)
-    total           = Column(Integer, default=0)
+    total           = Column(Integer, default=0)       # what is asked for: lines − discount
+    discount        = Column(Integer, nullable=True)   # naira off the whole invoice
     due_date        = Column(DateTime, nullable=True)
     note            = Column(String, nullable=True)
     created_by_id   = Column(String, ForeignKey("users.id"), nullable=True)

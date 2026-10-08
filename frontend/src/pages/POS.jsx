@@ -7,6 +7,8 @@ import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, nairaInWords, qty } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
+import DiscountInput from "../components/DiscountInput";
+import { discountAmount, NO_DISCOUNT } from "../lib/discount";
 
 // ── Product picker (paged list, qty stepper beside each row) ────────────────
 
@@ -491,8 +493,7 @@ export default function POS() {
   const [customer, setCustomer] = useState(null);
   const [custQuery, setCustQuery] = useState("");   // typed-but-unselected search text
   const [payment, setPayment] = useState("");
-  const [discountInput, setDiscountInput] = useState("");
-  const [discountPct, setDiscountPct] = useState(false);
+  const [discountValue, setDiscountValue] = useState(NO_DISCOUNT);
   const [settleDebt, setSettleDebt] = useState(true);   // fold prior debt into checkout
   const [dueDate, setDueDate] = useState("");
   const [serviceDate, setServiceDate] = useState("");
@@ -523,10 +524,7 @@ export default function POS() {
   }, [isOwner]);
 
   const subtotal = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
-  // A discount off the whole sale: naira, or a percentage of the subtotal.
-  const discountRaw = parseAmt(discountInput);
-  const discount = Math.min(subtotal, Math.max(0, Math.round(
-    discountPct ? subtotal * Math.min(discountRaw, 100) / 100 : discountRaw)));
+  const discount = discountAmount(subtotal, discountValue);   // off the whole sale
   const total    = subtotal - discount;
   const prevDebt = (customer && customer.balance > 0) ? customer.balance : 0;
   const debtDue  = settleDebt ? prevDebt : 0;      // debt folded into this checkout
@@ -670,7 +668,7 @@ export default function POS() {
         const label = `POS sale — ${cart.length} item(s), ${nairaFull(paid)}`;
         enqueue("pos/save", payload, label);
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
-        setDiscountInput("");
+        setDiscountValue(NO_DISCOUNT);
         setSaving(false);
         navigate("/capture", {
           state: { offlineMsg: "No internet — POS sale saved offline. It will sync when you reconnect." },
@@ -830,20 +828,7 @@ export default function POS() {
           </div>
 
           <div className="pos-summary-section">
-            {subtotal > 0 && (
-              <div className="pos-discount-row">
-                <span>Discount</span>
-                <div className="pos-discount-input">
-                  <input inputMode="decimal" placeholder="0" aria-label="Discount"
-                    value={discountInput}
-                    onChange={e => setDiscountInput(discountPct ? e.target.value.replace(/[^\d.]/g, "") : fmtAmt(e.target.value))} />
-                  <button type="button" className={`pos-discount-mode${discountPct ? "" : " on"}`}
-                    onClick={() => { setDiscountPct(false); setDiscountInput(""); }}>₦</button>
-                  <button type="button" className={`pos-discount-mode${discountPct ? " on" : ""}`}
-                    onClick={() => { setDiscountPct(true); setDiscountInput(""); }}>%</button>
-                </div>
-              </div>
-            )}
+            {subtotal > 0 && <DiscountInput value={discountValue} onChange={setDiscountValue} />}
             {discount > 0 && (
               <div className="pos-total-row pos-total-row--muted">
                 <span>Subtotal {nairaFull(subtotal)}</span>

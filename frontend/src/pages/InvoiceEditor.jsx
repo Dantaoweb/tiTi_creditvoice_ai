@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, User, X } from "lucide-react";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, fmtAmt, parseAmt } from "../lib/format";
+import DiscountInput from "../components/DiscountInput";
+import { discountAmount, NO_DISCOUNT } from "../lib/discount";
 
 // Writing an invoice is asking to be paid — nothing is owed and nothing leaves
 // stock until the money or the goods actually move (see InvoiceView).
@@ -114,6 +116,7 @@ export default function InvoiceEditor() {
   const [lines, setLines] = useState([blankLine()]);
   const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
+  const [discountValue, setDiscountValue] = useState(NO_DISCOUNT);
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -130,6 +133,7 @@ export default function InvoiceEditor() {
         })));
         setDueDate(doc.due_date ? doc.due_date.slice(0, 10) : "");
         setNote(doc.note || "");
+        if (doc.discount) setDiscountValue({ input: Number(doc.discount).toLocaleString("en-NG"), pct: false });
       })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
@@ -138,7 +142,9 @@ export default function InvoiceEditor() {
   const setLine = (key, patch) => setLines(ls => ls.map(l => (l.key === key ? { ...l, ...patch } : l)));
   const lineTotal = l => Math.round(parseAmt(l.qty) * parseAmt(l.unit_price));
   const filled = lines.filter(l => l.name.trim());
-  const total = filled.reduce((s, l) => s + lineTotal(l), 0);
+  const subtotal = filled.reduce((s, l) => s + lineTotal(l), 0);
+  const discount = discountAmount(subtotal, discountValue);   // off the whole invoice
+  const total = subtotal - discount;
 
   async function save(e) {
     e.preventDefault();
@@ -150,7 +156,7 @@ export default function InvoiceEditor() {
       qty: parseAmt(l.qty), unit_price: Math.round(parseAmt(l.unit_price)),
       sold_unit: l.sold_unit || null, fraction: l.fraction ?? 1,
     }));
-    const body = { items, due_date: dueDate || null, note: note.trim() || null };
+    const body = { items, due_date: dueDate || null, note: note.trim() || null, discount };
     setBusy(true);
     try {
       const doc = id
@@ -240,6 +246,17 @@ export default function InvoiceEditor() {
         </div>
 
         {err && <div className="pos-error" style={{ margin: 0 }}>{err}</div>}
+
+        {subtotal > 0 && (
+          <div style={{ maxWidth: 360, marginLeft: "auto", width: "100%" }}>
+            <DiscountInput value={discountValue} onChange={setDiscountValue} />
+            {discount > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted)" }}>
+                <span>Subtotal {nairaFull(subtotal)}</span><span>−{nairaFull(discount)}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15 }}>Total: <strong>{nairaFull(total)}</strong></span>

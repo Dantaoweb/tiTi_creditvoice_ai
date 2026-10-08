@@ -6,6 +6,8 @@ import { apiPost } from "../lib/api";
 import { nairaFull, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import { InventorySearch, CustomerSearch } from "./Capture";
+import DiscountInput from "../components/DiscountInput";
+import { discountAmount, NO_DISCOUNT } from "../lib/discount";
 
 // A blank receipt you fill in and record. Each line is either a listed stock
 // item (deducts stock on save) or a custom one-off (acknowledged, no stock),
@@ -22,6 +24,7 @@ export default function NewReceipt() {
   const [custQuery, setCustQuery] = useState("");
   const [settleDebt, setSettleDebt] = useState(true);
   const [paid, setPaid]           = useState("");
+  const [discountValue, setDiscountValue] = useState(NO_DISCOUNT);
   const [saving, setSaving]       = useState(false);
   const [err, setErr]             = useState("");
 
@@ -36,7 +39,9 @@ export default function NewReceipt() {
   }
 
   const valid = rows.filter(r => r.item && r.item.name && parseAmt(r.price) > 0 && parseAmt(r.qtyVal) > 0);
-  const total     = valid.reduce((s, r) => s + parseAmt(r.price) * parseAmt(r.qtyVal), 0);
+  const subtotal  = valid.reduce((s, r) => s + parseAmt(r.price) * parseAmt(r.qtyVal), 0);
+  const discount  = discountAmount(subtotal, discountValue);   // off the whole sale
+  const total     = subtotal - discount;
   const prevDebt  = (customer && customer.balance > 0) ? customer.balance : 0;
   const debtDue   = settleDebt ? prevDebt : 0;
   const amountDue = total + debtDue;
@@ -70,6 +75,7 @@ export default function NewReceipt() {
         payment_amount: salePaid,
         debt_payment:   debtPaid,
         branch_id:      null,
+        discount,
       });
       // Best-effort: add ticked custom lines to the product list for next time.
       for (const r of valid) {
@@ -137,6 +143,12 @@ export default function NewReceipt() {
         </div>
 
         <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10, display: "grid", gap: 6 }}>
+          {subtotal > 0 && <DiscountInput value={discountValue} onChange={setDiscountValue} />}
+          {discount > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted)" }}>
+              <span>Subtotal {nairaFull(subtotal)}</span><span>−{nairaFull(discount)}</span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
             <span>Total</span><span>{nairaFull(total)}</span>
           </div>

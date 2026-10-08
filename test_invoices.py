@@ -517,3 +517,50 @@ def test_older_invoice_text_uses_invoice_wording():
     })
     assert "Keep this receipt" not in msg
     assert "settle this invoice" in msg.lower()
+
+
+# ── A discount off the whole invoice ────────────────────────────────────────
+
+def test_a_discount_lowers_what_the_invoice_asks_for(_no_whatsapp):
+    phone, cookies, _ = _business()
+    cid = _customer(phone, phone="2348123450000")
+    doc = _new(cookies, cid, [{"name": "Repair", "qty": 1, "unit_price": 5000}], discount=500)
+    assert doc["subtotal"] == 5000 and doc["discount"] == 500 and doc["total"] == 4500
+
+    client.post(f"/app/api/invoices/doc/{doc['id']}/send", cookies=cookies)
+    msg = _no_whatsapp[-1][1]
+    assert "Subtotal: N5,000" in msg and "Discount: -N500" in msg and "Amount due: N4,500" in msg
+
+
+def test_paying_a_discounted_invoice_carries_the_discount_to_the_sale():
+    phone, cookies, _ = _business()
+    cid = _customer(phone)
+    doc = _new(cookies, cid, [{"name": "Repair", "qty": 1, "unit_price": 5000}], discount=1000)
+
+    paid = client.post(f"/app/api/invoices/doc/{doc['id']}/pay", cookies=cookies,
+                       json={"amount": 4000}).json()
+    assert paid["status"] == "paid"
+    assert _balance(cid) == 0
+    receipt = client.get(f"/app/api/pos/receipt/{paid['transaction_id']}", cookies=cookies).json()
+    assert receipt["total"] == 4000 and receipt["discount"] == 1000 and receipt["subtotal"] == 5000
+
+
+def test_part_paying_a_discounted_invoice_owes_only_the_rest():
+    phone, cookies, _ = _business()
+    cid = _customer(phone)
+    doc = _new(cookies, cid, [{"name": "Repair", "qty": 1, "unit_price": 5000}], discount=1000)
+    client.post(f"/app/api/invoices/doc/{doc['id']}/pay", cookies=cookies, json={"amount": 1500})
+    assert _balance(cid) == 2500
+
+
+def test_an_invoice_discount_can_be_edited_but_not_exceed_the_total():
+    phone, cookies, _ = _business()
+    cid = _customer(phone)
+    doc = _new(cookies, cid, [{"name": "Repair", "qty": 1, "unit_price": 5000}])
+    url = f"/app/api/invoices/doc/{doc['id']}"
+    item = [{"name": "Repair", "qty": 1, "unit_price": 5000}]
+    r = client.put(url, cookies=cookies, json={"items": item, "discount": 750})
+    assert r.status_code == 200 and r.json()["total"] == 4250
+    assert client.put(url, cookies=cookies, json={"items": item, "discount": 6000}).status_code == 400
+    assert client.post("/app/api/invoices/new", cookies=cookies,
+                       json={"customer_id": cid, "items": item, "discount": -1}).status_code == 400

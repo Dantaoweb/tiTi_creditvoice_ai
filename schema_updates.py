@@ -1120,6 +1120,13 @@ def ensure_schema_updates(engine):
                     "ALTER TABLE supplier_contact_messages ADD COLUMN reminded_at TIMESTAMP"
                 ))
 
+    # ── discount on invoices (naira off the whole invoice) ───────────────────
+    if "invoices" in inspector.get_table_names():
+        _inv_cols = {c["name"] for c in inspector.get_columns("invoices")}
+        if "discount" not in _inv_cols:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE invoices ADD COLUMN discount INTEGER"))
+
     # ── billing_period on subscription_payments (monthly vs yearly) ──────────
     if "subscription_payments" in inspector.get_table_names():
         _sp_cols = {c["name"] for c in inspector.get_columns("subscription_payments")}

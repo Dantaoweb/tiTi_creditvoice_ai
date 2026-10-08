@@ -215,6 +215,17 @@ def invoice_status(inv, now=None):
     return "draft"
 
 
+def apply_discount(lines_total, discount):
+    """The invoice total after a discount off the whole invoice."""
+    try:
+        discount = int(discount or 0)
+    except (TypeError, ValueError):
+        raise InvoiceError("Invalid discount.")
+    if discount < 0 or discount > lines_total:
+        raise InvoiceError("The discount must be between zero and the invoice total.")
+    return lines_total - discount, discount
+
+
 def clean_invoice_items(items):
     """Validate and total the lines of an invoice. Same rules as a till sale:
     a name, a positive quantity, a price that is not negative."""
@@ -279,11 +290,13 @@ def invoice_lines(db, inv):
 
 
 def create_invoice(db, owner_phone, user_id, customer_id, items, *, due_date=None,
-                   note=None, branch_id=None, customer_name=None, customer_phone=None):
+                   note=None, branch_id=None, customer_name=None, customer_phone=None,
+                   discount=0):
     """Write a new invoice. No debt, no stock movement — just the document,
     with the next number in the business's INV sequence."""
     from web_pos import resolve_sale_customer
-    lines, total = clean_invoice_items(items)
+    lines, lines_total = clean_invoice_items(items)
+    total, discount = apply_discount(lines_total, discount)
     customer_id = resolve_sale_customer(db, owner_phone, customer_id, customer_name, customer_phone)
     if not customer_id:
         raise InvoiceError("Choose who the invoice is for.")
@@ -293,6 +306,7 @@ def create_invoice(db, owner_phone, user_id, customer_id, items, *, due_date=Non
         customer_id=customer_id,
         number=next_invoice_number(db, owner_phone),
         total=total,
+        discount=discount or None,
         due_date=due_date,
         note=(note or "").strip() or None,
         created_by_id=user_id,
@@ -304,7 +318,7 @@ def create_invoice(db, owner_phone, user_id, customer_id, items, *, due_date=Non
     return inv
 
 
-def update_invoice(db, inv, items, *, due_date=None, note=None):
+def update_invoice(db, inv, items, *, due_date=None, note=None, discount=0):
     """Change the lines, due date or note — only while nothing has happened to
     it yet. Once goods are out or money is in, the record is what happened."""
     if inv.cancelled_at:
@@ -313,9 +327,11 @@ def update_invoice(db, inv, items, *, due_date=None, note=None):
         raise InvoiceError("This invoice is already paid, so it can't be changed.")
     if inv.delivered_at:
         raise InvoiceError("The goods on this invoice are already delivered, so it can't be changed.")
-    lines, total = clean_invoice_items(items)
+    lines, lines_total = clean_invoice_items(items)
+    total, discount = apply_discount(lines_total, discount)
     _set_items(db, inv, lines)
     inv.total = total
+    inv.discount = discount or None
     inv.due_date = due_date
     inv.note = (note or "").strip() or None
     db.commit()
@@ -366,12 +382,12 @@ def pay_invoice(db, inv, user_id, amount):
     # fraction must not turn into debt.
     pay = amount
     if amount >= (inv.total or 0):
-        pay = math.ceil(sum(float(l["qty"]) * int(l["unit_price"]) for l in lines))
+        pay = math.ceil(sum(float(l["qty"]) * int(l["unit_price"]) for l in lines) - (inv.discount or 0))
     result = save_pos_sale(
         db, inv.owner_phone, user_id, inv.customer_id, lines, pay,
         branch_id=inv.branch_id, due_date=inv.due_date,
         label=f"Invoice {format_invoice_number(inv.number)}",
-        deduct_stock=False, commit=False,
+        deduct_stock=False, commit=False, discount=inv.discount or 0,
     )
     inv.transaction_id = result["receipt_id"]
     inv.amount_paid = min(amount, inv.total or 0)
@@ -447,6 +463,8 @@ def invoice_document(db, inv):
         "ref": format_invoice_number(inv.number),
         "status": status,
         "total": inv.total or 0,
+        "discount": inv.discount or 0,
+        "subtotal": (inv.total or 0) + (inv.discount or 0),
         "amount_paid": inv.amount_paid or 0,
         "moved_to_debt": max(0, (inv.total or 0) - (inv.amount_paid or 0)) if status == "part_paid" else 0,
         "other_debt": other_debt,
@@ -492,6 +510,9 @@ def format_invoice_doc_text(doc):
         lines.append((it.get("name") or "").title())
         lines.append(f"  x{qty} @ N{int(it['unit_price']):,} = N{int(it['total']):,}")
     lines.append("--------------------")
+    if doc.get("discount"):
+        lines.append(f"Subtotal: N{doc['subtotal']:,}")
+        lines.append(f"Discount: -N{doc['discount']:,}")
     if doc.get("other_debt"):
         lines.append(f"This invoice:      N{doc['total']:,}")
         lines.append(f"Previous balance:  N{doc['other_debt']:,}")

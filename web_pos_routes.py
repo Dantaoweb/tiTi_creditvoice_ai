@@ -65,12 +65,14 @@ class InvoiceCreateRequest(BaseModel):
     due_date: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
     branch_id: Optional[int] = None
+    discount: int = 0   # naira off the whole invoice
 
 
 class InvoiceUpdateRequest(BaseModel):
     items: list[PosCartItem] = Field(max_length=200)
     due_date: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
+    discount: int = 0
 
 
 class InvoicePayRequest(BaseModel):
@@ -466,6 +468,7 @@ def register_pos_routes(app):
                 db, owner_phone, session["user_id"], payload.customer_id, items,
                 due_date=payload.due_date, note=payload.note, branch_id=eff_branch,
                 customer_name=payload.customer_name, customer_phone=payload.customer_phone,
+                discount=payload.discount,
             ))
             return invoice_document(db, inv)
         finally:
@@ -490,7 +493,8 @@ def register_pos_routes(app):
             items = [it.model_dump() for it in payload.items]
             _require_items_in_branch(db, inv.owner_phone, items, inv.branch_id)
             from invoices import update_invoice, invoice_document
-            _invoice_action(lambda: update_invoice(db, inv, items, due_date=payload.due_date, note=payload.note))
+            _invoice_action(lambda: update_invoice(db, inv, items, due_date=payload.due_date,
+                                                   note=payload.note, discount=payload.discount))
             return invoice_document(db, inv)
         finally:
             db.close()
