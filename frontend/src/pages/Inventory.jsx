@@ -479,6 +479,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
     retail_price: item.retail_price || "",
     wholesale_price: item.wholesale_price || "",
     wholesale_min_qty: item.wholesale_min_qty || "",
+    barcode: item.barcode || "",
   });
   const [attrs, setAttrs] = useState(item.attributes || {});
   const [saving, setSaving] = useState(false);
@@ -504,6 +505,8 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
         retail_price: form.retail_price !== "" ? parseAmt(form.retail_price) : null,
         wholesale_price: (!isService && form.wholesale_price !== "") ? parseAmt(form.wholesale_price) : 0,
         wholesale_min_qty: (!isService && form.wholesale_min_qty !== "") ? parseAmt(form.wholesale_min_qty) : 0,
+        // Empty clears it; the server refuses a code another product already has.
+        ...(!isService ? { barcode: form.barcode.trim() } : {}),
         ...(fields.length > 0 && !isService ? { attributes: attrs } : {}),
       });
       onSaved();
@@ -566,6 +569,23 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
               <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
               <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Available for sale</label>
             </div>
+          </div>
+        )}
+        {!isService && (
+          <div className="form-group">
+            <label className="form-label">Barcode</label>
+            <input
+              value={form.barcode}
+              onChange={e => set("barcode", e.target.value)}
+              // A scanner types the code then presses Enter; don't let Enter
+              // do anything else here.
+              onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}
+              placeholder="Scan the packet, or leave empty"
+            />
+            <span className="form-hint">
+              Click here and scan the product — the scanner types it for you. Clear it to
+              remove the barcode. Goods sold loose don't need one.
+            </span>
           </div>
         )}
         {!isService && (

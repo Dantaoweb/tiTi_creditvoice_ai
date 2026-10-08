@@ -201,3 +201,18 @@ def test_an_unpriced_product_is_found_but_flagged_not_sellable(shop):
 ])
 def test_what_counts_as_a_barcode(code, ok):
     assert barcodes.is_plausible(code) is ok
+
+
+def test_stock_added_without_a_barcode_can_be_given_one_by_editing(shop):
+    """Stock added before barcodes (or without one) gets its code from Edit,
+    the same way Add takes one — and the till then finds it by scan."""
+    item = _add(shop, "Golden Penny Spaghetti")
+    r = client.put(f"/app/api/inventory/{item}", cookies=shop["cookies"],
+                   json={"barcode": "6154000123456"})
+    assert r.status_code == 200, r.text
+    assert _scan(shop, "6154000123456")["product"]["id"] == item
+
+    other = _add(shop, "Dangote Spaghetti")
+    r = client.put(f"/app/api/inventory/{other}", cookies=shop["cookies"],
+                   json={"barcode": "6154000123456"})
+    assert r.status_code == 400                     # one code, one product
