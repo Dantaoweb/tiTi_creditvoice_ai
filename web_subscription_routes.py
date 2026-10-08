@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 from database import SessionLocal
 from models import User
 from web_auth import require_web_auth
-from web_common import _add_notification
 
 
 class SubscriptionRequestBody(BaseModel):
@@ -32,6 +31,20 @@ class MonnifyInitBody(BaseModel):
 class MonnifyVerifyBody(BaseModel):
     reference: str = Field(max_length=80)
     transaction_reference: Optional[str] = Field(default=None, max_length=120)
+
+
+def _tell_admins_card_paid(db, payment, owner):
+    """A card payment needs no approval, but the admins should still know money
+    came in and which plan it switched on."""
+    from admin_alerts import notify_admins
+    who = owner.name.title() if owner.name else owner.phone
+    notify_admins(
+        db, "payment_card",
+        "💳 Card payment received",
+        f"{who} ({owner.phone}) paid N{payment.amount:,} by card for {payment.plan} "
+        f"({(payment.billing_period or 'MONTHLY').title()}). The plan is already active.",
+        tab="Payments",
+    )
 
 
 def register_subscription_routes(app):
@@ -157,25 +170,6 @@ def register_subscription_routes(app):
             except Exception:
                 import traceback; traceback.print_exc()
 
-            # In-app notification to app admins so it shows on the web dashboard.
-            try:
-                from admin import app_admin_phones
-                from web_auth import phone_candidates
-                cand = set()
-                for p in app_admin_phones():
-                    cand.update(phone_candidates(p))
-                owner_name = (owner.name if owner else user.name) or user.phone
-                admins = db.query(User).filter(User.phone.in_(list(cand))).all() if cand else []
-                for a in admins:
-                    _add_notification(
-                        db, a.phone, "upgrade",
-                        f"Upgrade payment: {payment.plan}",
-                        f"{owner_name} ({user.phone}) reports paying for {payment.plan} by bank transfer — please verify and approve.",
-                    )
-                if admins:
-                    db.commit()
-            except Exception:
-                import traceback; traceback.print_exc()
             return {"ok": True}
         finally:
             db.close()
@@ -271,6 +265,8 @@ def register_subscription_routes(app):
             # Activate
             owner = approve_subscription_payment(db, payment, user)
             db.commit()
+            if owner:
+                _tell_admins_card_paid(db, payment, owner)
             return {
                 "ok": True,
                 "plan": normalize_plan(payment.plan),
@@ -317,8 +313,10 @@ def register_subscription_routes(app):
                 return {"ok": True, "ignored": True, "reason": "unknown_ref"}
             if amount_paid < payment.amount:
                 return {"ok": True, "ignored": True, "reason": "underpaid"}
-            approve_subscription_payment(db, payment, admin_user=None)
+            owner = approve_subscription_payment(db, payment, admin_user=None)
             db.commit()
+            if owner:
+                _tell_admins_card_paid(db, payment, owner)
         finally:
             db.close()
         return {"ok": True}

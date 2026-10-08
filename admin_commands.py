@@ -51,8 +51,18 @@ def _email_subscription_admins(payment, owner_name, body_text):
 
 
 def notify_subscription_admins(db, payment, owner, send_message, evidence_received=False):
+    """The business says it has paid (web or WhatsApp): record when, and tell
+    the admins — bell + push opening Admin → Payments, plus WhatsApp and email."""
+    from datetime import datetime, timezone
+    from admin_alerts import admin_phones as _app_admins, notify_admins
+
+    first_report = payment.paid_reported_at is None
+    if first_report:
+        payment.paid_reported_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.commit()
+
     admin_phones = []
-    for admin_phone in subscription_admin_phones() + app_admin_phones():
+    for admin_phone in subscription_admin_phones() + app_admin_phones() + _app_admins(db):
         if admin_phone and admin_phone not in admin_phones:
             admin_phones.append(admin_phone)
 
@@ -73,6 +83,18 @@ def notify_subscription_admins(db, payment, owner, send_message, evidence_receiv
 
     for admin_phone in admin_phones:
         send_message(admin_phone, message)
+
+    who = owner.name.title() if owner and owner.name else payment.phone
+    notify_admins(
+        db, "payment_reported",
+        ("🧾 Payment receipt sent" if evidence_received and not first_report
+         else "💳 Business says it paid"),
+        f"{who} ({payment.phone}) says they paid N{payment.amount:,} for {payment.plan} "
+        f"({(getattr(payment, 'billing_period', None) or 'MONTHLY').title()}) by "
+        f"{method.lower()}. {'Evidence attached.' if evidence_received else 'No receipt yet.'} "
+        "Check your account, then approve.",
+        tab="Payments",
+    )
 
     # Also email admins (no-op when SUBSCRIPTION_ADMIN_EMAILS / SMTP is unset)
     _email_subscription_admins(payment, owner_name, message)

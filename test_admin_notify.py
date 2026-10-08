@@ -79,4 +79,4 @@ def test_admin_notified_when_user_confirms_transfer():
     r = client.post("/app/api/subscription/confirm-payment", json={"plan": "GO"}, cookies=ucook)
     assert r.status_code == 200, r.text
     notifs = client.get("/app/api/notifications", cookies=admin).json()["notifications"]
-    assert any(n["event_type"] == "upgrade" and "GO" in n["title"] for n in notifs)
+    assert any(n["event_type"] == "payment_reported" and "GO" in n["body"] for n in notifs)

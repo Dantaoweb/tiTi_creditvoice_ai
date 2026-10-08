@@ -59,6 +59,16 @@ def notify_admins(db, event_type, title, body, tab=None):
         return []
 
 
+def pending_payments(db):
+    """Bank transfers the business says it made, not yet approved or rejected.
+    A request opened just to see the bank details is not counted."""
+    from models import SubscriptionPayment
+    return db.query(SubscriptionPayment).filter(
+        SubscriptionPayment.status == "PENDING",
+        SubscriptionPayment.paid_reported_at.isnot(None),
+    ).count()
+
+
 def pending_opportunity_applications(db):
     from models import OpportunityApplication
     return db.query(OpportunityApplication).filter(OpportunityApplication.status == "submitted").count()

@@ -1358,15 +1358,25 @@ function PaymentsTab() {
   }
   useEffect(() => { load(); }, []);
 
-  async function act(id, kind) {
+  async function act(id, kind, body = {}) {
     setBusyId(id); setMsg(""); setErr("");
     try {
-      const r = await apiPost(`admin/subscription-payments/${id}/${kind}`, {});
-      setMsg(kind === "approve" ? `Approved — ${r.plan} plan is now active.` : "Payment rejected.");
+      const r = await apiPost(`admin/subscription-payments/${id}/${kind}`, body);
+      setMsg(kind === "approve" ? `Approved — ${r.plan} plan is now active.` : "Payment rejected — the business was told.");
       load();
+      announcePendingChanged();
     } catch (e) { setErr(e.message); }
     finally { setBusyId(null); }
   }
+
+  function reject(p) {
+    const reason = window.prompt(
+      "Reject this payment? Tell the business why (optional) — e.g. “No transfer of this amount received”.", "");
+    if (reason === null) return;               // cancelled
+    act(p.id, "reject", { reason });
+  }
+
+  const when = s => new Date(s).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
   if (payments === null) return <p style={{ color: "var(--text-muted)" }}>Loading…</p>;
 
@@ -1381,7 +1391,7 @@ function PaymentsTab() {
       {msg && <div style={{ color: "#16a34a", marginBottom: 10 }}>{msg}</div>}
       {err && <div style={{ color: "var(--rose)", marginBottom: 10 }}>{err}</div>}
       {payments.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No pending payments. Bank transfers a user reports paying appear here for you to confirm.</p>
+        <p style={{ color: "var(--text-muted)" }}>No pending payments. Bank transfers a business says it made appear here, marked “Says paid”, for you to confirm.</p>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {payments.map(p => (
@@ -1393,7 +1403,22 @@ function PaymentsTab() {
                 <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
                   {p.plan} · {p.period === "YEARLY" ? "Yearly" : "Monthly"} · {nairaFull(p.amount)} · {p.method === "BANK_TRANSFER" ? "Bank transfer" : p.method}
                 </div>
-                {p.evidence_ref && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Ref: {p.evidence_ref}</div>}
+                {/* A request is created the moment bank details are shown, so
+                    say which ones the business actually claims to have paid. */}
+                <div style={{ marginTop: 4 }}>
+                  {p.paid_reported_at ? (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#166534", background: "rgba(22,163,74,0.12)",
+                      borderRadius: 99, padding: "2px 8px" }}>Says paid · {when(p.paid_reported_at)}</span>
+                  ) : (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", background: "var(--line-2)",
+                      borderRadius: 99, padding: "2px 8px" }}>
+                      {p.method === "MONNIFY" ? "Card payment not completed" : "Only viewed bank details"}
+                    </span>
+                  )}
+                </div>
+                {p.evidence_ref && p.method !== "MONNIFY" && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Evidence: {p.evidence_ref}</div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-primary btn-sm" disabled={busyId === p.id}
@@ -1402,7 +1427,7 @@ function PaymentsTab() {
                   {busyId === p.id ? "…" : "Approve"}
                 </button>
                 <button className="btn btn-secondary btn-sm" disabled={busyId === p.id}
-                        onClick={() => { if (window.confirm("Reject this payment?")) act(p.id, "reject"); }}>
+                        onClick={() => reject(p)}>
                   Reject
                 </button>
               </div>
@@ -3130,7 +3155,7 @@ function CampaignsTab() {
 }
 
 // Admin tabs that hold a queue, and the pending-counts key for each.
-const TAB_PENDING = { Suppliers: "suppliers", Opportunities: "opportunities", Finance: "finance", Site: "reviews" };
+const TAB_PENDING = { Payments: "payments", Suppliers: "suppliers", Opportunities: "opportunities", Finance: "finance", Site: "reviews" };
 
 // Something waiting for an admin was decided: the menu badge and the tab
 // counts listen for this and ask again.

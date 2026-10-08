@@ -1123,6 +1123,11 @@ def ensure_schema_updates(engine):
                     "ALTER TABLE subscription_payments "
                     "ADD COLUMN billing_period VARCHAR DEFAULT 'MONTHLY'"
                 ))
+        if "paid_reported_at" not in _sp_cols:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "ALTER TABLE subscription_payments ADD COLUMN paid_reported_at TIMESTAMP"
+                ))
 
     # ── Notifications can carry a destination ────────────────────────────────
     # A notification that names a problem but cannot take you to it wastes the

@@ -711,6 +711,11 @@ class SubscriptionPayment(Base):
 
     payment_method = Column(String, default="BANK_TRANSFER")
 
+    # When the business said it had paid (web "I've paid", or PAID / a receipt
+    # on WhatsApp). A request only becomes PENDING the moment the bank details
+    # are shown, so this is what separates "says paid" from "only looked".
+    paid_reported_at = Column(DateTime, nullable=True)
+
     evidence_type = Column(String, nullable=True)
 
     evidence_ref = Column(String, nullable=True)

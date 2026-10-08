@@ -19,6 +19,10 @@ from web_auth import require_web_auth
 from web_common import _admin_rate_check, _export_rate_check, _add_notification
 
 
+class RejectPaymentRequest(BaseModel):
+    reason: str = Field(default="", max_length=300)
+
+
 class AdminNotifyRequest(BaseModel):
     title: str = Field(max_length=120)
     body: str = Field(max_length=1000)
@@ -528,6 +532,7 @@ def register_admin_routes(app):
             if status:
                 q = q.filter(SubscriptionPayment.status == status.upper())
             rows = q.order_by(SubscriptionPayment.created_at.desc()).limit(200).all()
+            rows.sort(key=lambda r: r.paid_reported_at is None)
             owners = {
                 u.id: u for u in db.query(User).filter(
                     User.id.in_([r.user_id for r in rows] or [None])
@@ -545,6 +550,8 @@ def register_admin_routes(app):
                     "owner_name": (owners.get(r.user_id).name if owners.get(r.user_id) else None),
                     "evidence_type": r.evidence_type,
                     "evidence_ref": r.evidence_ref,
+                    "paid_reported_at": r.paid_reported_at.isoformat() if r.paid_reported_at else None,
+                    "admin_note": r.admin_note,
                     "created_at": r.created_at.isoformat() if r.created_at else None,
                 }
                 for r in rows
@@ -600,7 +607,8 @@ def register_admin_routes(app):
             db.close()
 
     @app.post("/app/api/admin/subscription-payments/{payment_id}/reject")
-    def web_admin_reject_payment(payment_id: int, session: dict = Depends(require_web_auth)):
+    def web_admin_reject_payment(payment_id: int, payload: Optional[RejectPaymentRequest] = None,
+                                 session: dict = Depends(require_web_auth)):
         """Reject a pending subscription payment and let the owner know."""
         from admin import is_app_admin
         from models import SubscriptionPayment, PendingAction
@@ -619,14 +627,20 @@ def register_admin_routes(app):
                 raise HTTPException(status_code=409, detail=f"Payment already {payment.status.lower()}.")
 
             payment.status = "REJECTED"
+            reason = ((payload.reason if payload else "") or "").strip()
+            payment.admin_note = reason or None
+            # What the business is told: the admin's reason, or the old default.
+            told = (f"Your subscription payment could not be confirmed. Reason: {reason}"
+                    if reason else
+                    "Your subscription payment could not be confirmed. Please send a clearer receipt or contact support.")
             owner = db.query(User).filter(User.id == payment.user_id).first()
             if owner:
                 db.query(PendingAction).filter(
                     PendingAction.phone == owner.phone,
                     PendingAction.action == "SUBSCRIPTION_PAYMENT_PENDING",
                 ).delete()
-                _add_notification(db, owner.phone, "upgrade", "Payment not confirmed",
-                                  "Your subscription payment could not be confirmed. Please send a clearer receipt or contact support.")
+                _add_notification(db, owner.phone, "upgrade", "Payment not confirmed", told,
+                                  link="/upgrade")
             from audit import audit
             audit(db, action="ADMIN_REJECT_SUBSCRIPTION", actor_id=actor.id, actor_phone=actor.phone,
                   resource=f"payment:{payment.id}")
@@ -634,9 +648,7 @@ def register_admin_routes(app):
             if owner:
                 try:
                     from whatsapp_client import send_whatsapp_message
-                    send_whatsapp_message(
-                        owner.phone,
-                        "Your subscription payment could not be confirmed. Please send a clearer receipt.")
+                    send_whatsapp_message(owner.phone, told)
                 except Exception:
                     pass
             return {"ok": True}
