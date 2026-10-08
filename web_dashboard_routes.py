@@ -87,6 +87,9 @@ def register_dashboard_routes(app):
                     "expected": margin["expected"],
                     "actual": margin["actual"],
                     "discount_gap": margin["discount_gap"],
+                    "whole_sale_discounts": margin["whole_sale_discounts"],
+                    "below_price_discounts": margin["below_price_discounts"],
+                    "discounted_sales": margin["discounted_sales"],
                     "below_cost_products": margin["below_cost_products"],
                 },
             }

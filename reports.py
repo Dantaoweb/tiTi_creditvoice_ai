@@ -261,10 +261,11 @@ def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None, branch
     sales = (
         get_owner_transaction_query(db, owner_phone, period, recorded_by_id, branch_id=branch_id)
         .filter(Transaction.type.in_(["BUY", "SALE"]))
-        .with_entities(Transaction.id, Transaction.amount)
+        .with_entities(Transaction.id, Transaction.amount, Transaction.discount_amount)
         .all()
     )
-    amounts = {tx_id: int(amount or 0) for tx_id, amount in sales}
+    amounts = {tx_id: int(amount or 0) for tx_id, amount, _d in sales}
+    discounts = {tx_id: int(d or 0) for tx_id, _a, d in sales}
     items = (
         db.query(TransactionItem).filter(TransactionItem.transaction_id.in_(list(amounts))).all()
         if amounts else []
@@ -282,7 +283,11 @@ def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None, branch
         price = prices.get((i.product or "").lower())
         expected += (i.quantity or 1) * price if price else (i.total or 0)
     # Only sales with itemised lines can be compared against a selling price.
-    actual = sum(amounts[t] for t in {i.transaction_id for i in items})
+    itemised = {i.transaction_id for i in items}
+    actual = sum(amounts[t] for t in itemised)
+    gap = max(expected - actual, 0)
+    # Split what was given away: money off whole sales, and lines sold below price.
+    whole_sale = min(sum(discounts[t] for t in itemised), gap)
 
     below_cost = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
@@ -294,7 +299,10 @@ def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None, branch
     return {
         "expected": expected,
         "actual": actual,
-        "discount_gap": max(expected - actual, 0),
+        "discount_gap": gap,
+        "whole_sale_discounts": whole_sale,
+        "below_price_discounts": gap - whole_sale,
+        "discounted_sales": sum(1 for t in itemised if discounts[t]),
         "below_cost_products": [i.name for i in below_cost],
     }
 
@@ -317,7 +325,14 @@ def build_margin_summary_message(summary, period=None):
     lines.append(f"Actual revenue:   N{summary['actual']:,}")
     gap = summary["discount_gap"]
     if gap > 0:
-        lines.append(f"Discount gap:     N{gap:,}")
+        lines.append(f"Discounts given:  N{gap:,}")
+        whole = summary.get("whole_sale_discounts", 0)
+        below = summary.get("below_price_discounts", 0)
+        if whole:
+            n = summary.get("discounted_sales", 0)
+            lines.append(f"  N{whole:,} off {n} sale{'s' if n != 1 else ''}")
+        if below:
+            lines.append(f"  N{below:,} sold below price")
     if summary["below_cost_products"]:
         products = ", ".join(p.title() for p in summary["below_cost_products"][:5])
         lines.append(f"\n⚠ Selling below cost: {products}")

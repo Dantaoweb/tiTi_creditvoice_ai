@@ -73,3 +73,28 @@ def test_cash_sales_and_whole_sale_discounts_count_voided_do_not():
         assert m["discount_gap"] == 700
     finally:
         db.close()
+
+
+def test_discounts_given_are_split_into_whole_sale_and_below_price():
+    from reports import build_margin_summary_message
+    db = SessionLocal()
+    try:
+        phone, owner, cust = _business(db)
+        _sale(db, owner, None, 1800, [(2, 900)], kind="SALE")     # N200 below price
+        tx = Transaction(customer_id=cust.id, type="BUY", amount=2500, discount_amount=500,
+                         recorded_by_id=owner.id, message_id=f"m-{uuid.uuid4()}")
+        db.add(tx); db.flush()
+        db.add(TransactionItem(transaction_id=tx.id, product="rice", quantity=3,
+                               unit_price=1000, total=3000))       # N500 off the whole sale
+        db.commit()
+
+        m = get_margin_summary(db, phone)
+        assert m["discount_gap"] == 700
+        assert m["whole_sale_discounts"] == 500 and m["discounted_sales"] == 1
+        assert m["below_price_discounts"] == 200
+
+        text = build_margin_summary_message(m)
+        assert "Discounts given:  N700" in text
+        assert "N500 off 1 sale" in text and "N200 sold below price" in text
+    finally:
+        db.close()

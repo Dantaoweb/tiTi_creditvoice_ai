@@ -548,8 +548,20 @@ export default function Dashboard() {
             </div>
             {data.margin.discount_gap > 0 && (
               <div style={{ background: "rgba(239,68,68,0.08)", borderRadius: 8, padding: "10px 12px" }}>
-                <div style={{ fontSize: 11, color: "var(--rose)", marginBottom: 3 }}>Discount gap</div>
+                <div style={{ fontSize: 11, color: "var(--rose)", marginBottom: 3 }}>Discounts given</div>
                 <div style={{ fontWeight: 700, color: "var(--rose)" }}>{nairaFull(data.margin.discount_gap)}</div>
+                {/* Where it went: money off whole sales vs lines sold below their price. */}
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.45 }}>
+                  {data.margin.whole_sale_discounts > 0 && (
+                    <div>
+                      {nairaFull(data.margin.whole_sale_discounts)} off {data.margin.discounted_sales} sale
+                      {data.margin.discounted_sales === 1 ? "" : "s"}
+                    </div>
+                  )}
+                  {data.margin.below_price_discounts > 0 && (
+                    <div>{nairaFull(data.margin.below_price_discounts)} sold below price</div>
+                  )}
+                </div>
               </div>
             )}
           </div>
