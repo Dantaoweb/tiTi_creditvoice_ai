@@ -247,36 +247,42 @@ def build_dashboard_summary_message(summary, period=None, user=None):
 
 def get_margin_summary(db, owner_phone, period=None, recorded_by_id=None, branch_id=None):
     """
-    Compare expected revenue (at selling price) vs actual revenue recorded.
+    Compare expected revenue (at selling price) vs what was actually charged.
     Returns a dict with: expected, actual, discount_gap, below_cost_products.
     Only meaningful when inventory items have selling_price set.
+
+    Scoped to THIS business's own sales — cash and credit, not voided — via
+    get_owner_transaction_query, the same scoping every other report uses.
+    "Actual" is what each sale was recorded at, so a discount off the whole
+    sale counts as well as a line sold below its price.
     """
     from models import InventoryItem, TransactionItem
-    start, end = get_period_range(period) if period else (None, None)
 
-    tx_query = db.query(TransactionItem).join(
-        Transaction, TransactionItem.transaction_id == Transaction.id
-    ).filter(Transaction.type == "BUY")
+    sales = (
+        get_owner_transaction_query(db, owner_phone, period, recorded_by_id, branch_id=branch_id)
+        .filter(Transaction.type.in_(["BUY", "SALE"]))
+        .with_entities(Transaction.id, Transaction.amount)
+        .all()
+    )
+    amounts = {tx_id: int(amount or 0) for tx_id, amount in sales}
+    items = (
+        db.query(TransactionItem).filter(TransactionItem.transaction_id.in_(list(amounts))).all()
+        if amounts else []
+    )
 
-    if recorded_by_id:
-        tx_query = tx_query.filter(Transaction.recorded_by_id == recorded_by_id)
-    if branch_id is not None:
-        tx_query = tx_query.filter(Transaction.branch_id == branch_id)
-    if start:
-        tx_query = tx_query.filter(Transaction.created_at >= start, Transaction.created_at < end)
-
-    items = tx_query.all()
-    actual = sum(i.total or 0 for i in items)
+    prices = {
+        (name or "").lower(): price
+        for name, price in db.query(InventoryItem.name, InventoryItem.selling_price).filter(
+            InventoryItem.owner_phone == owner_phone,
+            InventoryItem.selling_price.isnot(None),
+        ).all()
+    }
     expected = 0
     for i in items:
-        inv = db.query(InventoryItem).filter(
-            InventoryItem.owner_phone == owner_phone,
-            func.lower(InventoryItem.name) == (i.product or "").lower(),
-        ).first()
-        if inv and inv.selling_price:
-            expected += (i.quantity or 1) * inv.selling_price
-        else:
-            expected += i.total or 0
+        price = prices.get((i.product or "").lower())
+        expected += (i.quantity or 1) * price if price else (i.total or 0)
+    # Only sales with itemised lines can be compared against a selling price.
+    actual = sum(amounts[t] for t in {i.transaction_id for i in items})
 
     below_cost = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
