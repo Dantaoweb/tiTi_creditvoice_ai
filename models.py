@@ -495,6 +495,10 @@ class InventoryItem(Base):
     # business so two products can never answer the same scan.
     barcode = Column(String, nullable=True, index=True)
 
+    # Who this product usually comes from. Pre-fills the supplier when stock
+    # is received (Adjust stock) and when a suspected fake is reported.
+    usual_supplier = Column(String, nullable=True)
+
     wholesale_price = Column(Integer, nullable=True)
 
     wholesale_min_qty = Column(Integer, nullable=True)

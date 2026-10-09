@@ -190,6 +190,7 @@ def ensure_schema_updates(engine):
         "branch_id": "INTEGER",
         "attributes_json": "VARCHAR",
         "barcode": "VARCHAR",
+        "usual_supplier": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in inventory_updates.items():

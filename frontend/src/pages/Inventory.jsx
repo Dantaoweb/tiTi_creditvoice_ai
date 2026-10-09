@@ -17,6 +17,24 @@ import { usePlan } from "../lib/usePlan";
 
 // Error box that turns a plan-limit message into an actionable upsell — the
 // same text plus a clickable "Upgrade to Go" button when the Basic cap is hit.
+// A supplier name box that suggests the shop's existing suppliers, so the
+// same supplier isn't typed three different ways.
+function SupplierInput({ value, onChange, placeholder = "Supplier name (optional)" }) {
+  const [names, setNames] = useState([]);
+  useEffect(() => {
+    apiFetch("suppliers").then(d => setNames((d.suppliers || []).map(x => x.name))).catch(() => {});
+  }, []);
+  return (
+    <>
+      <input list="cv-supplier-names" value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder} />
+      <datalist id="cv-supplier-names">
+        {names.map(n => <option key={n} value={n} />)}
+      </datalist>
+    </>
+  );
+}
+
 // The phone camera fills a Barcode box — for shops without a scanner.
 function BarcodeCameraButton({ onCode }) {
   const [open, setOpen] = useState(false);
@@ -289,6 +307,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
     cost_price: "", selling_price: "", low_stock_alert: "",
     retail_unit: "", retail_per_base: "", retail_price: "",
     wholesale_price: "", wholesale_min_qty: "", barcode: "",
+    supplier: "", paid_now: "",
   });
   const [attrs, setAttrs] = useState({});
   const [saving, setSaving] = useState(false);
@@ -298,6 +317,9 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
   function setAttr(k, v) { setAttrs(p => ({ ...p, [k]: v })); }
 
   const isService = itemType === "service";
+  // Opening stock from a supplier is a delivery: what it cost and what's owed.
+  const openingTotal = Math.round((parseAmt(form.quantity) || 0) * (parseAmt(form.cost_price) || 0));
+  const openingPaid = form.paid_now === "" ? openingTotal : Math.min(parseAmt(form.paid_now) || 0, openingTotal);
 
   async function save() {
     if (!form.name.trim()) { setErr("Name is required."); return; }
@@ -320,6 +342,9 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
         wholesale_min_qty: (!isService && form.wholesale_min_qty !== "") ? parseAmt(form.wholesale_min_qty) : null,
         barcode: form.barcode.trim() || null,
         attributes: isService ? {} : attrs,
+        supplier: isService ? null : (form.supplier.trim() || null),
+        // Blank = paid in full; less than the total = owed to the supplier.
+        paid_now: (!isService && form.supplier.trim() && form.paid_now !== "") ? parseAmt(form.paid_now) : null,
       });
       onSaved(item);
       onClose();
@@ -410,6 +435,29 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
               <MoneyInput value={form.low_stock_alert} onChange={v => set("low_stock_alert", v)} placeholder="optional" />
             </div>
           </div>
+        )}
+
+        {!isService && (
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Supplier</label>
+              <SupplierInput value={form.supplier} onChange={v => set("supplier", v)} />
+            </div>
+            {form.supplier.trim() && parseAmt(form.quantity) > 0 && (
+              <div className="form-group">
+                <label className="form-label">Amount paid now (₦)</label>
+                <MoneyInput value={form.paid_now} onChange={v => set("paid_now", v)}
+                  placeholder={openingTotal ? openingTotal.toLocaleString() : "paid in full"} />
+              </div>
+            )}
+          </div>
+        )}
+        {!isService && form.supplier.trim() && parseAmt(form.quantity) > 0 && openingTotal > 0 && (
+          <span className="form-hint" style={{ marginTop: -6 }}>
+            {openingPaid < openingTotal
+              ? `Opening stock ₦${openingTotal.toLocaleString()} — you'll owe ${form.supplier.trim()} ₦${(openingTotal - openingPaid).toLocaleString()}`
+              : `Opening stock ₦${openingTotal.toLocaleString()} from ${form.supplier.trim()} — paid in full`}
+          </span>
         )}
 
         {!isService && (
@@ -506,6 +554,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
     wholesale_price: item.wholesale_price || "",
     wholesale_min_qty: item.wholesale_min_qty || "",
     barcode: item.barcode || "",
+    usual_supplier: item.usual_supplier || "",
   });
   const [attrs, setAttrs] = useState(item.attributes || {});
   const [saving, setSaving] = useState(false);
@@ -532,7 +581,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
         wholesale_price: (!isService && form.wholesale_price !== "") ? parseAmt(form.wholesale_price) : 0,
         wholesale_min_qty: (!isService && form.wholesale_min_qty !== "") ? parseAmt(form.wholesale_min_qty) : 0,
         // Empty clears it; the server refuses a code another product already has.
-        ...(!isService ? { barcode: form.barcode.trim() } : {}),
+        ...(!isService ? { barcode: form.barcode.trim(), usual_supplier: form.usual_supplier.trim() } : {}),
         ...(fields.length > 0 && !isService ? { attributes: attrs } : {}),
       });
       onSaved();
@@ -595,6 +644,14 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
               <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
               <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Available for sale</label>
             </div>
+          </div>
+        )}
+        {!isService && (
+          <div className="form-group">
+            <label className="form-label">Usually supplied by</label>
+            <SupplierInput value={form.usual_supplier} onChange={v => set("usual_supplier", v)}
+              placeholder="e.g. Mama Joy Wholesale" />
+            <span className="form-hint">Fills in the supplier when you add stock or report a problem.</span>
           </div>
         )}
         {!isService && (
@@ -682,7 +739,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
 // ── Adjust stock modal (only for physical stock items) ───────────────────────
 function AdjustModal({ item, onClose, onSaved }) {
   const [delta, setDelta] = useState("");
-  const [supplier, setSupplier] = useState("");
+  const [supplier, setSupplier] = useState(item.usual_supplier || "");
   const [cost, setCost] = useState("");
   const [paidNow, setPaidNow] = useState("");
   const [paidTouched, setPaidTouched] = useState(false);
@@ -810,8 +867,17 @@ function ReportFakeForm({ item, onDone, onCancel }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    apiFetch("suppliers").then(d => setSuppliers(d.suppliers || [])).catch(() => {});
-  }, []);
+    apiFetch("suppliers").then(d => {
+      const list = d.suppliers || [];
+      setSuppliers(list);
+      // Start from who usually supplies this product.
+      const usual = (item.usual_supplier || "").trim().toLowerCase();
+      if (!usual) return;
+      const match = list.find(x => (x.name || "").trim().toLowerCase() === usual);
+      if (match) setSupplierId(String(match.id));
+      else setSupplierName(item.usual_supplier);
+    }).catch(() => {});
+  }, [item.usual_supplier]);
 
   async function send() {
     if (!reason.trim()) { setErr("Say what looked wrong — that's what our team checks."); return; }

@@ -89,9 +89,13 @@ class AddInventoryRequest(BaseModel):
     wholesale_min_qty: Optional[int] = None
     barcode: Optional[str] = Field(default=None, max_length=48)
     attributes: dict = Field(default_factory=dict)   # per-business custom stock fields
+    # Opening stock from a supplier: recorded as a delivery, like Adjust stock.
+    supplier: Optional[str] = Field(default=None, max_length=120)
+    paid_now: Optional[int] = None    # None → paid in full; less → owed to the supplier
 
 
 class EditInventoryRequest(BaseModel):
+    usual_supplier: Optional[str] = Field(default=None, max_length=120)   # "" clears it
     name: Optional[str] = Field(default=None, max_length=120)
     unit: Optional[str] = Field(default=None, max_length=30)
     cost_price: Optional[int] = None
@@ -241,6 +245,7 @@ def register_inventory_routes(app):
                         "wholesale_price": item.wholesale_price,
                         "wholesale_min_qty": item.wholesale_min_qty,
                         "barcode": item.barcode,
+                        "usual_supplier": item.usual_supplier,
                         "attributes": _load_attributes(item),
                         "updated_at": _iso(item.updated_at),
                     }
@@ -300,18 +305,41 @@ def register_inventory_routes(app):
                 except ValueError as exc:
                     raise HTTPException(status_code=400, detail=str(exc))
             db.add(item)
+            supplier_name = (payload.supplier or "").strip()
+            if supplier_name and not payload.is_service:
+                item.usual_supplier = supplier_name
             if not payload.is_service and _qty:
                 db.flush()
+                source_type, source_id, note = "WEB_ADD", None, "Initial stock"
+                if supplier_name:
+                    # The opening stock came from a supplier: record the delivery
+                    # (and anything still owed), exactly as Adjust stock does.
+                    from models import SupplierPurchase
+                    from inventory_suppliers import find_or_create_supplier
+                    supplier = find_or_create_supplier(db, owner_phone, supplier_name)
+                    db.flush()
+                    cost = payload.cost_price
+                    total = int(round(cost * _qty)) if cost else 0
+                    paid = total if payload.paid_now is None else max(0, min(int(payload.paid_now), total))
+                    purchase = SupplierPurchase(
+                        supplier_id=supplier.id, owner_phone=owner_phone, product=item.name,
+                        quantity=_qty, unit=item.unit, unit_price=cost, total=total,
+                        paid_amount=paid, recorded_by_id=session["user_id"], created_at=utcnow(),
+                    )
+                    db.add(purchase)
+                    db.flush()
+                    source_type, source_id = "SUPPLIER_PURCHASE", purchase.id
+                    note = f"Opening stock from {supplier.name.title()}"
                 db.add(InventoryMovement(
                     owner_phone=owner_phone,
                     item_id=item.id,
                     movement_type="IN",
                     quantity=_qty,
                     unit_price=payload.cost_price,
-                    source_type="WEB_ADD",
-                    source_id=None,
+                    source_type=source_type,
+                    source_id=source_id,
                     recorded_by_id=session["user_id"],
-                    note="Initial stock",
+                    note=note,
                 ))
             db.commit()
             db.refresh(item)
@@ -480,6 +508,8 @@ def register_inventory_routes(app):
                                                             item_id=item.id)
                     except ValueError as exc:
                         raise HTTPException(status_code=400, detail=str(exc))
+            if payload.usual_supplier is not None:
+                item.usual_supplier = payload.usual_supplier.strip() or None
             if payload.cost_price is not None:
                 item.cost_price = payload.cost_price
             if payload.selling_price is not None:
@@ -722,6 +752,9 @@ def register_inventory_routes(app):
                 "IN", "SUPPLIER_PURCHASE", purchase.id, session["user_id"],
                 (payload.note or "").strip() or f"Received from {supplier.name.title()}",
             )
+            # The first real supplier a product is received from becomes its usual one.
+            if item is not None and not item.usual_supplier and supplier_name.lower() != "others":
+                item.usual_supplier = supplier.name
             # A delivery note must not vanish into the movement log only — surface
             # it in the Notes menu under the "delivery" category so it's findable.
             _save_stock_note(
