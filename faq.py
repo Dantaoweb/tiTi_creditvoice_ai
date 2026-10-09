@@ -83,6 +83,34 @@ def detect_faq(text):
     if not _is_question(text):
         return None
 
+    # ── Newer features — before "receipt", which takes any mention of it ─────
+    if re.search(r"\bdiscount", q):
+        return "discount"
+    if any(k in q for k in [
+        "barcode", "bar code", "scanner", "scan product", "scan item", "scan with",
+        "scan the", "camera scan", "use my camera", "use the camera", "phone camera",
+    ]) or re.search(r"\bscan(ning)?\b", q):
+        return "barcode_scan"
+    if any(k in q for k in [
+        "write a review", "my review", "leave a review", "give a review", "testimonial",
+        "free advert", "advertise my business", "homepage", "home page",
+        "feature my business", "show my business on",
+    ]):
+        return "site_review"
+    if any(k in q for k in [
+        "verified supplier", "supplier directory", "become a supplier", "be a supplier",
+        "list my business as", "find a supplier", "find supplier", "find suppliers",
+        "connect with supplier", "connect with a supplier", "wholesaler near",
+        "rate supplier", "rate a supplier", "supplier rating",
+    ]):
+        return "supplier_directory"
+    if any(k in q for k in [
+        "scorecard", "score card", "business score", "credit score", "my score",
+        "finance offer", "asset financ", "financing", "financier",
+        "repayment", "buy on credit from a financier", "loan for",
+    ]):
+        return "finance_scorecard"
+
     # ── Receipt (specific — check before customer) ────────────────────────────
     if any(k in q for k in ["receipt", "print receipt", "send receipt"]):
         return "receipt"
@@ -688,15 +716,69 @@ FAQ_ANSWERS = {
         "fast mode off"
     ),
     "upgrade": (
-        "To upgrade:\n\n"
-        "upgrade\n\n"
-        "GO plan includes:\n"
-        "- Inventory and stock tracking\n"
-        "- Supplier records\n"
-        "- Product reports\n"
-        "- Debt reminders\n"
-        "- Staff accounts\n\n"
+        "To upgrade, send  upgrade  here, or on the web app: Menu → More → Upgrade Plan.\n\n"
+        "Plans:\n"
+        "- GO: unlimited stock, exports, multi-item sales, voice, automatic reminders\n"
+        "- PRO: GO + staff accounts, branches, 1 partner and 1 investor\n"
+        "- PREMIUM: PRO with unlimited branches, partners and investors\n\n"
+        "Pay by card (your plan switches on at once) or bank transfer (switches on "
+        "once we confirm it). Have a plan code? Enter it on the Upgrade page.\n\n"
         "Send  my plan  to see your current plan."
+    ),
+    "discount": (
+        "Giving a discount:\n\n"
+        "*Web app — the till (Select product), New Receipt or an invoice:*\n"
+        "Under the items there's a *Discount* box. Tap *₦* to take off an amount, "
+        "or *%* for a percentage. The total, payment and any debt use the discounted "
+        "total, and the receipt shows Subtotal and Discount so it adds up.\n\n"
+        "*WhatsApp:* while selling with  select product , send\n"
+        "discount 500   or   discount 10%\n\n"
+        "Selling one item below its price also counts as a discount.\n\n"
+        "To see how much you've given away: Dashboard → *Discounts given*."
+    ),
+    "barcode_scan": (
+        "Scanning barcodes — your phone camera works as the scanner:\n\n"
+        "*To sell:* Select product (the till) → tap *📷 Scan* → point at the barcode. "
+        "It beeps and adds the item. Tick *Keep scanning* to scan item after item.\n\n"
+        "*To save a product's barcode:* Add stock → the product → *Edit* → "
+        "*Barcode* → tap *📷 Scan*, then Save. New products: the same box is on Add.\n\n"
+        "*On an invoice:* New invoice → *Scan items*.\n\n"
+        "A code the till doesn't know? It asks which product to attach it to — "
+        "that's how you build your barcode list while selling.\n\n"
+        "Have a USB or Bluetooth scanner? Click the search box and scan; it works too.\n"
+        "If the camera won't open, allow camera access for this site in your browser settings."
+    ),
+    "site_review": (
+        "Get a free advert on the CreditVoice homepage:\n\n"
+        "Web app → Menu → More → *My Profile* → *Your review — free advert* → "
+        "write what CreditVoice does for you, tick *Yes, show my business publicly*, "
+        "and send.\n\n"
+        "Our team checks it, and you'll be told when it's approved or on the homepage. "
+        "Your business name, town and the contact you choose go with it, so customers "
+        "can find you. You can change or remove it any time."
+    ),
+    "supplier_directory": (
+        "The Verified Supplier directory (web app → Menu → More → *Suppliers*):\n\n"
+        "*Find a supplier:* browse verified suppliers and tap *Connect*. The supplier "
+        "accepts or declines; their contact is shared once they accept. After that you "
+        "can rate them.\n\n"
+        "*Be listed as a supplier (Pro or Premium):* Suppliers → *Apply* → your products, "
+        "states you cover and CAC number. We review it within 48 hours and tell you the "
+        "result. Then buyers can find you and send connection requests — answer them on "
+        "your Supplier Profile.\n\n"
+        "Your own suppliers (who you buy from and owe) are on the same page."
+    ),
+    "finance_scorecard": (
+        "Financing and your Business Score (web app → Menu → More → *Business Score*):\n\n"
+        "Your score is built from what you record — steady sales, customers paying back, "
+        "stock. The more you record, the stronger it is.\n\n"
+        "*Finance offers* you qualify for show on the same page (e.g. a motorcycle or "
+        "freezer paid for in installments). Fill in your identity details once, then "
+        "*Apply*. We send your request to the financier and tell you each step: sent, "
+        "in review, approved or declined (with the reason), delivered.\n\n"
+        "*Repayments:* after delivery, record each one on the Business Score page as you "
+        "pay; the financier confirms it.\n\n"
+        "Grants and other offers are under Menu → More → *Opportunities*."
     ),
     # receipt → merged into build_app_guide_message ("pdf" topic, single source).
     "shop_tag": (
