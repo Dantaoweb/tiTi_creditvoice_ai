@@ -7,6 +7,7 @@ import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import CameraScanner from "../components/CameraScanner";
+import BarcodeInsight from "../components/BarcodeInsight";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
 import { StockBadge } from "../components/Badge";
@@ -423,6 +424,8 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
               />
               <BarcodeCameraButton onCode={code => set("barcode", code)} />
             </div>
+            <BarcodeInsight code={form.barcode} name={form.name}
+              onUseName={form.name.trim() ? undefined : n => set("name", n)} />
             <span className="form-hint">
               Tap Scan to use the phone camera, or click here with a barcode scanner. Goods sold
               loose have no barcode; leave it empty and sell by name as usual.
@@ -609,6 +612,8 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
               />
               <BarcodeCameraButton onCode={code => set("barcode", code)} />
             </div>
+            <BarcodeInsight code={form.barcode} name={form.name}
+              onUseName={form.name.trim() ? undefined : n => set("name", n)} />
             <span className="form-hint">
               Tap Scan to use the phone camera, or click here with a barcode scanner. Clear it to
               remove the barcode. Goods sold loose don't need one.

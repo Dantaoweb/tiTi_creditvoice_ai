@@ -745,6 +745,10 @@ FAQ_ANSWERS = {
         "*On an invoice:* New invoice → *Scan items*.\n\n"
         "A code the till doesn't know? It asks which product to attach it to — "
         "that's how you build your barcode list while selling.\n\n"
+        "*Spotting bad packets:* CreditVoice warns you when a barcode doesn't add up "
+        "(made-up or misprinted packaging) or is known as a different product. It "
+        "can't prove a packet is genuine — fakers copy real barcodes — so check the "
+        "packet and buy from trusted suppliers.\n\n"
         "Have a USB or Bluetooth scanner? Click the search box and scan; it works too.\n"
         "If the camera won't open, allow camera access for this site in your browser settings."
     ),

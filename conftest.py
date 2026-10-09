@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 # Provide an in-memory SQLite database for all tests that don't set their own URL.
 # This must run before any module that imports database.py.
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# Tests never reach the public product database; tests that need it fake it.
+os.environ.setdefault("BARCODE_LOOKUP", "off")
 
 
 def month_slot(months_back, slot=0, days_apart=5, per_month=1):

@@ -4339,3 +4339,16 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   cursor: pointer;
 }
 .cam-scan-btn:hover { background: rgba(37, 99, 235, 0.06); }
+
+/* ── What a barcode says (valid? known as? matches?) ─────────────────────── */
+.bc-insight { display: grid; gap: 4px; margin-top: 6px; font-size: 12.5px; line-height: 1.45; }
+.bc-insight__warn {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+}
+.bc-insight__known { color: var(--ink); display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
+.bc-insight__src { color: var(--muted); }
+.bc-insight__note { color: var(--muted); }

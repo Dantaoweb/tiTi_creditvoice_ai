@@ -213,7 +213,11 @@ def register_pos_routes(app):
             eff_branch = _selling_branch(db, session, owner_phone, branch_id)
             item = barcodes.find(db, owner_phone, code, eff_branch)
             if not item:
-                return {"found": False, "code": barcodes.clean(code)}
+                # A code this shop hasn't taught the till: what it is known as,
+                # and whether it is a valid code at all.
+                from barcode_insight import insight
+                clean = barcodes.clean(code)
+                return {"found": False, "code": clean, "insight": insight(db, owner_phone, clean)}
             return {
                 "found": True,
                 "product": {
@@ -224,6 +228,23 @@ def register_pos_routes(app):
                     "sellable": item.selling_price is not None and bool(item.is_available),
                 },
             }
+        finally:
+            db.close()
+
+    @app.get("/app/api/barcodes/insight")
+    def web_barcode_insight(
+        code: str = Query(max_length=48),
+        name: Optional[str] = Query(default=None, max_length=120),
+        session: dict = Depends(require_web_auth),
+    ):
+        """Is this a valid code, what is it known as, and does that match the
+        product it is about to be saved on? Used by the till and stock forms."""
+        import barcodes
+        from barcode_insight import insight
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            return insight(db, owner_phone, barcodes.clean(code), name)
         finally:
             db.close()
 

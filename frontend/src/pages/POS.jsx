@@ -9,6 +9,7 @@ import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
 import DiscountInput from "../components/DiscountInput";
 import CameraScanner from "../components/CameraScanner";
+import { InsightNotes } from "../components/BarcodeInsight";
 import { discountAmount, NO_DISCOUNT } from "../lib/discount";
 
 // ── Product picker (paged list, qty stepper beside each row) ────────────────
@@ -89,8 +90,12 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
         setLoadError(`${res.product.name} has no price set — add one in Inventory.`);
         return { label: `${res.product.name} has no price`, ok: false, close: true };
       } else {
-        setScan({ code, busy: false });     // offer to attach it
-        return { label: `Not recognised: ${code}`, ok: false, close: true };
+        setScan({ code, busy: false, insight: res.insight });     // offer to attach it
+        // Known elsewhere by a name: put it in the search so matching products show.
+        const known = res.insight?.suggestion?.name;
+        if (known) setQ(known.split(" ").slice(0, 2).join(" "));
+        const bad = res.insight?.valid === false;
+        return { label: bad ? `Invalid barcode: ${code}` : `Not recognised: ${code}`, ok: false, close: true };
       }
     } catch {
       setScan({ code: "", busy: false });   // offline: leave it as a plain search
@@ -158,6 +163,13 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   }, []);
 
   async function attachTo(product) {
+    // A code known as something else is worth a second look before it is
+    // taught to the till — fake packaging often carries any barcode to hand.
+    try {
+      const check = await apiFetch("barcodes/insight", { code: scan.code, name: product.name });
+      const mismatch = (check.warnings || []).find(w => w.kind === "mismatch");
+      if (mismatch && !window.confirm(`${mismatch.text}\n\nAttach it to ${product.name} anyway?`)) return;
+    } catch { /* offline: attach as before */ }
     try {
       await apiPost("pos/scan/attach", { item_id: product.id, code: scan.code });
       setProducts(list => list.map(p =>
@@ -259,6 +271,7 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
           {scan.busy ? `Looking up ${scan.code}…` : (
             <>
               <strong>Not recognised: {scan.code}</strong>
+              <InsightNotes insight={scan.insight} />
               <span className="text-subtle text-sm">
                 Search for the product below, then attach this code to it.
               </span>

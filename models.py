@@ -302,6 +302,19 @@ class Invoice(Base):
     cancelled_at    = Column(DateTime, nullable=True)
 
 
+class BarcodeLookup(Base):
+    """What a public product database (Open Food Facts) calls a barcode, cached
+    so a code is fetched at most once a month. name is None when it was looked
+    up and not found — remembered too, so a miss isn't asked again every scan."""
+
+    __tablename__ = "barcode_lookups"
+
+    code       = Column(String, primary_key=True)
+    name       = Column(String, nullable=True)
+    source     = Column(String, nullable=True)
+    fetched_at = Column(DateTime, nullable=True)
+
+
 class InvoiceItem(Base):
 
     __tablename__ = "invoice_items"
