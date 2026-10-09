@@ -156,6 +156,15 @@ def insight(db, owner_phone, code, product_name=None):
             suggestion = {"name": name, "source": "openfoodfacts"}
 
     warnings = []
+    from fake_reports import confirmed_reports_for
+    reported = confirmed_reports_for(db, code)
+    if reported:
+        warnings.append({
+            "kind": "reported",
+            "text": f"Shops have reported suspected fakes carrying this barcode "
+                    f"({reported} confirmed by CreditVoice). Check the packet carefully "
+                    "and where it came from.",
+        })
     if valid is False:
         warnings.append({
             "kind": "invalid",

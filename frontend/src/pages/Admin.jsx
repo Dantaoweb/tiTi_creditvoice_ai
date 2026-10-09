@@ -3177,8 +3177,91 @@ function CampaignsTab() {
   );
 }
 
+// Suspected fake products reported by shops. Confirming one warns every other
+// shop stocking that barcode or buying from that supplier, and flags the
+// barcode at every till — so it is a decision, made once, with the reach shown.
+function FakeReportsTab() {
+  const [data, setData] = useState(null);
+  const [filter, setFilter] = useState("PENDING");
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState("");
+
+  function load(s = filter) {
+    apiFetch("admin/fake-reports", { status: s }).then(setData).catch(e => setErr(e.message));
+  }
+  useEffect(() => { load(filter); }, [filter]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function decide(r, status) {
+    const note = window.prompt(status === "CONFIRMED"
+      ? `Confirm this report? ${r.would_warn} other shop(s) will be warned. What should they look for? (optional)`
+      : "Dismiss this report? Tell the shop why (optional).", "");
+    if (note === null) return;
+    setBusy(r.id); setErr("");
+    try {
+      await apiPatch(`admin/fake-reports/${r.id}`, { status, admin_note: note });
+      load(); announcePendingChanged();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(null); }
+  }
+
+  const counts = data?.counts || {};
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <p className="text-subtle text-sm" style={{ margin: 0 }}>
+        Shops report products they suspect are fake. Confirm only what you've checked:
+        confirming warns other shops with the same barcode or supplier.
+      </p>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {["PENDING", "CONFIRMED", "DISMISSED"].map(s => (
+          <button key={s} className={`btn btn-sm btn-pill ${filter === s ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setFilter(s)}>
+            {s.charAt(0) + s.slice(1).toLowerCase()} ({counts[s] ?? 0})
+          </button>
+        ))}
+      </div>
+      {err && <div style={{ color: "var(--rose)" }}>{err}</div>}
+      {!data ? <p className="td-muted">Loading…</p> : data.reports.length === 0 ? (
+        <p className="td-muted">No {filter.toLowerCase()} reports.</p>
+      ) : data.reports.map(r => (
+        <div key={r.id} className="card" style={{ padding: 14, display: "grid", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <strong>{(r.product_name || "").replace(/\b\w/g, c => c.toUpperCase())}</strong>
+            <span className="text-subtle text-sm">{new Date(r.created_at + "Z").toLocaleString("en-NG")}</span>
+          </div>
+          <div className="text-sm" style={{ fontStyle: "italic" }}>“{r.reason}”</div>
+          <div className="text-subtle text-sm">
+            Reported by {r.business_name} ({r.owner_phone})
+            {r.barcode && <> · barcode <strong>{r.barcode}</strong></>}
+            {r.supplier_name && <> · supplier {r.supplier_name}{r.supplier_phone ? ` (${r.supplier_phone})` : ""}</>}
+          </div>
+          {r.other_reports > 0 && (
+            <div className="text-sm" style={{ color: "#b45309", fontWeight: 600 }}>
+              {r.other_reports} other report(s) about this barcode
+            </div>
+          )}
+          {r.status === "PENDING" ? (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button className="btn btn-sm btn-primary" disabled={busy === r.id}
+                style={{ background: "#b91c1c", borderColor: "#b91c1c" }}
+                onClick={() => decide(r, "CONFIRMED")}>Confirm &amp; warn shops</button>
+              <button className="btn btn-sm btn-ghost" disabled={busy === r.id}
+                onClick={() => decide(r, "DISMISSED")}>Dismiss</button>
+              <span className="text-subtle text-sm">Would warn {r.would_warn} other shop(s)</span>
+            </div>
+          ) : (
+            <div className="text-sm">
+              <strong>{r.status === "CONFIRMED" ? `Confirmed — ${r.shops_warned} shop(s) warned` : "Dismissed"}</strong>
+              {r.admin_note && <> · {r.admin_note}</>}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Admin tabs that hold a queue, and the pending-counts key for each.
-const TAB_PENDING = { Payments: "payments", Suppliers: "suppliers", Opportunities: "opportunities", Finance: "finance", Site: "reviews" };
+const TAB_PENDING = { Fakes: "fakes", Payments: "payments", Suppliers: "suppliers", Opportunities: "opportunities", Finance: "finance", Site: "reviews" };
 
 // Something waiting for an admin was decided: the menu badge and the tab
 // counts listen for this and ask again.
@@ -3186,7 +3269,7 @@ function announcePendingChanged() {
   window.dispatchEvent(new Event("cv-admin-pending"));
 }
 
-const TABS = ["Overview", "Users", "Payments", "Suppliers", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Referrals", "Notify", "Failed Messages"];
+const TABS = ["Overview", "Users", "Payments", "Suppliers", "Fakes", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -3339,6 +3422,7 @@ export default function Admin() {
       {tab === "Users"          && <UsersTab />}
       {tab === "Payments"       && <PaymentsTab />}
       {tab === "Suppliers"      && <SuppliersTab />}
+      {tab === "Fakes"          && <FakeReportsTab />}
       {tab === "Opportunities"  && <OpportunitiesTab />}
       {tab === "Finance"        && <FinanceTab />}
       {tab === "Public Pages"   && <PublicPagesTab />}

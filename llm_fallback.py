@@ -150,6 +150,7 @@ BARCODES & SCANNING (web app):
 - New invoice → "Scan items" adds products as lines. A USB/Bluetooth scanner works in the till's search box too.
 - If the camera won't open, the user must allow camera access for the site in their browser.
 - Barcode checks: CreditVoice warns when a barcode's check digit doesn't add up (made-up or misprinted packaging), and when the code is known — by 2+ other CreditVoice shops or public product records — as a different product. It also suggests a name for a new code. Be honest: a barcode cannot prove a product is genuine (fakers copy real codes); it only catches careless fakes. Advise checking the packet, the NAFDAC number, and buying from verified suppliers.
+- Report a suspected fake: stock list → tap the product → "🚩 Report suspected fake" (what looked wrong, who supplied it). The CreditVoice team reviews it; if confirmed, other shops with the same barcode or supplier are warned (the reporter stays anonymous) and the barcode is flagged at every till. The reporter is told the outcome.
 
 REVIEWS / FREE ADVERT (web app):
 - My Profile → "Your review — free advert": write a review, tick "Yes, show my business publicly", send. The CreditVoice team approves it; the business is told when it is approved or on the homepage (or why not). Their name, town and chosen contact appear with it.

@@ -84,6 +84,11 @@ def detect_faq(text):
         return None
 
     # ── Newer features — before "receipt", which takes any mention of it ─────
+    if any(k in q for k in [
+        "fake", "counterfeit", "original or not", "is it original", "genuine",
+        "adulterated", "substandard",
+    ]):
+        return "fake_product"
     if re.search(r"\bdiscount", q):
         return "discount"
     if any(k in q for k in [
@@ -735,6 +740,18 @@ FAQ_ANSWERS = {
         "discount 500   or   discount 10%\n\n"
         "Selling one item below its price also counts as a discount.\n\n"
         "To see how much you've given away: Dashboard → *Discounts given*."
+    ),
+    "fake_product": (
+        "Suspect a product is fake?\n\n"
+        "*Report it:* web app → your stock list → tap the product → "
+        "*🚩 Report suspected fake* → say what looked wrong and who supplied it.\n\n"
+        "Our team reviews every report. If it's confirmed, every other shop with the "
+        "same product (barcode) or the same supplier is warned, and the barcode is "
+        "flagged at every till. Your shop's name is never shown to them. You'll be "
+        "told what we find.\n\n"
+        "CreditVoice also warns you when a barcode doesn't add up or is known as a "
+        "different product. A barcode can't prove a packet is genuine, so also check "
+        "the NAFDAC number, the seal and the price, and buy from trusted suppliers."
     ),
     "barcode_scan": (
         "Scanning barcodes — your phone camera works as the scanner:\n\n"

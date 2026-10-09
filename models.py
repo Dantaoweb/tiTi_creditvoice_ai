@@ -302,6 +302,30 @@ class Invoice(Base):
     cancelled_at    = Column(DateTime, nullable=True)
 
 
+class FakeReport(Base):
+    """A shop's report of a product it suspects is fake. An admin confirms or
+    dismisses it; a confirmed one warns other shops (fake_reports.py)."""
+
+    __tablename__ = "fake_reports"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone      = Column(String, index=True)          # the reporting business
+    reporter_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    business_name    = Column(String, nullable=True)
+    item_id          = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+    product_name     = Column(String)
+    barcode          = Column(String, nullable=True, index=True)
+    supplier_name    = Column(String, nullable=True)
+    supplier_phone   = Column(String, nullable=True, index=True)
+    reason           = Column(Text)
+    status           = Column(String, default="PENDING", index=True)   # PENDING | CONFIRMED | DISMISSED
+    admin_note       = Column(String, nullable=True)
+    shops_warned     = Column(Integer, nullable=True)
+    created_at       = Column(DateTime, default=utcnow)
+    reviewed_at      = Column(DateTime, nullable=True)
+    reviewed_by      = Column(String, nullable=True)
+
+
 class BarcodeLookup(Base):
     """What a public product database (Open Food Facts) calls a barcode, cached
     so a code is fetched at most once a month. name is None when it was looked

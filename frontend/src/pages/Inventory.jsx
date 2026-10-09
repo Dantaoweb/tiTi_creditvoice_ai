@@ -797,10 +797,83 @@ function AdjustModal({ item, onClose, onSaved }) {
 // ── Item detail modal ────────────────────────────────────────────────────────
 // One surface per item: stock/price metrics, movement history, and Edit /
 // Adjust actions (delegated to the existing modals). Mirrors Suppliers/Customers.
+// A shop reports a product it suspects is fake. CreditVoice reviews every
+// report; a confirmed one warns other shops stocking it or buying from the
+// same supplier. Nothing is shared on one shop's word alone.
+function ReportFakeForm({ item, onDone, onCancel }) {
+  const [suppliers, setSuppliers] = useState([]);
+  const [supplierId, setSupplierId] = useState("");
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierPhone, setSupplierPhone] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    apiFetch("suppliers").then(d => setSuppliers(d.suppliers || [])).catch(() => {});
+  }, []);
+
+  async function send() {
+    if (!reason.trim()) { setErr("Say what looked wrong — that's what our team checks."); return; }
+    setBusy(true); setErr("");
+    try {
+      await apiPost("fake-reports", {
+        item_id: item.id, product_name: item.name, barcode: item.barcode || null,
+        supplier_id: supplierId ? Number(supplierId) : null,
+        supplier_name: supplierId ? null : (supplierName.trim() || null),
+        supplier_phone: supplierId ? null : (supplierPhone.trim() || null),
+        reason: reason.trim(),
+      });
+      onDone();
+    } catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div className="text-subtle text-sm">
+        Tell us what made you suspect this is fake. Our team reviews every report, and if it's
+        confirmed, other shops with the same product or supplier are warned. Your shop's name
+        is never shown to them.
+      </div>
+      {item.barcode && <div className="text-sm">Barcode: <strong>{item.barcode}</strong></div>}
+      <div className="form-group">
+        <label className="form-label">Who supplied it?</label>
+        <select value={supplierId} onChange={e => setSupplierId(e.target.value)}>
+          <option value="">— Not on my list / don't know —</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        {!supplierId && (
+          <div className="form-row" style={{ marginTop: 6 }}>
+            <input placeholder="Supplier name (optional)" value={supplierName}
+              onChange={e => setSupplierName(e.target.value)} />
+            <input placeholder="Supplier phone (optional)" inputMode="tel" value={supplierPhone}
+              onChange={e => setSupplierPhone(e.target.value)} />
+          </div>
+        )}
+      </div>
+      <div className="form-group">
+        <label className="form-label">What looked wrong? *</label>
+        <textarea rows={3} maxLength={600} value={reason} onChange={e => setReason(e.target.value)}
+          placeholder="e.g. Spelling mistake on the label, seal broken, tastes different, much cheaper than usual"
+          style={{ height: "auto", padding: 10 }} />
+      </div>
+      <ErrorNote msg={err} />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn btn-primary" onClick={send} disabled={busy}>
+          {busy ? "Sending…" : "Send report"}
+        </button>
+        <button className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust }) {
   const [movs, setMovs] = useState(null);
   const [changes, setChanges] = useState(null);
   const [err, setErr] = useState("");
+  const [reporting, setReporting] = useState(false);
+  const [reported, setReported] = useState(false);
 
   useEffect(() => {
     apiFetch(`inventory/${item.id}/movements`)
@@ -820,7 +893,17 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
   return (
     <Modal title={title} onClose={onClose}>
       <div className="modal-body">
+        {reporting ? (
+          <ReportFakeForm item={item}
+            onDone={() => { setReporting(false); setReported(true); }}
+            onCancel={() => setReporting(false)} />
+        ) : (<>
         <ErrorNote msg={err} />
+        {reported && (
+          <div className="bc-insight__warn" style={{ marginBottom: 10, background: "#dcfce7", color: "#166534" }}>
+            Thank you — your report was sent. We'll tell you what our team finds.
+          </div>
+        )}
         {item.is_service && <div style={{ marginBottom: 10 }}><span className="svc-chip">service</span></div>}
         {attrLine && <div className="td-attr-line" style={{ marginBottom: 10 }}>{attrLine}</div>}
 
@@ -899,8 +982,15 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
             </table>
           </>
         )}
+        </>)}
       </div>
       <div className="modal-footer">
+        {!item.is_service && !reporting && !reported && (
+          <button className="btn btn-ghost" style={{ color: "var(--rose)", marginRight: "auto" }}
+            onClick={() => setReporting(true)}>
+            🚩 Report suspected fake
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={onClose}>Close</button>
       </div>
     </Modal>

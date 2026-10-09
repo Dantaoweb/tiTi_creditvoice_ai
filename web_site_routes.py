@@ -284,10 +284,11 @@ def register_site_routes(app):
             )
             from finance_alerts import pending_finance_count
             from supplier_alerts import stale_supplier_requests
+            from fake_reports import pending_fake_reports
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 return {"reviews": 0, "suppliers": 0, "opportunities": 0, "finance": 0,
-                        "payments": 0, "total": 0}
+                        "payments": 0, "fakes": 0, "total": 0}
             # Keyed by what is waiting; each admin tab shows its own count.
             counts = {
                 "reviews": pending_review_count(db),
@@ -296,6 +297,7 @@ def register_site_routes(app):
                 "opportunities": pending_opportunity_applications(db),
                 "finance": pending_finance_count(db),
                 "payments": pending_payments(db),
+                "fakes": pending_fake_reports(db),
             }
             counts["total"] = sum(counts.values())
             return counts

@@ -369,6 +369,10 @@ def register_web_routes(app):
     from web_site_routes import register_site_routes
     register_site_routes(app)
 
+    # ── Suspected fake products: shops report, admins confirm, shops warned ───
+    from fake_reports import register_fake_report_routes
+    register_fake_report_routes(app)
+
     # ── In-app campaign cards (the dashboard pop-up, admin-created) ───────────
     from web_campaign_routes import register_campaign_routes
     register_campaign_routes(app)
