@@ -30,6 +30,7 @@ from datetime import timedelta
 
 from sqlalchemy import func
 
+import barcodes
 from models import BarcodeLookup, InventoryItem, utcnow
 
 _log = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def _crowd_name(db, code, owner_phone):
     """The name most other businesses use for this code, if enough agree."""
     rows = (
         db.query(func.lower(InventoryItem.name), func.count(func.distinct(InventoryItem.owner_phone)))
-        .filter(InventoryItem.barcode == code, InventoryItem.owner_phone != owner_phone)
+        .filter(InventoryItem.barcode.in_(barcodes.forms(code)), InventoryItem.owner_phone != owner_phone)
         .group_by(func.lower(InventoryItem.name))
         .all()
     )
@@ -146,7 +147,7 @@ def _public_name(db, code):
 
 def insight(db, owner_phone, code, product_name=None):
     """Everything the till or the stock form shows about a code."""
-    code = (code or "").strip()
+    code = barcodes.clean(code)
     valid = check_digit_ok(code)
     suggestion = _crowd_name(db, code, owner_phone)
     looked_up = False

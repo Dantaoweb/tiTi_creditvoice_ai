@@ -47,10 +47,11 @@ class FakeReviewRequest(BaseModel):
 
 def confirmed_reports_for(db, code):
     """How many reports about this barcode an admin has confirmed."""
-    code = (code or "").strip()
-    if not code:
+    import barcodes
+    if not (code or "").strip():
         return 0
-    return db.query(FakeReport).filter(FakeReport.barcode == code, FakeReport.status == "CONFIRMED").count()
+    return db.query(FakeReport).filter(
+        FakeReport.barcode.in_(barcodes.forms(code)), FakeReport.status == "CONFIRMED").count()
 
 
 def pending_fake_reports(db):
@@ -85,7 +86,9 @@ def _shops_to_warn(db, report):
     """Other businesses stocking the barcode or buying from the supplier."""
     phones = set()
     if report.barcode:
-        for (p,) in db.query(InventoryItem.owner_phone).filter(InventoryItem.barcode == report.barcode).distinct():
+        import barcodes
+        for (p,) in db.query(InventoryItem.owner_phone).filter(
+                InventoryItem.barcode.in_(barcodes.forms(report.barcode))).distinct():
             phones.add(p)
     forms = _phone_forms(report.supplier_phone)
     if forms:
@@ -130,8 +133,9 @@ def register_fake_report_routes(app):
             reason = payload.reason.strip()
             if not reason:
                 raise HTTPException(status_code=400, detail="Say what looked wrong.")
+            import barcodes
             name = payload.product_name.strip()
-            barcode = (payload.barcode or "").strip() or None
+            barcode = barcodes.clean(payload.barcode) or None
             if payload.item_id:
                 item = db.query(InventoryItem).filter(
                     InventoryItem.id == payload.item_id, InventoryItem.owner_phone == owner_phone).first()
@@ -182,6 +186,8 @@ def register_fake_report_routes(app):
         finally:
             db.close()
 
+    import barcodes
+
     def _require_admin(db, session):
         from admin import is_app_admin
         user = _session_user(db, session)
@@ -205,7 +211,8 @@ def register_fake_report_routes(app):
                 # What confirming would do, so the admin decides knowing it.
                 d["would_warn"] = len(_shops_to_warn(db, r)) if r.status == "PENDING" else None
                 d["other_reports"] = (db.query(FakeReport).filter(
-                    FakeReport.id != r.id, FakeReport.barcode == r.barcode).count() if r.barcode else 0)
+                    FakeReport.id != r.id, FakeReport.barcode.in_(barcodes.forms(r.barcode))).count()
+                    if r.barcode else 0)
                 out.append(d)
             counts = {s: db.query(FakeReport).filter(FakeReport.status == s).count() for s in STATUSES}
             return {"reports": out, "counts": counts}

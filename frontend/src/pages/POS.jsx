@@ -75,7 +75,9 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   // Returns what happened, so the camera can say it in the viewfinder; an
   // unknown code closes the camera so the cashier can attach it below.
   async function handleScannedCode(code) {
-    const onPhone = products.find(p => p.barcode && p.barcode === code);
+    // 12-digit UPC-A and 13-digit EAN-13 (leading 0) are the same barcode.
+    const norm = c => (/^\d{12}$/.test(c || "") ? "0" + c : (c || ""));
+    const onPhone = products.find(p => p.barcode && norm(p.barcode) === norm(code));
     if (onPhone) { addByScan(onPhone); return { label: `Added ${onPhone.name}` }; }
 
     // Not in what we loaded — it may be new, or another branch's. Ask.

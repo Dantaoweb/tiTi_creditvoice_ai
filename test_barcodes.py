@@ -216,3 +216,30 @@ def test_stock_added_without_a_barcode_can_be_given_one_by_editing(shop):
     r = client.put(f"/app/api/inventory/{other}", cookies=shop["cookies"],
                    json={"barcode": "6154000123456"})
     assert r.status_code == 400                     # one code, one product
+
+
+def test_a_12_digit_scan_finds_a_13_digit_code_and_back(shop):
+    """UPC-A (12 digits, what a phone camera reads) is EAN-13 with a leading
+    0 (what a USB scanner or a person often types). Same packet, same code."""
+    typed_13 = _add(shop, "Pringles Original", barcode="0038000138416")
+    assert _scan(shop, "038000138416")["product"]["id"] == typed_13
+
+    # A code saved as 12 digits before this fix is still found by the 13.
+    db = SessionLocal()
+    try:
+        from models import InventoryItem
+        legacy = InventoryItem(owner_phone=shop["phone"], name="Oreo", quantity=5,
+                               selling_price=500, barcode="044000032029")
+        db.add(legacy); db.commit()
+        legacy_id = legacy.id
+    finally:
+        db.close()
+    assert _scan(shop, "0044000032029")["product"]["id"] == legacy_id
+
+
+def test_the_two_forms_count_as_one_code_for_clashes(shop):
+    _add(shop, "Pringles Original", barcode="038000138416")
+    r = client.post("/app/api/inventory", cookies=shop["cookies"], json={
+        "owner_phone": shop["phone"], "name": "Pringles Sour Cream", "unit": "can",
+        "quantity": 1, "selling_price": 900, "barcode": "0038000138416"})
+    assert r.status_code == 400

@@ -25,8 +25,27 @@ _VALID = re.compile(r"^[0-9A-Za-z\-_.]{4,48}$")
 
 
 def clean(code):
-    """Scanners pad with whitespace and sometimes a trailing newline."""
-    return (code or "").strip()
+    """The one form a code is stored and compared in.
+
+    Scanners pad with whitespace and sometimes a trailing newline. And a
+    12-digit UPC-A is the same barcode as the 13-digit EAN-13 with a leading
+    0: a phone camera reads the 12, a USB scanner or a person often types the
+    13. Both become the 13-digit form, so one packet is one code.
+    """
+    code = (code or "").strip()
+    if len(code) == 12 and code.isdigit():
+        code = "0" + code
+    return code
+
+
+def forms(code):
+    """Every stored form a code may have — codes saved before clean() made
+    the 12-digit form 13 are still matched."""
+    code = clean(code)
+    out = [code] if code else []
+    if len(code) == 13 and code.startswith("0") and code.isdigit():
+        out.append(code[1:])
+    return out
 
 
 def is_plausible(code):
@@ -44,7 +63,7 @@ def find(db, owner_phone, code, branch_id=None):
         return None
     query = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
-        InventoryItem.barcode == code,
+        InventoryItem.barcode.in_(forms(code)),
     )
     if branch_id is not None:
         # A branch sells its own stock; the same code in another branch is that
@@ -63,7 +82,7 @@ def assert_free(db, owner_phone, code, item_id=None):
         return None
     clash = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
-        InventoryItem.barcode == code,
+        InventoryItem.barcode.in_(forms(code)),
     )
     if item_id is not None:
         clash = clash.filter(InventoryItem.id != item_id)
