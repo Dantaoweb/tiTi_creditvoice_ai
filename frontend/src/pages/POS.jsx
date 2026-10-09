@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Search, Plus, Minus, Trash2, ShoppingCart, User, X } from "lucide-react";
+import { Search, Plus, Minus, Trash2, ShoppingCart, User, X, Camera } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
@@ -8,6 +8,7 @@ import { nairaFull, nairaInWords, qty } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
 import DiscountInput from "../components/DiscountInput";
+import CameraScanner from "../components/CameraScanner";
 import { discountAmount, NO_DISCOUNT } from "../lib/discount";
 
 // ── Product picker (paged list, qty stepper beside each row) ────────────────
@@ -55,6 +56,7 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   // the connection drops mid-shift.
   const [scan, setScan] = useState({ code: "", busy: false });
   const [lastScan, setLastScan] = useState(null);
+  const [camera, setCamera] = useState(false);   // the phone's camera as the scanner
   const searchRef = useRef(null);
 
   function addByScan(product) {
@@ -69,9 +71,11 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
     requestAnimationFrame(() => searchRef.current?.focus());
   }
 
+  // Returns what happened, so the camera can say it in the viewfinder; an
+  // unknown code closes the camera so the cashier can attach it below.
   async function handleScannedCode(code) {
     const onPhone = products.find(p => p.barcode && p.barcode === code);
-    if (onPhone) { addByScan(onPhone); return; }
+    if (onPhone) { addByScan(onPhone); return { label: `Added ${onPhone.name}` }; }
 
     // Not in what we loaded — it may be new, or another branch's. Ask.
     setScan({ code, busy: true });
@@ -79,14 +83,19 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
       const res = await apiFetch("pos/scan", { code, ...branchParam });
       if (res.found && res.product.sellable) {
         addByScan({ ...res.product, id: res.product.id });
+        return { label: `Added ${res.product.name}` };
       } else if (res.found) {
         setScan({ code: "", busy: false });
         setLoadError(`${res.product.name} has no price set — add one in Inventory.`);
+        return { label: `${res.product.name} has no price`, ok: false, close: true };
       } else {
         setScan({ code, busy: false });     // offer to attach it
+        return { label: `Not recognised: ${code}`, ok: false, close: true };
       }
     } catch {
       setScan({ code: "", busy: false });   // offline: leave it as a plain search
+      setQ(code);
+      return { label: "Offline — searching instead", ok: false, close: true };
     }
   }
 
@@ -232,7 +241,15 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
             <X size={13} />
           </button>
         )}
+        <button type="button" className="cam-scan-btn" onClick={() => setCamera(true)}
+          title="Scan with the phone camera">
+          <Camera size={15} /> Scan
+        </button>
       </div>
+      {camera && (
+        <CameraScanner continuous title="Scan to sell"
+          onCode={handleScannedCode} onClose={() => setCamera(false)} />
+      )}
 
       {/* A scanner types the code and presses Enter, so an unknown one lands
           here rather than in a blank result list. Attaching it to a product is

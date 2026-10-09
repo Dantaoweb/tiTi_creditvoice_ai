@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, User, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, User, X, Camera } from "lucide-react";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, fmtAmt, parseAmt } from "../lib/format";
 import DiscountInput from "../components/DiscountInput";
+import CameraScanner from "../components/CameraScanner";
 import { discountAmount, NO_DISCOUNT } from "../lib/discount";
 
 // Writing an invoice is asking to be paid — nothing is owed and nothing leaves
@@ -117,6 +118,30 @@ export default function InvoiceEditor() {
   const [dueDate, setDueDate] = useState("");
   const [note, setNote] = useState("");
   const [discountValue, setDiscountValue] = useState(NO_DISCOUNT);
+  const [camera, setCamera] = useState(false);
+
+  // A scanned product becomes a line; scanning it again adds one more.
+  async function addScanned(code) {
+    try {
+      const res = await apiFetch("pos/scan", { code });
+      if (!res.found) return { label: `Not recognised: ${code}`, ok: false };
+      const p = res.product;
+      setLines(ls => {
+        const kept = ls.filter(l => l.name.trim());
+        const same = kept.find(l => l.inventory_item_id === p.id);
+        if (same) {
+          return kept.map(l => l === same ? { ...l, qty: String(parseAmt(l.qty) + 1) } : l);
+        }
+        return [...kept, {
+          ...blankLine(), inventory_item_id: p.id, name: p.name, unit: p.unit || "",
+          unit_price: p.selling_price ? fmtAmt(p.selling_price) : "",
+        }];
+      });
+      return { label: `Added ${p.name}` };
+    } catch {
+      return { label: "Could not look that up — check your connection", ok: false };
+    }
+  }
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -227,10 +252,19 @@ export default function InvoiceEditor() {
               </div>
             ))}
           </div>
-          <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }}
-            onClick={() => setLines(ls => [...ls, blankLine()])}>
-            <Plus size={14} /> Add item
-          </button>
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-ghost btn-sm"
+              onClick={() => setLines(ls => [...ls, blankLine()])}>
+              <Plus size={14} /> Add item
+            </button>
+            <button type="button" className="cam-scan-btn" onClick={() => setCamera(true)}>
+              <Camera size={15} /> Scan items
+            </button>
+          </div>
+          {camera && (
+            <CameraScanner continuous title="Scan items onto the invoice"
+              onCode={addScanned} onClose={() => setCamera(false)} />
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

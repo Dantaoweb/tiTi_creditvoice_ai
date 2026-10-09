@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, PlusCircle, MinusCircle, ChevronRight } from "lucide-react";
+import { Plus, PlusCircle, MinusCircle, ChevronRight, Camera } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
+import CameraScanner from "../components/CameraScanner";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
 import { StockBadge } from "../components/Badge";
@@ -15,6 +16,24 @@ import { usePlan } from "../lib/usePlan";
 
 // Error box that turns a plan-limit message into an actionable upsell — the
 // same text plus a clickable "Upgrade to Go" button when the Basic cap is hit.
+// The phone camera fills a Barcode box — for shops without a scanner.
+function BarcodeCameraButton({ onCode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="cam-scan-btn" onClick={() => setOpen(true)}
+        title="Scan with the phone camera">
+        <Camera size={15} /> Scan
+      </button>
+      {open && (
+        <CameraScanner title="Scan the product's barcode"
+          onCode={code => { onCode(code); return { label: code }; }}
+          onClose={() => setOpen(false)} />
+      )}
+    </>
+  );
+}
+
 function ErrorNote({ msg }) {
   if (!msg) return null;
   const isLimit = /Basic plan limit|Upgrade to Go/i.test(msg);
@@ -395,13 +414,17 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
         {!isService && (
           <div className="form-group">
             <label className="form-label">Barcode</label>
-            <input
-              value={form.barcode}
-              onChange={e => set("barcode", e.target.value)}
-              placeholder="Scan the packet, or leave empty"
-            />
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                value={form.barcode}
+                onChange={e => set("barcode", e.target.value)}
+                placeholder="Scan the packet, or leave empty"
+                style={{ flex: 1 }}
+              />
+              <BarcodeCameraButton onCode={code => set("barcode", code)} />
+            </div>
             <span className="form-hint">
-              Click here and scan the product — the scanner types it for you. Goods sold
+              Tap Scan to use the phone camera, or click here with a barcode scanner. Goods sold
               loose have no barcode; leave it empty and sell by name as usual.
             </span>
           </div>
@@ -574,16 +597,20 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
         {!isService && (
           <div className="form-group">
             <label className="form-label">Barcode</label>
-            <input
-              value={form.barcode}
-              onChange={e => set("barcode", e.target.value)}
-              // A scanner types the code then presses Enter; don't let Enter
-              // do anything else here.
-              onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}
-              placeholder="Scan the packet, or leave empty"
-            />
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                value={form.barcode}
+                onChange={e => set("barcode", e.target.value)}
+                // A scanner types the code then presses Enter; don't let Enter
+                // do anything else here.
+                onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}
+                placeholder="Scan the packet, or leave empty"
+                style={{ flex: 1 }}
+              />
+              <BarcodeCameraButton onCode={code => set("barcode", code)} />
+            </div>
             <span className="form-hint">
-              Click here and scan the product — the scanner types it for you. Clear it to
+              Tap Scan to use the phone camera, or click here with a barcode scanner. Clear it to
               remove the barcode. Goods sold loose don't need one.
             </span>
           </div>
