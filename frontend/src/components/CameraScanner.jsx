@@ -15,17 +15,25 @@ import { X } from "lucide-react";
 const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code"];
 const SAME_CODE_MS = 1800;   // holding the camera on one packet is one scan, not ten
 
+// Gentle on the phone. Cheap phones overheated and switched off when every
+// frame was read at HD, with reads stacking up faster than they finished.
+// So: a small picture, ONE read at a time with a rest in between, only the
+// middle strip where the barcode is, and the camera off when it isn't used.
+const REST_MS = 350;           // pause after each read before the next one
+const IDLE_MS = 60_000;        // no scan for a minute → camera off (battery, heat)
+const READ_WIDTH = 480;        // the strip is shrunk to this width before reading
+
+let audioCtx = null;           // one, reused — not a new one per beep
 function beep() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    audioCtx = audioCtx || new Ctx();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
     osc.frequency.value = 1450;
     gain.gain.value = 0.12;
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(); osc.stop(ctx.currentTime + 0.09);
-    osc.onended = () => ctx.close();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.09);
   } catch { /* no sound is fine */ }
   try { navigator.vibrate?.(70); } catch { /* not every phone */ }
 }
@@ -37,6 +45,19 @@ async function nativeDetector() {
     const formats = FORMATS.filter(f => supported.includes(f));
     return formats.length ? new window.BarcodeDetector({ formats }) : null;
   } catch { return null; }
+}
+
+async function zxingReader() {
+  const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
+    import("@zxing/browser"), import("@zxing/library"),
+  ]);
+  const hints = new Map();
+  // Only the codes printed on shop goods: fewer formats is less work per frame.
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
+    BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF, BarcodeFormat.QR_CODE,
+  ]);
+  return new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: REST_MS, delayBetweenScanSuccess: 1000 });
 }
 
 function explain(err) {
@@ -55,6 +76,8 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
   const videoRef = useRef(null);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(true);
+  const [paused, setPaused] = useState(false);        // camera off to save battery
+  const [run, setRun] = useState(0);                  // bump to start the camera again
   const [feedback, setFeedback] = useState(null);     // { label, ok }
   const [keepGoing, setKeepGoing] = useState(continuous);
   const keepRef = useRef(continuous);
@@ -65,8 +88,36 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
   useEffect(() => { keepRef.current = keepGoing; }, [keepGoing]);
 
   useEffect(() => {
-    let stream = null, timer = null, zxingControls = null, stopped = false;
+    let stream = null, loopTimer = null, idleTimer = null, zxingControls = null, stopped = false;
     let last = { code: "", at: 0 }, busy = false;
+    const canvas = document.createElement("canvas");
+    const ctx2d = canvas.getContext("2d", { willReadFrequently: true });
+
+    function stop() {
+      stopped = true;
+      clearTimeout(loopTimer);
+      clearTimeout(idleTimer);
+      try { zxingControls?.stop(); } catch { /* already stopped */ }
+      stream?.getTracks().forEach(t => t.stop());
+      stream = null;
+      const video = videoRef.current;
+      if (video) video.srcObject = null;
+    }
+
+    function pause() {
+      if (stopped) return;
+      stop();
+      setPaused(true);
+    }
+
+    function stillUsed() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(pause, IDLE_MS);
+    }
+
+    // Leaving the app or locking the phone turns the camera off.
+    function onVisibility() { if (document.hidden) pause(); }
+    document.addEventListener("visibilitychange", onVisibility);
 
     async function found(raw) {
       const code = String(raw || "").trim();
@@ -75,6 +126,7 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
       if (code === last.code && now - last.at < SAME_CODE_MS) return;
       last = { code, at: now };
       busy = true;
+      stillUsed();
       beep();
       try {
         const res = (await handler.current(code)) || {};
@@ -83,18 +135,41 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
       } finally { busy = false; }
     }
 
-    function stop() {
-      stopped = true;
-      if (timer) clearInterval(timer);
-      try { zxingControls?.stop(); } catch { /* already stopped */ }
-      stream?.getTracks().forEach(t => t.stop());
+    // The middle strip of the frame, shrunk: where a barcode is held, at a
+    // fraction of the pixels.
+    function strip(video) {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw || !vh) return null;
+      const sw = vw * 0.8, sh = vh * 0.5;
+      const scale = Math.min(1, READ_WIDTH / sw);
+      canvas.width = Math.round(sw * scale);
+      canvas.height = Math.round(sh * scale);
+      ctx2d.drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    }
+
+    // One read at a time; the next starts only after this one has finished.
+    async function readLoop(video, detector) {
+      if (stopped) return;
+      if (!busy && video.readyState >= 2) {
+        try {
+          const frame = strip(video);
+          const codes = frame ? await detector.detect(frame) : [];
+          if (codes.length) await found(codes[0].rawValue);
+        } catch { /* a dropped frame */ }
+      }
+      if (!stopped) loopTimer = setTimeout(() => readLoop(video, detector), REST_MS);
     }
 
     (async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error("no camera api");
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 640 }, height: { ideal: 480 },
+            frameRate: { ideal: 15, max: 24 },
+          },
           audio: false,
         });
         if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
@@ -103,19 +178,15 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
         video.setAttribute("playsinline", "true");     // iPhone: stay in the page
         await video.play();
         setStarting(false);
+        stillUsed();
 
         const detector = await nativeDetector();
+        if (stopped) return;
         if (detector) {
-          timer = setInterval(async () => {
-            if (stopped || busy || video.readyState < 2) return;
-            try {
-              const codes = await detector.detect(video);
-              if (codes.length) found(codes[0].rawValue);
-            } catch { /* a dropped frame */ }
-          }, 180);
+          readLoop(video, detector);
         } else {
-          const { BrowserMultiFormatReader } = await import("@zxing/browser");
-          const reader = new BrowserMultiFormatReader();
+          const reader = await zxingReader();
+          if (stopped) return;
           zxingControls = await reader.decodeFromVideoElement(video, result => {
             if (result && !stopped) found(result.getText());
           });
@@ -126,8 +197,17 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
       }
     })();
 
-    return stop;
-  }, []);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
+  }, [run]);
+
+  function resume() {
+    setPaused(false);
+    setStarting(true);
+    setRun(r => r + 1);
+  }
 
   return (
     <div className="cam-scan" role="dialog" aria-label={title}>
@@ -140,8 +220,16 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
 
       <div className="cam-scan__view">
         <video ref={videoRef} muted playsInline />
-        {!error && <div className="cam-scan__aim" aria-hidden="true" />}
-        {starting && !error && <div className="cam-scan__msg">Starting the camera…</div>}
+        {!error && !paused && <div className="cam-scan__aim" aria-hidden="true" />}
+        {starting && !error && !paused && <div className="cam-scan__msg">Starting the camera…</div>}
+        {paused && !error && (
+          <div className="cam-scan__msg">
+            Camera paused to save your battery.
+            <div style={{ marginTop: 10 }}>
+              <button type="button" className="btn btn-primary" onClick={resume}>Resume scanning</button>
+            </div>
+          </div>
+        )}
         {error && <div className="cam-scan__msg cam-scan__msg--err">{error}</div>}
         {feedback && !error && (
           <div className={`cam-scan__feedback${feedback.ok ? "" : " cam-scan__feedback--bad"}`}>
