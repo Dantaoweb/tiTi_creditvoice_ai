@@ -237,7 +237,7 @@ function BranchSelector({ ownerPhone, value, onChange }) {
 
 function SaleForm({ ownerPhone, onSuccess }) {
   const { user }                = useAuth();
-  const L                       = getBizLabels(user?.menu_group);
+  const L                       = getBizLabels(user?.label_group || user?.menu_group);
   const [product, setProduct]   = useState("");
   const [qty, setQty]           = useState("1");
   const [unit, setUnit]         = useState("");
@@ -396,7 +396,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
 
 function PaymentForm({ ownerPhone, onSuccess }) {
   const { user }                = useAuth();
-  const L                       = getBizLabels(user?.menu_group);
+  const L                       = getBizLabels(user?.label_group || user?.menu_group);
   const [customer, setCustomer] = useState(null);
   const [amount, setAmount]     = useState("");
   const [note, setNote]         = useState("");
@@ -641,7 +641,7 @@ function QuickFormPanel({ ownerPhone }) {
 
 function TextVoicePanel({ ownerPhone }) {
   const { user }  = useAuth();
-  const L         = getBizLabels(user?.menu_group);
+  const L         = getBizLabels(user?.label_group || user?.menu_group);
   // Prefer the user's business-type-specific prompts (from the server, mirroring
   // WhatsApp); fall back to the menu-group examples when none are provided.
   const exampleItems = (user?.examples?.length

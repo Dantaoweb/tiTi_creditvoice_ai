@@ -801,7 +801,7 @@ const PAGE_SIZE = 50;
 export default function Customers() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
-  const L = getBizLabels(user?.menu_group);
+  const L = getBizLabels(user?.label_group || user?.menu_group);
   const [rows, setRows] = useState([]);           // loaded page(s) of the active tab
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);

@@ -8,7 +8,9 @@ Groups:
   stock   — retail, trade, food, pharmacy (default)
   school  — private school, lesson center, daycare, driving school
   service — artisan, beauty/personal care (tailoring, salon, barber, mechanic, etc.)
-  fee     — associations, gym, church, cooperative memberships
+  fee     — associations, gym, church, cooperative memberships (members, dues)
+  professional / tenancy / rental / transport — the businesses that share the
+            fee menu layout but have clients, tenants or customers, not members
   thrift  — ajo, thrift, savings group, cooperative contributions
 """
 
@@ -85,6 +87,78 @@ BIZ_LANG = {
         "example_pay":      "Tunde paid dues 3000",
     },
 
+    # ── Professional services (consulting, law, bookkeeping, printing) ─────────
+    "professional": {
+        "action_word":      "fee",
+        "confirm_style":    "label",      # "NAME fee: ITEM"
+        "total_label":      "Total billed",
+        "credit_sales":     "Fees owed",
+        "direct_sales":     "Fees paid at once",
+        "total_sales":      "Total billed",
+        "outstanding":      "Fees outstanding",
+        "payments":         "Payments received",
+        "total_customers":  "Total clients",
+        "new_customers":    "New clients",
+        "paid_customers":   "Clients who paid",
+        "show_product_tip": False,
+        "example_credit":   "Bayo consulting fee 80000 paid 30000",
+        "example_pay":      "Bayo paid 50000",
+    },
+
+    # ── Property managers, stall rent: tenants paying rent ─────────────────────
+    "tenancy": {
+        "action_word":      "rent",
+        "confirm_style":    "label",      # "NAME rent: ITEM"
+        "total_label":      "Total rent",
+        "credit_sales":     "Rent owed",
+        "direct_sales":     "Rent paid at once",
+        "total_sales":      "Total rent",
+        "outstanding":      "Rent outstanding",
+        "payments":         "Rent received",
+        "total_customers":  "Total tenants",
+        "new_customers":    "New tenants",
+        "paid_customers":   "Tenants who paid",
+        "show_product_tip": False,
+        "example_credit":   "Ade rent 150000 paid 100000",
+        "example_pay":      "Ade paid rent 50000",
+    },
+
+    # ── Shortlets, equipment and event rental, estate agents ───────────────────
+    "rental": {
+        "action_word":      "hired",
+        "confirm_style":    "verb",       # "NAME hired ITEM"
+        "total_label":      "Total",
+        "credit_sales":     "Hire owed",
+        "direct_sales":     "Paid at once",
+        "total_sales":      "Total earned",
+        "outstanding":      "Outstanding balance",
+        "payments":         "Payments received",
+        "total_customers":  "Total clients",
+        "new_customers":    "New clients",
+        "paid_customers":   "Clients who paid",
+        "show_product_tip": False,
+        "example_credit":   "Chika hired canopy 40000 paid 20000",
+        "example_pay":      "Chika paid 20000",
+    },
+
+    # ── Transport and logistics: trips and deliveries ──────────────────────────
+    "transport": {
+        "action_word":      "delivery",
+        "confirm_style":    "label",      # "NAME delivery: ITEM"
+        "total_label":      "Total",
+        "credit_sales":     "Trips on credit",
+        "direct_sales":     "Trips paid at once",
+        "total_sales":      "Total earned",
+        "outstanding":      "Outstanding balance",
+        "payments":         "Payments received",
+        "total_customers":  "Total customers",
+        "new_customers":    "New customers",
+        "paid_customers":   "Customers who paid",
+        "show_product_tip": False,
+        "example_credit":   "Kunle delivery 15000 paid 5000",
+        "example_pay":      "Kunle paid 10000",
+    },
+
     # ── Clinic / Health ─────────────────────────────────────────────────────────
     "clinic": {
         "action_word":      "visit",
@@ -147,9 +221,9 @@ def get_lang(user=None) -> dict:
     """Return the language config for the given user's business group."""
     if not user:
         return _DEFAULT
-    from business_templates import menu_group_for_user
-    group = menu_group_for_user(user)
-    return BIZ_LANG.get(group, _DEFAULT)
+    from business_templates import label_group_for_user, menu_group_for_user
+    group = label_group_for_user(user)
+    return BIZ_LANG.get(group) or BIZ_LANG.get(menu_group_for_user(user), _DEFAULT)
 
 
 def lang(user, key: str, default=None):

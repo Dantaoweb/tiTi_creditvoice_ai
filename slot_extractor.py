@@ -100,6 +100,17 @@ _BIZ_HINTS: dict[tuple, str] = {
     ("fee",     "fee"):      "registration fee, subscription fee, penalty",
     ("fee",     "dues"):     "monthly dues, annual dues, welfare levy",
     ("fee",     "payment"):  "dues, levy, fine, subscription",
+    ("professional", "fee"):     "consulting fee, legal fee, bookkeeping fee, retainer",
+    ("professional", "fees"):    "consulting fee, legal fee, audit fee, retainer",
+    ("professional", "payment"): "consulting fee, retainer, printing, typing",
+    ("professional", "service"): "consultation, printing, photocopy, typing, bookkeeping",
+    ("tenancy", "payment"):  "rent, service charge, caution fee",
+    ("tenancy", "fees"):     "rent, service charge, agency fee, caution fee",
+    ("tenancy", "fee"):      "rent, service charge, agency fee",
+    ("rental",  "payment"):  "canopy hire, chairs, shortlet booking, equipment hire",
+    ("rental",  "goods"):    "canopy, chairs, tables, generator, sound system",
+    ("transport", "payment"): "delivery, dispatch, haulage, car hire, trip",
+    ("transport", "service"): "delivery, dispatch, haulage, car hire",
     ("clinic",  "service"):  "consultation, lab test, drugs, dressing, injection",
     ("clinic",  "services"): "consultation, lab test, drugs, admission",
     ("clinic",  "visit"):    "consultation, checkup, dressing, injection",
@@ -155,6 +166,38 @@ _BIZ_QUESTIONS: dict[str, dict] = {
         "amount_buy_np": "How much does {name} owe?",
         "amount_pay_np": "How much did {name} pay?",
     },
+    "professional": {
+        "product_buy":  "What is {name}'s fee for?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much is {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much does {name} owe?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "tenancy": {
+        "product_buy":  "What is {name} paying for — rent, service charge?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much is {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much rent does {name} owe?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "rental": {
+        "product_buy":  "What did {name} hire?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much for {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much does {name} owe?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
+    "transport": {
+        "product_buy":  "What trip or delivery was it for {name}?",
+        "product_pay":  "What did {name} pay for?",
+        "amount_buy":   "How much for {name}'s {product}?",
+        "amount_pay":   "How much did {name} pay for {product}?",
+        "amount_buy_np": "How much does {name} owe?",
+        "amount_pay_np": "How much did {name} pay?",
+    },
     "food": {
         "product_buy":  "What did {name} order?",
         "product_pay":  "What did {name} pay for?",
@@ -194,8 +237,10 @@ def _get_group(user) -> str:
     if not user:
         return "_default"
     try:
-        from business_templates import menu_group_for_user
-        return menu_group_for_user(user) or "_default"
+        # Wording group first: consultants, landlords and transporters share the
+        # "fee" menu layout but aren't collecting dues from members.
+        from business_templates import label_group_for_user
+        return label_group_for_user(user) or "_default"
     except Exception:
         return "_default"
 

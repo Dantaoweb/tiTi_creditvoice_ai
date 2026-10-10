@@ -10,7 +10,7 @@ import { Send, Zap } from "lucide-react";
 export default function Reminders() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
-  const L = getBizLabels(user?.menu_group);
+  const L = getBizLabels(user?.label_group || user?.menu_group);
   const [rows, setRows]         = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);

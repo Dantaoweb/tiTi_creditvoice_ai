@@ -17,7 +17,7 @@ export default function Chat() {
   const { user } = useAuth();
   const { ownerPhone } = useApp();
   const navigate = useNavigate();
-  const L = getBizLabels(user?.menu_group);
+  const L = getBizLabels(user?.label_group || user?.menu_group);
   const firstName = user?.name?.split(" ")[0] || "there";
 
   // Goal-oriented quick-start — answers "what do I want to do?" for a new user

@@ -512,7 +512,7 @@ def web_register(db: Session, name: str, phone: str, pin: str,
 
 
 def _build_auth_response(user: User, db=None) -> dict:
-    from business_templates import menu_group_for_user
+    from business_templates import label_group_for_user, menu_group_for_user
     from admin import is_app_admin
     user_is_admin = bool(db is not None and is_app_admin(user.phone, db))
     ttl = _ADMIN_TTL if user_is_admin else _TTL
@@ -555,6 +555,7 @@ def _build_auth_response(user: User, db=None) -> dict:
             "business_type": user.business_type,
             "business_type_label": user.business_type_label,
             "menu_group": menu_group_for_user(user),
+            "label_group": label_group_for_user(user),
             "whatsapp_linked": bool(user.whatsapp_linked),
             "newsletter_consent": bool(user.newsletter_consent),
             "parent_id": user.parent_id,

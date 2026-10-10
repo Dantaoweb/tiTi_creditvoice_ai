@@ -124,7 +124,7 @@ export default function Layout() {
     }
   }, [location.pathname]);
 
-  const L = getBizLabels(user?.menu_group);
+  const L = getBizLabels(user?.label_group || user?.menu_group);
   const isAdmin = user?.role === "app_admin" || user?.is_app_admin;
 
   // What is waiting for an admin to act on — reviews, supplier applications

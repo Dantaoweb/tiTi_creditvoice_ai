@@ -3661,6 +3661,28 @@ _CLINIC_TEMPLATE_KEYS = frozenset({"clinic"})
 _FOOD_MENU_TEMPLATE_KEYS = frozenset({"food_hospitality"})
 
 
+# The "fee" menu layout is shared by professional services, rentals and
+# transport, but their people aren't members paying dues. These pick the
+# words; menu_group_for_user still picks the layout.
+_TENANCY_TYPES = frozenset({"property_manager", "stall_rent"})
+
+
+def label_group_for_user(user):
+    """Which wording a business gets: 'professional' (clients, fees),
+    'tenancy' (tenants, rent), 'rental' (clients, hire), 'transport'
+    (customers, trips/deliveries) — or its menu group for everyone else."""
+    if not user:
+        return "stock"
+    key = template_key_for_user(user)
+    if key == "professional_services":
+        return "professional"
+    if key == "real_estate_rentals":
+        return "tenancy" if getattr(user, "business_type", None) in _TENANCY_TYPES else "rental"
+    if key == "transport_logistics":
+        return "transport"
+    return menu_group_for_user(user)
+
+
 def menu_group_for_user(user):
     """Return 'stock', 'service', 'fee', 'clinic', 'school', 'food', or 'thrift' for home menu layout."""
     if not user:

@@ -322,7 +322,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { allows } = usePlan();
   const canExport = allows("EXPORT");
-  const L = getBizLabels(user?.menu_group);
+  const L = getBizLabels(user?.label_group || user?.menu_group);
   const toast = useToast();
   const [titiNumber, setTitiNumber] = useState("");
 

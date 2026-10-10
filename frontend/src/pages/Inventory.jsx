@@ -1041,7 +1041,7 @@ export default function Inventory() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
   const { plan, limit: planLimit, withinLimit } = usePlan();
-  const L = getBizLabels(user?.menu_group);
+  const L = getBizLabels(user?.label_group || user?.menu_group);
   const isServiceBiz = user?.menu_group === "service";
   // Only the owner or a branch admin manages stock. Regular staff view only.
   const canManageStock = user?.full_access ?? !user?.parent_id;

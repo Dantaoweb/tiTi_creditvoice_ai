@@ -324,7 +324,7 @@ def register_auth_routes(app):
             # upgrades made on WhatsApp, and lets staff inherit the owner's plan.
             sub = _session_subscription(db, session)
 
-            from business_templates import menu_group_for_user, template_examples_for_user
+            from business_templates import label_group_for_user, menu_group_for_user, template_examples_for_user
             from admin import is_app_admin
             try:
                 examples = [str(e) for e in (template_examples_for_user(user) or [])][:4]
@@ -349,6 +349,7 @@ def register_auth_routes(app):
                 "business_type_label": user.business_type_label,
                 "address": user.address,
                 "menu_group": menu_group_for_user(user),
+            "label_group": label_group_for_user(user),
                 "whatsapp_linked": bool(user.whatsapp_linked),
                 "newsletter_consent": bool(user.newsletter_consent),
                 # A staff/sub-account has a parent; owners don't. The Staff page

@@ -163,6 +163,106 @@ const LABELS = {
   },
 };
 
+// Professional services, rentals and transport share the "fee" menu layout
+// but not its members-and-dues words (label_group from the server).
+LABELS.professional = {
+  customer: "Client",
+  customers: "Clients",
+  addCustomer: "Add Client",
+  customerName: "Client name",
+  customerPlaceholder: "e.g. Bayo Adeyemi",
+  noCustomers: "No clients yet. Add your first client.",
+  topDebtors: "Fees outstanding",
+  totalCustomers: "Total clients",
+  newCustomers: "New clients",
+  paidCustomers: "Clients who paid",
+  reminders: "Fee reminders",
+  stock: "Price list",
+  navCustomers: "My clients",
+  directSale: "Fee paid at once",
+  creditSales: "Fees owed",
+  directSales: "Fees paid at once",
+  totalSales: "Total billed",
+  outstanding: "Fees outstanding",
+  payments: "Payments received",
+  examples: [
+    { label: "Fee + part payment", text: "Bayo consulting fee 80000 paid 30000" },
+    { label: "Fee on credit",      text: "Bayo consulting fee 80000 due 30/06/2026" },
+    { label: "Payment",            text: "Bayo paid 50000" },
+    { label: "Paid at once",       text: "I received 25000 for bookkeeping" },
+  ],
+};
+LABELS.tenancy = {
+  ...LABELS.professional,
+  customer: "Tenant",
+  customers: "Tenants",
+  addCustomer: "Add Tenant",
+  customerName: "Tenant name",
+  customerPlaceholder: "e.g. Ade Okafor",
+  noCustomers: "No tenants yet. Add your first tenant.",
+  topDebtors: "Rent outstanding",
+  totalCustomers: "Total tenants",
+  newCustomers: "New tenants",
+  paidCustomers: "Tenants who paid",
+  reminders: "Rent reminders",
+  navCustomers: "My tenants",
+  directSale: "Rent paid at once",
+  creditSales: "Rent owed",
+  directSales: "Rent paid at once",
+  totalSales: "Total rent",
+  outstanding: "Rent outstanding",
+  payments: "Rent received",
+  examples: [
+    { label: "Rent + part payment", text: "Ade rent 150000 paid 100000" },
+    { label: "Rent due",            text: "Ade rent 150000 due 01/07/2026" },
+    { label: "Payment",             text: "Ade paid rent 50000" },
+    { label: "Paid at once",        text: "I received 80000 shop rent" },
+  ],
+};
+LABELS.rental = {
+  ...LABELS.professional,
+  topDebtors: "Outstanding balances",
+  reminders: "Reminders",
+  directSale: "Paid at once",
+  creditSales: "Hire owed",
+  directSales: "Paid at once",
+  totalSales: "Total earned",
+  outstanding: "Outstanding balance",
+  examples: [
+    { label: "Hire + part payment", text: "Chika hired canopy 40000 paid 20000" },
+    { label: "Hire on credit",      text: "Chika hired chairs 25000 due 15/06/2026" },
+    { label: "Payment",             text: "Chika paid 20000" },
+    { label: "Paid at once",        text: "I received 60000 shortlet booking" },
+  ],
+};
+LABELS.transport = {
+  ...LABELS.professional,
+  customer: "Customer",
+  customers: "Customers",
+  addCustomer: "Add Customer",
+  customerName: "Customer name",
+  customerPlaceholder: "e.g. Kunle Bello",
+  noCustomers: "No customers yet. Add your first customer.",
+  topDebtors: "Outstanding balances",
+  totalCustomers: "Total customers",
+  newCustomers: "New customers",
+  paidCustomers: "Customers who paid",
+  reminders: "Reminders",
+  stock: "Rates",
+  navCustomers: "My customers",
+  directSale: "Paid at once",
+  creditSales: "Trips on credit",
+  directSales: "Trips paid at once",
+  totalSales: "Total earned",
+  outstanding: "Outstanding balance",
+  examples: [
+    { label: "Trip + part payment", text: "Kunle delivery 15000 paid 5000" },
+    { label: "Trip on credit",      text: "Kunle haulage 120000 due 20/06/2026" },
+    { label: "Payment",             text: "Kunle paid 10000" },
+    { label: "Paid at once",        text: "I received 8000 for dispatch" },
+  ],
+};
+
 const DEFAULT_LABELS = {
   customer: "Customer",
   customers: "Customers",
@@ -193,6 +293,10 @@ const NAV_LABELS = {
   clinic:  { record: "Record payment",      pos: "Select service" },
   food:    { record: "Record sale",         pos: "Select product" },
   fee:     { record: "Record payment",      pos: "Select product" },
+  professional: { record: "Record fee",       pos: "Select service" },
+  tenancy:      { record: "Record rent",      pos: "Select service" },
+  rental:       { record: "Record hire",      pos: "Select item" },
+  transport:    { record: "Record trip",      pos: "Select service" },
 };
 const DEFAULT_NAV = { record: "Record sale", pos: "Select product" };
 
