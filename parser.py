@@ -1652,7 +1652,22 @@ def extract_customer_onboarding(text):
 # 🧠 PARSER
 # =========================
 
+_QUESTION_NAME = re.compile(
+    r"^(?:can|could|should|would|will|do|does|did|is|are|how|what|where|why|when|which|who)\b")
+
+
 def parse_message(text):
+    """Parse a message; a question is never recorded as a transaction ("can i
+    give 10% discount?" used to save a payment of N10 by someone called
+    "can i")."""
+    parsed = _parse_message(text)
+    if parsed and parsed.get("type") == "TRANSACTION" and _QUESTION_NAME.match(
+            str(parsed.get("name") or "").strip().lower()):
+        return None
+    return parsed
+
+
+def _parse_message(text):
 
     clean_text = text.lower().strip()
     if clean_text in SELECT_PRODUCT_COMMANDS:
@@ -2656,7 +2671,24 @@ def parse_message(text):
     )
     if _nav_intent:
         _guide_topics = {
-            "pdf":          ["pdf", "receipt", "download receipt", "print receipt", "export receipt", "download invoice"],
+            # Specific features first — the generic topics below match on any
+            # "customer" or "supplier", which used to send "how do I give a
+            # customer a discount" to the customer guide. These reuse the FAQ
+            # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "fake_product":       ["fake", "counterfeit", "original", "genuine", "authentic", "adulterated"],
+            "discount":           ["discount"],
+            "barcode_scan":       ["barcode", "bar code", "scan"],
+            "invoices":           ["invoice"],
+            "expenses":           ["expense", "rent and salar", "salary", "salaries", "money i spent", "spent on", "running cost"],
+            "delivery_date":      ["order is ready", "order ready", "ready by", "delivery date", "deliver by", "deliveries"],
+            "record_payment":     ["part of his debt", "part of her debt", "part of their debt", "paid part",
+                                   "record a payment", "record payment", "part payment", "customer paid", "paid me"],
+            "site_review":        ["review", "testimonial", "homepage", "home page", "free advert"],
+            "supplier_directory": ["verified supplier", "supplier directory", "become a supplier", "be a supplier", "find a supplier"],
+            "supplier_owed":      ["pay my supplier", "pay supplier", "pay a supplier", "owe my supplier", "owe supplier"],
+            "finance_scorecard":  ["business score", "scorecard", "loan", "financing", "finance offer", "asset financ"],
+            "reminder":           ["reminder", "remind", "follow up", "chase customer"],
+            "pdf":          ["pdf", "receipt", "download receipt", "print receipt", "export receipt"],
             # price_list before record_sale: "how to record price list" must map
             # to price_list, not be caught by record_sale's "how to record".
             "price_list":   ["price list", "record price list", "set up price list", "add price list", "create price list", "my price list", "service prices", "record my prices", "set up my prices"],
@@ -2669,7 +2701,6 @@ def parse_message(text):
             "inventory":    ["add stock", "add product", "add item", "add goods", "update stock", "add to stock", "add to inventory", "update inventory", "my inventory", "my stock", "inventory", "stock"],
             "customers":    ["add customer", "new customer", "add client", "register customer", "save customer", "customer", "client"],
             "summary":      ["summary", "dashboard", "report", "overview", "check profit", "see profit", "today profit", "check today", "see report"],
-            "reminder":     ["reminder", "send reminder", "debt reminder", "remind customer", "follow up", "chase customer"],
             "supplier":     ["add supplier", "supplier", "buy from supplier", "record purchase", "restock from supplier"],
             "staff":        ["add staff", "staff", "employee", "worker", "team member", "manage staff"],
             "partner":      ["partner", "investor", "add partner", "invite partner", "co-founder", "add investor"],

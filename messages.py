@@ -893,12 +893,12 @@ def build_app_guide_message(topic):
     """
     guides = {
         "pdf": (
-            "🧾 *How to download a PDF receipt*\n\n"
+            "🧾 *Receipts — view, share, print or download*\n\n"
             "*On the web app:*\n"
-            "1. Click *Transactions* in the sidebar\n"
-            "2. Find and click any sale\n"
-            "3. Tap the *PDF* or *Print* icon at the top of the receipt\n"
-            "4. Your browser will download or open the receipt\n\n"
+            "1. Open *Receipts* in the menu — every past receipt is there\n"
+            "2. Tap one to open it\n"
+            "3. Tap *Share* to send it, or *Download / Print*\n"
+            "To write one by hand: Receipts → *New Receipt*.\n\n"
             "*On WhatsApp:*\n"
             "Send: _receipt [customer name]_\n"
             "Example: _receipt Ada_\n"
@@ -1169,6 +1169,10 @@ def build_app_guide_message(topic):
     text = guides.get(topic)
     if text:
         return text
+    # Newer features are written once, as FAQ answers.
+    from faq import FAQ_ANSWERS
+    if topic in FAQ_ANSWERS:
+        return FAQ_ANSWERS[topic]
     return (
         "I'm not sure which feature you're asking about.\n\n"
         "Try asking more specifically, like:\n"

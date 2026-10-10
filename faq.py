@@ -48,6 +48,25 @@ def _is_question(text):
     return False
 
 
+_WHERE = re.compile(r"\b(where (?:is|are|can i find|do i find|do i see)|i can'?t find|cant find|can'?t see|how do i find|how do i get to|where'?s)\b")
+
+
+def _where_is(q):
+    """'Where is expenses?' → the nav-guide answer for that screen."""
+    if not _WHERE.search(q):
+        return None
+    from nav_guide import NAV_GUIDE
+    for route, entry in NAV_GUIDE.items():
+        names = [entry["name"]] + [n.strip() for n in (entry.get("also") or "").split(",")]
+        for n in names:
+            core = re.sub(r"\s*\(.*?\)", "", n).strip().lower()
+            if core and len(core) > 2 and core in q:
+                return f"where:{route}"
+    if "till" in q or "pos" in q.split():
+        return "where:/pos"
+    return None
+
+
 def detect_faq(text):
     q = text.lower().strip()
 
@@ -80,15 +99,41 @@ def detect_faq(text):
     ):
         return "referral"
 
+    # A forgotten PIN is said as a statement ("i forgot my pin"), not a question.
+    if any(k in q for k in ["forgot my pin", "forgot pin", "forget my pin", "forgotten my pin"]):
+        return "pin_help"
+
     if not _is_question(text):
         return None
 
     # ── Newer features — before "receipt", which takes any mention of it ─────
     if any(k in q for k in [
-        "fake", "counterfeit", "original or not", "is it original", "genuine",
+        "fake", "counterfeit", "original", "genuine", "authentic",
         "adulterated", "substandard",
     ]):
         return "fake_product"
+    # "How much do I owe my suppliers?" — not a customer's balance.
+    if re.search(r"\bowe\b.*\bsuppliers?\b|\bsuppliers?\b.*\b(?:owe|debt|balance)\b", q):
+        return "supplier_owed"
+    if any(k in q for k in [
+        "expense", "rent and salar", "salary", "salaries", "money i spent",
+        "spent on transport", "running cost", "net profit",
+    ]):
+        return "expenses"
+    if any(k in q for k in ["change my pin", "forgot my pin", "forgot pin", "forget my pin",
+                            "reset pin", "reset my pin", "new pin"]):
+        return "pin_help"
+    if any(k in q for k in ["pay with card", "card payment", "pay by card", "pay online"]):
+        return "upgrade"
+    if any(k in q for k in ["school fee", "school fees", "pupil", "student fee", "term fee"]):
+        return "school_fees"
+    if any(k in q for k in ["egg", "feed used", "poultry", "layers", "broiler"]):
+        return "poultry"
+    if any(k in q for k in ["fuel sale", "fuel sales", "pump", "litre", "liter", "meter reading", "filling station"]):
+        return "fuel_station"
+    where = _where_is(q)
+    if where:
+        return where
     if re.search(r"\bdiscount", q):
         return "discount"
     if any(k in q for k in [
@@ -741,6 +786,51 @@ FAQ_ANSWERS = {
         "Selling one item below its price also counts as a discount.\n\n"
         "To see how much you've given away: Dashboard → *Discounts given*."
     ),
+    "supplier_owed": (
+        "What you owe your suppliers:\n\n"
+        "*Dashboard* — the red *You owe suppliers* card shows the total (owner and "
+        "authorised staff).\n"
+        "*Menu → More → Suppliers* — each supplier's balance in red, and each "
+        "purchase's *Remaining* until it's paid.\n\n"
+        "To pay: open the supplier → *Pay*. Payments clear the oldest purchases first.\n"
+        "When you receive stock, leave *Amount paid now* empty if you bought on credit — "
+        "it's then owed, in red, until you pay."
+    ),
+    "expenses": (
+        "Recording expenses (rent, salaries, transport, fuel, electricity…):\n\n"
+        "Web app → Menu → More → *Expenses* → *Add expense* — amount, type, the date you "
+        "spent it and a note.\n\n"
+        "Staff share what they spent as a *Note* (category Expense, with the amount). It "
+        "waits in Expenses → *To review* until you approve it.\n\n"
+        "Approved expenses come off your gross profit: the Dashboard shows your *net profit*.\n"
+        "Buying stock is not an expense — record it with Add or Adjust stock."
+    ),
+    "pin_help": (
+        "Your PIN:\n\n"
+        "*Forgot it?* On the login page tap *Forgot PIN*, enter your phone number, then "
+        "the code we send you, and choose a new PIN.\n"
+        "*Change it:* web app → Menu → More → *My Profile* → change PIN.\n\n"
+        "Never share your PIN — CreditVoice staff will never ask for it."
+    ),
+    "school_fees": (
+        "School fees (schools only): web app → Menu → *School fees*.\n\n"
+        "Set up classes and terms, add fee items per class, then *raise the term's fees* — "
+        "each pupil is charged and owes until they pay. Excuse any pupil from an item.\n\n"
+        "Record a payment: *Record fee payment*, or on WhatsApp: _Ade paid school fees 50000_.\n"
+        "Add a pupil: *My students* → *Add Student*."
+    ),
+    "poultry": (
+        "Egg & Feed (poultry farms): web app → Menu → *Egg & Feed*.\n\n"
+        "*Eggs:* log each day's collection by grade (sorted, medium, small, cracked…) — "
+        "each grade is a product you can sell by crate or loose (30 = 1 crate).\n"
+        "*Feed:* log feed used each day (it isn't a sale), so feed stock stays right.\n"
+        "The *Report* shows crates collected vs sold, egg income and feed cost."
+    ),
+    "fuel_station": (
+        "Fuel sales (filling stations): web app → Menu → More → *Fuel Station*.\n\n"
+        "Set up your pumps and prices, record opening and closing meter readings each "
+        "shift, and CreditVoice works out litres sold and the money expected."
+    ),
     "fake_product": (
         "Suspect a product is fake?\n\n"
         "*Report it:* web app → your stock list → tap the product → "
@@ -1129,7 +1219,22 @@ _FAQ_KEY_TO_GUIDE_TOPIC = {
 }
 
 
+def _where_answer(route):
+    from nav_guide import NAV_GUIDE
+    e = NAV_GUIDE.get(route)
+    if not e:
+        return FAQ_ANSWERS["formats"]
+    under_more = "More" in (e.get("where") or "")
+    path = "Menu → More → " if under_more else "Menu → "
+    also = f"\n(Your menu may call it: {e['also']}.)" if e.get("also") else ""
+    return (f"*{e['name']}*: {path}{e['name']}{also}\n\n{e['what']}\n\n"
+            "On a phone, tap ☰ at the top left to open the menu. Items you use often "
+            "rise to the top; the rest are under *More* at the bottom.")
+
+
 def get_faq_answer(key):
+    if key and key.startswith("where:"):
+        return _where_answer(key[len("where:"):])
     topic = _FAQ_KEY_TO_GUIDE_TOPIC.get(key)
     if topic:
         from messages import build_app_guide_message

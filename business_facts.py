@@ -400,6 +400,17 @@ def expenses_recorded(db, owner_phone):
     return db.query(Expense.id).filter(Expense.owner_phone == owner_phone).first() is not None
 
 
+def _fact_owed_to_suppliers(db, owner_phone, ask):
+    """Everything the business still owes its suppliers."""
+    from web_supplier_routes import supplier_debt_total
+    owed = supplier_debt_total(db, owner_phone)
+    if not owed:
+        return "You don't owe any supplier right now. 🎉"
+    return (f"You owe your suppliers *{_money(owed)}* in total.\n\n"
+            "See who and for what: Menu → More → Suppliers (balances in red). "
+            "Open a supplier and tap *Pay* to record a payment.")
+
+
 def _fact_profit(db, owner_phone, ask):
     """What was actually made, not what was taken in.
 
@@ -631,6 +642,13 @@ METRICS = [
         ],
     },
     {
+        "key": "owed_to_suppliers", "needs_product": False, "compute": _fact_owed_to_suppliers,
+        "triggers": [
+            r"\bowe\b.*\bsuppliers?\b",
+            r"\bsuppliers?\b.*\b(?:owe|debt|balance)\b",
+        ],
+    },
+    {
         "key": "profit", "needs_product": False, "compute": _fact_profit,
         "triggers": [
             r"\b(?:how much|what).*\bprofit\b",
@@ -718,7 +736,7 @@ def _matching_metrics(text):
 
 # What the business makes is for the owner and authorised staff. A caller
 # passes recorded_by_id exactly when the asker is a regular staff member.
-PROFIT_METRICS = {"profit", "margin", "stock_value"}
+PROFIT_METRICS = {"profit", "margin", "stock_value", "owed_to_suppliers"}
 PROFIT_HIDDEN_REPLY = ("Profit and margins are only shown to the business owner and staff "
                        "authorised to see all records. Ask your manager.")
 
