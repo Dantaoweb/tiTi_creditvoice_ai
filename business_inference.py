@@ -63,6 +63,29 @@ KEYWORD_TO_TYPE = {
     "building_materials": [
         "granite", "sharp sand", "gravel", "trip of sand", "quarry dust",
     ],
+    "computer_sales": [
+        "laptop", "desktop computer", "monitor", "keyboard", "mouse", "flash drive",
+        "external hard drive", "printer ink", "router", "ssd",
+    ],
+    "computer_repair": [
+        "laptop repair", "laptop screen", "windows installation", "virus removal",
+        "data recovery", "computer repair",
+    ],
+    "software_development": [
+        "app development", "software development", "mobile app", "web app", "coding project",
+    ],
+    "web_digital_agency": [
+        "website design", "web design", "hosting", "domain name", "logo design",
+    ],
+    "digital_marketing": [
+        "social media management", "facebook ads", "instagram ads", "seo", "content creation",
+    ],
+    "it_support": [
+        "cctv installation", "network setup", "it support", "networking",
+    ],
+    "pos_agent": [
+        "pos charges", "withdrawal charge", "transfer charge", "pos business", "mobile money",
+    ],
 }
 
 # Some inferred keys aren't first-class business_type entries in the taxonomy;
