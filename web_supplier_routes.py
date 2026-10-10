@@ -145,10 +145,37 @@ def _supplier_window(db, supplier_id, from_dt, to_dt):
     }
 
 
+def purchase_remaining(purchases, payments):
+    """What is still owed on each purchase. Payments to a supplier aren't tied
+    to a purchase, so they settle the oldest purchases first — the same way a
+    customer's payments clear their oldest debt."""
+    pool = sum(int(p.amount or 0) for p in payments)
+    out = {}
+    for p in sorted(purchases, key=lambda x: (x.created_at or utcnow(), x.id)):
+        left = max(0, int(p.total or 0) - int(p.paid_amount or 0))
+        applied = min(pool, left)
+        pool -= applied
+        out[p.id] = left - applied
+    return out
+
+
+def supplier_debt_total(db, owner_phone):
+    """Everything this business still owes its suppliers."""
+    from sqlalchemy import func
+    bought = (db.query(func.coalesce(func.sum(SupplierPurchase.total), 0))
+              .filter(SupplierPurchase.owner_phone == owner_phone).scalar()) or 0
+    paid_at_purchase = (db.query(func.coalesce(func.sum(SupplierPurchase.paid_amount), 0))
+                        .filter(SupplierPurchase.owner_phone == owner_phone).scalar()) or 0
+    paid_later = (db.query(func.coalesce(func.sum(SupplierPayment.amount), 0))
+                  .filter(SupplierPayment.owner_phone == owner_phone).scalar()) or 0
+    return max(0, int(bought) - int(paid_at_purchase) - int(paid_later))
+
+
 def register_supplier_routes(app):
 
     @app.get("/app/api/suppliers")
     def web_suppliers(session: dict = Depends(require_web_auth)):
+        remaining_by_purchase = {}
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
@@ -169,13 +196,14 @@ def register_supplier_routes(app):
                 paid_via_payment = sum(p.amount or 0 for p in payments)
                 total_paid = paid_via_purchase + paid_via_payment
                 balance = max(0, total_bought - total_paid)
+                remaining_by_purchase.update(purchase_remaining(purchases, payments))
 
                 # Stored due_date values are naive UTC (from strptime), so compare
                 # against a naive now — mixing naive/aware raises TypeError → 500.
                 now = utcnow()
                 due_dates = [
                     p.due_date for p in purchases
-                    if p.due_date and (p.total or 0) > (p.paid_amount or 0)
+                    if p.due_date and remaining_by_purchase.get(p.id, 0) > 0
                 ]
                 has_overdue = any(d < now for d in due_dates)
                 next_due = min(due_dates, default=None)
@@ -210,6 +238,9 @@ def register_supplier_routes(app):
                         "unit": p.unit,
                         "total": _money(p.total),
                         "paid_amount": _money(p.paid_amount),
+                        # Still owed on this purchase after later payments.
+                        "remaining": remaining_by_purchase.get(
+                            p.id, max(0, (p.total or 0) - (p.paid_amount or 0))),
                         "due_date": _iso(p.due_date),
                         "created_at": _iso(p.created_at),
                     }

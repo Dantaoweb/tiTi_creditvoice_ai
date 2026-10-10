@@ -512,6 +512,15 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* What the business owes its suppliers: red until it's all paid. */}
+      {!loading && data?.suppliers_owed > 0 && (
+        <Link to="/suppliers" className="card card-body owe-card">
+          <span>You owe suppliers</span>
+          <strong>{nairaFull(data.suppliers_owed)}</strong>
+          <span className="owe-card__go">Pay →</span>
+        </Link>
+      )}
+
       {/* ── Secondary metrics ── */}
       <div className="metrics-grid metrics-grid--secondary">
         <MetricCard loading={loading} label={`Credit sales ${periodLabel}`}  value={nairaFull(s.credit_sales_amount)}                     color="rose"  small />

@@ -4375,3 +4375,11 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .expense-cat__bar > div { height: 100%; background: var(--rose); border-radius: 99px; }
 .expense-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .profit-card__net { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13.5px; padding-top: 8px; border-top: 1px dashed var(--line); }
+
+/* What's owed, as it's being recorded: red until paid, green when paid in full. */
+.owe-line { display: block; margin-top: 4px; font-size: 12.5px; font-weight: 700; }
+.owe-line--due { color: var(--rose) !important; font-weight: 700; }
+.owe-line--paid { color: #166534 !important; font-weight: 700; }
+.owe-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-left: 4px solid var(--rose); text-decoration: none; color: var(--ink); }
+.owe-card strong { font-size: 20px; color: var(--rose); }
+.owe-card__go { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--brand); }

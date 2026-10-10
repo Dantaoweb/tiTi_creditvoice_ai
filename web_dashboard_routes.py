@@ -30,6 +30,14 @@ class SetBusinessTypeRequest(BaseModel):
     business_type: str = Field(max_length=60)
 
 
+def _suppliers_owed(db, owner_phone):
+    from web_supplier_routes import supplier_debt_total
+    try:
+        return supplier_debt_total(db, owner_phone)
+    except Exception:
+        return None
+
+
 def register_dashboard_routes(app):
 
     # ── Dashboard ────────────────────────────────────────────────────────
@@ -98,6 +106,8 @@ def register_dashboard_routes(app):
                 "profit": ({k: v for k, v in profit.items() if k not in ("products", "no_cost_products")}
                            if profit else None),
                 "profit_hidden": not sees_profit,
+                # What the business owes its suppliers — owner and authorised staff.
+                "suppliers_owed": _suppliers_owed(db, owner_phone) if sees_profit else None,
                 "margin": None if not sees_profit else {
                     "expected": margin["expected"],
                     "actual": margin["actual"],

@@ -77,7 +77,9 @@ export default function InvoiceView() {
   }
 
   function openPay() {
-    setAmount(fmtAmt(doc.total));
+    // Starts empty: saving without an amount puts it all on the customer's
+    // debt, never quietly records a full payment. "All of it" fills the total.
+    setAmount("");
     setPaying(true);
     setActionErr("");
   }
@@ -212,7 +214,7 @@ export default function InvoiceView() {
                 ? <span style={{ color: "#b91c1c" }}>That is more than the invoice total of {nairaFull(doc.total)}.</span>
                 : toDebt === 0
                   ? <span style={{ color: "#166534" }}>Paid in full — it becomes a cash sale with a receipt.</span>
-                  : <span style={{ color: "#b45309" }}>
+                  : <span className="owe-line--due">
                       {nairaFull(toDebt)} will be added to {custName}'s debt
                       {doc.due_date ? `, due ${dateStr(doc.due_date)}` : ""}.
                     </span>}

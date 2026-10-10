@@ -175,7 +175,9 @@ export default function NewReceipt() {
             <label className="form-label">Amount paid (₦) <span className="text-subtle">— blank = full credit</span></label>
             <MoneyInput value={paid} onChange={v => setPaid(v)} placeholder="0" />
             {payNum > 0 && change > 0 && <span className="form-hint">Change: {nairaFull(change)}</span>}
-            {owed > 0 && <span className="form-hint">{customer.name} will owe {nairaFull(owed)}</span>}
+            {owed > 0
+              ? <span className="owe-line owe-line--due">{customer.name} will owe {nairaFull(owed)}</span>
+              : total > 0 && <span className="owe-line owe-line--paid">Paid in full ✓</span>}
           </div>
         )}
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import PaidNowField, { paidAmount } from "../components/PaidNowField";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiDownload } from "../lib/api";
@@ -166,7 +167,12 @@ function MySupplyChain() {
               { key: "product",    label: "Product",   render: r => r.product || "—" },
               { key: "total",      label: "Total",     render: r => nairaFull(r.total) },
               { key: "paid",       label: "Paid",      render: r => nairaFull(r.paid_amount) },
-              { key: "balance",    label: "Remaining", render: r => nairaFull(r.total - r.paid_amount) },
+              { key: "balance",    label: "Remaining", render: r => {
+                  const left = r.remaining ?? Math.max(0, r.total - r.paid_amount);
+                  return left > 0
+                    ? <span className="text-rose font-bold">{nairaFull(left)}</span>
+                    : <span style={{ color: "#166534", fontWeight: 700 }}>Paid ✓</span>;
+                } },
               { key: "due_date",   label: "Due",       render: r => <span className={r.due_date && new Date(r.due_date) < new Date() ? "text-rose" : ""}>{dateStr(r.due_date)}</span> },
               { key: "created_at", label: "Date",      render: r => <span className="td-muted">{dateStr(r.created_at)}</span> },
             ]}
@@ -288,8 +294,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   const [bProd, setBProd]     = useState("");
   const [bQty, setBQty]       = useState("");
   const [bCost, setBCost]     = useState("");
-  const [bPaid, setBPaid]     = useState("");
-  const [bPaidTouched, setBPaidTouched] = useState(false);
+  const [bPaid, setBPaid]     = useState("");   // empty = nothing paid: all owed
   const [bDue, setBDue]       = useState("");
   const [bNote, setBNote]     = useState("");
   const [range, setRange]     = useState({ key: "all", from: "", to: "" });
@@ -300,12 +305,6 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   }
   useEffect(() => { load(); /* on open */ /* eslint-disable-next-line */ }, [supplierId]);
 
-  // Pre-fill "Amount paid now" with the running total (defaults to full), editable.
-  useEffect(() => {
-    if (bPaidTouched) return;
-    const t = Math.round((parseAmt(bQty) || 0) * (bCost ? parseAmt(bCost) : 0));
-    setBPaid(t > 0 ? fmtAmt(String(t)) : "");
-  }, [bQty, bCost, bPaidTouched]);
 
   const _fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   function presetRange(key) {
@@ -321,7 +320,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
   function startBuy() {
     // Commodity traders buy the same product repeatedly — pre-fill the last one.
     setBProd(d?.purchases?.[0]?.product || "");
-    setBQty(""); setBCost(""); setBPaid(""); setBPaidTouched(false); setBDue(""); setBNote("");
+    setBQty(""); setBCost(""); setBPaid(""); setBDue(""); setBNote("");
     setErr(""); setShowBuy(true);
   }
 
@@ -335,7 +334,7 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
         product: bProd.trim(),
         quantity: qty,
         cost_per_unit: bCost ? parseAmt(bCost) : null,
-        paid_now: parseAmt(bPaid),   // pre-filled with the total; reduce for part payment
+        paid_now: paidAmount(bPaid),   // empty = 0 = owed to the supplier
         due_date: bDue || null,
         note: bNote.trim() || null,
       });
@@ -483,10 +482,10 @@ function SupplierDetailModal({ supplierId, onClose, onPay }) {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <div className="form-group" style={{ margin: 0, flex: 1 }}>
-                      <label className="form-label">Amount paid now (₦)</label>
-                      <input inputMode="numeric" value={bPaid}
-                        onChange={e => { setBPaid(fmtAmt(e.target.value)); setBPaidTouched(true); }} placeholder="0" />
+                    <div style={{ margin: 0, flex: 1 }}>
+                      <PaidNowField value={bPaid} onChange={setBPaid}
+                        total={Math.round((parseAmt(bQty) || 0) * (parseAmt(bCost) || 0))}
+                        who={d?.name ? d.name.replace(/\b\w/g, c => c.toUpperCase()) : "this supplier"} />
                     </div>
                     <div className="form-group" style={{ margin: 0, flex: 1 }}>
                       <label className="form-label">Payment due</label>
