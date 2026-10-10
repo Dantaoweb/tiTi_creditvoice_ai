@@ -706,6 +706,13 @@ def _matching_metrics(text):
     return hits
 
 
+# What the business makes is for the owner and authorised staff. A caller
+# passes recorded_by_id exactly when the asker is a regular staff member.
+PROFIT_METRICS = {"profit", "margin", "stock_value"}
+PROFIT_HIDDEN_REPLY = ("Profit and margins are only shown to the business owner and staff "
+                       "authorised to see all records. Ask your manager.")
+
+
 def answer(db, owner_phone, text, recorded_by_id=None):
     """Answer a question about this business, or return None to let the older
     handlers try. A half-answer is worse than no answer, so anything uncertain
@@ -740,6 +747,8 @@ def answer(db, owner_phone, text, recorded_by_id=None):
             examples = ", ".join(i.name.title() for i in known)
             return (f"Which product do you mean? For example: {examples}.\n\n"
                     f"Try \"average cost of {known[0].name.lower()}\".")
+        if recorded_by_id and metric["key"] in PROFIT_METRICS:
+            return PROFIT_HIDDEN_REPLY
         ask = Ask(metric=metric["key"], period=period,
                   product_text=product_name, item=item)
         try:

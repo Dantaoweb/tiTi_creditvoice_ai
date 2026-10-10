@@ -252,6 +252,14 @@ def _require_tx_in_scope(db, session: dict, tx):
         raise HTTPException(status_code=404, detail="Not found.")
 
 
+def _can_see_profit(db, session: dict) -> bool:
+    """Profit, margins and cost-based figures are for the owner and staff
+    authorised to see all records (branch admins) — not regular staff, who
+    record sales but shouldn't see what the business makes on them."""
+    user = _session_user(db, session)
+    return bool(user and (user.parent_id is None or user.can_view_all_transactions))
+
+
 def _require_stock_manager(db, session: dict):
     """Only the owner or a branch admin (a staff granted see-all-branch access)
     may manage stock. Regular staff record sales but cannot add / edit / adjust

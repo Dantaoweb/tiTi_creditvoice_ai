@@ -64,7 +64,11 @@ def register_dashboard_routes(app):
             low_stock_count = low_stock_q.count()
             top_products_raw = get_product_sales_by_period(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)[:8]
             margin = get_margin_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
-            profit = get_profit_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
+            # Profit and margins only for the owner and authorised staff.
+            from web_common import _can_see_profit
+            sees_profit = _can_see_profit(db, session)
+            profit = (get_profit_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
+                      if sees_profit else None)
             return {
                 "period": period_key,
                 "period_label": dashboard_period_label(period_key),
@@ -86,8 +90,10 @@ def register_dashboard_routes(app):
                 ],
                 # Gross profit (before expenses): the card shows the total; the
                 # per-product rows are for Insights.
-                "profit": {k: v for k, v in profit.items() if k not in ("products", "no_cost_products")},
-                "margin": {
+                "profit": ({k: v for k, v in profit.items() if k not in ("products", "no_cost_products")}
+                           if profit else None),
+                "profit_hidden": not sees_profit,
+                "margin": None if not sees_profit else {
                     "expected": margin["expected"],
                     "actual": margin["actual"],
                     "discount_gap": margin["discount_gap"],
@@ -113,8 +119,15 @@ def register_dashboard_routes(app):
             period_key = period.upper() if period else None
             eff_branch, rec = _scoped_read(db, session, branch_id)
             out = get_inventory_insights(db, owner_phone, period_key, branch_id=eff_branch)
-            out["profit"] = get_profit_summary(db, owner_phone, period_key, recorded_by_id=rec,
-                                               branch_id=eff_branch)
+            from web_common import _can_see_profit
+            if _can_see_profit(db, session):
+                out["profit"] = get_profit_summary(db, owner_phone, period_key, recorded_by_id=rec,
+                                                   branch_id=eff_branch)
+            else:
+                # Regular staff: no profit, and no per-product margins (cost vs price).
+                out["profit"] = None
+                out["margin"] = []
+                out["profit_hidden"] = True
             return out
         finally:
             db.close()

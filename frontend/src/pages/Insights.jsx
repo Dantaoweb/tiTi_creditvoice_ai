@@ -56,6 +56,7 @@ export default function Insights() {
   const changes = data?.price_changes || [];
   const received = data?.stock_received || [];
   const profit = data?.profit;
+  const profitHidden = !!data?.profit_hidden;   // regular staff
 
   return (
     <>
@@ -110,6 +111,8 @@ export default function Insights() {
         </div>
         {loading ? (
           <p className="td-muted card-body">Loading…</p>
+        ) : profitHidden ? (
+          <p className="td-muted card-body">Profit is shown to the business owner and authorised staff.</p>
         ) : !profit || (profit.products.length === 0 && profit.no_cost_products.length === 0) ? (
           <p className="td-muted card-body">No sales {periodLabel}.</p>
         ) : (
@@ -154,6 +157,8 @@ export default function Insights() {
         <div className="card-header"><span className="card-title">Margin snapshot</span></div>
         {loading ? (
           <p className="td-muted card-body">Loading…</p>
+        ) : profitHidden ? (
+          <p className="td-muted card-body">Margins are shown to the business owner and authorised staff.</p>
         ) : margin.length === 0 ? (
           <p className="td-muted card-body">No priced products yet. Add a selling price to a product to see its margin.</p>
         ) : (

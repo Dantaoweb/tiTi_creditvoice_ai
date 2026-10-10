@@ -181,6 +181,11 @@ def answer_busiest_period(db, owner_phone, send_message, phone, recorded_by_id=N
 # ── Is [product] profitable ───────────────────────────────────────────────────
 
 def answer_product_profit(db, owner_phone, product_name, send_message, phone, recorded_by_id=None):
+    # Regular staff (recorded_by_id set) don't see what the business makes.
+    if recorded_by_id:
+        from business_facts import PROFIT_HIDDEN_REPLY
+        send_message(phone, PROFIT_HIDDEN_REPLY)
+        return {"status": "analytics_product_profit_hidden"}
     data = get_product_profit_detail(db, owner_phone, product_name, recorded_by_id)
 
     if not data["transaction_count"]:
