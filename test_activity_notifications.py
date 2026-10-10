@@ -48,6 +48,13 @@ def test_note_creates_notification():
                     json={"body": "Bought fuel for generator", "category": "expense",
                           "amount": 5000, "visibility": "owner_only"})
     assert r.status_code == 200, r.text
+    # An expense with an amount waits for review in Expenses.
+    assert "expense_note" in _events(cook)
+
+    r = client.post("/app/api/notes", cookies=cook,
+                    json={"body": "Supplier promised delivery Monday", "category": "memo",
+                          "visibility": "owner_only"})
+    assert r.status_code == 200, r.text
     assert "note" in _events(cook)
 
 

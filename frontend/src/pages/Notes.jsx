@@ -53,6 +53,13 @@ function NoteCard({ note, onDelete }) {
             </span>
           </div>
           <div style={{ fontSize: 14, lineHeight: 1.5 }}>{note.body}</div>
+          {note.category === "expense" && note.amount != null && (
+            <div className="text-sm" style={{ marginTop: 4 }}>
+              {note.expense_status === "APPROVED" ? <span className="badge badge-green">Added to expenses</span>
+                : note.expense_status === "DISMISSED" ? <span className="badge badge-gray">Not counted</span>
+                : <span className="badge badge-amber">Waiting for review</span>}
+            </div>
+          )}
           {note.amount != null && (
             <div style={{ marginTop: 6, fontWeight: 700, color: note.category === "expense" ? "var(--rose)" : "var(--brand)" }}>
               {note.category === "expense" ? "−" : "+"}{nairaFull(note.amount)}

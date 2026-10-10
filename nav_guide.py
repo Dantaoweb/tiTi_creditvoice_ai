@@ -82,6 +82,11 @@ NAV_GUIDE = {
         "where": "Under More",
         "what": "Every sale and payment, with void (cancel) for mistakes.",
     },
+    "/expenses": {
+        "name": "Expenses",
+        "where": "Under More (owner and authorised staff)",
+        "what": "Record rent, salaries, transport and other running costs (not stock), approve expenses staff shared in Notes, and see totals by type — taken off gross profit to show net profit on the Dashboard.",
+    },
     "/fuel": {
         "name": "Fuel Station",
         "where": "Under More",
@@ -105,7 +110,7 @@ NAV_GUIDE = {
     "/notes": {
         "name": "Notes",
         "where": "Under More",
-        "what": "Private business notes.",
+        "what": "Business notes. Staff share money they spent as an Expense note with the amount; the owner approves it in Expenses so it counts.",
     },
     "/branches": {
         "name": "Branches",

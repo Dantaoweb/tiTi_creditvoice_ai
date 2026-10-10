@@ -1121,6 +1121,13 @@ def ensure_schema_updates(engine):
                     "ALTER TABLE supplier_contact_messages ADD COLUMN reminded_at TIMESTAMP"
                 ))
 
+    # ── expense review state on business notes ───────────────────────────────
+    if "business_notes" in inspector.get_table_names():
+        _bn_cols = {c["name"] for c in inspector.get_columns("business_notes")}
+        if "expense_status" not in _bn_cols:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE business_notes ADD COLUMN expense_status VARCHAR"))
+
     # ── discount on invoices (naira off the whole invoice) ───────────────────
     if "invoices" in inspector.get_table_names():
         _inv_cols = {c["name"] for c in inspector.get_columns("invoices")}

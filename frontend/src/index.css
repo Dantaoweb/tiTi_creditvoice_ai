@@ -4364,3 +4364,14 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .profit-card__sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .profit-card__warn { font-size: 12.5px; color: #92400e; background: #fef3c7; border-radius: var(--radius-sm); padding: 6px 10px; }
 .profit-card__note { font-size: 11.5px; color: var(--subtle); }
+
+/* ── Expenses ───────────────────────────────────────────────────────────── */
+.expense-form { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--line-2); }
+.expense-form input, .expense-form select { width: 100%; }
+.expense-review { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.expense-cats { display: grid; gap: 6px; }
+.expense-cat { display: grid; grid-template-columns: minmax(110px, 160px) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+.expense-cat__bar { height: 8px; background: var(--line-2); border-radius: 99px; overflow: hidden; }
+.expense-cat__bar > div { height: 100%; background: var(--rose); border-radius: 99px; }
+.expense-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.profit-card__net { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13.5px; padding-top: 8px; border-top: 1px dashed var(--line); }

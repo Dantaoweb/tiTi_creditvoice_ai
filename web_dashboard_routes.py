@@ -69,6 +69,11 @@ def register_dashboard_routes(app):
             sees_profit = _can_see_profit(db, session)
             profit = (get_profit_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
                       if sees_profit else None)
+            if profit is not None:
+                from expenses import expenses_for_period, notes_to_review
+                profit["expenses"] = expenses_for_period(db, owner_phone, period_key, branch_id=eff_branch)
+                profit["net_profit"] = profit["gross_profit"] - profit["expenses"]
+                profit["expenses_to_review"] = len(notes_to_review(db, owner_phone))
             return {
                 "period": period_key,
                 "period_label": dashboard_period_label(period_key),

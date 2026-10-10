@@ -369,6 +369,10 @@ def register_web_routes(app):
     from web_site_routes import register_site_routes
     register_site_routes(app)
 
+    # ── Expenses (net profit): recorded directly or approved from notes ──────
+    from expenses import register_expense_routes
+    register_expense_routes(app)
+
     # ── Suspected fake products: shops report, admins confirm, shops warned ───
     from fake_reports import register_fake_report_routes
     register_fake_report_routes(app)

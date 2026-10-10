@@ -1177,6 +1177,29 @@ class BusinessNote(Base):
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow)
 
+    # An expense note with an amount waits for the boss: None = to review,
+    # APPROVED = added to Expenses, DISMISSED = not a business expense.
+    expense_status = Column(String, nullable=True)
+
+
+class Expense(Base):
+    """Money the business spent running itself — rent, salaries, transport…
+    Taken off gross profit to give net profit (expenses.py). Buying stock is
+    not an expense: it is already the cost of goods."""
+
+    __tablename__ = "expenses"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone    = Column(String, index=True)
+    branch_id      = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    category       = Column(String)                 # expenses.CATEGORIES key
+    amount         = Column(Integer)
+    spent_on       = Column(DateTime, index=True)   # the day it was spent
+    note           = Column(String, nullable=True)
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    source_note_id = Column(Integer, ForeignKey("business_notes.id"), nullable=True, unique=True)
+    created_at     = Column(DateTime, default=utcnow)
+
 
 class ThriftGroup(Base):
     """A rotating savings group (ajo / esusu). Members contribute a fixed amount

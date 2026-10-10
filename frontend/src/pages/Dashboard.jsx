@@ -480,13 +480,35 @@ export default function Dashboard() {
             </div>
             <Link to="/insights" className="btn btn-ghost btn-sm">By product</Link>
           </div>
+          {/* Net profit: what's left after the running costs recorded in Expenses. */}
+          {data.profit.known_revenue > 0 && (
+            <div className="profit-card__net">
+              <span>Expenses <Link to="/expenses">−{nairaFull(data.profit.expenses || 0)}</Link></span>
+              <span>
+                Net profit{" "}
+                <strong style={{ color: (data.profit.net_profit ?? 0) < 0 ? "var(--rose)" : "#166534" }}>
+                  {nairaFull(data.profit.net_profit ?? data.profit.gross_profit)}
+                </strong>
+              </span>
+            </div>
+          )}
+          {data.profit.expenses_to_review > 0 && (
+            <div className="profit-card__warn">
+              {data.profit.expenses_to_review} expense{data.profit.expenses_to_review === 1 ? "" : "s"} shared in Notes
+              waiting for your review.{" "}<Link to="/expenses">Review</Link>
+            </div>
+          )}
           {data.profit.no_cost_revenue > 0 && data.profit.known_revenue > 0 && (
             <div className="profit-card__warn">
               {nairaFull(data.profit.no_cost_revenue)} of sales have no cost price, so they aren't counted.{" "}
               <Link to="/inventory">Add costs</Link>
             </div>
           )}
-          <div className="profit-card__note">Before expenses like rent, salaries and transport.</div>
+          {!data.profit.expenses && (
+            <div className="profit-card__note">
+              No expenses recorded for this period — <Link to="/expenses">add rent, salaries, transport</Link> to see your real profit.
+            </div>
+          )}
         </div>
       )}
 

@@ -395,6 +395,11 @@ def _sale_lines(db, owner_phone, period):
     return lines
 
 
+def expenses_recorded(db, owner_phone):
+    from models import Expense
+    return db.query(Expense.id).filter(Expense.owner_phone == owner_phone).first() is not None
+
+
 def _fact_profit(db, owner_phone, ask):
     """What was actually made, not what was taken in.
 
@@ -422,7 +427,12 @@ def _fact_profit(db, owner_phone, ask):
                  f"and made about *{_money(p['gross_profit'])}* profit ({p['margin_pct']}%)."]
     lines_out.append(f"That is {_money(p['known_revenue'])} of sales minus {_money(p['cost'])} "
                      f"it cost you" + (f", after {_money(p['discounts'])} of discounts" if p["discounts"] else "")
-                     + ". Before expenses like rent and salaries.")
+                     + (". Before expenses like rent and salaries." if not expenses_recorded(db, owner_phone) else "."))
+    from expenses import expenses_between
+    spent = expenses_between(db, owner_phone, start, end)
+    if spent:
+        lines_out.append(f"After {_money(spent)} of expenses (rent, salaries…), your *net profit* is "
+                         f"about *{_money(p['gross_profit'] - spent)}*.")
     if p["no_cost_revenue"] > p["revenue"] * 0.01:
         lines_out.append(f"⚠️ {_money(p['no_cost_revenue'])} of your sales have no cost recorded, so they "
                          f"are not counted in that profit.")

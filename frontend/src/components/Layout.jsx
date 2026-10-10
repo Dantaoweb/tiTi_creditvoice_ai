@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -63,6 +63,8 @@ function buildNav(L, group) {
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
+    // Owner and authorised staff only — the same people who see profit.
+    { to: "/expenses",     label: "Expenses",         icon: Coins, fullAccessOnly: true },
     { to: "/fuel",         label: "Fuel Station",     icon: Fuel, fuelOnly: true },
     { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
     { to: "/staff",        label: "Staff",            icon: UserCheck       },
@@ -145,6 +147,7 @@ export default function Layout() {
   const isSchool = user?.menu_group === "school";
   const NAV = buildNav(L, user?.menu_group).filter(item =>
     (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel) && (!item.poultryOnly || isPoultry)
+    && (!item.fullAccessOnly || (user?.full_access ?? !user?.parent_id))
     && (!item.schoolOnly || isSchool));
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 

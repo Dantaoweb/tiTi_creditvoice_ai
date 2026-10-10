@@ -54,6 +54,7 @@ def register_notes_routes(app):
                         "category": n.category,
                         "amount": n.amount,
                         "visibility": n.visibility,
+                        "expense_status": n.expense_status,
                         "created_at": _iso(n.created_at),
                     }
                     for n in notes
@@ -85,11 +86,21 @@ def register_notes_routes(app):
             )
             db.add(note)
             # In-app notification so notes (theirs or a staff's) show in the feed.
-            _add_notification(
-                db, owner_phone, "note",
-                f"New note ({payload.category})",
-                f"{(owner.name or 'Someone').title()} added a note: {payload.body.strip()[:80]}",
-            )
+            if payload.category == "expense" and payload.amount:
+                # An expense shared with the boss waits in Expenses → To review.
+                _add_notification(
+                    db, owner_phone, "expense_note",
+                    "💸 Expense to review",
+                    f"{(owner.name or 'Someone').title()} shared an expense of N{payload.amount:,}: "
+                    f"{payload.body.strip()[:80]}. Approve it in Expenses to count it.",
+                    link="/expenses",
+                )
+            else:
+                _add_notification(
+                    db, owner_phone, "note",
+                    f"New note ({payload.category})",
+                    f"{(owner.name or 'Someone').title()} added a note: {payload.body.strip()[:80]}",
+                )
             db.commit()
             db.refresh(note)
             return {"ok": True, "id": note.id}
