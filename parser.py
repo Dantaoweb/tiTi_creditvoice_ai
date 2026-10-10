@@ -1492,6 +1492,12 @@ def parse_customer_account_request(text):
                 return None
             if name in ["outstanding", "total outstanding", "total", "customer"]:
                 return None
+            # "today summary", "my balance", "sales summary" are about the
+            # business, not a customer called "today".
+            if name in ["today", "todays", "today's", "daily", "weekly", "monthly", "yearly",
+                        "this week", "this month", "this year", "my", "sales", "business",
+                        "dashboard", "stock", "inventory", "wallet", "my wallet", "my business"]:
+                return None
 
             target_date = parse_slash_date(tail)
             if target_date:
@@ -1656,14 +1662,81 @@ _QUESTION_NAME = re.compile(
     r"^(?:can|could|should|would|will|do|does|did|is|are|how|what|where|why|when|which|who)\b")
 
 
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_WEEKDAY_SHORT = {d[:3]: i for i, d in enumerate(_WEEKDAYS)}
+
+
+def natural_date(text, now=None):
+    """A date from how people say it: 25/10/2026, 25/10, today, tomorrow,
+    friday, next week, in 2 weeks, in 3 days, next month, end of month.
+    Returns a datetime at midnight, or None."""
+    t = (text or "").strip().lower()
+    if not t:
+        return None
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    full = parse_slash_date(t)
+    if full:
+        return full
+    m = re.search(r"\b(\d{1,2})/(\d{1,2})\b", t)
+    if m:
+        day, month = int(m.group(1)), int(m.group(2))
+        for year in (today.year, today.year + 1):
+            try:
+                d = datetime(year, month, day)
+            except ValueError:
+                return None
+            if d >= today:
+                return d
+        return None
+    if re.search(r"\btoday\b", t):
+        return today
+    if re.search(r"\btomorrow\b|\btmrw\b|\btmr\b", t):
+        return today + timedelta(days=1)
+    m = re.search(r"\bin\s+(\d+|a|one|two|three)\s+(day|days|week|weeks|month|months)\b", t)
+    if m:
+        n = {"a": 1, "one": 1, "two": 2, "three": 3}.get(m.group(1)) or int(m.group(1))
+        unit = m.group(2)
+        days = n * (1 if unit.startswith("day") else 7 if unit.startswith("week") else 30)
+        return today + timedelta(days=days)
+    if re.search(r"\bnext\s+week\b", t):
+        return today + timedelta(days=7)
+    if re.search(r"\bnext\s+month\b", t):
+        return today + timedelta(days=30)
+    if re.search(r"\bend\s+of\s+(?:the\s+)?month\b|\bmonth\s+end\b", t):
+        nxt = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return nxt - timedelta(days=1)
+    if re.search(r"\bend\s+of\s+(?:the\s+)?week\b|\bweekend\b", t):
+        return today + timedelta(days=(5 - today.weekday()) % 7 or 7)
+    m = re.search(r"\b(next\s+)?(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b", t)
+    if m and (m.group(2) + "x")[:3] in _WEEKDAY_SHORT:
+        target = _WEEKDAY_SHORT[m.group(2)]
+        # The coming one, never today. "Next Friday" is said for the coming
+        # Friday as often as the one after, so it means the coming one too.
+        ahead = (target - today.weekday()) % 7 or 7
+        return today + timedelta(days=ahead)
+    return None
+
+
+_DUE_PHRASE = re.compile(r"\b(?:due|pay\s+by|will\s+pay|to\s+pay|by)\s+(?P<when>.+)$")
+
+
 def parse_message(text):
     """Parse a message; a question is never recorded as a transaction ("can i
     give 10% discount?" used to save a payment of N10 by someone called
-    "can i")."""
+    "can i"). A due date said in words ("due friday", "pay by next week") is
+    read too — it used to be dropped silently, so no reminder ever came."""
     parsed = _parse_message(text)
     if parsed and parsed.get("type") == "TRANSACTION" and _QUESTION_NAME.match(
             str(parsed.get("name") or "").strip().lower()):
         return None
+    if (parsed and parsed.get("type") == "TRANSACTION" and not parsed.get("due_date")
+            and parsed.get("action") in ("BUY", "COMBINED")):
+        m = _DUE_PHRASE.search((text or "").strip().lower())
+        when = natural_date(m.group("when")) if m else None
+        if when:
+            parsed["due_date"] = when
     return parsed
 
 
@@ -2338,7 +2411,12 @@ def _parse_message(text):
         "business summary",
         "business stats",
         "stats",
-        "dashboard"
+        "dashboard",
+        # What people actually type for it.
+        "summary", "my summary", "report", "my report", "sales summary",
+        "today summary", "today's summary", "todays summary", "summary today",
+        "today report", "report today", "daily report", "daily summary",
+        "weekly report", "weekly summary", "monthly report", "monthly summary",
     ] or ("dashboard" in clean_text and "summary" in clean_text) or (
         "dashboard" in clean_text and "stats" in clean_text
     ) or clean_text.startswith("dashboard ") or clean_text.startswith("stats ") or (
@@ -3752,6 +3830,9 @@ def _parse_stock_items_with_prices(body):
     _lead_qty_pat = re.compile(
         rf"^(?P<lqty>\d[\d,\.]*)\s+(?P<lunit>{UNIT_PATTERN})\s+(?P<lproduct>.+)$", re.I
     )
+    _trail_qty_pat = re.compile(
+        rf"^(?P<tproduct>.+?)\s+(?P<tqty>\d[\d,\.]*)\s+(?P<tunit>{UNIT_PATTERN})$", re.I
+    )
     for part in parts:
         m = item_pat.match(part.strip())
         if not m:
@@ -3763,9 +3844,15 @@ def _parse_stock_items_with_prices(body):
         raw_product = m.group("product").strip()
         # Extract leading qty+unit if present: "10 bags rice" → qty=10, product="rice"
         lm = _lead_qty_pat.match(raw_product)
+        tm = None if lm else _trail_qty_pat.match(raw_product)
         if lm:
             quantity = parse_quantity_token(lm.group("lqty"))
             product, unit = normalize_item(lm.group("lproduct").strip(), lm.group("lunit"))
+        elif tm:
+            # "rice 20 bags" → qty=20, product="rice" (product first). A unit word
+            # is required, so "dangote salt 50g" or "iphone 13" keep their number.
+            quantity = parse_quantity_token(tm.group("tqty"))
+            product, unit = normalize_item(tm.group("tproduct").strip(), tm.group("tunit"))
         else:
             quantity = None
             product, unit = normalize_item(raw_product)

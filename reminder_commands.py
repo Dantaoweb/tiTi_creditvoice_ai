@@ -221,8 +221,11 @@ def handle_reminder_command(db, phone, parsed, user, send_message):
             return {"status": "reminder_plan_blocked"}
 
         parts = parsed["text"].split()
+        if len(parts) >= 2 and not parts[1].isdigit():
+            # "remind Bola" — by name, the way people say it.
+            return _remind_by_name(db, phone, " ".join(parts[1:]), user, send_message)
         if len(parts) != 2 or not parts[1].isdigit():
-            send_message(phone, "Use:\nREMIND 1")
+            send_message(phone, "Use:\nREMIND 1\nor the customer's name, like: remind Bola")
             return {"status": "invalid_remind"}
 
         index = int(parts[1])
@@ -254,3 +257,44 @@ def handle_reminder_command(db, phone, parsed, user, send_message):
         return {"status": "due_menu"}
 
     return None
+
+
+def _remind_by_name(db, phone, name, user, send_message):
+    """A reminder for one named customer, ready to forward to them."""
+    from sqlalchemy import func
+    from models import Customer, User as _User
+    owner_phone = user.phone
+    if getattr(user, "parent_id", None):
+        owner = db.query(_User).filter(_User.id == user.parent_id).first()
+        owner_phone = owner.phone if owner else owner_phone
+    customer = (db.query(Customer)
+                .filter(Customer.owner_phone == owner_phone,
+                        func.lower(Customer.name) == name.strip().lower())
+                .first())
+    if not customer:
+        send_message(phone, f"Customer not found: {name.title()}\nSend DUE to see who owes you.")
+        return {"status": "remind_customer_not_found"}
+    balance = int(customer.balance or 0)
+    if balance <= 0:
+        send_message(phone, f"{customer.name.title()} doesn't owe you anything right now.")
+        return {"status": "remind_nothing_owed"}
+    from models import Transaction
+    latest_due = (db.query(Transaction.due_date)
+                  .filter(Transaction.customer_id == customer.id, Transaction.due_date.isnot(None),
+                          Transaction.is_voided.isnot(True))
+                  .order_by(Transaction.due_date.desc()).first())
+    due_line = ""
+    if latest_due:
+        from datetime import datetime as _dt
+        when = latest_due[0].strftime('%d/%m/%Y')
+        due_line = (f" It is due on {when}." if latest_due[0].date() >= _dt.utcnow().date()
+                    else f" It was due on {when}.")
+    text = (f"Hello {customer.name.title()},\n\n"
+            f"This is a reminder that your outstanding balance of ₦{balance:,} is waiting "
+            f"to be paid.{due_line}\n\nThank you.")
+    how = (f"Forward this to {customer.customer_phone}:" if customer.customer_phone
+           else f"Forward this to {customer.name.title()} (no phone saved — send "
+                f"'{customer.name.lower()} phone 0801…' to add one):")
+    send_message(phone, how)
+    send_message(phone, text)
+    return {"status": "remind_by_name"}

@@ -1,4 +1,5 @@
-﻿from constants import GUIDED_SERVICE_SETUP_ACTIONS, GUIDED_STOCK_ACTIONS, STOCK_MENU_ACTIONS
+﻿import re
+from constants import GUIDED_SERVICE_SETUP_ACTIONS, GUIDED_STOCK_ACTIONS, STOCK_MENU_ACTIONS
 from database import SessionLocal
 from models import PendingAction, ReminderMemory, User
 from parser import (
@@ -152,6 +153,12 @@ def handle_early_webhook_message(incoming):
                         if pending.action == "CUSTOMER_SUMMARY_DATE":
                             target_date = parse_slash_date(normalized)
                             if not target_date:
+                                # Something that isn't a date at all is the user
+                                # moving on — close the view and handle it.
+                                if not re.fullmatch(r"[\d/\-. ]+", normalized):
+                                    debug_db.delete(pending)
+                                    debug_db.commit()
+                                    raise LookupError("continue_to_main_flow")
                                 send_whatsapp_message(
                                     phone,
                                     "Invalid date. Send date like:\n19/05/2026"
@@ -159,6 +166,14 @@ def handle_early_webhook_message(incoming):
                                 return {"status": "invalid_customer_summary_date"}
                             period = "DATE"
                         else:
+                            # Anything that isn't one of the view's choices is the
+                            # user moving on ("stock", "Ade paid 5000", "menu"):
+                            # close the view and handle it, instead of trapping
+                            # them in "Choose an account view" until they type exit.
+                            if normalized not in period_map and not re.fullmatch(r"\d{1,2}", normalized):
+                                debug_db.delete(pending)
+                                debug_db.commit()
+                                raise LookupError("continue_to_main_flow")
                             if normalized not in period_map:
                                 send_whatsapp_message(
                                     phone,

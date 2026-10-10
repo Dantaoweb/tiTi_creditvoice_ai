@@ -142,7 +142,7 @@ def _receipt_ref(tx_id, receipt_no=None):
 
 
 def build_owner_receipt(business_name, customer_name, cart, total, paid, balance, due_date_str, tx_id, config=None,
-                        receipt_no=None):
+                        receipt_no=None, overall_discount=0):
     cfg = config or DEFAULT_RECEIPT_CONFIG
     now = _utcnow()
     date_str = now.strftime("%d/%m/%Y  %H:%M")
@@ -157,6 +157,10 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
         lines.append(f"{item['product'].title()}")
         lines.append(f"  x{item['quantity']} @ N{item['unit_price']:,} = N{item['total']:,}")
     lines.append("--------------------")
+    # The discount sits above the total it explains, not under the footer.
+    if overall_discount:
+        lines.append(f"Subtotal: N{total + overall_discount:,}")
+        lines.append(f"Discount: -N{overall_discount:,}")
     lines.append(f"{cfg['amount_label']}:    N{total:,}")
     lines.append(f"Paid:     N{paid:,}")
     if balance > 0:
@@ -442,18 +446,26 @@ def _handle_qty_input(db, phone, text, pending, business_owner_phone, send_messa
                 f"Selling {qty} will leave you with negative stock."
             )
 
-    cart.append({
-        "product": payload["selected_name"],
-        "quantity": qty,
-        "unit_price": price,
-        "unit": payload.get("selected_unit"),
-        "total": item_total,
-        "inv_id": payload.get("selected_id"),
-        "standard_price": standard_price,
-        "deviation": deviation,      # negative=discount, positive=premium, 0=standard
-        "cost_price": cost_price,
-        "below_cost": below_cost,
-    })
+    # The same product at the same price again is more of it, not a second line.
+    same = next((c for c in cart
+                 if c.get("inv_id") and c.get("inv_id") == payload.get("selected_id")
+                 and c.get("unit_price") == price), None)
+    if same:
+        same["quantity"] = same["quantity"] + qty
+        same["total"] = same["total"] + item_total
+    else:
+        cart.append({
+            "product": payload["selected_name"],
+            "quantity": qty,
+            "unit_price": price,
+            "unit": payload.get("selected_unit"),
+            "total": item_total,
+            "inv_id": payload.get("selected_id"),
+            "standard_price": standard_price,
+            "deviation": deviation,      # negative=discount, positive=premium, 0=standard
+            "cost_price": cost_price,
+            "below_cost": below_cost,
+        })
 
     total = _cart_total(cart)
     _save_cart(pending, cart)
@@ -615,7 +627,8 @@ def _handle_payment(db, phone, text, pending, business_owner_phone, send_message
             phone,
             f"Balance: N{balance:,}\n"
             f"When should {pending.customer_name.title()} pay?\n\n"
-            "Send date DD/MM/YYYY or SKIP to save without a due date."
+            "Send a date like 25/10/2026, a day like Friday or 'next week' — "
+            "or SKIP to save without a due date."
         )
         return {"status": "select_product_due_asked"}
 
@@ -635,24 +648,29 @@ def _handle_due_date(db, phone, text, pending, send_message):
     due_date_str = None
     due_date = None
 
-    if normalized not in ["skip", "no", "none"]:
-        date_match = re.search(r"(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})", text)
-        if date_match:
-            day, month, year = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
-            if year < 100:
-                year += 2000
-            try:
-                due_date = datetime(year, month, day)
-                due_date_str = due_date.strftime("%d/%m/%Y")
-            except ValueError:
-                send_message(phone, "Invalid date. Try DD/MM/YYYY or SKIP.")
-                return {"status": "select_product_due_invalid"}
-        elif "tomorrow" in normalized:
-            from datetime import timedelta
-            due_date = _utcnow() + timedelta(days=1)
+    if normalized not in ["skip", "no", "none", "no date", "nil", "0", "n"]:
+        # Dates as people say them: 25/10/2026, friday, next week, end of month.
+        from parser import natural_date, parse_message as _parse
+        due_date = natural_date(normalized)
+        if due_date:
             due_date_str = due_date.strftime("%d/%m/%Y")
         else:
-            send_message(phone, "Send a date DD/MM/YYYY or SKIP.")
+            name = pending.customer_name.title()
+            other = _parse(text)
+            if other and other.get("type") == "TRANSACTION":
+                # A new sale typed mid-checkout: finish this one first, so neither is lost.
+                send_message(
+                    phone,
+                    f"Let's finish {name}'s sale first — it isn't saved yet.\n\n"
+                    f"When should {name} pay? Send a date like 25/10/2026, a day like Friday, "
+                    "or SKIP. Then send your new sale again.",
+                )
+            else:
+                send_message(
+                    phone,
+                    f"When should {name} pay? Send a date like 25/10/2026, a day like Friday "
+                    "or 'next week' — or SKIP to save without a due date.",
+                )
             return {"status": "select_product_due_invalid"}
 
     payload = _load_payload(pending)
@@ -834,9 +852,8 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     owner_receipt = build_owner_receipt(
         business_name, customer_name, cart, total, paid, balance, due_date_str, buy_tx.id, receipt_cfg,
         receipt_no=getattr(buy_tx, "receipt_number", None),
+        overall_discount=overall_discount,
     )
-    if overall_discount:
-        owner_receipt += f"\nDiscount: -N{overall_discount:,}"
     if sale_note:
         owner_receipt += f"\nNote: {sale_note}"
     if stock_lines:

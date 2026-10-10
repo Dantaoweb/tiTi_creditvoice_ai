@@ -640,9 +640,9 @@ def pending_transaction_summary(pending, customer=None):
         )
 
     if pending.action == "SALE":
-        label = pending.product.title() if pending.product else "Service/direct income"
+        label = pending.product.title() if pending.product else "Income"
         return (
-            "Saved as service/direct income.\n"
+            "Saved — paid in full.\n"
             f"{label}: N{pending.buy_amount:,}\n"
             "No customer debt was recorded."
         )

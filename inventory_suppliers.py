@@ -24,6 +24,15 @@ _FRACTION_MULTIPLIERS = {
 }
 
 
+
+def _whole(n):
+    """17.0 -> 17, 2.5 -> 2.5: stock counts and naira read as people write them."""
+    try:
+        f = float(n or 0)
+    except (TypeError, ValueError):
+        return n
+    return int(f) if f.is_integer() else round(f, 2)
+
 def _parse_fraction_unit(unit_str):
     """Split "half bag" → (0.5, "bag"). Returns (1.0, original) if no prefix."""
     if not unit_str:
@@ -662,7 +671,7 @@ def build_inventory_list_message(db, owner_phone, product=None, return_ids=False
                 _exp_suffix = f" [Exp {v.expiry_date.strftime('%m/%Y')} — {_days_left}d]"
 
         name_display = f"{display_name} ({v.unit})" if (is_multi and v.unit) else display_name
-        line = f"{idx}. {indicator}{name_display}: {qty:,}{unit_label}{_exp_suffix}"
+        line = f"{idx}. {indicator}{name_display}: {_whole(qty):,}{unit_label}{_exp_suffix}"
         prices = []
         if v.cost_price:
             prices.append(f"Cost N{v.cost_price:,}")
@@ -674,7 +683,7 @@ def build_inventory_list_message(db, owner_phone, product=None, return_ids=False
             line += f"\n   ↩️ Reorder at {v.reorder_quantity:,}{unit_label}"
         msg += line + "\n\n"
 
-    msg += f"Total stock value: N{total_value:,}"
+    msg += f"Total stock value: N{_whole(round(total_value)):,}"
 
     if end < total:
         next_end = min(end + _STOCK_PAGE_SIZE, total)

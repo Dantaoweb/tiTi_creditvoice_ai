@@ -260,7 +260,7 @@ def build_customer_confirm_message(customer, parsed, user=None):
 
     if action == "PAY":
         return (
-            f"Confirm:\n{customer.name} paid N{parsed['paid_amount']:,}?\n\n"
+            f"Confirm:\n{customer.name.title()} paid N{parsed['paid_amount']:,}?\n\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
         )
 
@@ -392,9 +392,13 @@ def handle_transaction_setup(
             db, business_owner_phone,
             parsed.get("product"), parsed.get("unit_price"),
         )
+        # A shop's sale to nobody in particular is a cash sale; a service
+        # business is receiving income.
+        from biz_language import get_lang as _get_lang
+        _heading = "Confirm cash sale" if _get_lang(user)["show_product_tip"] else "Confirm income received"
         confirm_msg = (
-            f"Confirm service/direct income:\n{direct_sale_item_line(parsed)}\n\n"
-            "No customer debt will be recorded.\n"
+            f"{_heading}:\n{direct_sale_item_line(parsed)}\n\n"
+            "Paid in full — no customer debt will be recorded.\n"
             "Reply YES or 1 to save, EDIT or 2 to change."
             f"{price_alert}"
         )
@@ -538,7 +542,9 @@ def handle_transaction_setup(
 
     no_details_hint = ""
     from biz_language import get_lang
-    if get_lang(user)["show_product_tip"] and not parsed.get("product") and not parsed.get("sale_items"):
+    # Only a sale has products to capture — never a payment.
+    if (get_lang(user)["show_product_tip"] and parsed.get("action") in ("BUY", "COMBINED")
+            and not parsed.get("product") and not parsed.get("sale_items")):
         cname = customer.name.title()
         no_details_hint = (
             "\n\n⚠️ No product details captured.\n"

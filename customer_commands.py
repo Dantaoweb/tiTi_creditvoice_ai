@@ -45,7 +45,7 @@ def _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx
     if items:
         for item in items:
             lines.append(f"{item.product.title()}")
-            qty_label = f"x{item.quantity} " if item.quantity and item.quantity > 1 else ""
+            qty_label = f"x{item.quantity or 1} "
             lines.append(f"  {qty_label}@ N{item.unit_price:,} = N{item.total:,}")
     elif tx.product:
         qty = tx.quantity or 1

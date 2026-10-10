@@ -633,6 +633,10 @@ def handle_automation_owner_command(db, phone, text, user, send_message):
 
     clean = (text or "").strip()
     normalized = clean.lower()
+    # "today summary" / "today report" ask for the dashboard, not the sales bot
+    # (which matches anything starting with "today" and needs a paid plan).
+    if re.match(r"^today'?s?\s+(?:summary|report|sales)\b", normalized):
+        return None
     if not re.match(
         r"^(bot|customer bot|auto reply|auto order|part payment|take over|i will take it up from here|bot resume|automation|add product|set price|set payment|payment mode|set delivery|delivery note|pickup address|business hours|min deposit|product|orders|pending orders|confirm order|reject order|deliver order|order \d+ delivered|paid order|confirm payment|reject payment|interested customers|follow up|follow ups|followups|today|daily assistant|business today|pending payments|deliveries|pending deliveries|low stock|send reminders|send order reminders)",
         normalized,

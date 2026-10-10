@@ -1142,6 +1142,25 @@ def handle_pending_actions(
             return _wrap(result)
 
     # ── Select product cart flow ─────────────────────────────────────────────
+    # A command mid-checkout ("summary", "stock") is answered, but the sale
+    # isn't saved yet — say so once, or it's lost without anyone noticing.
+    if pending and pending.action in SELECT_PRODUCT_ACTIONS and is_command:
+        try:
+            import json as _json
+            _payload = _json.loads(pending.payload_json or "{}")
+            if not _payload.get("unfinished_warned"):
+                _payload["unfinished_warned"] = True
+                pending.payload_json = _json.dumps(_payload)
+                db.commit()
+                _who = (pending.customer_name or "").title()
+                send_whatsapp_message(
+                    phone,
+                    "⏸ Your sale" + (f" for {_who}" if _who else "") + " isn't saved yet. "
+                    "Reply to the last question to finish it, or send CANCEL to drop it.",
+                )
+        except Exception:
+            pass
+
     if pending and pending.action in SELECT_PRODUCT_ACTIONS and not is_command:
         result = handle_select_product_pending(
             db, phone, text, pending, user,

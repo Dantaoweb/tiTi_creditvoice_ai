@@ -239,6 +239,8 @@ def confirm_prefix(customer_name: str, user=None) -> str:
     """
     cfg = get_lang(user)
     word = cfg["action_word"]
+    # Names are stored lowercase ("ade"); show them as people write them.
+    customer_name = (customer_name or "").title()
     if cfg["confirm_style"] == "label":
         return f"Confirm:\n{customer_name} {word}:"
     return f"Confirm:\n{customer_name} {word}"
