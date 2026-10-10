@@ -45,6 +45,9 @@ def test_sitemap_lists_only_indexable_pages():
     xml = client.get("/sitemap.xml").text
     assert "https://creditvoiceai.com/app/terms" in xml
     assert "https://creditvoiceai.com/app/privacy" in xml
+    # The public content pages are indexable, so they must be advertised.
+    assert "https://creditvoiceai.com/resources" in xml
+    assert "https://creditvoiceai.com/events" in xml
     # The bare /app app shell is noindex, so it must not be advertised.
     assert "<loc>https://creditvoiceai.com/app</loc>" not in xml
 

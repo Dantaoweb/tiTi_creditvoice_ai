@@ -270,6 +270,9 @@ def sitemap_xml():
     # them would contradict their robots meta.
     pages = [
         (f"{_SITE_URL}/", today, "1.0"),
+        # Public content pages (web_public_pages), server-rendered for crawlers.
+        (f"{_SITE_URL}/resources", today, "0.7"),
+        (f"{_SITE_URL}/events", today, "0.6"),
         (f"{_SITE_URL}/app/terms", None, "0.3"),
         (f"{_SITE_URL}/app/privacy", None, "0.3"),
         (f"{_SITE_URL}/app/data-deletion", None, "0.2"),
