@@ -14,7 +14,7 @@ from database import SessionLocal
 from models import User, InventoryItem, FastCaptureSettings
 from reports import (
     get_dashboard_summary, get_unpaid_debtors, get_product_sales_by_period,
-    get_margin_summary, dashboard_period_label, get_inventory_insights,
+    get_margin_summary, dashboard_period_label, get_inventory_insights, get_profit_summary,
 )
 from web_auth import require_web_auth
 from web_common import _session_owner_phone, _scoped_read
@@ -64,6 +64,7 @@ def register_dashboard_routes(app):
             low_stock_count = low_stock_q.count()
             top_products_raw = get_product_sales_by_period(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)[:8]
             margin = get_margin_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
+            profit = get_profit_summary(db, owner_phone, period_key, recorded_by_id=rec, branch_id=eff_branch)
             return {
                 "period": period_key,
                 "period_label": dashboard_period_label(period_key),
@@ -83,6 +84,9 @@ def register_dashboard_routes(app):
                     }
                     for r in top_products_raw
                 ],
+                # Gross profit (before expenses): the card shows the total; the
+                # per-product rows are for Insights.
+                "profit": {k: v for k, v in profit.items() if k not in ("products", "no_cost_products")},
                 "margin": {
                     "expected": margin["expected"],
                     "actual": margin["actual"],
@@ -107,8 +111,11 @@ def register_dashboard_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             period_key = period.upper() if period else None
-            eff_branch, _rec = _scoped_read(db, session, branch_id)
-            return get_inventory_insights(db, owner_phone, period_key, branch_id=eff_branch)
+            eff_branch, rec = _scoped_read(db, session, branch_id)
+            out = get_inventory_insights(db, owner_phone, period_key, branch_id=eff_branch)
+            out["profit"] = get_profit_summary(db, owner_phone, period_key, recorded_by_id=rec,
+                                               branch_id=eff_branch)
+            return out
         finally:
             db.close()
 

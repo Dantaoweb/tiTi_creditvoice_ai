@@ -65,6 +65,7 @@ POULTRY FARMS — EGG & FEED (web app, only for Poultry Farm business type):
 
 INSIGHTS REPORT (web app):
 - The Insights page shows, for a period: a margin snapshot (each product's cost vs selling price and margin %, flagging items sold at a loss), a price-change log (what you changed and when), and stock received (quantity, spend, average cost, and cost trend). Point users there for "am I making money / what's costing more" questions.
+- PROFIT: the Dashboard shows Gross profit for the period (sales minus what the goods cost, after discounts, before expenses like rent and salaries); Insights shows Profit by product. Products with no cost price are not counted — add cost prices to see the full picture. Expenses are not recorded yet, so it is gross, not take-home, profit.
 
 THRIFT / AJO / ESUSU / SAVINGS (app under Thrift / Ajo):
 - Personal savings (any plan): "I saved 5000" or "personal savings 10000" — your own money, running total.

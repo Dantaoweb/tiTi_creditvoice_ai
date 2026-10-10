@@ -398,38 +398,33 @@ def _sale_lines(db, owner_phone, period):
 def _fact_profit(db, owner_phone, ask):
     """What was actually made, not what was taken in.
 
-    Only the part with a known cost can be counted, so the reply says how much
-    of the revenue that covers rather than quietly treating unknown costs as
-    zero — which would report every unpriced sale as pure profit.
+    Uses reports.profit_from_sales — the same figure the Dashboard shows — so
+    a discount comes off the profit, and sales with no known cost are left out
+    and named rather than quietly counted as pure profit.
     """
-    lines = _sale_lines(db, owner_phone, ask.period)
-    if not lines:
+    from reports import get_owner_transaction_query, profit_from_sales
+
+    q = get_owner_transaction_query(db, owner_phone)
+    start, end = _range_for(ask.period)
+    if start is not None:
+        q = q.filter(Transaction.created_at >= start, Transaction.created_at < end)
+    sales = q.filter(Transaction.type.in_(("SALE", "BUY"))).all()
+    if not sales:
         return f"No sales recorded {_period_label(ask.period)}."
 
-    costs = _avg_cost_by_name(db, owner_phone)
-    revenue = sum(rev for _n, _q, rev in lines)
-    known_revenue, cost_total = 0.0, 0.0
-    for name, qty, rev in lines:
-        unit_cost = costs.get(name)
-        if unit_cost is None:
-            continue
-        known_revenue += rev
-        cost_total += qty * unit_cost
-
-    if known_revenue <= 0:
-        return (f"You sold *{_money(revenue)}* {_period_label(ask.period)}, but I cannot work "
+    p = profit_from_sales(db, owner_phone, sales)
+    if p["known_revenue"] <= 0:
+        return (f"You sold *{_money(p['revenue'])}* {_period_label(ask.period)}, but I cannot work "
                 f"out your profit — no cost prices are recorded for what you sold.\n\n"
                 f"Add a cost when you add stock and I can tell you what you are making.")
 
-    profit = known_revenue - cost_total
-    pct = round(100.0 * profit / known_revenue) if known_revenue else 0
-    lines_out = [f"{_period_label(ask.period).capitalize()} you sold *{_money(revenue)}* "
-                 f"and made about *{_money(profit)}* profit ({pct}%)."]
-    lines_out.append(f"That is {_money(known_revenue)} of sales minus {_money(cost_total)} "
-                     f"it cost you.")
-    if known_revenue < revenue * 0.99:
-        missing = revenue - known_revenue
-        lines_out.append(f"⚠️ {_money(missing)} of your sales have no cost recorded, so they "
+    lines_out = [f"{_period_label(ask.period).capitalize()} you sold *{_money(p['revenue'])}* "
+                 f"and made about *{_money(p['gross_profit'])}* profit ({p['margin_pct']}%)."]
+    lines_out.append(f"That is {_money(p['known_revenue'])} of sales minus {_money(p['cost'])} "
+                     f"it cost you" + (f", after {_money(p['discounts'])} of discounts" if p["discounts"] else "")
+                     + ". Before expenses like rent and salaries.")
+    if p["no_cost_revenue"] > p["revenue"] * 0.01:
+        lines_out.append(f"⚠️ {_money(p['no_cost_revenue'])} of your sales have no cost recorded, so they "
                          f"are not counted in that profit.")
     return "\n".join(lines_out)
 

@@ -457,6 +457,39 @@ export default function Dashboard() {
         <MetricCard loading={loading} label={L.totalCustomers}                           value={Number(s.total_customers || 0).toLocaleString()} color="rose" />
       </div>
 
+      {/* ── Gross profit: sales minus what the goods cost (and discounts) ── */}
+      {!loading && data?.profit && data.profit.revenue > 0 && (
+        <div className="card card-body profit-card">
+          <div className="profit-card__main">
+            <div>
+              <div className="profit-card__label">Gross profit {periodLabel}</div>
+              {data.profit.known_revenue > 0 ? (
+                <div className={`profit-card__value${data.profit.gross_profit < 0 ? " profit-card__value--loss" : ""}`}>
+                  {nairaFull(data.profit.gross_profit)}
+                  {data.profit.margin_pct != null && <span className="profit-card__pct"> {data.profit.margin_pct}%</span>}
+                </div>
+              ) : (
+                <div className="profit-card__value profit-card__value--muted">Not known yet</div>
+              )}
+              <div className="profit-card__sub">
+                {data.profit.known_revenue > 0
+                  ? `${nairaFull(data.profit.known_revenue)} of sales − ${nairaFull(data.profit.cost)} cost of goods`
+                    + (data.profit.discounts > 0 ? `, after ${nairaFull(data.profit.discounts)} discounts` : "")
+                  : "Add cost prices to your products to see what you're making."}
+              </div>
+            </div>
+            <Link to="/insights" className="btn btn-ghost btn-sm">By product</Link>
+          </div>
+          {data.profit.no_cost_revenue > 0 && data.profit.known_revenue > 0 && (
+            <div className="profit-card__warn">
+              {nairaFull(data.profit.no_cost_revenue)} of sales have no cost price, so they aren't counted.{" "}
+              <Link to="/inventory">Add costs</Link>
+            </div>
+          )}
+          <div className="profit-card__note">Before expenses like rent, salaries and transport.</div>
+        </div>
+      )}
+
       {/* ── Secondary metrics ── */}
       <div className="metrics-grid metrics-grid--secondary">
         <MetricCard loading={loading} label={`Credit sales ${periodLabel}`}  value={nairaFull(s.credit_sales_amount)}                     color="rose"  small />

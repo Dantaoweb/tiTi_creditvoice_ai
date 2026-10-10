@@ -55,6 +55,7 @@ export default function Insights() {
   const margin = data?.margin || [];
   const changes = data?.price_changes || [];
   const received = data?.stock_received || [];
+  const profit = data?.profit;
 
   return (
     <>
@@ -93,6 +94,59 @@ export default function Insights() {
           sub={data ? `${data.price_up} up · ${data.price_down} down` : undefined} />
         <MetricCard loading={loading} label="Products priced"
           value={Number(margin.length).toLocaleString()} color="brand" />
+      </div>
+
+      {/* Profit by product — what each product actually made in the period */}
+      <div className="card">
+        <div className="card-header" style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+          <span className="card-title">Profit by product {periodLabel}</span>
+          {profit && profit.known_revenue > 0 && (
+            <span className="text-sm">
+              Gross profit <strong style={{ color: profit.gross_profit < 0 ? "var(--rose)" : "#166534" }}>
+                {nairaFull(profit.gross_profit)}</strong>
+              {profit.margin_pct != null && ` (${profit.margin_pct}%)`}
+            </span>
+          )}
+        </div>
+        {loading ? (
+          <p className="td-muted card-body">Loading…</p>
+        ) : !profit || (profit.products.length === 0 && profit.no_cost_products.length === 0) ? (
+          <p className="td-muted card-body">No sales {periodLabel}.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="history-table">
+              <thead>
+                <tr><th>Product</th><th>Sold</th><th>Sales</th><th>Cost</th><th>Profit</th><th>%</th></tr>
+              </thead>
+              <tbody>
+                {profit.products.map(r => (
+                  <tr key={r.name} className={r.profit < 0 ? "low-stock" : ""}>
+                    <td>{r.name}{r.profit < 0 && <span className="badge badge-rose" style={{ marginLeft: 6 }}>loss</span>}</td>
+                    <td className="td-muted">{Number(r.qty).toLocaleString()}</td>
+                    <td>{nairaFull(r.revenue)}</td>
+                    <td className="td-muted">{nairaFull(r.cost)}</td>
+                    <td style={{ color: r.profit < 0 ? "var(--rose)" : undefined, fontWeight: 700 }}>{nairaFull(r.profit)}</td>
+                    <td>{r.margin_pct}%</td>
+                  </tr>
+                ))}
+                {profit.no_cost_products.map(r => (
+                  <tr key={`nc-${r.name}`}>
+                    <td>{r.name} <span className="text-subtle text-sm">· no cost price</span></td>
+                    <td className="td-muted">{Number(r.qty).toLocaleString()}</td>
+                    <td>{nairaFull(r.revenue)}</td>
+                    <td className="td-muted">—</td>
+                    <td className="td-muted">—</td>
+                    <td className="td-muted">—</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-subtle text-sm" style={{ margin: "8px 16px" }}>
+              Sales minus what the goods cost you (your average buying price), after discounts.
+              Before expenses. Products with no cost price aren't counted in the profit.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* A. Margin snapshot */}

@@ -318,6 +318,96 @@ def get_products_below_cost(db, owner_phone):
     ).all()
 
 
+def profit_from_sales(db, owner_phone, sales):
+    """Gross profit on a list of sales: what was charged minus what the goods
+    cost. The one calculation behind the Dashboard, Insights and tiTi.
+
+    - Revenue is what each sale was recorded at, so a discount off the whole
+      sale is spread across its lines and comes off the profit.
+    - Cost is each product's average buying price (stock received), falling
+      back to the cost price typed on the product.
+    - A product with no cost at all is NOT counted as pure profit: it is left
+      out and its sales reported as "no cost", so the figure stays honest.
+    Before expenses — rent, salaries and the like are not recorded.
+    """
+    from models import TransactionItem
+    from business_facts import _avg_cost_by_name
+
+    if not sales:
+        return _empty_profit()
+    ids = [t.id for t in sales]
+    items_by_tx = {}
+    for line in db.query(TransactionItem).filter(TransactionItem.transaction_id.in_(ids)).all():
+        items_by_tx.setdefault(line.transaction_id, []).append(line)
+
+    # (product, qty, net revenue) per line.
+    lines = []
+    for sale in sales:
+        rows = items_by_tx.get(sale.id)
+        amount = float(sale.amount or 0)
+        if rows:
+            gross = sum(float(r.total or 0) for r in rows) or 1.0
+            for r in rows:
+                share = float(r.total or 0) / gross        # this line's part of the sale
+                lines.append(((r.product or "").strip().lower(), float(r.quantity or 1), amount * share))
+        else:
+            lines.append(((sale.product or "").strip().lower(), float(sale.quantity or 1), amount))
+
+    costs = _avg_cost_by_name(db, owner_phone)
+    products = {}
+    for name, qty, rev in lines:
+        p = products.setdefault(name, {"name": name.title() or "Unnamed", "qty": 0.0,
+                                       "revenue": 0.0, "cost": 0.0, "cost_known": name in costs})
+        p["qty"] += qty
+        p["revenue"] += rev
+        if name in costs:
+            p["cost"] += qty * costs[name]
+
+    rows, no_cost = [], []
+    for p in products.values():
+        row = {"name": p["name"], "qty": round(p["qty"], 2), "revenue": int(round(p["revenue"]))}
+        if p["cost_known"]:
+            row["cost"] = int(round(p["cost"]))
+            row["profit"] = row["revenue"] - row["cost"]
+            row["margin_pct"] = round(100.0 * row["profit"] / row["revenue"]) if row["revenue"] else 0
+            rows.append(row)
+        else:
+            no_cost.append(row)
+    rows.sort(key=lambda r: r["profit"], reverse=True)
+    no_cost.sort(key=lambda r: r["revenue"], reverse=True)
+
+    revenue = int(round(sum(r["revenue"] for r in rows) + sum(r["revenue"] for r in no_cost)))
+    known = sum(r["revenue"] for r in rows)
+    cost = sum(r["cost"] for r in rows)
+    profit = known - cost
+    return {
+        "revenue": revenue,
+        "known_revenue": known,
+        "cost": cost,
+        "gross_profit": profit,
+        "margin_pct": round(100.0 * profit / known) if known else None,
+        "no_cost_revenue": revenue - known,
+        "discounts": int(sum(int(t.discount_amount or 0) for t in sales)),
+        "products": rows,
+        "no_cost_products": no_cost,
+    }
+
+
+def _empty_profit():
+    return {"revenue": 0, "known_revenue": 0, "cost": 0, "gross_profit": 0, "margin_pct": None,
+            "no_cost_revenue": 0, "discounts": 0, "products": [], "no_cost_products": []}
+
+
+def get_profit_summary(db, owner_phone, period=None, recorded_by_id=None, branch_id=None):
+    """Gross profit for a Dashboard period, in the caller's branch/staff scope."""
+    sales = (
+        get_owner_transaction_query(db, owner_phone, period, recorded_by_id, branch_id=branch_id)
+        .filter(Transaction.type.in_(["BUY", "SALE"]))
+        .all()
+    )
+    return profit_from_sales(db, owner_phone, sales)
+
+
 def build_margin_summary_message(summary, period=None):
     label = dashboard_period_label(period) if period else "all time"
     lines = [f"Margin summary — {label}:"]

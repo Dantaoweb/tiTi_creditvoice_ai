@@ -55,11 +55,11 @@ NAV_GUIDE = {
     },
     "/dashboard": {
         "name": "Dashboard",
-        "what": "Sales, debts, top products and the Margin Insight card (Discounts given, items sold below cost) for a period.",
+        "what": "Sales, debts, Gross profit (sales minus cost of goods, before expenses), top products and the Margin Insight card (Discounts given, items sold below cost) for a period.",
     },
     "/insights": {
         "name": "Insights",
-        "what": "Margin per product, price-change log and stock received.",
+        "what": "Profit by product for a period (best earners, loss-makers), margin per product, price-change log and stock received.",
     },
     "/receipts": {
         "name": "Receipts",
