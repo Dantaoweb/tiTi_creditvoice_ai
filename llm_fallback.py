@@ -111,6 +111,10 @@ DELIVERIES & READY-BY DATES (web app):
 - tiTi reminds the owner 2 days before, 1 day before, and on the day.
 - The Deliveries page lists upcoming jobs; there you can change the date or send the customer a "your order is ready" message. Customer messages are only sent when the owner types and taps send — never automatic.
 
+IS A PRODUCT ALREADY IN STOCK? (no barcode needed):
+- On WhatsApp ask "do I have paracetamol?" / "is groundnut oil in my stock?" — tiTi checks every product allowing for spelling, spacing and plurals and answers yes (with the name and quantity), close matches, or a clear no (safe to add). "check duplicates" lists products that look entered twice.
+- Web app → Inventory: search shows "did you mean" close matches; Add Product warns "You may already have this" while typing (with Use this one) and refuses the exact same product twice; "Check duplicates" lists look-alike pairs. Adding stock on WhatsApp says whether it tops up an existing product or makes a new one, and names close look-alikes.
+
 PART DELIVERY, CANCEL / REFUND, RETURNS (web app):
 - Goods sold but not all handed over (e.g. 100 bags sold, 60 delivered): on the web POS tick "Not all goods delivered now" and enter how many went out. A customer must be picked. Only what goes out leaves stock; the rest stays in the store as *reserved* for that customer.
 - Inventory then shows In store / Reserved / Available. Available = in store − reserved, and a sale can't sell reserved goods.

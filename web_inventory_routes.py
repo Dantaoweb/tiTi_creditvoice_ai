@@ -183,6 +183,34 @@ def register_inventory_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/inventory/similar")
+    def web_inventory_similar(
+        session: dict = Depends(require_web_auth),
+        name: str = Query(default="", max_length=120),
+        unit: str = Query(default="", max_length=30),
+    ):
+        """Before adding a product: is it already there under a close name?
+        `exact` = the same product written differently (blocked on save),
+        `similar` = names close enough to check first."""
+        from similar_products import check_new_product
+        db = SessionLocal()
+        try:
+            if len(name.strip()) < 2:
+                return {"exact": [], "similar": []}
+            return check_new_product(db, _session_owner_phone(db, session), name, unit)
+        finally:
+            db.close()
+
+    @app.get("/app/api/inventory/duplicates")
+    def web_inventory_duplicates(session: dict = Depends(require_web_auth)):
+        """Pairs of products that look like the same thing, to tidy up."""
+        from similar_products import possible_duplicates
+        db = SessionLocal()
+        try:
+            return {"pairs": possible_duplicates(db, _session_owner_phone(db, session))}
+        finally:
+            db.close()
+
     @app.get("/app/api/inventory")
     def web_inventory(
         session: dict = Depends(require_web_auth),
@@ -227,7 +255,18 @@ def register_inventory_routes(app):
             # reserved is what can be sold.
             from deliveries import reserved_by_item
             reserved = reserved_by_item(db, _owner_phone)
+            # Spelling slips: "paracetemol" finds nothing by letters, but the
+            # owner must not think the product is missing and add it twice.
+            close_matches = []
+            if term and offset == 0 and total < 5:
+                from similar_products import describe, find_similar
+                _, scope = _scoped_inventory_query(db, session)
+                shown = {r.id for r in rows}
+                close_matches = describe(db, [
+                    i for i, _s in find_similar(db, _owner_phone, term, limit=8, items=scope.all())
+                    if i.id not in shown])
             return {
+                "close_matches": close_matches,
                 "total": total,
                 "offset": offset,
                 "limit": limit,
@@ -282,6 +321,19 @@ def register_inventory_routes(app):
             _qty = None if payload.is_service else (payload.quantity or 0.0)
             from transaction_save import _get_recording_branch_id
             owner_user = db.query(User).filter(User.phone == owner_phone).first()
+
+            # The same product written another way ("Peak Milk (tin)" vs "peak
+            # milk tin") is a twin: two rows that each hold half the truth.
+            from similar_products import check_new_product
+            _branch = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
+            _twins = check_new_product(db, owner_phone, payload.name, payload.unit, _branch)["exact"]
+            if _twins:
+                t = _twins[0]
+                raise HTTPException(status_code=409, detail=(
+                    f"You already have this product: {t['name']}"
+                    + (f" ({t['quantity']:g} {t['unit'] or ''} in stock)".replace("  ", " ")
+                       if t["quantity"] is not None else "")
+                    + ". Open it and use Adjust stock to add more."))
             item = InventoryItem(
                 owner_phone=owner_phone,
                 name=payload.name.strip().lower(),
@@ -428,17 +480,20 @@ def register_inventory_routes(app):
                 for it in payload.items
             ]
 
+            # Already there under another spelling ("Peak Milk (tin)" / "peak
+            # milk tin") counts as already there — compared loosely.
+            from similar_products import squashed
+            have = {squashed(n) for (n,) in db.query(InventoryItem.name).filter(
+                InventoryItem.owner_phone == owner_phone).all()}
             for row in rows:
                 name_clean = str(row.get("name", "")).strip().lower()
                 if not name_clean:
                     continue
-                existing = db.query(InventoryItem).filter(
-                    InventoryItem.owner_phone == owner_phone,
-                    InventoryItem.name == name_clean,
-                ).first()
-                if existing:
+                key = squashed(name_clean) or name_clean
+                if key in have:
                     skipped += 1
                     continue
+                have.add(key)
                 item = InventoryItem(
                     owner_phone=owner_phone,
                     name=name_clean,

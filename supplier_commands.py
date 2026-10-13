@@ -38,6 +38,35 @@ def _can_modify_stock(user):
     return bool(user.can_view_all_transactions)  # full-access staff
 
 
+def _existing_or_similar_note(db, owner_phone, product, unit, after_save=False):
+    """What adding this stock will do: top up a product already there, or
+    make a new one — and if new, whether something close is already in the
+    list ("paracetemol" when "Paracetamol 500mg" exists)."""
+    from inventory_suppliers import find_matching_inventory_item
+    from similar_products import check_new_product
+    existing = find_matching_inventory_item(db, owner_phone, product, unit)
+    if existing:
+        if after_save:
+            return ""
+        have = f" ({existing.quantity:g} {existing.unit or ''} now)".replace("  ", " ") \
+            if existing.quantity is not None else ""
+        return f"\n   ↳ adds to your existing *{existing.name.title()}*{have}"
+    found = check_new_product(db, owner_phone, product, unit)
+    near = found["exact"] + found["similar"]
+    if not near:
+        return "" if after_save else "\n   ↳ new product"
+    names = ", ".join(
+        f"{n['name']}" + (f" ({n['quantity']:g} {n['unit'] or ''})".replace("  ", " ")
+                          if n["quantity"] is not None else "")
+        for n in near[:3])
+    if after_save:
+        return (f"\n\n⚠️ Saved as a *new* product. You also have: {names}.\n"
+                f"If it's the same thing: send *stock*, pick the new one and delete it, "
+                f"then add the stock under the old name.")
+    return (f"\n   ⚠️ new product — you already have: {names}. "
+            f"If it's the same, reply EDIT and use that name.")
+
+
 def handle_supplier_command(
     db,
     phone,
@@ -149,6 +178,7 @@ def handle_supplier_command(
             if qty_label:
                 line += f" — {qty_label}"
             line += f"\n   Cost: N{item['cost']:,}  Sell: N{item['sell']:,}{margin_note}"
+            line += _existing_or_similar_note(db, business_owner_phone, item["product"], item.get("unit"))
             lines.append(line)
         if warnings:
             lines.append(
@@ -188,6 +218,10 @@ def handle_supplier_command(
             send_message(phone, "Not understood. Try:\nadd stock 10 bags rice")
             return {"status": "stock_add_invalid"}
 
+        # Said before it's saved, so a new product that looks like one already
+        # there is pointed out ("did you mean…") rather than silently made.
+        similar_note = _existing_or_similar_note(
+            db, business_owner_phone, item_data["product"], item_data["unit"], after_save=True)
         item = manual_stock_add(
             db, business_owner_phone,
             item_data["product"], item_data["quantity"], item_data["unit"],
@@ -207,7 +241,7 @@ def handle_supplier_command(
             f"Stock added: {item.name.title()}\n"
             f"Added: {item_data['quantity']:,}{unit_label}\n"
             f"Total now: {item.quantity:,}{unit_label}"
-            f"{price_hint}"
+            f"{price_hint}{similar_note}"
         )
         return {"status": "stock_added"}
 

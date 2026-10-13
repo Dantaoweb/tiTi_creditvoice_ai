@@ -2827,6 +2827,11 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "already_in_stock":   ["already in my stock", "already in stock", "already added", "added before",
+                                   "added it before", "add it twice", "added twice", "entered twice",
+                                   "duplicate", "not sure if i added", "missing from my stock",
+                                   "can't find a product", "cant find a product", "can't find my product",
+                                   "cant find my product", "product is missing"],
             "return_goods":       ["returned goods", "return goods", "goods returned", "brought back",
                                    "bring back", "customer returned", "return the goods", "take back"],
             "cancel_refund":      ["refund", "money back", "credit note", "cancel the rest", "cancel the remaining",

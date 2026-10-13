@@ -729,6 +729,11 @@ def handle_natural_language_query(
     if fact:
         return fact
 
+    # ── 0c. "Do I have paracetamol?" / "check duplicates" ─────────────────────
+    have = _answer_do_i_have(db, owner_phone, t)
+    if have:
+        return have
+
     # ── 0. Aggregate / list / meta queries (counts, debtors, stock, sales) ─────
     agg = _answer_aggregate(db, owner_phone, t, recorded_by_id)
     if agg:
@@ -787,5 +792,107 @@ def handle_natural_language_query(
             result = _format_product_stock(db, owner_phone, prod)
             if result:
                 return result
+            # Not found by its letters — maybe spelt differently
+            from similar_products import find_similar
+            if find_similar(db, owner_phone, prod, limit=1):
+                return _format_have(db, owner_phone, prod)
 
     return None
+
+
+# ── "Is it already in my stock?" ──────────────────────────────────────────────
+
+_HAVE_PATTERNS = [
+    r"^(?:do|did)\s+i\s+(?:still\s+)?(?:have|stock|sell|carry)\s+(?:any\s+|some\s+)?(.+?)"
+    r"(?:\s+in\s+(?:my\s+)?(?:stock|inventory|shop|store|list))?(?:\s+again)?[?!.]*$",
+    r"^is\s+(?:there\s+)?(?:any\s+)?(.+?)\s+(?:in|on)\s+(?:my\s+)?(?:stock|inventory|shop|store|list)(?:\s+again)?[?!.]*$",
+    r"^(?:have\s+i|did\s+i)\s+(?:already\s+)?(?:added|add|entered|enter|recorded|record|saved|save|put)\s+(.+?)"
+    r"(?:\s+(?:before|already|in(?:to)?\s+(?:my\s+)?(?:stock|inventory)|to\s+(?:my\s+)?(?:stock|inventory)))*[?!.]*$",
+    r"^(?:find|search(?:\s+for)?|look\s+for|look\s+up)\s+(?:product\s+|item\s+|stock\s+)?(.+?)"
+    r"(?:\s+in\s+(?:my\s+)?(?:stock|inventory))?[?!.]*$",
+    r"^check\s+(?:if\s+i\s+have\s+)?(.+?)\s+in\s+(?:my\s+)?(?:stock|inventory)[?!.]*$",
+    r"^(?:is|has)\s+(.+?)\s+(?:been\s+)?added\s+(?:before|already)[?!.]*$",
+]
+_HAVE_NOT_A_PRODUCT = {
+    "stock", "stocks", "any stock", "low stock", "product", "products", "item", "items",
+    "goods", "inventory", "customer", "customers", "debtor", "debtors", "debt", "money",
+    "profit", "sales", "staff", "supplier", "suppliers", "duplicate", "duplicates",
+}
+_DUPLICATE_ASK = re.compile(
+    r"\b(?:check|find|show|any|list|see)\b.*\bduplicat|\bduplicat\w*\s+(?:stock|products?|items?)\b"
+    r"|^duplicates?\??$|\bsame\s+product\s+twice\b|\bentered\s+twice\b|\badded\s+twice\b")
+
+
+def _answer_do_i_have(db, owner_phone, t):
+    low = t.lower().strip()
+    if _DUPLICATE_ASK.search(low):
+        return _format_duplicates(db, owner_phone)
+    raw = _first_match(_HAVE_PATTERNS, low)
+    if not raw:
+        return None
+    prod = re.sub(r"^(?:the|a|an|my)\s+", "", raw.strip()).strip(" ?.!")
+    if not prod or prod in _HAVE_NOT_A_PRODUCT or len(prod) < 2:
+        return None
+    return _format_have(db, owner_phone, prod)
+
+
+def _qty_label(i):
+    if i.quantity is None or i.category == "service":
+        return "service"
+    unit = f" {i.unit}" if i.unit else ""
+    return f"{i.quantity:g}{unit} in stock"
+
+
+def _format_have(db, owner_phone, prod):
+    """Yes (and where), close matches, or a clear no — checked across every
+    product, allowing for spelling — so nobody adds a twin out of doubt."""
+    from inventory_suppliers import find_matching_inventory_item
+    from similar_products import find_similar
+    total =db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone).count()
+    exact = find_matching_inventory_item(db, owner_phone, prod)
+    hits = find_similar(db, owner_phone, prod, limit=6)
+    strong = [i for i, s in hits if s >= 1.0]
+    if exact and exact not in strong:
+        strong.insert(0, exact)
+    close = [i for i, s in hits if i not in strong]
+
+    def line(i):
+        price = f" · sells {_fmt(i.selling_price)}" if i.selling_price else ""
+        return f"• *{i.name.title()}* — {_qty_label(i)}{price}"
+
+    if strong:
+        head = (f"Yes — you have *{prod}*:" if len(strong) == 1
+                else f"Yes — {len(strong)} products match *{prod}*:")
+        out = [head] + [line(i) for i in strong[:5]]
+        if close:
+            out += ["", "Also close:"] + [line(i) for i in close[:3]]
+        out += ["", "To add more, add to that product — don't create it again:",
+                f"add stock {strong[0].name} 10"]
+        return "\n".join(out)
+    if close:
+        return "\n".join(
+            [f"Not under the name *{prod}*, but you have something close:"]
+            + [line(i) for i in close[:5]]
+            + ["", "If one of these is it, add stock under that name. If not, it's new — safe to add."])
+    return (f"No — there's nothing like *{prod}* in your stock. I checked all {total:,} "
+            f"product{'s' if total != 1 else ''}, allowing for spelling and spacing.\n\n"
+            f"Safe to add it:\nadd stock {prod} 10 cost 1000 sell 1500")
+
+
+def _format_duplicates(db, owner_phone):
+    from similar_products import possible_duplicates
+    pairs = possible_duplicates(db, owner_phone, limit=10)
+    if not pairs:
+        total = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone).count()
+        return (f"No duplicates found — none of your {total:,} products look like the same "
+                f"thing entered twice. ✓")
+
+    def side(p):
+        q = "service" if p["is_service"] else f"{(p['quantity'] or 0):g} {p['unit'] or ''}".strip()
+        return f"{p['name']} ({q})"
+
+    out = [f"These may be the *same product entered twice* ({len(pairs)}):"]
+    out += [f"{n}. {side(p['a'])}  ↔  {side(p['b'])}" for n, p in enumerate(pairs, start=1)]
+    out += ["", "If two are the same, keep one: add the other's stock to it, then delete the extra "
+                "(web app → Inventory → *Check duplicates*, or send *stock* and pick it)."]
+    return "\n".join(out)

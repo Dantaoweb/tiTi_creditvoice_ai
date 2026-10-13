@@ -301,7 +301,34 @@ function BulkAddModal({ ownerPhone, onClose, onSaved }) {
 }
 
 // ── Add item modal ───────────────────────────────────────────────────────────
-function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved }) {
+/* "You may already have this" — shown while a new product's name is typed,
+   so a twin isn't made just because a search missed a spelling. */
+function SimilarWarning({ found, onUse }) {
+  if (!found || (!found.exact.length && !found.similar.length)) return null;
+  const exact = found.exact.length > 0;
+  const list = exact ? found.exact : found.similar;
+  const qty = p => p.is_service ? "service" : `${(p.quantity ?? 0).toLocaleString()}${p.unit ? ` ${p.unit}` : ""} in stock`;
+  return (
+    <div className={exact ? "modal-error" : "inv-below-cost-warning"} style={{ marginBottom: 10 }}>
+      <strong>{exact ? "You already have this product:" : "You may already have this:"}</strong>
+      {list.map(p => (
+        <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}>
+          <span style={{ minWidth: 0 }}>
+            <strong>{p.name}</strong> — {qty(p)}
+            {p.added_at && <span style={{ opacity: 0.75 }}> · added {dateStr(p.added_at)}{p.added_by ? ` by ${p.added_by}` : ""}</span>}
+          </span>
+          <button type="button" className="btn btn-secondary btn-xs" onClick={() => onUse(p.name)}>Use this one</button>
+        </div>
+      ))}
+      <div style={{ marginTop: 6, fontSize: 12 }}>
+        {exact ? "Open it and use Adjust stock to add more — saving again would make a duplicate."
+               : "If it's the same thing, use that one. If not, carry on — it will be added as a new product."}
+      </div>
+    </div>
+  );
+}
+
+function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved, onUseExisting }) {
   const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
   const [form, setForm] = useState({
     name: "", unit: "", quantity: "",
@@ -313,6 +340,18 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
   const [attrs, setAttrs] = useState({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [similar, setSimilar] = useState(null);
+
+  // Check the name against every product (spelling, spacing, plurals forgiven)
+  useEffect(() => {
+    const name = form.name.trim();
+    if (name.length < 2) { setSimilar(null); return; }
+    const t = setTimeout(() => {
+      apiFetch("inventory/similar", { name, unit: form.unit.trim() })
+        .then(setSimilar).catch(() => setSimilar(null));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [form.name, form.unit]);
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
   function setAttr(k, v) { setAttrs(p => ({ ...p, [k]: v })); }
@@ -389,6 +428,8 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved 
             />
           </div>
         </div>
+
+        <SimilarWarning found={similar} onUse={name => { onClose(); onUseExisting?.(name); }} />
 
         {!isService && fields.length > 0 && (
           <div className="form-row" style={{ flexWrap: "wrap" }}>
@@ -1043,6 +1084,45 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
 // ── Main page ────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 50;
 
+/* Products that look like the same thing entered twice — so the owner can
+   keep one (add the other's stock to it) and delete the extra. */
+function DuplicatesModal({ onClose, onPick }) {
+  const [pairs, setPairs] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    apiFetch("inventory/duplicates").then(d => setPairs(d.pairs || [])).catch(e => setErr(e.message));
+  }, []);
+  const side = p => (
+    <button type="button" className="name-chip" onClick={() => onPick(p.name)}>
+      {p.name}{p.is_service ? "" : ` · ${(p.quantity ?? 0).toLocaleString()}${p.unit ? ` ${p.unit}` : ""}`}
+    </button>
+  );
+  return (
+    <Modal title="Possible duplicates" onClose={onClose}>
+      <div className="modal-body">
+        {err && <div className="modal-error">{err}</div>}
+        {!pairs && !err && <p className="td-muted">Checking every product…</p>}
+        {pairs && pairs.length === 0 && (
+          <p>No duplicates found — none of your products look like the same thing entered twice. ✓</p>
+        )}
+        {pairs && pairs.length > 0 && (
+          <>
+            <p className="td-muted" style={{ fontSize: 13, marginTop: 0 }}>
+              These look like the same product entered twice (spelling, spacing and plurals ignored).
+              If two are the same, keep one: open the other, move its stock across with Adjust stock, then delete it.
+            </p>
+            {pairs.map((p, n) => (
+              <div key={n} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                {side(p.a)} <span className="td-muted">↔</span> {side(p.b)}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function Inventory() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
@@ -1076,6 +1156,8 @@ export default function Inventory() {
   const [editItem, setEditItem] = useState(null);
   const [adjustItem, setAdjustItem] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
+  const [closeMatches, setCloseMatches] = useState([]);   // spelling-forgiving matches for the search
+  const [showDupes, setShowDupes] = useState(false);
   const [fields, setFields] = useState([]);   // per-business custom stock fields
 
   // Stock is paged and searched on the server so large catalogues (200+ items)
@@ -1100,6 +1182,7 @@ export default function Inventory() {
       .then(d => {
         if (id !== reqId.current) return;
         setRows(d.items); setTotal(d.total); setHasMore(d.has_more);
+        setCloseMatches(d.close_matches || []);
         setError(null); setIsStale(!navigator.onLine);
       })
       .catch(e => { if (id === reqId.current) { setError(e.message); setIsStale(true); } })
@@ -1171,6 +1254,10 @@ export default function Inventory() {
               onChange={e => setSearch(e.target.value)}
               style={{ width: 140, minWidth: 100 }}
             />
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowDupes(true)}
+              title="Find products that look like the same thing entered twice">
+              Check duplicates
+            </button>
             {canManageStock && (
               <button className="btn btn-secondary btn-sm" onClick={() => setShowCatalog(true)} title="Pick from suggested product list">
                 <Plus size={14} /> Catalog
@@ -1223,6 +1310,18 @@ export default function Inventory() {
               label="active products"
               upgradePlan="Go"
             />
+          </div>
+        )}
+        {query && closeMatches.length > 0 && (
+          <div style={{ margin: "8px 16px 0", padding: "10px 12px", border: "1px dashed var(--line)", borderRadius: 8, fontSize: 13 }}>
+            <strong>{rows.length ? "Also close to" : "Nothing spelt exactly like"} “{query}” — did you mean:</strong>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              {closeMatches.map(m => (
+                <button key={m.id} type="button" className="name-chip" onClick={() => setSearch(m.name)}>
+                  {m.name}{m.is_service ? "" : ` · ${(m.quantity ?? 0).toLocaleString()}${m.unit ? ` ${m.unit}` : ""}`}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <DataTable
@@ -1350,6 +1449,7 @@ export default function Inventory() {
           fields={fields}
           onClose={() => setShowAdd(false)}
           onSaved={() => load(rows.length + 1)}
+          onUseExisting={name => setSearch(name)}
         />
       )}
 
@@ -1370,6 +1470,10 @@ export default function Inventory() {
         />
       )}
 
+      {showDupes && (
+        <DuplicatesModal onClose={() => setShowDupes(false)}
+          onPick={name => { setShowDupes(false); setSearch(name); }} />
+      )}
       {detailItem && (
         <ItemDetailModal
           item={detailItem}

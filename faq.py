@@ -161,6 +161,15 @@ def detect_faq(text):
     ]):
         return "finance_scorecard"
 
+    # ── Already in stock? / duplicates ────────────────────────────────────────
+    if any(k in q for k in ("already in my stock", "already in stock", "already added", "added before",
+                            "entered before", "added it before", "add it twice", "added twice",
+                            "entered twice", "duplicate", "same product twice", "not sure if i added",
+                            "missing from my stock", "missing from stock", "missing in my inventory",
+                            "can't find a product", "cant find a product", "can't find my product",
+                            "cant find my product", "product is missing", "stock is missing")):
+        return "already_in_stock"
+
     # ── Part delivery, cancel / refund, returns — before "receipt" and
     #    "deliveries", which would take any mention of them ─────────────────────
     refund_words = ("refund", "money back", "credit note", "cancel the rest", "cancel the remaining",
@@ -689,6 +698,21 @@ FAQ_ANSWERS = {
         "• Others → a Notes box\n\n"
         "Fill them in and tap *Save*. The details stay on the customer for next time.\n\n"
         "(This is on the web app dashboard, not a WhatsApp command yet.)"
+    ),
+    "already_in_stock": (
+        "Not sure a product is already in your stock? Don't add it again — check first:\n\n"
+        "*Ask me* on WhatsApp: *do I have paracetamol?* (or *is groundnut oil in my stock?*)\n"
+        "I check every product, allowing for spelling, spacing and plurals — 'paracetemol', "
+        "'g/nut oil' and 'indomie noodle 70 g' still find them — and tell you:\n"
+        "• *Yes* — the name it's under and how many are left\n"
+        "• *Close* — products that look like it, so you can pick the right one\n"
+        "• *No* — nothing like it in all your products, so it's safe to add\n\n"
+        "*On the web app* → Inventory:\n"
+        "• *Search* shows \"did you mean…\" close matches when nothing is spelt the same.\n"
+        "• *Add Product* warns \"You may already have this\" while you type the name, with "
+        "*Use this one*. The exact same product can't be saved twice.\n"
+        "• *Check duplicates* lists products that look entered twice, so you can keep one.\n\n"
+        "Or send me: *check duplicates*"
     ),
     "part_delivery": (
         "When a customer buys goods but takes only part now (e.g. 100 bags sold, 60 delivered):\n\n"
