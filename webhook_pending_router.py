@@ -34,6 +34,7 @@ from constants import (
     ACTION_STOCK_MENU,
     ACTION_UNPAID_DEBTORS_MENU,
     FAST_CAPTURE_REVIEW_ACTIONS,
+    ACTION_GUIDED_SERVICE_SETUP,
     GUIDED_SERVICE_SETUP_ACTIONS,
     GUIDED_STOCK_ACTIONS,
     SELECT_PRODUCT_ACTIONS,
@@ -1200,6 +1201,14 @@ def handle_pending_actions(
                 result = _sjc(db, phone, business_owner_phone, user, _quick_parse, send_whatsapp_message)
                 if result:
                     return _wrap(result)
+            if _quick_parse and _quick_parse.get("type") == "TRANSACTION":
+                # A sale typed while the price list is open is a sale — record
+                # it, and leave the price list for later instead of eating it.
+                db.delete(pending)
+                db.commit()
+                send_whatsapp_message(
+                    phone, "⏸ Price list not saved yet — send *price list* when you're ready to finish it.")
+                return PendingRouteResult(parsed=_quick_parse, is_command=is_command)
 
         result = handle_guided_service_pending(
             db, phone, text, pending, user, business_owner_phone, send_whatsapp_message,

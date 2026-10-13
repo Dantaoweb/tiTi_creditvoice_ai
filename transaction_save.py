@@ -15,7 +15,7 @@ from inventory_suppliers import (
 from messages import balance_status_line, pending_transaction_summary
 from models import (
     Branch, Customer, InventoryItem,
-    SupplierPayment, SupplierPurchase, Transaction, TransactionNote,
+    SupplierPayment, SupplierPurchase, Transaction, TransactionNote, User,
 )
 from parser import add_transaction_items
 from plans import plan_allows_feature
@@ -95,7 +95,22 @@ def apply_sale_inventory(db, owner_phone, tx_id, user_id, pending, pending_items
     )
 
 
-def build_stock_save_message(stock_updates, stock_missing):
+def _sells_services(db, owner_phone):
+    """A salon, consultant or landlord sells work, not stock — a service with
+    no stock item is normal for them, not something to warn about."""
+    try:
+        from business_templates import label_group_for_user
+        owner = db.query(User).filter(User.phone == owner_phone).first()
+        return label_group_for_user(owner) in (
+            "service", "fee", "school", "thrift",
+            "professional", "tenancy", "rental", "transport")
+    except Exception:
+        return False
+
+
+def build_stock_save_message(stock_updates, stock_missing, db=None, owner_phone=None):
+    if stock_missing and db is not None and _sells_services(db, owner_phone):
+        stock_missing = []
     stock_msg = ""
     if stock_updates:
         stock_msg += "\n\nStock updated:\n" + "\n".join(stock_updates)
@@ -262,7 +277,7 @@ def save_direct_sale(
         return {"status": "save_error"}
 
     # Notifications sent after commit — a send failure does not undo the save
-    stock_msg = build_stock_save_message(stock_updates, stock_missing)
+    stock_msg = build_stock_save_message(stock_updates, stock_missing, db, business_owner_phone)
     send_message(phone, f"{sale_saved_msg}{stock_msg}")
     send_low_stock_alerts(send_message, business_owner_phone, low_stock_alerts)
     return {"status": "direct_sale_saved"}
@@ -525,7 +540,7 @@ def save_customer_pending(
     # Post-commit reads and notifications
     balance = get_balance(db, customer.id, visible_recorded_by_id)
     msg = f"{saved_summary}\n{balance_status_line(balance)}"
-    msg += build_stock_save_message(stock_updates, stock_missing)
+    msg += build_stock_save_message(stock_updates, stock_missing, db, business_owner_phone)
     if customer.customer_phone and _buy_tx_for_receipt and _pending_action in ("BUY", "COMBINED"):
         msg += f"\n\nReceipt sent to {customer.name.title()}."
     elif _pay_tx_for_receipt and _pending_action == "PAY":

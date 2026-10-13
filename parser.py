@@ -675,6 +675,72 @@ def extract_due_date_from_text(text):
         return None
 
 
+_NAME_TITLES = {
+    "mama", "baba", "mr", "mrs", "miss", "ms", "dr", "alhaji", "alhaja", "chief",
+    "aunty", "auntie", "uncle", "madam", "oga", "iya", "pastor", "prof", "engr",
+}
+# Words that start a sentence or a command, never a customer's name
+_NOT_A_NAME = {
+    "i", "we", "my", "the", "a", "an", "add", "sold", "sell", "sale", "total",
+    "today", "yesterday", "customer", "client", "cash", "walk", "price", "stock",
+    "expense", "expenses", "spent", "rent", "salary", "transport", "fuel",
+    "restock", "delete", "remove", "update", "edit", "change", "set", "show",
+    "check", "cost", "discount", "remind", "note", "print", "void", "cancel",
+    "new", "how", "what", "who", "send", "pay", "paid", "balance", "due",
+}
+# "Dangote Ltd", "Ade Ventures" — a company's suffix belongs to its name
+_COMPANY_SUFFIXES = {
+    "ltd", "limited", "plc", "inc", "nig", "nigeria", "enterprise", "enterprises",
+    "ventures", "global", "stores", "store", "group", "company", "co", "and", "&",
+}
+_AMT = r"\d[\d,\.]*\s*(?:[kKmM](?![a-zA-Z]))?"
+
+
+def extract_job_shorthand(clean, require_paid):
+    """"Amaka braids 15000 paid 10000", "Bayo consulting fee 80000",
+    "Dangote Ltd audit 500000 due friday" — no verb, the way people jot a job
+    down. The name is the first word, two with a title ("Mama Bisi") and any
+    company suffix ("Dangote Ltd"); the rest is what was done. Without a paid
+    part, nothing was paid yet — it's all owed."""
+    clean = re.sub(r"\s+(?:due|pay\s+by|by)\s+[a-z0-9/ ]+$", "", clean).strip()
+    m = re.search(
+        rf"^(?P<words>[a-z][a-z'&\- ]*?)\s+(?P<total>{_AMT})"
+        rf"(?:\s+(?:and\s+)?(?:paid|pay|pays|deposit|deposited)\s+(?P<paid>{_AMT}))?$",
+        clean,
+    )
+    if not m or (require_paid and not m.group("paid")):
+        return None
+    words = m.group("words").split()
+    take = 2 if words and words[0] in _NAME_TITLES else 1
+    while take < len(words) - 1 and words[take] in _COMPANY_SUFFIXES:
+        take += 1
+    name_words, desc_words = words[:take], words[take:]
+    if (not desc_words or name_words[0] in _NOT_A_NAME
+            or set(words) & set(NAME_SPLIT_KEYWORDS)):
+        return None
+    total_amount = parse_amount_token(m.group("total"))
+    paid_amount = parse_amount_token(m.group("paid")) if m.group("paid") else 0
+    if not total_amount or paid_amount is None:
+        return None
+    product = " ".join(desc_words)
+    return {
+        "type": "TRANSACTION",
+        "name": " ".join(name_words),
+        "action": "COMBINED" if paid_amount else "BUY",
+        "buy_amount": total_amount,
+        "paid_amount": paid_amount,
+        "quantity": None,
+        "unit": None,
+        "product": product,
+        "unit_price": total_amount,
+        "sale_items": None,
+        "total": total_amount,
+        "due_date": None,
+        "artisan_note": (f"{product.title()}: paid N{paid_amount:,}, balance N{max(total_amount - paid_amount, 0):,}"
+                         if paid_amount else f"{product.title()}: nothing paid yet, N{total_amount:,} owed"),
+    }
+
+
 def extract_artisan_transaction(text):
     clean = text.lower().replace(",", "").strip()
     amounts = extract_amounts(clean)
@@ -772,6 +838,11 @@ def extract_artisan_transaction(text):
             "due_date": due_date,
             "artisan_note": f"{product.title()}: paid N{paid_amount:,}, balance N{max(total_amount - paid_amount, 0):,}"
         }
+
+    shorthand = extract_job_shorthand(clean, require_paid=True)
+    if shorthand:
+        shorthand["due_date"] = due_date
+        return shorthand
 
     i_was_paid_match = re.search(
         r"^(?:i\s+)?(?:was\s+)?paid\s+"
@@ -1728,6 +1799,9 @@ def parse_message(text):
     "can i"). A due date said in words ("due friday", "pay by next week") is
     read too — it used to be dropped silently, so no reminder ever came."""
     parsed = _parse_message(text)
+    if parsed is None and text:
+        # Last resort, so it never shadows a command: "Kemi audit 150000"
+        parsed = extract_job_shorthand(text.lower().replace(",", "").strip(), require_paid=False)
     if parsed and parsed.get("type") == "TRANSACTION" and _QUESTION_NAME.match(
             str(parsed.get("name") or "").strip().lower()):
         return None
@@ -1997,7 +2071,7 @@ def _parse_message(text):
         "price list", "price lists", "my price list", "my price lists",
         "pricelist", "pricelists", "service prices", "service price list",
         "my services", "services", "view prices",
-    ] or re.match(r"^(?:show|view|check|see|edit|update)\s+(?:my\s+)?(?:price\s*lists?|service\s+prices?)$", clean_text):
+    ] or re.match(r"^(?:show|view|check|see|edit|update|add|set|set\s+up|create|make)\s+(?:my\s+|a\s+)?(?:price\s*lists?|service\s+prices?)$", clean_text):
         return {"type": "PRICE_LIST"}
 
     # "price rice 3000 4000" / "update price garri 2500 3500" — two-number stock price (cost + sell)
@@ -2797,6 +2871,12 @@ def _parse_message(text):
         for _topic, _keywords in _guide_topics.items():
             if any(_kw in clean_text for _kw in _keywords):
                 return {"type": "APP_GUIDE", "topic": _topic}
+
+    # A feature named on its own ("invoice") — they want to know how to use it.
+    if re.match(r"^(?:(?:send|create|make|new|raise|issue|my)\s+(?:an?\s+)?)?invoices?$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "invoices"}
+    if re.match(r"^(?:(?:record|add|new|my)\s+(?:an?\s+)?)?expenses?$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "expenses"}
 
     # ── Bulk product name add ────────────────────────────────────────────────
     # "add paracetamol, sugar, tissue, milo" — comma/semicolon separated list
@@ -3672,6 +3752,8 @@ def _parse_message(text):
 
     if name.strip() == "":
         return None
+    if re.search(r"\d", name):
+        return None                     # "rent 50000 paid 20000" has no name in it
 
     stock_price_needed = (
         action == "COMBINED"

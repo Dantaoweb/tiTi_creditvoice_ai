@@ -411,6 +411,11 @@ def _fact_owed_to_suppliers(db, owner_phone, ask):
             "Open a supplier and tap *Pay* to record a payment.")
 
 
+def _sells_services(db, owner_phone):
+    from transaction_save import _sells_services as sells
+    return sells(db, owner_phone)
+
+
 def _fact_profit(db, owner_phone, ask):
     """What was actually made, not what was taken in.
 
@@ -429,6 +434,18 @@ def _fact_profit(db, owner_phone, ask):
         return f"No sales recorded {_period_label(ask.period)}."
 
     p = profit_from_sales(db, owner_phone, sales)
+    if p["known_revenue"] <= 0 and _sells_services(db, owner_phone):
+        # A salon or consultant has no stock cost — what they keep is what came
+        # in minus what they spent.
+        from expenses import expenses_between
+        spent = expenses_between(db, owner_phone, start, end)
+        head = f"{_period_label(ask.period).capitalize()} you took in *{_money(p['revenue'])}*."
+        if spent:
+            return (f"{head}\nAfter {_money(spent)} of expenses, your profit is about "
+                    f"*{_money(p['revenue'] - spent)}*.")
+        return (f"{head}\nNo expenses are recorded yet, so that is not your profit. Record what "
+                f"you spend (rent, products, salaries) in the web app → Menu → More → *Expenses* "
+                f"and I'll tell you what you keep.")
     if p["known_revenue"] <= 0:
         return (f"You sold *{_money(p['revenue'])}* {_period_label(ask.period)}, but I cannot work "
                 f"out your profit — no cost prices are recorded for what you sold.\n\n"
