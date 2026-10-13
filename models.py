@@ -261,10 +261,36 @@ class TransactionItem(Base):
     # after the item is edited or sold.
     attributes_json = Column(String, nullable=True)
 
+    # Goods sold but not all handed over yet (deliveries.py): how many have
+    # gone out so far. NULL means everything went out at the sale — every sale
+    # made before part delivery existed, and every ordinary one since.
+    delivered_qty = Column(Float, nullable=True)
+
+    # The stock item sold, so what is still to deliver counts against it.
+    inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+
     created_at = Column(
         DateTime,
         default=utcnow
     )
+
+
+class GoodsDelivery(Base):
+    """One trip of goods to a customer against what they already bought. Stock
+    leaves on delivery (InventoryMovement OUT, source DELIVERY, source_id = the
+    sale), so voiding the sale returns it."""
+
+    __tablename__ = "goods_deliveries"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone         = Column(String, index=True)
+    customer_id         = Column(Integer, ForeignKey("customers.id"), index=True)
+    product             = Column(String)
+    unit                = Column(String, nullable=True)
+    quantity            = Column(Float)
+    note                = Column(String, nullable=True)   # driver, truck no, waybill
+    recorded_by_id      = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at          = Column(DateTime, default=utcnow)
 
 
 class Invoice(Base):

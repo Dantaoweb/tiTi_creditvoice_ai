@@ -16,6 +16,7 @@ from sqlalchemy import case, func, or_
 
 from database import SessionLocal
 from models import User, Customer, Transaction, Branch
+from deliveries import goods_to_deliver
 from reports import get_balance, get_owner_transaction_query
 from web_auth import require_web_auth
 from web_common import (
@@ -60,6 +61,13 @@ class SendBalanceRequest(BaseModel):
 
 class DeliveryNotifyRequest(BaseModel):
     message: str = Field(max_length=1000)
+
+
+class GoodsDeliverRequest(BaseModel):
+    customer_id: int
+    key: str = Field(max_length=200)          # which of their goods (deliveries._key)
+    quantity: float
+    note: Optional[str] = Field(default=None, max_length=200)   # driver, truck no
 
 
 class VoidTxRequest(BaseModel):
@@ -359,6 +367,7 @@ def register_customer_routes(app):
                     "phone": customer.customer_phone,
                     "balance": _money(get_balance(db, customer_id)),
                 },
+                "goods_to_deliver": goods_to_deliver(db, owner_phone, customer_id),
                 "transactions": [
                     {
                         "id": tx.id,
@@ -601,6 +610,54 @@ def register_customer_routes(app):
                     }
                     for p, sup in incoming_rows
                 ],
+                # Goods sold but still in the store, waiting for the customer
+                "goods": goods_to_deliver(db, owner_phone),
+            }
+        finally:
+            db.close()
+
+    @app.post("/app/api/deliveries/goods")
+    def web_deliver_goods(payload: GoodsDeliverRequest, session: dict = Depends(require_web_auth)):
+        """Record a trip of goods to a customer: it leaves stock now, and the
+        customer gets a delivery note — bought, delivered so far, still to come.
+        WhatsApp only lets us message someone who wrote to the business number
+        in the last 24h, so when it can't go, a wa.me link is returned for the
+        owner to send it from their own phone."""
+        from business_templates import business_display_name
+        from customer_statement import self_send_url
+        from deliveries import DeliveryError, deliver_goods, delivery_note_text
+        from whatsapp_client import send_whatsapp_message
+        db = SessionLocal()
+        try:
+            _require_can_record(db, session, count_sale=False)
+            owner_phone = _session_owner_phone(db, session)
+            customer = db.query(Customer).filter(
+                Customer.id == payload.customer_id, Customer.owner_phone == owner_phone,
+            ).first()
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found.")
+            try:
+                done = deliver_goods(db, owner_phone, session["user_id"], customer.id,
+                                     payload.key, payload.quantity, payload.note)
+            except DeliveryError as e:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=str(e))
+            db.commit()
+
+            owner = db.query(User).filter(User.phone == owner_phone).first()
+            note = delivery_note_text(business_display_name(owner) if owner else "Our business",
+                                      (customer.name or "").title(), done)
+            sent = False
+            if customer.customer_phone:
+                try:
+                    sent = bool(send_whatsapp_message(customer.customer_phone, note))
+                except Exception:
+                    sent = False
+            return {
+                **done, "message": note, "sent": sent,
+                "has_phone": bool(customer.customer_phone),
+                "wa_link": None if sent or not customer.customer_phone
+                else self_send_url(customer.customer_phone, note),
             }
         finally:
             db.close()

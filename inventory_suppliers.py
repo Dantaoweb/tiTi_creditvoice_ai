@@ -419,7 +419,8 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
 
 
 # Movement sources that represent a sale deducting stock (so voiding must return it).
-SALE_MOVEMENT_SOURCES = ("CUSTOMER_SALE", "POS", "SALE")
+# DELIVERY: goods handed over after the sale (deliveries.py), against the sale
+SALE_MOVEMENT_SOURCES = ("CUSTOMER_SALE", "POS", "SALE", "DELIVERY")
 
 
 def restore_inventory_for_voided_sale(db, owner_phone, tx_id, recorded_by_id=None):

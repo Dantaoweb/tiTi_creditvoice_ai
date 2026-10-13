@@ -530,6 +530,9 @@ export default function POS() {
   const [dueDate, setDueDate] = useState("");
   const [serviceDate, setServiceDate] = useState("");
   const [showDelivery, setShowDelivery] = useState(false);
+  // Part delivery: some goods go out now, the rest wait in the store for the
+  // customer (e.g. 60 of 100 bags of cement). Only whole stocked units.
+  const [partDelivery, setPartDelivery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const creditRef = useRef(null);
@@ -567,6 +570,16 @@ export default function POS() {
   const change   = Math.max(0, payNum - amountDue);
   const owed     = customer ? total - paid : 0;                         // new credit on this sale
   const showCredit = customer && owed > 0;
+
+  const canPartDeliver = it =>
+    it.inventory_item_id && !it.is_service && !it.sold_unit && (it.fraction || 1) === 1;
+  const partLines = cart.map((it, idx) => ({ it, idx })).filter(({ it }) => canPartDeliver(it));
+  const deliveredOf = it => {
+    const d = parseInt(it.delivered, 10);
+    return Number.isNaN(d) ? it.qty : Math.max(0, Math.min(d, it.qty));
+  };
+  const leftToDeliver = partDelivery
+    ? partLines.reduce((s, { it }) => s + (it.qty - deliveredOf(it)), 0) : 0;
 
   // Scroll the credit section into view the first time it appears
   useEffect(() => {
@@ -669,6 +682,10 @@ export default function POS() {
       );
       return;
     }
+    if (leftToDeliver > 0 && !customer) {
+      setSaveErr("Pick the customer — goods still to be delivered must be kept against someone.");
+      return;
+    }
     setSaveErr("");
     setSaving(true);
     const payload = {
@@ -684,6 +701,7 @@ export default function POS() {
         unit_price: it.unit_price,
         sold_unit:  it.sold_unit || null,
         fraction:   it.fraction || 1.0,
+        delivered_qty: (partDelivery && canPartDeliver(it)) ? deliveredOf(it) : null,
       })),
       payment_amount: paid,
       debt_payment: debtPaid,
@@ -700,6 +718,7 @@ export default function POS() {
         const label = `POS sale — ${cart.length} item(s), ${nairaFull(paid)}`;
         enqueue("pos/save", payload, label);
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
+        setPartDelivery(false);
         setDiscountValue(NO_DISCOUNT);
         setSaving(false);
         navigate("/capture", {
@@ -970,6 +989,44 @@ export default function POS() {
             >
               + Add delivery / ready date
             </button>
+          )}
+
+          {/* Part delivery — the rest stays in the store as the customer's */}
+          {partLines.length > 0 && (
+            <div className="pos-summary-section">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" checked={partDelivery} style={{ width: "auto" }}
+                  onChange={e => setPartDelivery(e.target.checked)} />
+                Not all goods delivered now
+              </label>
+              {partDelivery && (
+                <>
+                  {partLines.map(({ it, idx }) => (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8, fontSize: 13 }}>
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{it.name}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                        Delivered now
+                        <input type="number" min={0} max={it.qty} inputMode="numeric"
+                          value={it.delivered ?? it.qty}
+                          onChange={e => updateItem(idx, "delivered", e.target.value)}
+                          style={{ width: 64 }} />
+                        of {it.qty}
+                      </span>
+                    </div>
+                  ))}
+                  {leftToDeliver > 0 && (
+                    <span className="form-hint">
+                      {leftToDeliver} {leftToDeliver === 1 ? "unit stays" : "units stay"} in the store as{" "}
+                      {customer ? `${customer.name}'s` : "the customer's"} — deliver them later from Deliveries.
+                      Stock goes down only when they go out.
+                    </span>
+                  )}
+                  {leftToDeliver > 0 && !customer && (
+                    <div className="pos-credit-warn">⚠ Pick the customer above — goods left behind must be kept against someone.</div>
+                  )}
+                </>
+              )}
+            </div>
           )}
 
           {saveErr && <div className="pos-error">{saveErr}</div>}

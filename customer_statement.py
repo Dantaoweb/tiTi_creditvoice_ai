@@ -79,6 +79,15 @@ def build_balance_message(db, owner_user, customer, include_items=True):
     else:
         lines.append(f"Hello {name}, your account is fully settled. Thank you!")
 
+    # Goods they bought that are still in our store — as much a part of the
+    # account as the money ("I paid for 135 bags, how many have I collected?").
+    from deliveries import goods_lines_text, goods_to_deliver
+    goods = goods_to_deliver(db, customer.owner_phone, customer.id)
+    if goods:
+        lines.append("")
+        lines.append("Goods still to deliver:")
+        lines.extend(f"• {g}" for g in goods_lines_text(goods))
+
     if include_items:
         rows = recent_activity(db, customer.id)
         if rows:

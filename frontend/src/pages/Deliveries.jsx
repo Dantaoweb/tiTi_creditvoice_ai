@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { dateStr, nairaFull } from "../lib/format";
+import DeliverGoodsModal from "../components/DeliverGoodsModal";
 
 function fmtWhen(iso) {
   if (!iso) return { label: "—", tone: "muted" };
@@ -61,6 +62,8 @@ function NotifyModal({ delivery, onClose, onSent }) {
 export default function Deliveries() {
   const [rows, setRows] = useState([]);
   const [incoming, setIncoming] = useState([]);
+  const [goods, setGoods] = useState([]);           // bought, still in the store
+  const [deliver, setDeliver] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [notify, setNotify] = useState(null);
@@ -69,7 +72,7 @@ export default function Deliveries() {
   function load() {
     setLoading(true);
     apiFetch("deliveries")
-      .then(d => { setRows(d.deliveries || []); setIncoming(d.incoming || []); })
+      .then(d => { setRows(d.deliveries || []); setIncoming(d.incoming || []); setGoods(d.goods || []); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }
@@ -91,13 +94,39 @@ export default function Deliveries() {
       <div className="card-header"><span className="card-title">Deliveries</span></div>
       {err && <div className="pos-error" style={{ margin: 12 }}>{err}</div>}
       {toast && <div style={{ color: "var(--brand)", padding: "8px 16px", fontSize: 13 }}>✓ {toast}</div>}
-      {rows.length === 0 && incoming.length === 0 ? (
+      {rows.length === 0 && incoming.length === 0 && goods.length === 0 ? (
         <div className="td-muted" style={{ padding: 16 }}>
           No deliveries scheduled. Set a "Deliver / ready by" date when recording a sale,
-          or a payment-due date when recording stock received.
+          tick "Not all goods delivered now" when a customer leaves goods behind,
+          or set a payment-due date when recording stock received.
         </div>
       ) : (
         <div>
+          {goods.length > 0 && (
+            <div className="td-muted" style={{ padding: "10px 16px 4px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Goods to deliver · bought, still in your store
+            </div>
+          )}
+          {goods.map(g => (
+            <div key={`g-${g.customer_id}-${g.key}`} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              gap: 10, flexWrap: "wrap", padding: "12px 16px", borderBottom: "1px solid var(--border)",
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <strong>{g.customer}</strong>
+                <div className="td-muted" style={{ fontSize: 12 }}>
+                  {g.product} · bought {g.bought} · delivered {g.delivered}
+                  {g.since ? ` · waiting since ${dateStr(g.since)}` : ""}
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--rose)" }}>
+                  {g.remaining}{g.unit ? ` ${g.unit}` : ""} to deliver
+                </span>
+                <button className="btn btn-primary btn-sm" onClick={() => setDeliver(g)}>Deliver</button>
+              </div>
+            </div>
+          ))}
           {rows.length > 0 && (
             <div className="td-muted" style={{ padding: "10px 16px 4px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>
               Outgoing · to customers
@@ -156,6 +185,9 @@ export default function Deliveries() {
             );
           })}
         </div>
+      )}
+      {deliver && (
+        <DeliverGoodsModal goods={deliver} onClose={() => { setDeliver(null); load(); }} />
       )}
       {notify && (
         <NotifyModal delivery={notify} onClose={() => setNotify(null)} onSent={() => setToast("Message sent")} />

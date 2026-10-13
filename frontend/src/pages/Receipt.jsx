@@ -80,6 +80,7 @@ export default function Receipt() {
       (receipt.items || []).forEach(it => {
         L.push(`${it.product}${it.unit ? ` (${it.unit})` : ""}  x${it.qty} = ${nairaFull(it.total)}`);
         (it.attributes || []).forEach(a => L.push(`   ${a.label}: ${a.value}`));
+    if (it.to_deliver > 0) L.push(`   Delivered now: ${it.delivered_qty ?? 0} · To deliver: ${it.to_deliver}`);
       });
       L.push("--------------------");
       if (discount > 0) {
@@ -260,6 +261,11 @@ export default function Receipt() {
                       {it.attributes.map((a, j) => (
                         <span key={j}>{a.label}: {a.value}</span>
                       ))}
+                    </div>
+                  )}
+                  {it.to_deliver > 0 && (
+                    <div className="receipt-item-attrs">
+                      <span>Delivered now: {it.delivered_qty ?? 0} · To deliver: {it.to_deliver}</span>
                     </div>
                   )}
                 </td>

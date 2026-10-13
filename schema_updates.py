@@ -985,6 +985,10 @@ def ensure_schema_updates(engine):
             "unit": "VARCHAR",
             "branch_id": "INTEGER",
             "attributes_json": "VARCHAR",
+            # Goods sold but not all handed over (deliveries.py). NULL = all
+            # delivered at the sale, which is every sale made before this.
+            "delivered_qty": "FLOAT",
+            "inventory_item_id": "INTEGER",
         }
         with engine.begin() as connection:
             for col, typ in tx_item_updates.items():

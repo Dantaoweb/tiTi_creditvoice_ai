@@ -223,6 +223,10 @@ def register_inventory_routes(app):
                 name_l = func.lower(InventoryItem.name)
                 order = [case((name_l == term, 0), (name_l.like(term + "%"), 1), else_=2), name_l.asc()]
             rows = query.order_by(*order, InventoryItem.id.desc()).offset(offset).limit(limit).all()
+            # Sold but still in the store, waiting for delivery: in store −
+            # reserved is what can be sold.
+            from deliveries import reserved_by_item
+            reserved = reserved_by_item(db, _owner_phone)
             return {
                 "total": total,
                 "offset": offset,
@@ -234,6 +238,7 @@ def register_inventory_routes(app):
                         "name": item.name,
                         "unit": item.unit,
                         "quantity": item.quantity,
+                        "reserved": reserved.get(item.id) or 0,
                         "cost_price": _money(item.cost_price),
                         "selling_price": _money(item.selling_price),
                         "low_stock_alert": item.low_stock_alert,

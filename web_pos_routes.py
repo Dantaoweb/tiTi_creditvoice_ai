@@ -41,6 +41,7 @@ class PosCartItem(BaseModel):
     unit_price: int = 0
     sold_unit: Optional[str] = Field(default=None, max_length=30)
     fraction: Optional[float] = 1.0
+    delivered_qty: Optional[float] = None   # part delivery; None = all handed over now
 
 
 class PosSaveRequest(BaseModel):
@@ -341,6 +342,11 @@ def register_pos_routes(app):
             return result
         except HTTPException:
             raise
+        except ValueError as e:
+            # Our own refusals ("Only 165 available — 75 reserved…") are written
+            # for the user; say them.
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception:
             # Log the detail server-side; don't leak internals to the client.
             import traceback; traceback.print_exc()

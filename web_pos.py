@@ -204,6 +204,8 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
     db.flush()
 
     from inventory_suppliers import find_matching_inventory_item
+    from deliveries import reserved_for_item
+    to_deduct = []
     for it in items:
         qty = int(it.get("qty", 1))
         up = int(it.get("unit_price", 0))
@@ -215,6 +217,40 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         if not _inv:
             _nm = (it.get("name") or "").strip()
             _inv = find_matching_inventory_item(db, owner_phone, _nm, it.get("unit")) if _nm else None
+        _stocked = _inv is not None and _inv.quantity is not None and _inv.category != "service"
+
+        # Bags already sold to someone else, still in the store, can't be sold
+        # again: a sale is checked against what's available, not what's there.
+        if deduct_stock and _stocked:
+            _reserved = reserved_for_item(db, owner_phone, _inv.id)
+            if _reserved > 0:
+                _whole = not it.get("sold_unit") and float(it.get("fraction", 1.0) or 1.0) == 1.0
+                _need = qty if _whole else 0
+                _available = float(_inv.quantity or 0) - _reserved
+                if _need > _available + 1e-9:
+                    from deliveries import _num
+                    raise ValueError(
+                        f"Only {_num(max(_available, 0))} {_inv.unit or ''} of {_inv.name.title()} "
+                        f"available — {_num(_reserved)} are reserved for customers waiting "
+                        f"for delivery.".replace("  ", " "))
+
+        # Part delivery: only what goes out now leaves stock; the rest waits in
+        # the store for this customer.
+        delivered = None
+        if it.get("delivered_qty") is not None and str(it.get("delivered_qty")).strip() != "":
+            try:
+                delivered = float(it.get("delivered_qty"))
+            except (TypeError, ValueError):
+                raise ValueError("Invalid delivered quantity.")
+            if delivered >= qty:
+                delivered = None                       # all of it went out
+            elif delivered < 0:
+                raise ValueError("Delivered quantity cannot be negative.")
+            elif not has_customer:
+                raise ValueError("Pick the customer — goods still to be delivered must "
+                                 "be kept against someone.")
+            elif it.get("sold_unit") or float(it.get("fraction", 1.0) or 1.0) != 1.0:
+                raise ValueError("Part delivery works on whole units only.")
         db.add(TransactionItem(
             transaction_id=main_tx.id,
             product=it.get("name", ""),
@@ -223,7 +259,13 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
             unit_price=up,
             total=qty * up,
             attributes_json=(getattr(_inv, "attributes_json", None) if _inv else None),
+            delivered_qty=delivered,
+            inventory_item_id=(_inv.id if _inv else None),
         ))
+        if delivered is None:
+            to_deduct.append(it)
+        elif delivered > 0:
+            to_deduct.append(dict(it, qty=delivered))
 
     pay_tx_id = None
     if is_credit and paid > 0:
@@ -241,7 +283,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         pay_tx_id = pay_tx.id
 
     if deduct_stock:
-        deduct_stock_for_items(db, owner_phone, items, user_id,
+        deduct_stock_for_items(db, owner_phone, to_deduct, user_id,
                                source_type="POS", source_id=main_tx.id, note="POS sale")
 
     if commit:
@@ -419,10 +461,32 @@ def get_pos_receipt(db, tx_id, user=None):
                 "unit_price": it.unit_price,
                 "total": it.total,
                 "attributes": _receipt_item_attributes(getattr(it, "attributes_json", None), _field_labels),
+                # Part delivery: what went out at the sale, and what's left to
+                # hand over. None = all delivered (ordinary sale).
+                "delivered_qty": _delivered_at_sale(db, it),
+                "to_deliver": (None if it.delivered_qty is None
+                               else _num_q(float(it.quantity or 0) - _delivered_at_sale(db, it))),
             }
             for it in items
         ],
     }
+
+
+def _num_q(q):
+    return int(q) if float(q) == int(q) else round(float(q), 2)
+
+
+def _delivered_at_sale(db, it):
+    """How many went out at the sale itself — later trips (DELIVERY movements)
+    don't change what the receipt said at the time."""
+    if it.delivered_qty is None:
+        return None
+    later = db.query(func.coalesce(func.sum(InventoryMovement.quantity), 0)).filter(
+        InventoryMovement.source_type == "DELIVERY",
+        InventoryMovement.source_id == it.transaction_id,
+        InventoryMovement.item_id == it.inventory_item_id,
+    ).scalar() if it.inventory_item_id else 0
+    return _num_q(max(0.0, float(it.delivered_qty or 0) - float(later or 0)))
 
 
 def format_receipt_text(receipt):
@@ -455,6 +519,9 @@ def format_receipt_text(receipt):
         for it in receipt.get("items", []):
             lines.append(f"{(it.get('product') or '').title()}")
             lines.append(f"  x{it.get('qty', 1)} @ N{int(it.get('unit_price', 0)):,} = N{int(it.get('total', 0)):,}")
+            if it.get("to_deliver"):
+                lines.append(f"  Delivered now: {it.get('delivered_qty') or 0} · "
+                             f"To deliver: {it['to_deliver']}")
         lines.append("--------------------")
         discount = int(receipt.get("discount") or 0)
         if discount:

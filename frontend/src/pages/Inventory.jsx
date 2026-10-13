@@ -946,8 +946,14 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
 
         <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 14 }}>
           {!item.is_service && (
-            <MetricCard label="In stock" value={`${(item.quantity ?? 0).toLocaleString()}${item.unit ? ` ${item.unit}` : ""}`}
+            <MetricCard label={item.reserved > 0 ? "In store" : "In stock"} value={`${(item.quantity ?? 0).toLocaleString()}${item.unit ? ` ${item.unit}` : ""}`}
               color={item.low_stock_alert !== null && (item.quantity ?? 0) <= item.low_stock_alert ? "amber" : undefined} />
+          )}
+          {!item.is_service && item.reserved > 0 && (
+            <>
+              <MetricCard label="Reserved (sold, to deliver)" value={item.reserved.toLocaleString()} color="rose" />
+              <MetricCard label="Available to sell" value={Math.max(0, (item.quantity ?? 0) - item.reserved).toLocaleString()} color="green" />
+            </>
           )}
           <MetricCard label="Selling price" value={nairaFull(item.selling_price)} />
           {!item.is_service && <MetricCard label="Cost price" value={item.cost_price ? nairaFull(item.cost_price) : "—"} />}
@@ -1267,7 +1273,17 @@ export default function Inventory() {
               key: "qty_or_avail", label: "Stock / Status",
               render: r => r.is_service
                 ? <span className="text-subtle">—</span>
-                : <span>{(r.quantity ?? 0).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</span>,
+                : r.reserved > 0
+                  ? (
+                    // Sold, still in the store: in store − reserved = what can be sold
+                    <span title={`${r.reserved} sold, waiting for delivery`}>
+                      <strong>{Math.max(0, (r.quantity ?? 0) - r.reserved).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</strong> available
+                      <div className="td-muted" style={{ fontSize: 11 }}>
+                        {(r.quantity ?? 0).toLocaleString()} in store · {r.reserved.toLocaleString()} reserved
+                      </div>
+                    </span>
+                  )
+                  : <span>{(r.quantity ?? 0).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</span>,
             },
             { key: "selling_price", label: "Price", sortKey: "selling_price", render: r => nairaFull(r.selling_price) },
             {
