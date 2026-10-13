@@ -71,7 +71,8 @@ NAV_GUIDE = {
     },
     "/deliveries": {
         "name": "Deliveries",
-        "what": "Jobs with a deliver/ready-by date; change the date or tell the customer it's ready.",
+        "what": "Jobs with a deliver/ready-by date, and goods customers bought that are still in your store "
+                "(Goods to deliver) — tap Deliver for each trip, or Cancel / refund for goods called off.",
     },
     "/wallet": {
         "name": "Wallet",

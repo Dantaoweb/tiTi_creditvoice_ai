@@ -9,6 +9,7 @@ import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
 import DeliverGoodsModal from "../components/DeliverGoodsModal";
+import CancelGoodsModal from "../components/CancelGoodsModal";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
 
@@ -301,6 +302,8 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
   const [values, setValues] = useState({});
   const [saving, setSaving] = useState(false);
   const [deliver, setDeliver] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     apiFetch(`customers/${customer.id}/history`).then(setData).catch(e => setErr(e.message));
@@ -431,6 +434,9 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
                 <span style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
                   <strong style={{ color: "var(--rose)" }}>{g.remaining}{g.unit ? ` ${g.unit}` : ""} left</strong>
                   <button className="btn btn-primary btn-sm" onClick={() => setDeliver(g)}>Deliver</button>
+                  {user?.full_access && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => setCancelling(g)}>Cancel / refund</button>
+                  )}
                 </span>
               </div>
             ))}
@@ -439,6 +445,12 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
         {deliver && (
           <DeliverGoodsModal goods={deliver} onClose={() => {
             setDeliver(null);
+            apiFetch(`customers/${customer.id}/history`).then(setData).catch(() => {});
+          }} />
+        )}
+        {cancelling && (
+          <CancelGoodsModal goods={cancelling} onClose={() => {
+            setCancelling(null);
             apiFetch(`customers/${customer.id}/history`).then(setData).catch(() => {});
           }} />
         )}

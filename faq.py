@@ -161,6 +161,25 @@ def detect_faq(text):
     ]):
         return "finance_scorecard"
 
+    # ── Part delivery, cancel / refund, returns — before "receipt" and
+    #    "deliveries", which would take any mention of them ─────────────────────
+    refund_words = ("refund", "money back", "credit note", "cancel the rest", "cancel the remaining",
+                    "cancel undelivered", "cancel the undelivered", "called off", "doesn't want the rest",
+                    "does not want the rest", "no longer want")
+    if any(k in q for k in ("returned goods", "return goods", "goods returned", "brought back",
+                            "bring back", "returned the", "return the goods", "customer returned",
+                            "take back", "damaged goods returned", "returned damaged")):
+        return "return_goods"
+    if any(k in q for k in refund_words):
+        return "cancel_refund"
+    if any(k in q for k in ("part delivery", "partly delivered", "partially delivered", "part delivered",
+                            "not all delivered", "not all the goods", "deliver later", "deliver the rest",
+                            "remaining to deliver", "yet to be delivered", "yet to deliver", "still to deliver",
+                            "goods to deliver", "reserved stock", "reserved goods", "deliver part",
+                            "collect later", "collect the rest", "balance of goods", "deliver in batches")) \
+            or re.search(r"\bonly\s+\d+\s+(?:\w+\s+)?(?:was\s+|were\s+|got\s+|have\s+been\s+)?delivered\b", q):
+        return "part_delivery"
+
     # ── Receipt (specific — check before customer) ────────────────────────────
     if any(k in q for k in ["receipt", "print receipt", "send receipt"]):
         return "receipt"
@@ -670,6 +689,55 @@ FAQ_ANSWERS = {
         "• Others → a Notes box\n\n"
         "Fill them in and tap *Save*. The details stay on the customer for next time.\n\n"
         "(This is on the web app dashboard, not a WhatsApp command yet.)"
+    ),
+    "part_delivery": (
+        "When a customer buys goods but takes only part now (e.g. 100 bags sold, 60 delivered):\n\n"
+        "*1. Record the sale* — web app → *POS*\n"
+        "• Add the items and pick the customer (needed — the rest is kept for them).\n"
+        "• Tick *Not all goods delivered now* and enter how many went out (e.g. 60 of 100).\n"
+        "• Only those leave stock. The rest stays in your store as *reserved* for the customer.\n\n"
+        "*2. Your stock* — *Inventory* shows *In store / Reserved / Available*.\n"
+        "Available = in store − reserved, and nobody can sell the reserved goods by mistake.\n\n"
+        "*3. Deliver the rest later* — *Deliveries* → *Goods to deliver* → *Deliver* "
+        "(also on the customer's page).\n"
+        "• Enter how many went out today, and the driver/truck if you like.\n"
+        "• Stock goes down then, and the customer gets a WhatsApp delivery note: "
+        "bought · delivered so far · still to deliver.\n\n"
+        "More sales to the same customer add to what they're waiting for. Their receipt and "
+        "statement show it too.\n\n"
+        "Customer cancels the rest? Ask me: *how do I refund undelivered goods*"
+    ),
+    "cancel_refund": (
+        "When goods a customer bought were *not delivered* and are called off or refunded:\n\n"
+        "Web app → *Deliveries* → *Goods to deliver* → *Cancel / refund* "
+        "(or the customer's page → *To deliver*).\n\n"
+        "1. Enter how many to cancel.\n"
+        "2. Choose the money:\n"
+        "   • *Take it off what they owe* — they hadn't paid for them\n"
+        "   • *Give the money back* — they had paid; this records the cash you hand back\n"
+        "3. Write the reason (kept in case of a dispute) → *Issue credit note*.\n\n"
+        "What happens:\n"
+        "• The goods never left your store, so they become *available to sell again* at once.\n"
+        "• A numbered *credit note* (CN-0001) is made. The original sale is never changed — its "
+        "receipt shows what was sold, what was delivered and the credit note after it.\n"
+        "• The customer gets the credit note on WhatsApp: bought · delivered · cancelled · refunded.\n"
+        "• Sales and profit count only what was really sold.\n\n"
+        "Only the owner or authorised staff can do this, and the owner is alerted when staff do.\n"
+        "Goods that were delivered and came back? Ask me: *how do I take back returned goods*"
+    ),
+    "return_goods": (
+        "When delivered goods are brought back:\n\n"
+        "Web app → *Receipts* → open the sale → *Return goods*.\n\n"
+        "1. Enter how many of each item came back.\n"
+        "2. Say whether they *can be sold again* (they go back into stock) or are *damaged* "
+        "(they stay out of stock).\n"
+        "3. Choose the money: *take it off what they owe* or *give the money back*.\n"
+        "4. Write the reason → *Issue credit note*.\n\n"
+        "A numbered credit note (CN-0001) records it; the sale itself is not changed. The customer "
+        "gets a copy on WhatsApp, and it shows on the sale's receipt and their statement. A refund "
+        "follows any discount given, so you never give back more than was paid.\n\n"
+        "Only the owner or authorised staff can do this. Recorded it by mistake? Void the credit "
+        "note (Transactions → Void) and everything goes back as it was."
     ),
     "delivery_date": (
         "To set when a job/order will be ready and be reminded:\n\n"

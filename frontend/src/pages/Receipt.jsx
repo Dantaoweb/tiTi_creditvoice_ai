@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { Printer, ArrowLeft, FileText, Send, Share2 } from "lucide-react";
+import { Printer, ArrowLeft, FileText, Send, Share2, RotateCcw } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
+import ReturnGoodsModal from "../components/ReturnGoodsModal";
 import { nairaFull, dateTimeStr, dateStr, fmtAmt } from "../lib/format";
 
 export default function Receipt() {
@@ -14,13 +16,16 @@ export default function Receipt() {
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState("");
   const [shareMsg, setShareMsg] = useState("");
+  const [returning, setReturning] = useState(false);
+  const { user } = useAuth();
 
-  useEffect(() => {
+  function load() {
     apiFetch(`pos/receipt/${id}`)
       .then(setReceipt)
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
-  }, [id]);
+  }
+  useEffect(load, [id]);
 
   // An older invoice — a number once put on a credit sale — can still be shown
   // as the invoice it was. New invoices are written on the Invoices page; a
@@ -50,7 +55,11 @@ export default function Receipt() {
   // "Balance" alone only covers this sale and hides the rest.
   const prevBalance = receipt.previous_balance ?? 0;
   const owedNow = receipt.total_owed_now ?? owed;
-  const typeLabel = isPayment ? "Payment" : (isCredit ? "Credit Sale" : "Cash Sale");
+  // A credit note: money off a customer's account or handed back for goods
+  // cancelled or returned after a sale (recorded at a negative amount).
+  const cn = receipt.credit_note;
+  const typeLabel = cn ? `Credit note ${cn.number}` : isPayment ? "Payment" : (isCredit ? "Credit Sale" : "Cash Sale");
+  const canReturn = !!user?.full_access && !cn && !isPayment && receipt.total > 0;
 
   // ── Invoice mode (older invoices only) ──────────────────────────────────────
   const isInvoice   = invoiceMode && !!receipt.invoice_number;
@@ -156,6 +165,11 @@ export default function Receipt() {
             <Send size={15} /> {sending ? "Sending…" : (sentAt ? "Resend to customer" : "Send to customer")}
           </button>
         )}
+        {canReturn && !isInvoice && (
+          <button className="btn btn-ghost" onClick={() => setReturning(true)}>
+            <RotateCcw size={15} /> Return goods
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={handleShare}>
           <Share2 size={15} /> Share
         </button>
@@ -194,7 +208,7 @@ export default function Receipt() {
           {receipt.branch_name && (
             <div className="receipt-muted" style={{ fontSize: 12 }}>{receipt.branch_name} branch</div>
           )}
-          <div className="receipt-sub">{isInvoice ? "INVOICE" : (isPayment ? "Payment Receipt" : title)}</div>
+          <div className="receipt-sub">{isInvoice ? "INVOICE" : cn ? `CREDIT NOTE ${cn.number}` : (isPayment ? "Payment Receipt" : title)}</div>
           <div className="receipt-date">{dateTimeStr(receipt.created_at)}</div>
           <div className="receipt-ref">{isInvoice && invoiceNo ? invoiceNo : `Receipt #${receipt.receipt_number ?? receipt.id}`}</div>
         </div>
@@ -268,6 +282,15 @@ export default function Receipt() {
                       <span>Delivered now: {it.delivered_qty ?? 0} · To deliver: {it.to_deliver}</span>
                     </div>
                   )}
+                  {(it.cancelled_qty > 0 || it.returned_qty > 0) && (
+                    <div className="receipt-item-attrs">
+                      <span>
+                        {it.cancelled_qty > 0 ? `Cancelled later: ${it.cancelled_qty}` : ""}
+                        {it.cancelled_qty > 0 && it.returned_qty > 0 ? " · " : ""}
+                        {it.returned_qty > 0 ? `Returned later: ${it.returned_qty}` : ""}
+                      </span>
+                    </div>
+                  )}
                 </td>
                 <td className="receipt-right">{it.qty}</td>
                 <td className="receipt-right">{fmtAmt(it.unit_price)}</td>
@@ -293,7 +316,13 @@ export default function Receipt() {
               <td colSpan={3}>Total</td>
               <td className="receipt-right">{nairaFull(receipt.total)}</td>
             </tr>
-            {(isCredit || isCash) && (
+            {cn && (
+              <tr style={{ fontWeight: 700 }}>
+                <td colSpan={3}>{cn.mode === "REFUND" ? "Refunded to customer" : "Taken off their balance"}</td>
+                <td className="receipt-right">{nairaFull(Math.abs(receipt.total))}</td>
+              </tr>
+            )}
+            {(isCredit || isCash) && !cn && (
               <>
                 <tr>
                   <td colSpan={3}>Paid</td>
@@ -337,6 +366,25 @@ export default function Receipt() {
         </table>
         )}
 
+        {/* What happened after this sale: undelivered goods cancelled, goods returned */}
+        {(receipt.credit_notes || []).length > 0 && (
+          <div style={{ borderTop: "1px dashed var(--border)", marginTop: 8, paddingTop: 8, fontSize: 13 }}>
+            {receipt.credit_notes.map(n => (
+              <div key={n.number} style={{ marginBottom: 6 }}>
+                <strong>Credit note {n.number}</strong> · {n.lines.map(l => `${l.quantity}${l.unit ? ` ${l.unit}` : ""} ${l.product}`).join(", ")}{" "}
+                {n.kind === "UNDELIVERED" ? "not delivered, cancelled" : "returned"} ·{" "}
+                {nairaFull(n.amount)} {n.mode === "REFUND" ? "refunded" : "taken off balance"}
+                <div className="receipt-muted" style={{ fontSize: 12 }}>{dateStr(n.created_at)} · Reason: {n.reason}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {cn && (
+          <div className="receipt-muted" style={{ borderTop: "1px dashed var(--border)", marginTop: 8, paddingTop: 8, fontSize: 12 }}>
+            For receipt #{cn.sale_receipt} · {cn.kind === "UNDELIVERED" ? "goods not delivered, cancelled" : `goods returned${cn.restock === "DAMAGED" ? " (damaged)" : ""}`} · Reason: {cn.reason}
+          </div>
+        )}
+
         <div className="receipt-footer">
           <div className="receipt-type-badge">{typeLabel}</div>
           {isCredit && receipt.due_date && (
@@ -357,6 +405,9 @@ export default function Receipt() {
           </div>
         </div>
       </div>
+      {returning && (
+        <ReturnGoodsModal saleId={receipt.id} onClose={() => { setReturning(false); load(); }} />
+      )}
     </div>
   );
 }

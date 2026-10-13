@@ -63,6 +63,26 @@ class DeliveryNotifyRequest(BaseModel):
     message: str = Field(max_length=1000)
 
 
+class GoodsCancelRequest(BaseModel):
+    customer_id: int
+    key: str = Field(max_length=200)
+    quantity: float
+    mode: str = Field(max_length=10)          # CREDIT | REFUND
+    reason: str = Field(max_length=300)
+
+
+class GoodsReturnLine(BaseModel):
+    line_id: int
+    quantity: float
+
+
+class GoodsReturnRequest(BaseModel):
+    lines: list[GoodsReturnLine] = Field(max_length=200)
+    mode: str = Field(max_length=10)          # CREDIT | REFUND
+    restock: str = Field(max_length=10)       # SELLABLE | DAMAGED
+    reason: str = Field(max_length=300)
+
+
 class GoodsDeliverRequest(BaseModel):
     customer_id: int
     key: str = Field(max_length=200)          # which of their goods (deliveries._key)
@@ -662,6 +682,118 @@ def register_customer_routes(app):
         finally:
             db.close()
 
+    # ── Credit notes: cancel undelivered goods, take back delivered goods ──
+    def _require_refunder(db, session):
+        """Refunds move money out, so only the owner and staff authorised to
+        see all records may do them — the same people who see profit."""
+        user = db.query(User).filter(User.id == session["user_id"]).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Not authenticated.")
+        if user.parent_id is not None and not user.can_view_all_transactions:
+            raise HTTPException(status_code=403, detail="Only the owner or an authorised staff member "
+                                                        "can cancel or refund goods.")
+        return user
+
+    def _after_credit_note(db, owner_phone, user, customer, note):
+        """Tell the customer, and tell the owner when staff did it."""
+        from business_templates import business_display_name
+        from customer_statement import self_send_url
+        from deliveries import credit_note_text
+        from whatsapp_client import send_whatsapp_message
+        owner = db.query(User).filter(User.phone == owner_phone).first()
+        text = credit_note_text(business_display_name(owner) if owner else "Our business",
+                                (customer.name or "there").title() if customer else "there", note)
+        sent = False
+        phone = customer.customer_phone if customer else None
+        if phone:
+            try:
+                sent = bool(send_whatsapp_message(phone, text))
+            except Exception:
+                sent = False
+        is_owner = user.phone == owner_phone
+        money = "refunded" if note["mode"] == "REFUND" else "credited"
+        _add_notification(
+            db, owner_phone, "credit_note",
+            f"Credit note {note['number']} — N{note['amount']:,} {money}",
+            f"{(user.name or 'Someone').title()}"
+            + (f" for {(customer.name or '').title()}" if customer else "")
+            + f". Reason: {note['reason']}",
+        )
+        db.commit()
+        if not is_owner:
+            try:
+                send_whatsapp_message(
+                    owner_phone,
+                    f"*REFUND ALERT* - Staff action\n\n*{(user.name or '').title()}* issued credit note "
+                    f"{note['number']}: N{note['amount']:,} {money}"
+                    + (f" to {(customer.name or '').title()}" if customer else "")
+                    + f".\nReason: {note['reason']}\n\nCheck your dashboard if this looks wrong.")
+            except Exception:
+                pass
+        return {**note, "message": text, "sent": sent, "has_phone": bool(phone),
+                "wa_link": None if sent or not phone else self_send_url(phone, text)}
+
+    @app.post("/app/api/deliveries/goods/cancel")
+    def web_cancel_goods(payload: GoodsCancelRequest, session: dict = Depends(require_web_auth)):
+        """Cancel goods a customer bought that were never delivered: they stop
+        being reserved (sellable again at once) and a credit note takes the
+        money off their balance or records it handed back."""
+        from deliveries import DeliveryError, cancel_undelivered
+        db = SessionLocal()
+        try:
+            user = _require_refunder(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            customer = db.query(Customer).filter(
+                Customer.id == payload.customer_id, Customer.owner_phone == owner_phone).first()
+            if not customer:
+                raise HTTPException(status_code=404, detail="Customer not found.")
+            try:
+                note = cancel_undelivered(db, owner_phone, user.id, customer.id, payload.key,
+                                          payload.quantity, payload.mode, payload.reason)
+            except DeliveryError as e:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=str(e))
+            db.commit()
+            return _after_credit_note(db, owner_phone, user, customer, note)
+        finally:
+            db.close()
+
+    @app.get("/app/api/sales/{tx_id}/returnable")
+    def web_returnable(tx_id: int, session: dict = Depends(require_web_auth)):
+        from deliveries import DeliveryError, returnable_lines
+        db = SessionLocal()
+        try:
+            try:
+                return returnable_lines(db, _session_owner_phone(db, session), tx_id)
+            except DeliveryError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+        finally:
+            db.close()
+
+    @app.post("/app/api/sales/{tx_id}/return")
+    def web_return_goods(tx_id: int, payload: GoodsReturnRequest, session: dict = Depends(require_web_auth)):
+        """Delivered goods brought back: back into stock if they can be sold
+        again, and a credit note for the money."""
+        from deliveries import DeliveryError, return_goods
+        db = SessionLocal()
+        try:
+            user = _require_refunder(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            try:
+                note = return_goods(db, owner_phone, user.id, tx_id,
+                                    [l.model_dump() for l in payload.lines],
+                                    payload.mode, payload.restock, payload.reason)
+            except DeliveryError as e:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=str(e))
+            db.commit()
+            sale = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            customer = (db.query(Customer).filter(Customer.id == sale.customer_id).first()
+                        if sale and sale.customer_id else None)
+            return _after_credit_note(db, owner_phone, user, customer, note)
+        finally:
+            db.close()
+
     @app.post("/app/api/deliveries/{tx_id}/notify")
     def web_notify_delivery(
         tx_id: int,
@@ -846,6 +978,10 @@ def register_customer_routes(app):
             # An invoice paid by this sale is waiting for payment again.
             from invoices import reopen_invoice_for_voided_sale
             reopen_invoice_for_voided_sale(db, tx.id)
+            # Credit notes stay true: a voided sale takes its credit notes with
+            # it; a voided credit note puts its goods back as they were.
+            from deliveries import on_transaction_voided
+            on_transaction_voided(db, owner_phone, tx, user.id)
             db.add(TransactionNote(
                 transaction_id=tx.id,
                 author_user_id=user.id,

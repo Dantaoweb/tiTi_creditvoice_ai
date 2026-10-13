@@ -466,10 +466,26 @@ def get_pos_receipt(db, tx_id, user=None):
                 "delivered_qty": _delivered_at_sale(db, it),
                 "to_deliver": (None if it.delivered_qty is None
                                else _num_q(float(it.quantity or 0) - _delivered_at_sale(db, it))),
+                "cancelled_qty": _num_q(it.cancelled_qty) if it.cancelled_qty else None,
+                "returned_qty": _num_q(it.returned_qty) if it.returned_qty else None,
             }
             for it in items
         ],
+        # Undelivered goods cancelled or goods brought back after this sale
+        "credit_notes": _credit_notes_for(db, tx.id),
+        # This receipt IS a credit note (a negative amount)
+        "credit_note": _credit_note_of(db, tx.id) if (tx.amount or 0) < 0 else None,
     }
+
+
+def _credit_notes_for(db, tx_id):
+    from deliveries import credit_notes_for_sale
+    return credit_notes_for_sale(db, tx_id)
+
+
+def _credit_note_of(db, tx_id):
+    from deliveries import credit_note_for_tx
+    return credit_note_for_tx(db, tx_id)
 
 
 def _num_q(q):
@@ -522,6 +538,9 @@ def format_receipt_text(receipt):
             if it.get("to_deliver"):
                 lines.append(f"  Delivered now: {it.get('delivered_qty') or 0} · "
                              f"To deliver: {it['to_deliver']}")
+        for cn in receipt.get("credit_notes") or []:
+            what = "refunded" if cn["mode"] == "REFUND" else "credited"
+            lines.append(f"  Credit note {cn['number']}: N{int(cn['amount']):,} {what}")
         lines.append("--------------------")
         discount = int(receipt.get("discount") or 0)
         if discount:

@@ -989,6 +989,8 @@ def ensure_schema_updates(engine):
             # delivered at the sale, which is every sale made before this.
             "delivered_qty": "FLOAT",
             "inventory_item_id": "INTEGER",
+            "cancelled_qty": "FLOAT",
+            "returned_qty": "FLOAT",
         }
         with engine.begin() as connection:
             for col, typ in tx_item_updates.items():

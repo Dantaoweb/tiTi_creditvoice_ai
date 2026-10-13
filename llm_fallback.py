@@ -111,6 +111,15 @@ DELIVERIES & READY-BY DATES (web app):
 - tiTi reminds the owner 2 days before, 1 day before, and on the day.
 - The Deliveries page lists upcoming jobs; there you can change the date or send the customer a "your order is ready" message. Customer messages are only sent when the owner types and taps send — never automatic.
 
+PART DELIVERY, CANCEL / REFUND, RETURNS (web app):
+- Goods sold but not all handed over (e.g. 100 bags sold, 60 delivered): on the web POS tick "Not all goods delivered now" and enter how many went out. A customer must be picked. Only what goes out leaves stock; the rest stays in the store as *reserved* for that customer.
+- Inventory then shows In store / Reserved / Available. Available = in store − reserved, and a sale can't sell reserved goods.
+- Deliver the rest later: Deliveries page → Goods to deliver → Deliver (or on the customer's page). Enter how many went out and optionally the driver/truck. Stock goes down then, and the customer gets a WhatsApp delivery note: bought · delivered so far · still to deliver.
+- Undelivered goods called off / refunded: Deliveries (or the customer's page) → Cancel / refund. Choose how many, "take it off what they owe" (they hadn't paid) or "give the money back" (they had), and a reason. The goods never left the store, so they become available to sell again immediately.
+- Delivered goods brought back: open the sale's receipt → Return goods. Enter how many came back, whether they can be sold again (back into stock) or are damaged (stay out), credit or refund, and a reason.
+- Both create a numbered credit note (CN-0001). The original sale is never edited — the receipt shows what was sold and the credit notes after it, the customer gets a copy on WhatsApp, and their statement lists it. Sales and profit reports net it out.
+- Only the owner or staff authorised to see all records can cancel, refund or take returns. The owner is alerted when staff do it. Voiding a credit note puts everything back; voiding the sale removes its credit notes too.
+
 RECEIPTS (web app):
 - Every sale AND every debtor payment has a receipt. When a debtor pays, a payment receipt is produced showing the amount paid and the remaining balance (or credit); if the customer has no phone saved it still exists to print. The Receipts page lists all past receipts to view or reprint. Printing shows only the receipt with the business name, not the app.
 

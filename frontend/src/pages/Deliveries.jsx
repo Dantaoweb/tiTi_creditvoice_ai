@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { dateStr, nairaFull } from "../lib/format";
 import DeliverGoodsModal from "../components/DeliverGoodsModal";
+import CancelGoodsModal from "../components/CancelGoodsModal";
+import { useAuth } from "../context/AuthContext";
 
 function fmtWhen(iso) {
   if (!iso) return { label: "—", tone: "muted" };
@@ -64,6 +66,9 @@ export default function Deliveries() {
   const [incoming, setIncoming] = useState([]);
   const [goods, setGoods] = useState([]);           // bought, still in the store
   const [deliver, setDeliver] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
+  const { user } = useAuth();
+  const canRefund = !!user?.full_access;          // owner or authorised staff
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [notify, setNotify] = useState(null);
@@ -124,6 +129,9 @@ export default function Deliveries() {
                   {g.remaining}{g.unit ? ` ${g.unit}` : ""} to deliver
                 </span>
                 <button className="btn btn-primary btn-sm" onClick={() => setDeliver(g)}>Deliver</button>
+                {canRefund && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setCancelling(g)}>Cancel / refund</button>
+                )}
               </div>
             </div>
           ))}
@@ -188,6 +196,9 @@ export default function Deliveries() {
       )}
       {deliver && (
         <DeliverGoodsModal goods={deliver} onClose={() => { setDeliver(null); load(); }} />
+      )}
+      {cancelling && (
+        <CancelGoodsModal goods={cancelling} onClose={() => { setCancelling(null); load(); }} />
       )}
       {notify && (
         <NotifyModal delivery={notify} onClose={() => setNotify(null)} onSent={() => setToast("Message sent")} />

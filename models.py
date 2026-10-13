@@ -266,6 +266,12 @@ class TransactionItem(Base):
     # made before part delivery existed, and every ordinary one since.
     delivered_qty = Column(Float, nullable=True)
 
+    # Credit notes against this line (deliveries.py): goods not delivered and
+    # cancelled, and goods delivered then brought back. The sale itself is
+    # never edited — these say what happened after.
+    cancelled_qty = Column(Float, nullable=True)
+    returned_qty = Column(Float, nullable=True)
+
     # The stock item sold, so what is still to deliver counts against it.
     inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
 
@@ -291,6 +297,38 @@ class GoodsDelivery(Base):
     note                = Column(String, nullable=True)   # driver, truck no, waybill
     recorded_by_id      = Column(String, ForeignKey("users.id"), nullable=True)
     created_at          = Column(DateTime, default=utcnow)
+
+
+class CreditNote(Base):
+    """Money given back or taken off a customer's account for goods from a
+    sale — undelivered goods cancelled, or delivered goods returned. One row
+    per sale line; the rows of one note share its number (CN-0001).
+
+    The original sale is never changed. The money side is its own transaction
+    (credit_tx_id) recorded at a negative amount: a BUY when it comes off what
+    the customer owes, a SALE when cash is handed back — so balances, sales
+    and profit all net it out with no special cases."""
+
+    __tablename__ = "credit_notes"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone    = Column(String, index=True)
+    number         = Column(Integer, index=True)
+    customer_id    = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    sale_tx_id     = Column(Integer, ForeignKey("transactions.id"), index=True)
+    sale_line_id   = Column(Integer, ForeignKey("transaction_items.id"))
+    credit_tx_id   = Column(Integer, ForeignKey("transactions.id"), index=True)
+    kind           = Column(String)        # UNDELIVERED | RETURN
+    mode           = Column(String)        # CREDIT (off the balance) | REFUND (cash back)
+    restock        = Column(String, nullable=True)   # RETURN only: SELLABLE | DAMAGED
+    product        = Column(String)
+    unit           = Column(String, nullable=True)
+    quantity       = Column(Float)
+    amount         = Column(Integer)       # naira, positive
+    reason         = Column(String)
+    recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at     = Column(DateTime, default=utcnow)
+    voided_at      = Column(DateTime, nullable=True)
 
 
 class Invoice(Base):

@@ -45,7 +45,9 @@ def test_pos_rejects_negative_price():
         "owner_phone": phone, "items": [{"name": "x", "qty": 1, "unit_price": -99999}], "payment_amount": 0})
     assert r.status_code != 200
     db = SessionLocal()
-    assert db.query(Transaction).filter(Transaction.amount < 0).count() == 0
+    # A credit note is negative on purpose (deliveries.py); a POS sale never is.
+    assert db.query(Transaction).filter(Transaction.amount < 0,
+                                        Transaction.message_id.like("web-pos-%")).count() == 0
     db.close()
 
 

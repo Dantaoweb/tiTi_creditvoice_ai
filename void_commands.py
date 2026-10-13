@@ -65,6 +65,10 @@ def handle_void_transaction(db, phone, parsed, user, business_owner_phone, visib
     # An invoice paid by this sale is waiting for payment again.
     from invoices import reopen_invoice_for_voided_sale
     reopen_invoice_for_voided_sale(db, tx.id)
+    # Credit notes stay true: a voided sale takes its credit notes with it; a
+    # voided credit note puts its goods back as they were.
+    from deliveries import on_transaction_voided
+    on_transaction_voided(db, business_owner_phone, tx, user.id)
     stock_line = ""
     if restored:
         parts = ", ".join(

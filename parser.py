@@ -2827,6 +2827,15 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "return_goods":       ["returned goods", "return goods", "goods returned", "brought back",
+                                   "bring back", "customer returned", "return the goods", "take back"],
+            "cancel_refund":      ["refund", "money back", "credit note", "cancel the rest", "cancel the remaining",
+                                   "cancel undelivered", "cancel the undelivered", "called off"],
+            "part_delivery":      ["part delivery", "partly delivered", "partially delivered", "part delivered",
+                                   "not all delivered", "deliver later", "deliver the rest", "remaining to deliver",
+                                   "yet to be delivered", "yet to deliver", "still to deliver", "goods to deliver",
+                                   "reserved stock", "reserved goods", "collect later", "collect the rest",
+                                   "balance of goods", "deliver in batches"],
             "fake_product":       ["fake", "counterfeit", "original", "genuine", "authentic", "adulterated"],
             "discount":           ["discount"],
             "barcode_scan":       ["barcode", "bar code", "scan"],
@@ -2868,6 +2877,9 @@ def _parse_message(text):
             "savings":      ["personal savings", "my savings", "save money", "record savings", "how to save", "savings balance"],
             "thrift":       ["thrift", "ajo", "esusu", "group savings", "thrift savings", "add thrift member", "add ajo member", "thrift report", "contribution", "contributions"],
         }
+        # "bought 100 bags but only 60 delivered" — said with numbers
+        if re.search(r"\bonly\s+\d+\s+(?:\w+\s+)?(?:was\s+|were\s+|got\s+|have\s+been\s+)?delivered\b", clean_text):
+            return {"type": "APP_GUIDE", "topic": "part_delivery"}
         for _topic, _keywords in _guide_topics.items():
             if any(_kw in clean_text for _kw in _keywords):
                 return {"type": "APP_GUIDE", "topic": _topic}
@@ -2877,6 +2889,12 @@ def _parse_message(text):
         return {"type": "APP_GUIDE", "topic": "invoices"}
     if re.match(r"^(?:(?:record|add|new|my)\s+(?:an?\s+)?)?expenses?$", clean_text):
         return {"type": "APP_GUIDE", "topic": "expenses"}
+    if re.match(r"^(?:refunds?|credit\s+notes?|cancel\s+(?:the\s+)?(?:rest|remaining|undelivered(?:\s+goods)?))$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "cancel_refund"}
+    if re.match(r"^(?:returns?|returned\s+goods|return\s+goods|goods\s+returned)$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "return_goods"}
+    if re.match(r"^(?:part\s+delivery|partial\s+delivery|goods\s+to\s+deliver|deliver\s+later|reserved(?:\s+stock)?)$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "part_delivery"}
 
     # ── Bulk product name add ────────────────────────────────────────────────
     # "add paracetamol, sugar, tissue, milo" — comma/semicolon separated list

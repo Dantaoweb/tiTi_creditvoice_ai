@@ -100,3 +100,58 @@ def test_another_business_cant_deliver_my_customers_goods():
     r = client.post("/app/api/deliveries/goods", cookies=cook2, json={
         "customer_id": ade, "key": g["key"], "quantity": 1})
     assert r.status_code == 404
+
+
+def _staff(owner_phone, authorised):
+    """A staff login for this business (Pro plan so staff may record)."""
+    from models import User
+    phone = f"2348089{next(_seq):06d}"
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.phone == owner_phone).first()
+        owner.subscription_plan = "PRO"; owner.subscription_status = "ACTIVE"
+        db.add(User(phone=phone, name="Sade", role="delegate", parent_id=owner.id,
+                    can_view_all_transactions=authorised, subscription_status="ACTIVE",
+                    recovery_pin_hash=web_auth._hash_pin("1234")))
+        db.commit()
+    finally:
+        db.close()
+    return client.post("/app/api/auth/login", json={"phone": phone, "pin": "1234"}).cookies
+
+
+def test_cancel_undelivered_and_refund_through_the_api():
+    phone, cook, item_id, ade = _shop()
+    _sell(phone, cook, item_id, 100, delivered=60, customer_id=ade)
+    [g] = client.get("/app/api/deliveries", cookies=cook).json()["goods"]
+
+    # Regular staff can't; authorised staff and the owner can
+    r = client.post("/app/api/deliveries/goods/cancel", cookies=_staff(phone, False), json={
+        "customer_id": ade, "key": g["key"], "quantity": 40, "mode": "CREDIT", "reason": "x"})
+    assert r.status_code == 403
+
+    r = client.post("/app/api/deliveries/goods/cancel", cookies=cook, json={
+        "customer_id": ade, "key": g["key"], "quantity": 40, "mode": "CREDIT",
+        "reason": "Customer no longer needs the rest"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["number"] == "CN-0001" and body["amount"] == 360000 and body["sent"]
+    assert "N360,000 taken off your balance" in sent[-1][1]
+
+    inv = client.get("/app/api/inventory", cookies=cook).json()["items"][0]
+    assert (inv["quantity"], inv["reserved"]) == (240, 0)       # sellable again
+    assert client.get("/app/api/deliveries", cookies=cook).json()["goods"] == []
+
+
+def test_return_goods_through_the_api():
+    phone, cook, item_id, ade = _shop()
+    sale = _sell(phone, cook, item_id, 10, customer_id=ade).json()["receipt_id"]
+    lines = client.get(f"/app/api/sales/{sale}/returnable", cookies=cook).json()["lines"]
+    r = client.post(f"/app/api/sales/{sale}/return", cookies=_staff(phone, True), json={
+        "lines": [{"line_id": lines[0]["line_id"], "quantity": 2}], "mode": "CREDIT",
+        "restock": "SELLABLE", "reason": "Wrong brand"})
+    assert r.status_code == 200, r.text
+    assert any("REFUND ALERT" in m for _to, m in sent)            # owner told staff did it
+    receipt = client.get(f"/app/api/pos/receipt/{sale}", cookies=cook).json()
+    assert receipt["credit_notes"][0]["number"] == "CN-0001" and receipt["items"][0]["returned_qty"] == 2
+    inv = client.get("/app/api/inventory", cookies=cook).json()["items"][0]
+    assert inv["quantity"] == 292

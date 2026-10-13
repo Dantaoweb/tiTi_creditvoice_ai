@@ -34,6 +34,9 @@ def _line(tx):
     when = _day(tx.created_at)
     if tx.type == "PAY":
         return f"• {when}: paid {_naira(tx.amount)}"
+    if (tx.amount or 0) < 0:
+        # A credit note: "Credit note CN-0001: 40 bag Cement not delivered, cancelled"
+        return f"• {when}: {(tx.product or 'Credit note').strip()} — minus {_naira(-tx.amount)}"
     what = (tx.product or "Purchase").strip()
     # POS sales are stored as "POS Sale (3 items)" — read as a purchase line.
     if what.lower().startswith("pos sale"):
