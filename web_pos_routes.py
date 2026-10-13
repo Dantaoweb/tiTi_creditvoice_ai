@@ -180,6 +180,8 @@ def register_pos_routes(app):
                         "selling_price": _money(item.selling_price),
                         "cost_price": _money(item.cost_price),
                         "is_service": item.quantity is None or item.category == "service",
+                        # Settings → group stock by category: the till's category tabs
+                        "category": item.category or None,
                         "retail_unit": item.retail_unit,
                         "retail_per_base": item.retail_per_base,
                         "retail_price": _money(item.retail_price) if item.retail_price else None,

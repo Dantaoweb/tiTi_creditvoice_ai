@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSettings } from "../lib/settings";
 import { useNavigate, Link } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, User, X, Camera } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -17,6 +18,10 @@ import { discountAmount, NO_DISCOUNT } from "../lib/discount";
 const PAGE_SIZE = 20;   // products shown at once; slide/arrow to reveal more
 
 function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
+  // Settings → group stock by category (Inventory and POS): tap a category, then the product
+  const { business } = useSettings();
+  const catTabs = business.group_by_category && business.group_on_pos;
+  const [posCat, setPosCat] = useState(null);
   const [products, setProducts] = useState([]);
   const [catalogue, setCatalogue] = useState({ total: 0, truncated: false });
   const [usage, setUsage] = useState(null);   // { count, limit, remaining }
@@ -210,9 +215,22 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
     </div>
   ) : null;
 
+  // Searching looks through everything; otherwise the chosen category only
   const local = term
     ? products.filter(p => p.name.toLowerCase().includes(term.toLowerCase()))
-    : products;
+    : (catTabs && posCat
+        ? products.filter(p => (p.category || "__none__") === posCat)
+        : products);
+  const order = business.category_order || [];
+  const tabCats = catTabs
+    ? [...new Set(products.map(p => p.category || "__none__"))]
+        .sort((a, b) => {
+          const ra = order.indexOf(a), rb = order.indexOf(b);
+          if (a === "__none__") return 1;
+          if (b === "__none__") return -1;
+          return (ra < 0 ? 1e4 : ra) - (rb < 0 ? 1e4 : rb) || a.localeCompare(b);
+        })
+    : [];
   // Add server matches the preload didn't include (big catalogues only).
   const extra = catalogue.truncated && term && remote.q === term
     ? remote.items.filter(r => !local.some(p => p.id === r.id))
@@ -223,8 +241,8 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   const safePage = Math.min(page, pages - 1);
   const pageItems = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
-  // Reset to first page whenever the search changes.
-  useEffect(() => { setPage(0); }, [q]);
+  // Reset to first page whenever the search or category changes.
+  useEffect(() => { setPage(0); }, [q, posCat]);
 
   const go = (d) => setPage(p => Math.min(pages - 1, Math.max(0, p + d)));
 
@@ -260,6 +278,18 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
           <Camera size={15} /> Scan
         </button>
       </div>
+      {catTabs && tabCats.length > 1 && !term && (
+        <div className="cat-chips" style={{ padding: "8px 0 0" }}>
+          <button type="button" className={`cat-chip${!posCat ? " on" : ""}`} onClick={() => setPosCat(null)}>All</button>
+          {tabCats.map(c => (
+            <button key={c} type="button" className={`cat-chip${posCat === c ? " on" : ""}`}
+              style={{ textTransform: "capitalize" }} onClick={() => setPosCat(c)}>
+              {c === "__none__" ? "Other" : c}
+              <small>{products.filter(p => (p.category || "__none__") === c).length}</small>
+            </button>
+          ))}
+        </div>
+      )}
       {camera && (
         <CameraScanner continuous title="Scan to sell"
           onCode={handleScannedCode} onClose={() => setCamera(false)} />
@@ -533,6 +563,7 @@ export default function POS() {
   // Part delivery: some goods go out now, the rest wait in the store for the
   // customer (e.g. 60 of 100 bags of cement). Only whole stocked units.
   const [partDelivery, setPartDelivery] = useState(false);
+  const { business: businessSettings } = useSettings();
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const creditRef = useRef(null);
@@ -992,7 +1023,7 @@ export default function POS() {
           )}
 
           {/* Part delivery — the rest stays in the store as the customer's */}
-          {partLines.length > 0 && (
+          {partLines.length > 0 && businessSettings.show_part_delivery && (
             <div className="pos-summary-section">
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
                 <input type="checkbox" checked={partDelivery} style={{ width: "auto" }}

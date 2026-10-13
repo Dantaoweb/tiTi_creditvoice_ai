@@ -161,6 +161,15 @@ def detect_faq(text):
     ]):
         return "finance_scorecard"
 
+    # ── Settings: display, categories, daily summary ──────────────────────────
+    if any(k in q for k in ("setting", "font", "text size", "text bigger", "bigger text", "bigger letters",
+                            "letters bigger", "increase the text", "make the text", "zoom", "dark mode",
+                            "dark theme", "night mode", "light mode", "group my stock", "group stock",
+                            "group products", "stock by category", "products by category",
+                            "product categor", "stock categor", "manage categor", "daily summary", "summary every day",
+                            "sell below zero", "negative stock", "compact")):
+        return "settings"
+
     # ── Already in stock? / duplicates ────────────────────────────────────────
     if any(k in q for k in ("already in my stock", "already in stock", "already added", "added before",
                             "entered before", "added it before", "add it twice", "added twice",
@@ -698,6 +707,23 @@ FAQ_ANSWERS = {
         "• Others → a Notes box\n\n"
         "Fill them in and tap *Save*. The details stay on the customer for next time.\n\n"
         "(This is on the web app dashboard, not a WhatsApp command yet.)"
+    ),
+    "settings": (
+        "Web app → Menu → More → *Settings*.\n\n"
+        "*My display* (just for you, on every device):\n"
+        "• *Text size* — Small, Normal, Large, Extra large\n"
+        "• *Theme* — Light, Dark, or Follow my phone\n"
+        "• *List style* — Compact (more rows) or Comfortable (bigger rows)\n\n"
+        "*Stock* (owner and authorised staff, for the whole business):\n"
+        "• *Group stock by category* — products shown in groups (Drinks, Provisions…) on "
+        "Inventory, and at the POS if you choose\n"
+        "• *New categories come from* — you type them, or tiTi suggests from the product name\n"
+        "• *Low-stock alert for new products*\n"
+        "• *Allow selling below zero stock* — Yes or No\n"
+        "• *Show \"Not all goods delivered now\" at POS*\n\n"
+        "*Manage categories* — rename, reorder, put many products into a category at once, or "
+        "let tiTi suggest categories for products that have none.\n\n"
+        "*WhatsApp* — a *daily summary* of the day's sales at the time you pick."
     ),
     "already_in_stock": (
         "Not sure a product is already in your stock? Don't add it again — check first:\n\n"

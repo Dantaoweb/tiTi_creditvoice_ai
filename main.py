@@ -44,12 +44,16 @@ async def lifespan(_app: FastAPI):
     # single worker/instance (see render.yaml: --workers 1), so there is exactly
     # one scheduler and no duplicate notifications. If you ever run more than one
     # instance, set SCHEDULER_ENABLED=false on all but one to avoid duplicates.
-    task = None
+    tasks = []
     if os.getenv("SCHEDULER_ENABLED", "true").lower() != "false":
         from proactive_scheduler import run_proactive_scheduler
-        task = asyncio.create_task(run_proactive_scheduler())
+        from app_settings import run_daily_summary_loop
+        tasks.append(asyncio.create_task(run_proactive_scheduler()))
+        # Daily summaries go out at the time each owner picked, so this checks
+        # every 10 minutes rather than with the 6-hourly cycle.
+        tasks.append(asyncio.create_task(run_daily_summary_loop()))
     yield
-    if task:
+    for task in tasks:
         task.cancel()
         try:
             await asyncio.wait_for(asyncio.shield(task), timeout=5.0)

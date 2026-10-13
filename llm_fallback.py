@@ -111,6 +111,11 @@ DELIVERIES & READY-BY DATES (web app):
 - tiTi reminds the owner 2 days before, 1 day before, and on the day.
 - The Deliveries page lists upcoming jobs; there you can change the date or send the customer a "your order is ready" message. Customer messages are only sent when the owner types and taps send — never automatic.
 
+SETTINGS (web app → More → Settings):
+- My display, each person's own: text size (Small/Normal/Large/Extra large), theme (Light/Dark/Follow my phone), list style (Compact/Comfortable).
+- Owner and authorised staff, for the business: group stock by category (Inventory only, or Inventory and POS), new categories typed or suggested by tiTi, a default low-stock alert for new products, allow selling below zero stock (yes/no), show part delivery at POS, and a daily WhatsApp summary at a chosen time.
+- Manage categories there: rename, reorder, put many products into one at once, or let tiTi suggest categories for uncategorised products (shown for approval first).
+
 IS A PRODUCT ALREADY IN STOCK? (no barcode needed):
 - On WhatsApp ask "do I have paracetamol?" / "is groundnut oil in my stock?" — tiTi checks every product allowing for spelling, spacing and plurals and answers yes (with the name and quantity), close matches, or a clear no (safe to add). "check duplicates" lists products that look entered twice.
 - Web app → Inventory: search shows "did you mean" close matches; Add Product warns "You may already have this" while typing (with Use this one) and refuses the exact same product twice; "Check duplicates" lists look-alike pairs. Adding stock on WhatsApp says whether it tops up an existing product or makes a new one, and names close look-alikes.

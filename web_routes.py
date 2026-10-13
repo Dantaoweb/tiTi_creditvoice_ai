@@ -230,6 +230,10 @@ def register_web_routes(app):
     from web_inventory_routes import register_inventory_routes
     register_inventory_routes(app)
 
+    # ── Settings page + stock categories ──────────────────────────────────────
+    from web_settings_routes import register_settings_routes
+    register_settings_routes(app)
+
     # ── Suppliers — split into web_supplier_routes ────────────────────────────
     from web_supplier_routes import register_supplier_routes
     register_supplier_routes(app)

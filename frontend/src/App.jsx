@@ -43,6 +43,7 @@ import Privacy      from "./pages/Privacy";
 import DataDeletion from "./pages/DataDeletion";
 import Upgrade      from "./pages/Upgrade";
 import Profile      from "./pages/Profile";
+import Settings     from "./pages/Settings";
 
 function RequireAuth({ children }) {
   const { isAuthed } = useAuth();
@@ -108,6 +109,7 @@ export default function App() {
           <Route path="admin"        element={<Admin />}          />
           <Route path="upgrade"      element={<Upgrade />}        />
           <Route path="profile"      element={<Profile />}        />
+          <Route path="settings"     element={<Settings />}       />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

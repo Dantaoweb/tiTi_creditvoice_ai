@@ -1,0 +1,146 @@
+/* Dark theme (Settings → My display → Theme). Generated from index.css by
+   turning light hard-coded backgrounds into the dark surface and light tints
+   into faint tints; the tokens below carry everything else. Applied when
+   <html data-theme="dark"> (set from the person's choice, or their phone's). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink:       #e5e7eb;
+  --ink-2:     #cbd5e1;
+  --muted:     #9ca3af;
+  --subtle:    #6b7280;
+  --line:      #2b3446;
+  --line-2:    #1f2737;
+  --bg:        #0b1220;
+  --surface:   #141c2c;
+  --brand:     #4f86f7;
+  --amber:     #f0b350;
+  --rose:      #f08a99;
+  --blue:      #6aa3e8;
+}
+:root[data-theme="dark"] body { background: var(--bg); color: var(--ink); }
+:root[data-theme="dark"] input::placeholder, :root[data-theme="dark"] textarea::placeholder { color: var(--subtle); }
+:root[data-theme="dark"] img { opacity: .95; }
+:root[data-theme="dark"] input, :root[data-theme="dark"] select, :root[data-theme="dark"] textarea { background: var(--surface); }
+:root[data-theme="dark"] input[placeholder]:not(:placeholder-shown):not([type="checkbox"]):not([type="radio"]):not([type="range"]), :root[data-theme="dark"] textarea[placeholder]:not(:placeholder-shown) { background: color-mix(in srgb, #fffaf0 10%, var(--surface)); }
+:root[data-theme="dark"] .btn-secondary { background: var(--surface); }
+:root[data-theme="dark"] tbody tr:hover td { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] tr.low-stock td { background: color-mix(in srgb, #fffbeb 10%, var(--surface)); }
+:root[data-theme="dark"] .badge-green { background: color-mix(in srgb, #dcfce7 10%, var(--surface)); color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .badge-blue { background: color-mix(in srgb, #dbeafe 10%, var(--surface)); color: color-mix(in srgb, #1e40af 45%, #ffffff); }
+:root[data-theme="dark"] .badge-amber { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .badge-rose { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); color: color-mix(in srgb, #991b1b 45%, #ffffff); }
+:root[data-theme="dark"] .badge-gray { background: color-mix(in srgb, #f3f4f6 10%, var(--surface)); color: color-mix(in srgb, #6b7280 45%, #ffffff); }
+:root[data-theme="dark"] .badge-voided { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); color: color-mix(in srgb, #991b1b 45%, #ffffff); }
+:root[data-theme="dark"] .skeleton { background: color-mix(in srgb, #e5e7eb 10%, var(--surface)); }
+:root[data-theme="dark"] .message-bubble { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .example-chip { background: var(--surface); }
+:root[data-theme="dark"] .login-card { background: var(--surface); }
+:root[data-theme="dark"] .login-error { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); }
+:root[data-theme="dark"] .login-info { background: color-mix(in srgb, #dcfce7 10%, var(--surface)); color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .partial-support-note { background: color-mix(in srgb, #fefce8 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #713f12 45%, #ffffff); }
+:root[data-theme="dark"] .partial-support-missing { color: color-mix(in srgb, #9a3412 45%, #ffffff); }
+:root[data-theme="dark"] .wa-nudge { background: color-mix(in srgb, #f0fdf4 10%, var(--surface)); border-color: var(--line); }
+:root[data-theme="dark"] .wa-nudge-close:hover { background: color-mix(in srgb, #dcfce7 10%, var(--surface)); }
+:root[data-theme="dark"] .modal { background: var(--surface); }
+:root[data-theme="dark"] .modal-header { background: var(--surface); }
+:root[data-theme="dark"] .modal-footer { background: var(--surface); }
+:root[data-theme="dark"] .modal-error { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-branch-select { background: color-mix(in srgb, #fff 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-pgrid-card:hover { background: color-mix(in srgb, #f0fdf4 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-pick-row--active { background: color-mix(in srgb, #f0fdf4 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-cart { background: var(--surface); }
+:root[data-theme="dark"] .pos-search-results { background: var(--surface); }
+:root[data-theme="dark"] .pos-remove:hover { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-add-custom:hover { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-customer-box .pos-search-row { background: var(--surface); }
+:root[data-theme="dark"] .pos-discount-mode { background: var(--surface); }
+:root[data-theme="dark"] .pos-credit-warn { background: color-mix(in srgb, #fff7ed 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #9a3412 45%, #ffffff); }
+:root[data-theme="dark"] .pos-credit-card { background: color-mix(in srgb, #fffbeb 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-credit-card-header { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); }
+:root[data-theme="dark"] .pos-credit-label { color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .pos-credit-amount { color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .pos-error { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); }
+:root[data-theme="dark"] .receipt-paper { background: var(--surface); }
+:root[data-theme="dark"] body { background: var(--surface); }
+:root[data-theme="dark"] .titi-bubble-err { background: color-mix(in srgb, #fef2f2 10%, var(--surface)); }
+:root[data-theme="dark"] .landing-shell { background: color-mix(in srgb, #f0f4fb 10%, var(--surface)); }
+:root[data-theme="dark"] .landing-feature { background: var(--surface); }
+:root[data-theme="dark"] .landing-chat-box { background: var(--surface); }
+:root[data-theme="dark"] .landing-titi-bubble { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-bubble-titi { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); border-color: var(--line); }
+:root[data-theme="dark"] .chat-bubble-err { background: color-mix(in srgb, #fff5f5 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #b91c1c 45%, #ffffff); }
+:root[data-theme="dark"] .chat-chip { background: var(--surface); }
+:root[data-theme="dark"] .chat-chip:hover { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-qs-btn { background: var(--surface); }
+:root[data-theme="dark"] .chat-qs-btn:hover { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-help-btn:hover, :root[data-theme="dark"] .chat-help-btn.active { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-input-bar { background: var(--surface); }
+:root[data-theme="dark"] .chat-mic-btn:hover { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-mic-active { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-fast-btn:hover { background: color-mix(in srgb, #fffbeb 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-fast-btn-on { background: color-mix(in srgb, #fffbeb 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-input-fast { background: color-mix(in srgb, #fffdf5 10%, var(--surface)); }
+:root[data-theme="dark"] .chat-fast-bar { background: color-mix(in srgb, #fffbeb 10%, var(--surface)); color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .chat-fast-bar-off { color: color-mix(in srgb, #b45309 45%, #ffffff); }
+:root[data-theme="dark"] .chat-fast-bar-off:hover { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); }
+:root[data-theme="dark"] .export-dropdown-menu { background: var(--surface); }
+:root[data-theme="dark"] .install-banner-btn { background: var(--surface); color: color-mix(in srgb, #1a56db 45%, #ffffff); }
+:root[data-theme="dark"] .install-banner-btn:hover { background: color-mix(in srgb, #f0e8ff 10%, var(--surface)); }
+:root[data-theme="dark"] .install-cue-btn { color: color-mix(in srgb, #3a2500 45%, #ffffff); }
+:root[data-theme="dark"] .sync-chip--offline { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); color: color-mix(in srgb, #92400e 45%, #ffffff); border-color: var(--line); }
+:root[data-theme="dark"] .sync-chip--syncing { background: color-mix(in srgb, #dbeafe 10%, var(--surface)); color: color-mix(in srgb, #1e40af 45%, #ffffff); }
+:root[data-theme="dark"] .sync-chip--failed { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); color: color-mix(in srgb, #991b1b 45%, #ffffff); }
+:root[data-theme="dark"] .qf-success { background: color-mix(in srgb, #edfbf3 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #1a6b42 45%, #ffffff); }
+:root[data-theme="dark"] .branch-chip { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); color: color-mix(in srgb, #1d4ed8 45%, #ffffff); border-color: var(--line); }
+:root[data-theme="dark"] .branch-item--default { background: color-mix(in srgb, #f0f9ff 10%, var(--surface)); }
+:root[data-theme="dark"] .branch-default-chip { background: color-mix(in srgb, #dbeafe 10%, var(--surface)); color: color-mix(in srgb, #1e40af 45%, #ffffff); }
+:root[data-theme="dark"] .svc-chip { background: color-mix(in srgb, #f0fdf4 10%, var(--surface)); color: color-mix(in srgb, #166534 45%, #ffffff); border-color: var(--line); }
+:root[data-theme="dark"] .pos-stock--service { color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .auto-intro { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #1e40af 45%, #ffffff); }
+:root[data-theme="dark"] .auto-intro-icon { color: color-mix(in srgb, #1d4ed8 45%, #ffffff); }
+:root[data-theme="dark"] .auto-switch-thumb { background: var(--surface); }
+:root[data-theme="dark"] .auto-whatsapp-tip { background: color-mix(in srgb, #f0fdf4 10%, var(--surface)); color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .auto-whatsapp-tip code { background: color-mix(in srgb, #dcfce7 10%, var(--surface)); }
+:root[data-theme="dark"] .auto-saved-msg { color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .legal-page { background: color-mix(in srgb, #f0f4fb 10%, var(--surface)); color: color-mix(in srgb, #374151 45%, #ffffff); }
+:root[data-theme="dark"] .legal-page h2 { color: color-mix(in srgb, #6d28d9 45%, #ffffff); }
+:root[data-theme="dark"] .debtors-stat { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .debtors-reminder-bar { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .row-overdue { background: color-mix(in srgb, #fff5f5 10%, var(--surface)); }
+:root[data-theme="dark"] .row-overdue:hover { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); }
+:root[data-theme="dark"] .reminder-card-msg { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .staff-lb-pos { background: color-mix(in srgb, #f3f4f6 10%, var(--surface)); }
+:root[data-theme="dark"] .upgrade-current-banner { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .upgrade-pending-chip { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); color: color-mix(in srgb, #92400e 45%, #ffffff); border-color: var(--line); }
+:root[data-theme="dark"] .upgrade-success-banner { background: color-mix(in srgb, #f0fdf4 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .upgrade-card-current-chip { color: color-mix(in srgb, #1a56db 45%, #ffffff); background: color-mix(in srgb, #eff4ff 10%, var(--surface)); }
+:root[data-theme="dark"] .upgrade-table-title { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .upgrade-table th { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .upgrade-row-alt { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .upgrade-check { color: color-mix(in srgb, #16a34a 45%, #ffffff); }
+:root[data-theme="dark"] .upgrade-bank-card { background: color-mix(in srgb, #f9fafb 10%, var(--surface)); }
+:root[data-theme="dark"] .td-attr-line { color: color-mix(in srgb, #6b7280 45%, #ffffff); }
+:root[data-theme="dark"] .getstarted-card { border-color: var(--line); background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
+:root[data-theme="dark"] .getstarted-pick { background: color-mix(in srgb, #fff 10%, var(--surface)); }
+:root[data-theme="dark"] .receipt-list-row:hover { background: color-mix(in srgb, #f8fafc 10%, var(--surface)); }
+:root[data-theme="dark"] .sub-banner--grace { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .sub-banner--grace   .sub-banner-close { color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .sub-banner--expired { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); color: color-mix(in srgb, #991b1b 45%, #ffffff); }
+:root[data-theme="dark"] .sub-banner--expired .sub-banner-close { color: color-mix(in srgb, #991b1b 45%, #ffffff); }
+:root[data-theme="dark"] .inv-below-cost-warning { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .promo-amber { color: var(--ink); }
+:root[data-theme="dark"] .promo-cta { color: color-mix(in srgb, #3a2500 45%, #ffffff); }
+:root[data-theme="dark"] .svc-chip--muted { background: color-mix(in srgb, #f8fafc 10%, var(--surface)); }
+:root[data-theme="dark"] .consent-box { background: color-mix(in srgb, #f8fafc 10%, var(--surface)); }
+:root[data-theme="dark"] .consent-box input[type="checkbox"] { background: var(--surface); }
+:root[data-theme="dark"] .consent-box input[type="checkbox"]::after { border-color: var(--line); }
+:root[data-theme="dark"] .invoice-suggest { background: var(--surface); }
+:root[data-theme="dark"] .invoice-state { background: var(--surface); }
+:root[data-theme="dark"] .invoice-flag--done { color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .invoice-stamp { color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .invoice-stamp--void { color: color-mix(in srgb, #64748b 45%, #ffffff); }
+:root[data-theme="dark"] .cam-scan-btn { background: var(--surface); }
+:root[data-theme="dark"] .bc-insight__warn { background: color-mix(in srgb, #fef3c7 10%, var(--surface)); color: color-mix(in srgb, #92400e 45%, #ffffff); }
+:root[data-theme="dark"] .profit-card__value { color: color-mix(in srgb, #166534 45%, #ffffff); }
+:root[data-theme="dark"] .profit-card__warn { color: color-mix(in srgb, #92400e 45%, #ffffff); background: color-mix(in srgb, #fef3c7 10%, var(--surface)); }
+:root[data-theme="dark"] .owe-line--paid { color: color-mix(in srgb, #166534 45%, #ffffff); }

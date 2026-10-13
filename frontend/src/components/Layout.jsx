@@ -4,8 +4,9 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, Settings as SettingsIcon,
 } from "lucide-react";
+import { applyDisplay, loadSettings } from "../lib/settings";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
@@ -76,6 +77,7 @@ function buildNav(L, group) {
     { to: "/scorecard",     label: "Business Score",  icon: Gauge             },
     { to: "/admin",         label: "Admin",           icon: ShieldCheck, adminOnly: true },
     { to: "/profile",       label: "My Profile",      icon: UserCircle },
+    { to: "/settings",      label: "Settings",        icon: SettingsIcon },
     { to: "/upgrade",       label: "Upgrade Plan ✦",  icon: ArrowUpCircle },
   ];
 }
@@ -102,6 +104,12 @@ export default function Layout() {
   useEffect(() => {
     apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
   }, []);
+
+  // This person's own text size / theme / list style, on whatever device they use
+  useEffect(() => {
+    if (!user?.id) return;
+    loadSettings(true).then(s => applyDisplay(s.display)).catch(() => {});
+  }, [user?.id]);
 
   // Persistent "new opportunities" badge: count opportunities created after the
   // last time this user opened the Opportunities page. Stays until they check
@@ -178,6 +186,7 @@ export default function Layout() {
     "/scorecard":     "Business Scorecard",
     "/admin":         "Admin Dashboard",
     "/profile":       "My Profile",
+    "/settings":      "Settings",
     "/upgrade":       "Upgrade Plan",
   };
 

@@ -205,6 +205,9 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
 
     from inventory_suppliers import find_matching_inventory_item
     from deliveries import reserved_for_item
+    from app_settings import business_setting
+    # Settings → "Allow selling below zero stock". Default yes, as before.
+    allow_negative = deduct_stock and business_setting(db, owner_phone, "allow_negative_stock")
     to_deduct = []
     for it in items:
         qty = int(it.get("qty", 1))
@@ -233,6 +236,20 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
                         f"Only {_num(max(_available, 0))} {_inv.unit or ''} of {_inv.name.title()} "
                         f"available — {_num(_reserved)} are reserved for customers waiting "
                         f"for delivery.".replace("  ", " "))
+            if not allow_negative:
+                # What this line takes out of the store, in the product's own unit
+                if it.get("sold_unit") and _inv.retail_unit and _inv.retail_per_base \
+                        and str(it.get("sold_unit")).lower() == _inv.retail_unit.lower():
+                    _take = qty / _inv.retail_per_base
+                else:
+                    _take = qty * float(it.get("fraction", 1.0) or 1.0)
+                _left = float(_inv.quantity or 0) - (_reserved if _reserved > 0 else 0)
+                if _take > _left + 1e-9:
+                    from deliveries import _num
+                    raise ValueError(
+                        f"Not enough {_inv.name.title()} — only {_num(max(_left, 0))} "
+                        f"{_inv.unit or ''} in stock. Selling below zero is switched off in "
+                        f"Settings.".replace("  ", " "))
 
         # Part delivery: only what goes out now leaves stock; the rest waits in
         # the store for this customer.

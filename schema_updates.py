@@ -111,6 +111,8 @@ def ensure_schema_updates(engine):
         "token_version": "INTEGER DEFAULT 0",
         "address": "VARCHAR",
         "receipt_counter": "INTEGER DEFAULT 0",
+        "display_prefs_json": "TEXT",
+        "business_settings_json": "TEXT",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():

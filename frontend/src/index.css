@@ -4383,3 +4383,24 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
 .owe-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-left: 4px solid var(--rose); text-decoration: none; color: var(--ink); }
 .owe-card strong { font-size: 20px; color: var(--rose); }
 .owe-card__go { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--brand); }
+
+/* ── Settings → My display → List style: compact fits more rows on screen ── */
+:root[data-density="compact"] tbody td { padding: 6px 12px; }
+:root[data-density="compact"] thead th { padding: 6px 12px; }
+:root[data-density="compact"] .card-body { padding: 12px; }
+:root[data-density="compact"] .pos-item { padding-top: 6px; padding-bottom: 6px; }
+
+/* ── Settings page ───────────────────────────────────────────────────── */
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.settings-row:last-child { border-bottom: none; }
+.settings-row-text { min-width: 0; flex: 1 1 220px; }
+.settings-row-text strong { display: block; font-size: 14px; color: var(--ink); }
+.settings-row-text span { font-size: 12.5px; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 7px 12px; font-size: 13px; cursor: pointer; color: var(--ink-2); font-family: inherit; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--brand); color: #fff; font-weight: 600; }
+.cat-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 16px 0; }
+.cat-chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+.cat-chip.on { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.cat-chip small { opacity: .75; margin-left: 4px; }

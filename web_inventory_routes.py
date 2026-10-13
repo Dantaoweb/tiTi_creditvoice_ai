@@ -92,6 +92,7 @@ class AddInventoryRequest(BaseModel):
     # Opening stock from a supplier: recorded as a delivery, like Adjust stock.
     supplier: Optional[str] = Field(default=None, max_length=120)
     paid_now: Optional[int] = None    # None → paid in full; less → owed to the supplier
+    category: Optional[str] = Field(default=None, max_length=60)
 
 
 class EditInventoryRequest(BaseModel):
@@ -109,6 +110,7 @@ class EditInventoryRequest(BaseModel):
     wholesale_min_qty: Optional[int] = None
     barcode: Optional[str] = Field(default=None, max_length=48)
     attributes: Optional[dict] = None
+    category: Optional[str] = Field(default=None, max_length=60)   # "" clears it
 
 
 class AdjustStockRequest(BaseModel):
@@ -220,6 +222,7 @@ def register_inventory_routes(app):
         dir: str = Query(default="desc", pattern="^(asc|desc)$"),
         limit: int = Query(default=50, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
+        category: Optional[str] = Query(default=None, max_length=60),   # "__none__" = uncategorised
     ):
         """One page of stock. `q` searches name + custom fields across the WHOLE
         catalogue (not just the loaded page); `low` keeps only items at/below
@@ -236,6 +239,9 @@ def register_inventory_routes(app):
                 ))
             if low:
                 query = _low_stock(query)
+            if category is not None:
+                query = (query.filter(or_(InventoryItem.category.is_(None), InventoryItem.category == ""))
+                         if category in ("", "__none__") else query.filter(InventoryItem.category == category.lower()))
             total = query.count()
 
             if sort == "name":
@@ -290,6 +296,7 @@ def register_inventory_routes(app):
                         "wholesale_min_qty": item.wholesale_min_qty,
                         "barcode": item.barcode,
                         "usual_supplier": item.usual_supplier,
+                        "category": item.category if item.category != "service" else None,
                         "attributes": _load_attributes(item),
                         "updated_at": _iso(item.updated_at),
                     }
@@ -352,6 +359,16 @@ def register_inventory_routes(app):
                 wholesale_min_qty=None if payload.is_service else payload.wholesale_min_qty,
                 attributes_json=_clean_attributes(owner_user, payload.attributes),
             )
+            # A category typed, or (when the business chose it) tiTi's
+            # suggestion; and the default low-stock alert for new products.
+            if payload.category and not payload.is_service:
+                from app_settings import clean_category
+                try:
+                    item.category = clean_category(payload.category)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
+            from app_settings import apply_new_item_defaults
+            apply_new_item_defaults(db, owner_phone, item)
             if payload.barcode:
                 import barcodes
                 if not barcodes.is_plausible(payload.barcode):
@@ -570,6 +587,12 @@ def register_inventory_routes(app):
                         raise HTTPException(status_code=400, detail=str(exc))
             if payload.usual_supplier is not None:
                 item.usual_supplier = payload.usual_supplier.strip() or None
+            if payload.category is not None and item.category != "service":
+                from app_settings import clean_category
+                try:
+                    item.category = clean_category(payload.category)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
             if payload.cost_price is not None:
                 item.cost_price = payload.cost_price
             if payload.selling_price is not None:

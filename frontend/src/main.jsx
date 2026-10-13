@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+﻿import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
@@ -8,6 +8,9 @@ import App from "./App.jsx";
 import FinancierApp from "./FinancierApp.jsx";
 import "./lib/pwaInstall";   // capture the install event as early as possible
 import "./index.css";
+import "./theme-dark.css";
+import { applySavedDisplay } from "./lib/settings";
+applySavedDisplay();   // the person's text size / theme before the first paint
 
 // The financier portal lives at /financier — outside /app, with its own cookie,
 // its own layout and none of the business app's providers, so it can never be
@@ -41,3 +44,4 @@ if ("serviceWorker" in navigator && !IS_FINANCIER) {
     navigator.serviceWorker.register("/app/sw.js").catch(() => {});
   });
 }
+

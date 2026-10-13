@@ -69,6 +69,11 @@ NAV_GUIDE = {
         "name": "Invoices",
         "what": "Ask a customer to pay: New invoice (scan or type items, add a Discount), send it, mark delivered, record payment.",
     },
+    "/settings": {
+        "name": "Settings",
+        "what": "Your text size, dark/light theme and list style; and (owner) grouping stock by category, "
+                "managing categories, selling below zero, part delivery at the POS, and the daily WhatsApp summary.",
+    },
     "/deliveries": {
         "name": "Deliveries",
         "what": "Jobs with a deliver/ready-by date, and goods customers bought that are still in your store "

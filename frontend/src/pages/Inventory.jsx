@@ -15,6 +15,20 @@ import { StockBadge } from "../components/Badge";
 import StaleDataBanner from "../components/StaleDataBanner";
 import { LimitBar } from "../components/UpgradeGate";
 import { usePlan } from "../lib/usePlan";
+import { useSettings } from "../lib/settings";
+
+/* A product's category: pick one already used or type a new one. */
+function CategoryField({ value, onChange, options = [], hint }) {
+  return (
+    <div className="form-group">
+      <label className="form-label">Category</label>
+      <input list="cv-inv-cats" value={value} onChange={e => onChange(e.target.value)}
+        placeholder="e.g. Drinks, Provisions" />
+      <datalist id="cv-inv-cats">{options.map(c => <option key={c} value={c} />)}</datalist>
+      {hint && <span className="form-hint">{hint}</span>}
+    </div>
+  );
+}
 
 // Error box that turns a plan-limit message into an actionable upsell — the
 // same text plus a clickable "Upgrade to Go" button when the Basic cap is hit.
@@ -328,15 +342,16 @@ function SimilarWarning({ found, onUse }) {
   );
 }
 
-function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved, onUseExisting }) {
+function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved, onUseExisting, categories = [], suggestCategory = false }) {
   const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
   const [form, setForm] = useState({
     name: "", unit: "", quantity: "",
     cost_price: "", selling_price: "", low_stock_alert: "",
     retail_unit: "", retail_per_base: "", retail_price: "",
     wholesale_price: "", wholesale_min_qty: "", barcode: "",
-    supplier: "", paid_now: "",
+    supplier: "", paid_now: "", category: "",
   });
+  const [catTouched, setCatTouched] = useState(false);
   const [attrs, setAttrs] = useState({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -355,6 +370,19 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
   function setAttr(k, v) { setAttrs(p => ({ ...p, [k]: v })); }
+
+  // Settings → "tiTi suggests" categories: fill one in from the name until
+  // the person types their own.
+  useEffect(() => {
+    const name = form.name.trim();
+    if (!suggestCategory || catTouched || name.length < 3) return;
+    const t = setTimeout(() => {
+      apiFetch("categories/suggest", { name })
+        .then(d => { if (d.category) setForm(p => ({ ...p, category: d.category.replace(/\b\w/g, c => c.toUpperCase()) })); })
+        .catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [form.name, suggestCategory, catTouched]);
 
   const isService = itemType === "service";
   // Opening stock from a supplier is a delivery: what it cost and what's owed.
@@ -385,6 +413,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
         supplier: isService ? null : (form.supplier.trim() || null),
         // Blank = paid in full; less than the total = owed to the supplier.
         paid_now: (!isService && form.supplier.trim()) ? paidAmount(form.paid_now) : null,
+        category: isService ? null : (form.category.trim() || null),
       });
       onSaved(item);
       onClose();
@@ -430,6 +459,12 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
         </div>
 
         <SimilarWarning found={similar} onUse={name => { onClose(); onUseExisting?.(name); }} />
+
+        {!isService && (
+          <CategoryField value={form.category} options={categories}
+            onChange={v => { setCatTouched(true); set("category", v); }}
+            hint={suggestCategory && form.category && !catTouched ? "Suggested by tiTi — change it if it's wrong." : null} />
+        )}
 
         {!isService && fields.length > 0 && (
           <div className="form-row" style={{ flexWrap: "wrap" }}>
@@ -571,7 +606,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
 }
 
 // ── Edit item modal ──────────────────────────────────────────────────────────
-function EditItemModal({ item, fields = [], onClose, onSaved }) {
+function EditItemModal({ item, fields = [], onClose, onSaved, categories = [] }) {
   const isService = item.is_service;
   const [form, setForm] = useState({
     name: item.name,
@@ -587,6 +622,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
     wholesale_min_qty: item.wholesale_min_qty || "",
     barcode: item.barcode || "",
     usual_supplier: item.usual_supplier || "",
+    category: item.category ? item.category.replace(/\b\w/g, c => c.toUpperCase()) : "",
   });
   const [attrs, setAttrs] = useState(item.attributes || {});
   const [saving, setSaving] = useState(false);
@@ -613,7 +649,8 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
         wholesale_price: (!isService && form.wholesale_price !== "") ? parseAmt(form.wholesale_price) : 0,
         wholesale_min_qty: (!isService && form.wholesale_min_qty !== "") ? parseAmt(form.wholesale_min_qty) : 0,
         // Empty clears it; the server refuses a code another product already has.
-        ...(!isService ? { barcode: form.barcode.trim(), usual_supplier: form.usual_supplier.trim() } : {}),
+        ...(!isService ? { barcode: form.barcode.trim(), usual_supplier: form.usual_supplier.trim(),
+                           category: form.category.trim() } : {}),
         ...(fields.length > 0 && !isService ? { attributes: attrs } : {}),
       });
       onSaved();
@@ -635,6 +672,9 @@ function EditItemModal({ item, fields = [], onClose, onSaved }) {
             <input value={form.unit} onChange={e => set("unit", e.target.value)} />
           </div>
         </div>
+        {!isService && (
+          <CategoryField value={form.category} options={categories} onChange={v => set("category", v)} />
+        )}
         {!isService && fields.length > 0 && (
           <div className="form-row" style={{ flexWrap: "wrap" }}>
             {fields.map(f => (
@@ -1147,6 +1187,14 @@ export default function Inventory() {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");         // debounced search sent to the server
   const [lowOnly, setLowOnly] = useState(false);
+  // Settings → group stock by category: chips to show one group at a time
+  const { business } = useSettings();
+  const grouping = business.group_by_category;
+  const [cat, setCat] = useState(null);            // null = all, "__none__" = uncategorised
+  const [cats, setCats] = useState([]);
+  const loadCats = () => apiFetch("categories").then(d => setCats(d.categories || [])).catch(() => {});
+  useEffect(() => { loadCats(); }, []);
+  const catNames = cats.filter(c => c.name && !c.is_service).map(c => c.label);
   const [sort, setSort] = useState(null);         // { col, dir } — null = recently updated first
   const reqId = useRef(0);
   const [showAdd, setShowAdd] = useState(false);
@@ -1165,6 +1213,7 @@ export default function Inventory() {
   function pageParams(offset, limit) {
     return {
       owner_phone: ownerPhone, q: query, low: lowOnly ? "true" : "",
+      category: grouping && cat ? cat : "",
       sort: sort?.col || "", dir: sort?.dir || "", offset, limit,
     };
   }
@@ -1188,6 +1237,7 @@ export default function Inventory() {
       .catch(e => { if (id === reqId.current) { setError(e.message); setIsStale(true); } })
       .finally(() => { if (id === reqId.current) setLoading(false); });
     loadSummary();
+    loadCats();
   }
 
   function loadMore() {
@@ -1213,7 +1263,7 @@ export default function Inventory() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { load(); }, [ownerPhone, query, lowOnly, sort]);
+  useEffect(() => { load(); }, [ownerPhone, query, lowOnly, sort, cat, grouping]);
 
   useEffect(() => {
     apiFetch("inventory/fields").then(d => setFields(d.fields || [])).catch(() => {});
@@ -1312,6 +1362,21 @@ export default function Inventory() {
             />
           </div>
         )}
+        {grouping && cats.length > 0 && (
+          <div className="cat-chips">
+            <button type="button" className={`cat-chip${!cat ? " on" : ""}`} onClick={() => setCat(null)}>
+              All
+            </button>
+            {cats.map(c => (
+              <button key={c.name || "__none__"} type="button"
+                className={`cat-chip${cat === (c.name || "__none__") ? " on" : ""}`}
+                title={c.value ? `${nairaFull(c.value)} in stock` : undefined}
+                onClick={() => setCat(c.name || "__none__")}>
+                {c.label}<small>{c.count}</small>
+              </button>
+            ))}
+          </div>
+        )}
         {query && closeMatches.length > 0 && (
           <div style={{ margin: "8px 16px 0", padding: "10px 12px", border: "1px dashed var(--line)", borderRadius: 8, fontSize: 13 }}>
             <strong>{rows.length ? "Also close to" : "Nothing spelt exactly like"} “{query}” — did you mean:</strong>
@@ -1356,6 +1421,9 @@ export default function Inventory() {
                       <ChevronRight size={14} className="name-chip__chev" />
                     </button>
                     {r.is_service && <span className="svc-chip">service</span>}
+                    {grouping && !cat && r.category && (
+                      <span className="svc-chip" style={{ textTransform: "capitalize" }}>{r.category}</span>
+                    )}
                     {/* Only once this shop uses barcodes at all — a shop that
                         scans nothing should not be told what it is missing. */}
                     {usesBarcodes && !r.is_service && (
@@ -1450,12 +1518,15 @@ export default function Inventory() {
           onClose={() => setShowAdd(false)}
           onSaved={() => load(rows.length + 1)}
           onUseExisting={name => setSearch(name)}
+          categories={catNames}
+          suggestCategory={business.category_source === "suggest"}
         />
       )}
 
       {editItem && (
         <EditItemModal
           item={editItem}
+          categories={catNames}
           fields={fields}
           onClose={() => setEditItem(null)}
           onSaved={reload}

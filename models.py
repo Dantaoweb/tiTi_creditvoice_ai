@@ -79,6 +79,11 @@ class User(Base):
     # this business sees a clean 1, 2, 3… on receipts (not the global row id).
     receipt_counter = Column(Integer, default=0, nullable=False)
 
+    # Settings (app_settings.py): this person's own display choices, and — on
+    # the owner — the business-wide ones. JSON; missing keys = the defaults.
+    display_prefs_json = Column(String, nullable=True)
+    business_settings_json = Column(String, nullable=True)
+
     # Staff assigned to a branch record their transactions into it.
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
 
