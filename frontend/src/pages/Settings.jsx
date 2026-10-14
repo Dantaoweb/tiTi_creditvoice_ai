@@ -40,7 +40,7 @@ function useSaver(fn) {
 }
 
 function DisplaySection({ display }) {
-  const d = { text_size: "normal", theme: "light", density: "comfortable", ...(display || {}) };
+  const d = { text_size: "normal", theme: "light", density: "comfortable", scan_mode: "keep", ...(display || {}) };
   const { save, msg, err } = useSaver(saveDisplay);
   return (
     <div className="card">
@@ -61,6 +61,11 @@ function DisplaySection({ display }) {
         <Row title="List style" hint="Compact fits more rows on the screen; comfortable gives bigger rows to tap.">
           <Seg value={d.density} onChange={v => save({ density: v })}
             options={[["compact", "Compact"], ["comfortable", "Comfortable"]]} />
+        </Row>
+        <Row title="Phone camera scanning"
+          hint="Tap to scan reads one barcode and closes the camera — kinder to phones that get hot. A USB or Bluetooth scanner is not affected.">
+          <Seg value={d.scan_mode} onChange={v => save({ scan_mode: v })}
+            options={[["tap", "Tap to scan"], ["keep", "Keep scanning"]]} />
         </Row>
       </div>
     </div>

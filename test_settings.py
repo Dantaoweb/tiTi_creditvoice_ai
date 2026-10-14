@@ -176,7 +176,8 @@ def test_light_is_the_default_until_someone_picks_a_theme():
     assert get_display(u)["theme"] == "light"
     # Saved by the first version alongside a text-size change, never chosen
     u.display_prefs_json = '{"text_size": "large", "theme": "system", "density": "comfortable"}'
-    assert get_display(u) == {"text_size": "large", "theme": "light", "density": "comfortable"}
+    assert get_display(u) == {"text_size": "large", "theme": "light", "density": "comfortable",
+                              "scan_mode": "keep"}
     set_display(u, {"text_size": "xlarge"})
     assert get_display(u)["theme"] == "light"
     set_display(u, {"theme": "dark"})

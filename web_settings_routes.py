@@ -20,6 +20,7 @@ class DisplayRequest(BaseModel):
     text_size: Optional[str] = Field(default=None, max_length=10)
     theme: Optional[str] = Field(default=None, max_length=10)
     density: Optional[str] = Field(default=None, max_length=12)
+    scan_mode: Optional[str] = Field(default=None, max_length=8)
 
 
 class BusinessRequest(BaseModel):

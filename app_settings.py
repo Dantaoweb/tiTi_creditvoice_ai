@@ -20,11 +20,13 @@ DISPLAY_DEFAULTS = {
     "text_size": "normal",        # small | normal | large | xlarge
     "theme": "light",             # light | dark | system — light unless the person chooses
     "density": "comfortable",     # compact | comfortable
+    "scan_mode": "keep",          # phone camera: keep (scan one after another) | tap (one, then close)
 }
 DISPLAY_CHOICES = {
     "text_size": ("small", "normal", "large", "xlarge"),
     "theme": ("light", "dark", "system"),
     "density": ("compact", "comfortable"),
+    "scan_mode": ("keep", "tap"),
 }
 
 BUSINESS_DEFAULTS = {

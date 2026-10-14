@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useSettings } from "../lib/settings";
 
 // The phone's camera as a barcode scanner, for shops without a USB/Bluetooth
-// scanner — which is most of them.
+// scanner — which is most of them. (A USB/Bluetooth scanner never comes here:
+// it types into the page like a keyboard, and nothing below touches that.)
 //
 // Android Chrome reads barcodes itself (BarcodeDetector), so nothing extra is
-// downloaded there. iPhone Safari cannot, so a small reader (ZXing) is loaded
-// the first time someone there taps Scan; nobody else pays for it.
+// downloaded there. Phones whose browser can't (iPhone Safari, some Android
+// browsers) load a small reader (ZXing) the first time someone taps Scan.
 //
 // onCode(code) may return (or resolve to) { label, ok, close }: the label is
 // shown in the viewfinder ("Added Peak Milk"), and close shuts the camera
@@ -15,13 +17,19 @@ import { X } from "lucide-react";
 const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code"];
 const SAME_CODE_MS = 1800;   // holding the camera on one packet is one scan, not ten
 
-// Gentle on the phone. Cheap phones overheated and switched off when every
-// frame was read at HD, with reads stacking up faster than they finished.
-// So: a small picture, ONE read at a time with a rest in between, only the
-// middle strip where the barcode is, and the camera off when it isn't used.
-const REST_MS = 350;           // pause after each read before the next one
-const IDLE_MS = 60_000;        // no scan for a minute → camera off (battery, heat)
-const READ_WIDTH = 480;        // the strip is shrunk to this width before reading
+// Gentle on the phone. A camera is one of the hardest jobs a phone does: the
+// sensor, its picture chip and the processor all run at once, and a phone
+// that is already warm (in use, charging, a hot shop) switches itself off to
+// protect its battery. So:
+// - a small, slow picture, and only its middle strip is read (shrunk);
+// - ONE read at a time, with a rest in between — on every phone, including
+//   the ones that use the fallback reader, which used to read whole frames;
+// - the camera goes off soon after the last scan, when the app is left, and
+//   for a rest after a few minutes of non-stop scanning.
+const REST_MS = 400;              // pause after each read before the next one
+const IDLE_MS = 20_000;           // no scan for 20 seconds → camera off
+const MAX_RUN_MS = 3 * 60_000;    // 3 minutes of camera non-stop → a rest
+const READ_WIDTH = 480;           // the strip is shrunk to this width before reading
 
 let audioCtx = null;           // one, reused — not a new one per beep
 function beep() {
@@ -47,7 +55,9 @@ async function nativeDetector() {
   } catch { return null; }
 }
 
-async function zxingReader() {
+// The fallback reader, shaped like BarcodeDetector so both go through the
+// same gentle loop and both read only the small middle strip.
+async function zxingDetector() {
   const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] = await Promise.all([
     import("@zxing/browser"), import("@zxing/library"),
   ]);
@@ -57,7 +67,13 @@ async function zxingReader() {
     BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
     BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF, BarcodeFormat.QR_CODE,
   ]);
-  return new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: REST_MS, delayBetweenScanSuccess: 1000 });
+  const reader = new BrowserMultiFormatReader(hints);
+  return {
+    async detect(canvas) {
+      try { return [{ rawValue: reader.decodeFromCanvas(canvas).getText() }]; }
+      catch { return []; }               // nothing readable in this frame
+    },
+  };
 }
 
 function explain(err) {
@@ -72,23 +88,54 @@ function explain(err) {
   return "The camera could not start. You can still type the barcode number.";
 }
 
+// Charging and a low battery are the two things we can see that make a
+// camera switch a phone off (browsers don't tell anyone the temperature).
+function useBatteryTip() {
+  const [tip, setTip] = useState("");
+  useEffect(() => {
+    let battery = null;
+    const update = () => {
+      if (!battery) return;
+      if (battery.charging) setTip("Your phone is charging — scanning while charging heats it up. Unplug it if it gets hot.");
+      else if (battery.level <= 0.15) setTip("Battery low — the camera may switch your phone off. Charge it first, or type the barcode.");
+      else setTip("");
+    };
+    navigator.getBattery?.().then(b => {
+      battery = b; update();
+      b.addEventListener("chargingchange", update);
+      b.addEventListener("levelchange", update);
+    }).catch(() => {});
+    return () => {
+      battery?.removeEventListener("chargingchange", update);
+      battery?.removeEventListener("levelchange", update);
+    };
+  }, []);
+  return tip;
+}
+
 export default function CameraScanner({ onCode, onClose, continuous = false, title = "Scan a barcode" }) {
   const videoRef = useRef(null);
+  const { display } = useSettings();
+  // Settings → My display → Phone camera scanning: "tap" reads one barcode and closes
+  const tapMode = display?.scan_mode === "tap";
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(true);
-  const [paused, setPaused] = useState(false);        // camera off to save battery
+  const [paused, setPaused] = useState(null);         // null | "idle" | "rest" — camera off
   const [run, setRun] = useState(0);                  // bump to start the camera again
   const [feedback, setFeedback] = useState(null);     // { label, ok }
-  const [keepGoing, setKeepGoing] = useState(continuous);
-  const keepRef = useRef(continuous);
+  const [keepGoing, setKeepGoing] = useState(continuous && !tapMode);
+  const keepRef = useRef(continuous && !tapMode);
+  const batteryTip = useBatteryTip();
   // Kept in refs so a parent re-render never restarts the camera.
   const handler = useRef(onCode);
   const closer = useRef(onClose);
   useEffect(() => { handler.current = onCode; closer.current = onClose; });
   useEffect(() => { keepRef.current = keepGoing; }, [keepGoing]);
+  // The setting may arrive after the camera opened
+  useEffect(() => { if (tapMode) setKeepGoing(false); }, [tapMode]);
 
   useEffect(() => {
-    let stream = null, loopTimer = null, idleTimer = null, zxingControls = null, stopped = false;
+    let stream = null, loopTimer = null, idleTimer = null, restTimer = null, stopped = false;
     let last = { code: "", at: 0 }, busy = false;
     const canvas = document.createElement("canvas");
     const ctx2d = canvas.getContext("2d", { willReadFrequently: true });
@@ -97,26 +144,26 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
       stopped = true;
       clearTimeout(loopTimer);
       clearTimeout(idleTimer);
-      try { zxingControls?.stop(); } catch { /* already stopped */ }
+      clearTimeout(restTimer);
       stream?.getTracks().forEach(t => t.stop());
       stream = null;
       const video = videoRef.current;
       if (video) video.srcObject = null;
     }
 
-    function pause() {
+    function pause(why) {
       if (stopped) return;
       stop();
-      setPaused(true);
+      setPaused(why);
     }
 
     function stillUsed() {
       clearTimeout(idleTimer);
-      idleTimer = setTimeout(pause, IDLE_MS);
+      idleTimer = setTimeout(() => pause("idle"), IDLE_MS);
     }
 
     // Leaving the app or locking the phone turns the camera off.
-    function onVisibility() { if (document.hidden) pause(); }
+    function onVisibility() { if (document.hidden) pause("idle"); }
     document.addEventListener("visibilitychange", onVisibility);
 
     async function found(raw) {
@@ -168,7 +215,7 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
           video: {
             facingMode: { ideal: "environment" },
             width: { ideal: 640 }, height: { ideal: 480 },
-            frameRate: { ideal: 15, max: 24 },
+            frameRate: { ideal: 10, max: 15 },
           },
           audio: false,
         });
@@ -179,18 +226,12 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
         await video.play();
         setStarting(false);
         stillUsed();
+        // Non-stop scanning for a few minutes → let the phone cool a moment
+        restTimer = setTimeout(() => pause("rest"), MAX_RUN_MS);
 
-        const detector = await nativeDetector();
+        const detector = (await nativeDetector()) || (await zxingDetector());
         if (stopped) return;
-        if (detector) {
-          readLoop(video, detector);
-        } else {
-          const reader = await zxingReader();
-          if (stopped) return;
-          zxingControls = await reader.decodeFromVideoElement(video, result => {
-            if (result && !stopped) found(result.getText());
-          });
-        }
+        readLoop(video, detector);
       } catch (e) {
         setStarting(false);
         setError(explain(e));
@@ -204,7 +245,7 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
   }, [run]);
 
   function resume() {
-    setPaused(false);
+    setPaused(null);
     setStarting(true);
     setRun(r => r + 1);
   }
@@ -224,7 +265,11 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
         {starting && !error && !paused && <div className="cam-scan__msg">Starting the camera…</div>}
         {paused && !error && (
           <div className="cam-scan__msg">
-            Camera paused to save your battery.
+            {paused === "rest"
+              ? <>Camera resting so your phone doesn't get too hot.<br />
+                  <span style={{ fontSize: 13, opacity: 0.85 }}>If it feels warm, give it a minute before you carry on.
+                    Scanning a lot every day? A USB or Bluetooth scanner works with CreditVoice and doesn't heat your phone.</span></>
+              : "Camera paused to save your battery."}
             <div style={{ marginTop: 10 }}>
               <button type="button" className="btn btn-primary" onClick={resume}>Resume scanning</button>
             </div>
@@ -239,6 +284,9 @@ export default function CameraScanner({ onCode, onClose, continuous = false, tit
       </div>
 
       <div className="cam-scan__foot">
+        {batteryTip && !error && (
+          <span style={{ color: "#fcd34d", fontWeight: 600 }}>⚠ {batteryTip}</span>
+        )}
         {!error && <span>Point the camera at the barcode — it scans by itself.</span>}
         {continuous && !error && (
           <label className="cam-scan__keep">
