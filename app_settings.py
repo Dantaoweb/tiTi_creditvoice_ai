@@ -18,7 +18,7 @@ from models import User
 
 DISPLAY_DEFAULTS = {
     "text_size": "normal",        # small | normal | large | xlarge
-    "theme": "system",            # light | dark | system
+    "theme": "light",             # light | dark | system — light unless the person chooses
     "density": "comfortable",     # compact | comfortable
 }
 DISPLAY_CHOICES = {
@@ -54,19 +54,28 @@ def _load(raw):
 
 def get_display(user):
     data = _load(getattr(user, "display_prefs_json", None))
-    return {k: data.get(k, v) if data.get(k) in DISPLAY_CHOICES[k] else v
-            for k, v in DISPLAY_DEFAULTS.items()}
+    out = {k: data.get(k, v) if data.get(k) in DISPLAY_CHOICES[k] else v
+           for k, v in DISPLAY_DEFAULTS.items()}
+    # The first version saved "follow my phone" alongside any other change, as
+    # its default — which turned the app dark for people who never picked it.
+    # Only a theme the person actually chose counts.
+    if not data.get("theme_chosen"):
+        out["theme"] = DISPLAY_DEFAULTS["theme"]
+    return out
 
 
 def set_display(user, changes):
     current = get_display(user)
+    chosen = bool(_load(getattr(user, "display_prefs_json", None)).get("theme_chosen"))
     for k, v in (changes or {}).items():
         if k not in DISPLAY_CHOICES:
             continue
         if v not in DISPLAY_CHOICES[k]:
             raise ValueError(f"'{v}' is not a choice for {k.replace('_', ' ')}.")
         current[k] = v
-    user.display_prefs_json = json.dumps(current)
+        if k == "theme":
+            chosen = True
+    user.display_prefs_json = json.dumps({**current, "theme_chosen": chosen})
     return current
 
 

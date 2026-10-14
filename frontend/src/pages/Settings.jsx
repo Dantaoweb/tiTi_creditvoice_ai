@@ -40,7 +40,7 @@ function useSaver(fn) {
 }
 
 function DisplaySection({ display }) {
-  const d = { text_size: "normal", theme: "system", density: "comfortable", ...(display || {}) };
+  const d = { text_size: "normal", theme: "light", density: "comfortable", ...(display || {}) };
   const { save, msg, err } = useSaver(saveDisplay);
   return (
     <div className="card">

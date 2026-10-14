@@ -164,3 +164,22 @@ def test_titi_explains_settings(ask):
     p = parse_message(ask) or {}
     topic = p.get("topic") if p.get("type") == "APP_GUIDE" else detect_faq(ask)
     assert topic == "settings"
+
+
+def test_light_is_the_default_until_someone_picks_a_theme():
+    from app_settings import get_display, set_display
+
+    class U:
+        display_prefs_json = None
+
+    u = U()
+    assert get_display(u)["theme"] == "light"
+    # Saved by the first version alongside a text-size change, never chosen
+    u.display_prefs_json = '{"text_size": "large", "theme": "system", "density": "comfortable"}'
+    assert get_display(u) == {"text_size": "large", "theme": "light", "density": "comfortable"}
+    set_display(u, {"text_size": "xlarge"})
+    assert get_display(u)["theme"] == "light"
+    set_display(u, {"theme": "dark"})
+    assert get_display(u)["theme"] == "dark"
+    set_display(u, {"text_size": "small"})
+    assert get_display(u)["theme"] == "dark"                      # a real choice sticks

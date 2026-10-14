@@ -6,12 +6,14 @@ import { apiFetch, apiPut } from "./api";
    load, refreshed when someone saves on the Settings page. */
 
 const ZOOM = { small: 0.9, normal: 1, large: 1.12, xlarge: 1.25 };
-const DISPLAY_KEY = "cv_display";
+// v2: the first version saved "follow my phone" as the default on every device,
+// which turned the app dark for people who never chose it. Start fresh.
+const DISPLAY_KEY = "cv_display_v2";
 
 let media = null;
 
 export function applyDisplay(display) {
-  const d = { text_size: "normal", theme: "system", density: "comfortable", ...(display || {}) };
+  const d = { text_size: "normal", theme: "light", density: "comfortable", ...(display || {}) };
   const root = document.documentElement;
   // Text size scales the whole app, so px-sized text, icons and buttons grow together
   document.body.style.zoom = ZOOM[d.text_size] && ZOOM[d.text_size] !== 1 ? String(ZOOM[d.text_size]) : "";
