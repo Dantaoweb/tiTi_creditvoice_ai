@@ -144,3 +144,177 @@
 :root[data-theme="dark"] .profit-card__value { color: color-mix(in srgb, #166534 45%, #ffffff); }
 :root[data-theme="dark"] .profit-card__warn { color: color-mix(in srgb, #92400e 45%, #ffffff); background: color-mix(in srgb, #fef3c7 10%, var(--surface)); }
 :root[data-theme="dark"] .owe-line--paid { color: color-mix(in srgb, #166534 45%, #ffffff); }
+
+/* Inline colours in the screens */
+:root[data-theme="dark"] [style*="color: rgb(0, "],
+:root[data-theme="dark"] [style*="color: rgb(1, "],
+:root[data-theme="dark"] [style*="color: rgb(2, "],
+:root[data-theme="dark"] [style*="color: rgb(3, "],
+:root[data-theme="dark"] [style*="color: rgb(4, "],
+:root[data-theme="dark"] [style*="color: rgb(5, "],
+:root[data-theme="dark"] [style*="color: rgb(6, "],
+:root[data-theme="dark"] [style*="color: rgb(7, "],
+:root[data-theme="dark"] [style*="color: rgb(8, "],
+:root[data-theme="dark"] [style*="color: rgb(9, "],
+:root[data-theme="dark"] [style*="color: rgb(10, "],
+:root[data-theme="dark"] [style*="color: rgb(11, "],
+:root[data-theme="dark"] [style*="color: rgb(12, "],
+:root[data-theme="dark"] [style*="color: rgb(13, "],
+:root[data-theme="dark"] [style*="color: rgb(14, "],
+:root[data-theme="dark"] [style*="color: rgb(15, "],
+:root[data-theme="dark"] [style*="color: rgb(16, "],
+:root[data-theme="dark"] [style*="color: rgb(17, "],
+:root[data-theme="dark"] [style*="color: rgb(18, "],
+:root[data-theme="dark"] [style*="color: rgb(19, "],
+:root[data-theme="dark"] [style*="color: rgb(20, "],
+:root[data-theme="dark"] [style*="color: rgb(21, "],
+:root[data-theme="dark"] [style*="color: rgb(22, "],
+:root[data-theme="dark"] [style*="color: rgb(23, "],
+:root[data-theme="dark"] [style*="color: rgb(24, "],
+:root[data-theme="dark"] [style*="color: rgb(25, "],
+:root[data-theme="dark"] [style*="color: rgb(26, "],
+:root[data-theme="dark"] [style*="color: rgb(27, "],
+:root[data-theme="dark"] [style*="color: rgb(28, "],
+:root[data-theme="dark"] [style*="color: rgb(29, "],
+:root[data-theme="dark"] [style*="color: rgb(30, "],
+:root[data-theme="dark"] [style*="color: rgb(31, "],
+:root[data-theme="dark"] [style*="color: rgb(32, "],
+:root[data-theme="dark"] [style*="color: rgb(33, "],
+:root[data-theme="dark"] [style*="color: rgb(34, "],
+:root[data-theme="dark"] [style*="color: rgb(35, "],
+:root[data-theme="dark"] [style*="color: rgb(36, "],
+:root[data-theme="dark"] [style*="color: rgb(37, "],
+:root[data-theme="dark"] [style*="color: rgb(38, "],
+:root[data-theme="dark"] [style*="color: rgb(39, "],
+:root[data-theme="dark"] [style*="color: rgb(40, "],
+:root[data-theme="dark"] [style*="color: rgb(41, "],
+:root[data-theme="dark"] [style*="color: rgb(42, "],
+:root[data-theme="dark"] [style*="color: rgb(43, "],
+:root[data-theme="dark"] [style*="color: rgb(44, "],
+:root[data-theme="dark"] [style*="color: rgb(45, "],
+:root[data-theme="dark"] [style*="color: rgb(46, "],
+:root[data-theme="dark"] [style*="color: rgb(47, "],
+:root[data-theme="dark"] [style*="color: rgb(48, "],
+:root[data-theme="dark"] [style*="color: rgb(49, "],
+:root[data-theme="dark"] [style*="color: rgb(50, "],
+:root[data-theme="dark"] [style*="color: rgb(51, "],
+:root[data-theme="dark"] [style*="color: rgb(52, "],
+:root[data-theme="dark"] [style*="color: rgb(53, "],
+:root[data-theme="dark"] [style*="color: rgb(54, "],
+:root[data-theme="dark"] [style*="color: rgb(55, "],
+:root[data-theme="dark"] [style*="color: rgb(56, "],
+:root[data-theme="dark"] [style*="color: rgb(57, "],
+:root[data-theme="dark"] [style*="color: rgb(58, "],
+:root[data-theme="dark"] [style*="color: rgb(59, "],
+:root[data-theme="dark"] [style*="color: rgb(60, "],
+:root[data-theme="dark"] [style*="color: rgb(61, "],
+:root[data-theme="dark"] [style*="color: rgb(62, "],
+:root[data-theme="dark"] [style*="color: rgb(63, "],
+:root[data-theme="dark"] [style*="color: rgb(64, "],
+:root[data-theme="dark"] [style*="color: rgb(65, "],
+:root[data-theme="dark"] [style*="color: rgb(66, "],
+:root[data-theme="dark"] [style*="color: rgb(67, "],
+:root[data-theme="dark"] [style*="color: rgb(68, "],
+:root[data-theme="dark"] [style*="color: rgb(69, "],
+:root[data-theme="dark"] [style*="color: rgb(70, "],
+:root[data-theme="dark"] [style*="color: rgb(71, "],
+:root[data-theme="dark"] [style*="color: rgb(72, "],
+:root[data-theme="dark"] [style*="color: rgb(73, "],
+:root[data-theme="dark"] [style*="color: rgb(74, "],
+:root[data-theme="dark"] [style*="color: rgb(75, "],
+:root[data-theme="dark"] [style*="color: rgb(76, "],
+:root[data-theme="dark"] [style*="color: rgb(77, "],
+:root[data-theme="dark"] [style*="color: rgb(78, "],
+:root[data-theme="dark"] [style*="color: rgb(79, "],
+:root[data-theme="dark"] [style*="color: rgb(80, "],
+:root[data-theme="dark"] [style*="color: rgb(81, "],
+:root[data-theme="dark"] [style*="color: rgb(82, "],
+:root[data-theme="dark"] [style*="color: rgb(83, "],
+:root[data-theme="dark"] [style*="color: rgb(84, "],
+:root[data-theme="dark"] [style*="color: rgb(85, "],
+:root[data-theme="dark"] [style*="color: rgb(86, "],
+:root[data-theme="dark"] [style*="color: rgb(87, "],
+:root[data-theme="dark"] [style*="color: rgb(88, "],
+:root[data-theme="dark"] [style*="color: rgb(89, "],
+:root[data-theme="dark"] [style*="color: rgb(90, "],
+:root[data-theme="dark"] [style*="color: rgb(91, "],
+:root[data-theme="dark"] [style*="color: rgb(92, "],
+:root[data-theme="dark"] [style*="color: rgb(93, "],
+:root[data-theme="dark"] [style*="color: rgb(94, "],
+:root[data-theme="dark"] [style*="color: rgb(95, "],
+:root[data-theme="dark"] [style*="color: rgb(96, "],
+:root[data-theme="dark"] [style*="color: rgb(97, "],
+:root[data-theme="dark"] [style*="color: rgb(98, "],
+:root[data-theme="dark"] [style*="color: rgb(99, "],
+:root[data-theme="dark"] [style*="color: rgba(0, 0, 0"] { color: var(--ink) !important; }
+:root[data-theme="dark"] [style*="color: rgb(5, 150, 105)"] { color: color-mix(in srgb, #059669 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(15, 118, 110)"] { color: color-mix(in srgb, #0f766e 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(21, 128, 61)"] { color: color-mix(in srgb, #15803d 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(22, 101, 52)"] { color: color-mix(in srgb, #166534 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(22, 163, 74)"] { color: color-mix(in srgb, #16a34a 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(26, 86, 219)"] { color: color-mix(in srgb, #1a56db 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(29, 78, 216)"] { color: color-mix(in srgb, #1d4ed8 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(30, 27, 75)"] { color: color-mix(in srgb, #1e1b4b 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(34, 34, 34)"] { color: color-mix(in srgb, #222 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(37, 99, 235)"] { color: color-mix(in srgb, #2563eb 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(51, 51, 51)"] { color: color-mix(in srgb, #333 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(55, 65, 81)"] { color: color-mix(in srgb, #374151 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(58, 37, 0)"] { color: color-mix(in srgb, #3a2500 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(59, 130, 246)"] { color: color-mix(in srgb, #3b82f6 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(68, 68, 68)"] { color: color-mix(in srgb, #444 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(71, 85, 105)"] { color: color-mix(in srgb, #475569 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(85, 85, 85)"] { color: color-mix(in srgb, #555 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(102, 102, 102)"] { color: color-mix(in srgb, #666 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(107, 114, 128)"] { color: color-mix(in srgb, #6b7280 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(109, 40, 217)"] { color: color-mix(in srgb, #6d28d9 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(126, 34, 206)"] { color: color-mix(in srgb, #7e22ce 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(146, 64, 14)"] { color: color-mix(in srgb, #92400e 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(153, 27, 27)"] { color: color-mix(in srgb, #991b1b 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(180, 83, 9)"] { color: color-mix(in srgb, #b45309 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(185, 28, 28)"] { color: color-mix(in srgb, #b91c1c 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(220, 38, 38)"] { color: color-mix(in srgb, #dc2626 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(239, 68, 68)"] { color: color-mix(in srgb, #ef4444 45%, #ffffff) !important; }
+:root[data-theme="dark"] [style*="color: rgb(0, 0, 0)"],
+:root[data-theme="dark"] [style*="color: rgb(0, 0, 0)"],
+:root[data-theme="dark"] [style*="color: rgb(17, 17, 17)"],
+:root[data-theme="dark"] [style*="color: rgb(17, 17, 17)"] { color: var(--ink) !important; }
+:root[data-theme="dark"] [style*="color: black"] { color: var(--ink) !important; }
+:root[data-theme="dark"] [style*="background: rgb(187, 247, 208)"],
+:root[data-theme="dark"] [style*="background-color: rgb(187, 247, 208)"],
+:root[data-theme="dark"] [style*="background: rgb(209, 250, 229)"],
+:root[data-theme="dark"] [style*="background-color: rgb(209, 250, 229)"],
+:root[data-theme="dark"] [style*="background: rgb(220, 252, 231)"],
+:root[data-theme="dark"] [style*="background-color: rgb(220, 252, 231)"],
+:root[data-theme="dark"] [style*="background: rgb(229, 231, 235)"],
+:root[data-theme="dark"] [style*="background-color: rgb(229, 231, 235)"],
+:root[data-theme="dark"] [style*="background: rgb(239, 246, 255)"],
+:root[data-theme="dark"] [style*="background-color: rgb(239, 246, 255)"],
+:root[data-theme="dark"] [style*="background: rgb(240, 247, 243)"],
+:root[data-theme="dark"] [style*="background-color: rgb(240, 247, 243)"],
+:root[data-theme="dark"] [style*="background: rgb(240, 253, 244)"],
+:root[data-theme="dark"] [style*="background-color: rgb(240, 253, 244)"],
+:root[data-theme="dark"] [style*="background: rgb(249, 250, 251)"],
+:root[data-theme="dark"] [style*="background-color: rgb(249, 250, 251)"],
+:root[data-theme="dark"] [style*="background: rgb(253, 242, 248)"],
+:root[data-theme="dark"] [style*="background-color: rgb(253, 242, 248)"],
+:root[data-theme="dark"] [style*="background: rgb(254, 226, 226)"],
+:root[data-theme="dark"] [style*="background-color: rgb(254, 226, 226)"],
+:root[data-theme="dark"] [style*="background: rgb(254, 243, 199)"],
+:root[data-theme="dark"] [style*="background-color: rgb(254, 243, 199)"],
+:root[data-theme="dark"] [style*="background: rgb(255, 255, 255)"],
+:root[data-theme="dark"] [style*="background-color: rgb(255, 255, 255)"] { background: var(--surface) !important; }
+:root[data-theme="dark"] [style*="background: white"], :root[data-theme="dark"] [style*="background-color: white"] { background: var(--surface) !important; }
+:root[data-theme="dark"] [style*="solid rgb(187, 247, 208)"],
+:root[data-theme="dark"] [style*="solid rgb(209, 250, 229)"],
+:root[data-theme="dark"] [style*="solid rgb(220, 252, 231)"],
+:root[data-theme="dark"] [style*="solid rgb(229, 231, 235)"],
+:root[data-theme="dark"] [style*="solid rgb(239, 246, 255)"],
+:root[data-theme="dark"] [style*="solid rgb(240, 247, 243)"],
+:root[data-theme="dark"] [style*="solid rgb(240, 253, 244)"],
+:root[data-theme="dark"] [style*="solid rgb(249, 250, 251)"],
+:root[data-theme="dark"] [style*="solid rgb(253, 242, 248)"],
+:root[data-theme="dark"] [style*="solid rgb(254, 226, 226)"],
+:root[data-theme="dark"] [style*="solid rgb(254, 243, 199)"],
+:root[data-theme="dark"] [style*="solid rgb(255, 255, 255)"] { border-color: var(--line) !important; }
+:root[data-theme="dark"] .recharts-text, :root[data-theme="dark"] .recharts-cartesian-axis-tick-value { fill: var(--muted) !important; }
+:root[data-theme="dark"] .recharts-default-tooltip { background: var(--surface) !important; border-color: var(--line) !important; color: var(--ink) !important; }
