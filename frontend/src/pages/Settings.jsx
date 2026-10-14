@@ -63,9 +63,9 @@ function DisplaySection({ display }) {
             options={[["compact", "Compact"], ["comfortable", "Comfortable"]]} />
         </Row>
         <Row title="Phone camera scanning"
-          hint="Tap to scan reads one barcode and closes the camera — kinder to phones that get hot. A USB or Bluetooth scanner is not affected.">
+          hint="Tap to scan reads one barcode and closes the camera. From a photo uses your phone's own Camera app — safest for phones that switch off or get hot. A USB or Bluetooth scanner is not affected.">
           <Seg value={d.scan_mode} onChange={v => save({ scan_mode: v })}
-            options={[["tap", "Tap to scan"], ["keep", "Keep scanning"]]} />
+            options={[["tap", "Tap to scan"], ["keep", "Keep scanning"], ["photo", "From a photo"]]} />
         </Row>
       </div>
     </div>

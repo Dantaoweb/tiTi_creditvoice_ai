@@ -184,3 +184,27 @@ def test_light_is_the_default_until_someone_picks_a_theme():
     assert get_display(u)["theme"] == "dark"
     set_display(u, {"text_size": "small"})
     assert get_display(u)["theme"] == "dark"                      # a real choice sticks
+
+
+def test_a_camera_crash_is_reported_and_admins_can_see_it(monkeypatch):
+    _p, cook, _r, _c = _shop()
+    r = client.post("/app/api/client/camera-crash", cookies=cook, json={
+        "user_agent": "Mozilla/5.0 (Linux; Android 13; SM-A125F) Chrome/129",
+        "stage": "opening", "details": {"samsung": True, "main_camera": False},
+        "crashed_at": "2026-10-14T09:00:00.000Z"})
+    assert r.status_code == 200
+    assert client.get("/app/api/admin/camera-crashes", cookies=cook).status_code == 403   # not an admin
+    monkeypatch.setattr("admin.is_app_admin", lambda phone, db=None: True)
+    reports = client.get("/app/api/admin/camera-crashes", cookies=cook).json()["reports"]
+    assert any("SM-A125F" in x["user_agent"] and x["stage"] == "opening" for x in reports)
+
+
+def test_photo_is_a_scan_mode_choice():
+    from app_settings import get_display, set_display
+
+    class U:
+        display_prefs_json = None
+
+    u = U()
+    set_display(u, {"scan_mode": "photo"})
+    assert get_display(u)["scan_mode"] == "photo"

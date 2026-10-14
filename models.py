@@ -304,6 +304,24 @@ class GoodsDelivery(Base):
     created_at          = Column(DateTime, default=utcnow)
 
 
+class CameraCrashReport(Base):
+    """A phone that went off (or the browser died) while the scanner was
+    opening the camera — noticed the next time the app opened on that phone.
+    That phone is switched to "scan from photo"; this tells us which phones
+    and browsers do it (Samsung models, Chrome or Samsung Internet)."""
+
+    __tablename__ = "camera_crash_reports"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    user_id     = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    owner_phone = Column(String, index=True, nullable=True)
+    user_agent  = Column(String)
+    stage       = Column(String, nullable=True)     # how far it got: opening | live | photo
+    details     = Column(String, nullable=True)     # JSON: camera label, constraints, reader
+    crashed_at  = Column(DateTime, nullable=True)   # when the camera was being opened
+    created_at  = Column(DateTime, default=utcnow)
+
+
 class CreditNote(Base):
     """Money given back or taken off a customer's account for goods from a
     sale — undelivered goods cancelled, or delivered goods returned. One row

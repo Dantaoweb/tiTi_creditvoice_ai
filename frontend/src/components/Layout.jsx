@@ -7,6 +7,7 @@ import {
   MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, Settings as SettingsIcon,
 } from "lucide-react";
 import { applyDisplay, loadSettings } from "../lib/settings";
+import { checkForCameraCrash, takeCrashNotice } from "../lib/cameraSafety";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
@@ -104,6 +105,14 @@ export default function Layout() {
   useEffect(() => {
     apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});
   }, []);
+
+  // A phone that went off while the scanner opened the camera last time:
+  // switch it to scanning from a photo, and say so once.
+  const [camNotice, setCamNotice] = useState("");
+  useEffect(() => {
+    if (!user?.id) return;
+    if (checkForCameraCrash()) setCamNotice(takeCrashNotice());
+  }, [user?.id]);
 
   // This person's own text size / theme / list style, on whatever device they use
   useEffect(() => {
@@ -443,6 +452,12 @@ export default function Layout() {
         <main className="page-content">
           <InstallPrompt />
           <SubscriptionBanner />
+          {camNotice && (
+            <div className="card card-body" style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12, fontSize: 13.5 }}>
+              <span style={{ flex: 1 }}>📷 {camNotice} To try the live camera again, open Scan and tap "Use the live camera instead".</span>
+              <button type="button" className="btn btn-ghost btn-xs" onClick={() => setCamNotice("")}>OK</button>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

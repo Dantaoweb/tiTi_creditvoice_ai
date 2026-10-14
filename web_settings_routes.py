@@ -37,6 +37,13 @@ class AssignCategoryRequest(BaseModel):
     category: Optional[str] = Field(default=None, max_length=60)   # None / "" = uncategorised
 
 
+class CameraCrashRequest(BaseModel):
+    user_agent: str = Field(default="", max_length=400)
+    stage: Optional[str] = Field(default=None, max_length=20)
+    details: Optional[dict] = None
+    crashed_at: Optional[str] = Field(default=None, max_length=40)
+
+
 class ApplySuggestionsRequest(BaseModel):
     items: list[dict] = Field(max_length=2000)    # [{id, category}]
 
@@ -121,6 +128,54 @@ def register_settings_routes(app):
                 raise HTTPException(status_code=400, detail=str(e))
             db.commit()
             return {"business": business}
+        finally:
+            db.close()
+
+    # ── Camera crash reports (phones that go off when the scanner opens) ──
+    @app.post("/app/api/client/camera-crash")
+    def web_camera_crash(payload: CameraCrashRequest, session: dict = Depends(require_web_auth)):
+        import json as _json
+        from datetime import datetime as _dt
+        from models import CameraCrashReport
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            when = None
+            try:
+                when = _dt.fromisoformat((payload.crashed_at or "").replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                pass
+            db.add(CameraCrashReport(
+                user_id=user.id if user else None,
+                owner_phone=_session_owner_phone(db, session),
+                user_agent=(payload.user_agent or "")[:400],
+                stage=payload.stage,
+                details=_json.dumps(payload.details or {})[:2000],
+                crashed_at=when,
+            ))
+            db.commit()
+            print(f"[camera-crash] {payload.stage} {payload.user_agent[:160]}", flush=True)
+            return {"ok": True}
+        finally:
+            db.close()
+
+    @app.get("/app/api/admin/camera-crashes")
+    def web_camera_crashes(session: dict = Depends(require_web_auth)):
+        """Which phones and browsers crash on opening the camera, for app admins."""
+        from models import CameraCrashReport
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            from admin import is_app_admin
+            if not user or not is_app_admin(user.phone, db):
+                raise HTTPException(status_code=403, detail="Admins only.")
+            rows = db.query(CameraCrashReport).order_by(CameraCrashReport.id.desc()).limit(200).all()
+            return {"reports": [{
+                "user_agent": r.user_agent, "stage": r.stage, "details": r.details,
+                "owner_phone": r.owner_phone,
+                "crashed_at": r.crashed_at.isoformat() if r.crashed_at else None,
+                "reported_at": r.created_at.isoformat() if r.created_at else None,
+            } for r in rows]}
         finally:
             db.close()
 
