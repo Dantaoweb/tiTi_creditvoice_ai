@@ -110,7 +110,22 @@ function Collect({ setup, pupils, onDone, announce, setErr }) {
   const [busy, setBusy] = useState(false);
   const [statement, setStatement] = useState(null);
 
-  const books = (setup?.fee_items || []).filter(i => i.is_optional && i.is_active);
+  // Books and extras for this pupil: their class's list comes ticked, the
+  // bursar unticks what they aren't buying (3 of 10 is normal), one charge.
+  const [books, setBooks] = useState([]);
+  const [ticked, setTicked] = useState(new Set());
+  const [qty, setQty] = useState({});
+  const loadBooks = (pupil) =>
+    apiFetch(`school/pupils/${pupil.customer_id}/books`)
+      .then(d => {
+        const items = d.items || [];
+        setBooks(items);
+        setTicked(new Set(items.filter(i => i.for_class).map(i => i.fee_item_id)));
+        setQty({});
+      })
+      .catch(() => setBooks([]));
+  const bookTotal = books.filter(b => ticked.has(b.fee_item_id))
+    .reduce((s, b) => s + b.price * (Number(qty[b.fee_item_id]) || 1), 0);
   const matches = search.trim()
     ? pupils.filter(p =>
         p.name.toLowerCase().includes(search.trim().toLowerCase()) ||
@@ -124,6 +139,7 @@ function Collect({ setup, pupils, onDone, announce, setErr }) {
     setStatement(null);
     apiFetch(`school/pupils/${pupil.customer_id}/statement`)
       .then(setStatement).catch(() => {});
+    loadBooks(pupil);
   }
 
   async function takePayment() {
@@ -143,17 +159,21 @@ function Collect({ setup, pupils, onDone, announce, setErr }) {
     finally { setBusy(false); }
   }
 
-  async function giveBook(item) {
+  async function chargeBooks() {
     if (!picked) return;
+    const items = books.filter(b => ticked.has(b.fee_item_id))
+      .map(b => ({ fee_item_id: b.fee_item_id, quantity: Number(qty[b.fee_item_id]) || 1 }));
+    if (!items.length) return;
+    setBusy(true);
     try {
-      await apiPost("school/charge", {
-        customer_id: picked.customer_id,
-        items: [{ fee_item_id: item.id, quantity: 1 }],
-      });
-      announce(`${item.name} charged to ${picked.name}.`);
+      const res = await apiPost("school/charge", { customer_id: picked.customer_id, items });
+      announce(`${items.length} item(s) charged to ${picked.name} — ${nairaFull(res.total)}. Books left stock.`);
+      setPicked({ ...picked, balance: (picked.balance || 0) + (res.total || 0) });
       onDone();
       apiFetch(`school/pupils/${picked.customer_id}/statement`).then(setStatement).catch(() => {});
+      loadBooks(picked);
     } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
   }
 
   return (
@@ -207,18 +227,35 @@ function Collect({ setup, pupils, onDone, announce, setErr }) {
             </div>
 
             {books.length > 0 && (
-              <div>
-                <div className="text-subtle text-sm" style={{ marginBottom: 6 }}>
-                  Books and extras — charged only when the pupil takes one:
+              <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10 }}>
+                <div className="text-subtle text-sm" style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                  <BookOpen size={13} /> Books and extras — untick what {picked.name.split(" ")[0]} isn't buying:
                 </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {books.map(item => (
-                    <button key={item.id} className="btn btn-ghost btn-sm"
-                      onClick={() => giveBook(item)}
-                      style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <BookOpen size={13} /> {item.name}
-                    </button>
-                  ))}
+                {books.map(b => (
+                  <label key={b.fee_item_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13.5 }}>
+                    <input type="checkbox" style={{ width: "auto" }} checked={ticked.has(b.fee_item_id)}
+                      onChange={e => setTicked(prev => {
+                        const n = new Set(prev); e.target.checked ? n.add(b.fee_item_id) : n.delete(b.fee_item_id); return n;
+                      })} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      {b.name}
+                      <span className="td-muted" style={{ fontSize: 12 }}>
+                        {" "}· {nairaFull(b.price)}
+                        {b.is_goods && ` · ${b.in_stock ?? 0} in stock`}
+                        {!b.for_class && " · not on this class's list"}
+                      </span>
+                    </span>
+                    {ticked.has(b.fee_item_id) && b.is_goods && (
+                      <input type="number" min={1} value={qty[b.fee_item_id] ?? 1} style={{ width: 56 }}
+                        onChange={e => setQty(q => ({ ...q, [b.fee_item_id]: e.target.value }))} />
+                    )}
+                  </label>
+                ))}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  <span className="text-subtle text-sm">{ticked.size} ticked · {nairaFull(bookTotal)}</span>
+                  <button className="btn btn-primary btn-sm" disabled={busy || ticked.size === 0} onClick={chargeBooks}>
+                    Charge ticked items
+                  </button>
                 </div>
               </div>
             )}

@@ -46,6 +46,7 @@ class FeeItemRequest(BaseModel):
     default_amount: Optional[int] = None
     is_optional: bool = False
     is_active: bool = True
+    inventory_item_id: Optional[int] = None    # an existing stock item; else found / created
 
 
 class ScheduleRequest(BaseModel):
@@ -276,6 +277,14 @@ def register_school_routes(app):
             teachers = {t.id: t.name for t in db.query(SchoolTeacher).filter(
                 SchoolTeacher.owner_phone == owner_phone).all()}
             current = school.current_term(db, owner_phone)
+            # Fee items made before the link existed join their stock item now
+            if school.link_all_fee_items(db, owner_phone):
+                items = (db.query(FeeItem)
+                         .filter(FeeItem.owner_phone == owner_phone)
+                         .order_by(FeeItem.is_optional.asc(), FeeItem.name.asc()).all())
+            from models import InventoryItem
+            stock = {i.id: i for i in db.query(InventoryItem).filter(
+                InventoryItem.id.in_([i.inventory_item_id for i in items if i.inventory_item_id] or [0])).all()}
             return {
                 "sessions": [{"id": s.id, "name": s.name, "is_current": bool(s.is_current)}
                              for s in sessions],
@@ -290,7 +299,12 @@ def register_school_routes(app):
                 "fee_items": [{"id": i.id, "name": i.name, "kind": i.kind,
                                "default_amount": i.default_amount,
                                "is_optional": bool(i.is_optional),
-                               "is_active": bool(i.is_active)} for i in items],
+                               "is_active": bool(i.is_active),
+                               "inventory_item_id": i.inventory_item_id,
+                               "is_goods": school._is_goods(stock.get(i.inventory_item_id)),
+                               "in_stock": (stock[i.inventory_item_id].quantity
+                                            if school._is_goods(stock.get(i.inventory_item_id)) else None)}
+                              for i in items],
                 "current_term_id": current.id if current else None,
             }
         finally:
@@ -386,9 +400,16 @@ def register_school_routes(app):
                           default_amount=payload.default_amount,
                           is_optional=payload.is_optional, is_active=payload.is_active)
             db.add(row)
+            # The same item in stock — a service for fees, goods for books
+            try:
+                inv = school.link_fee_item_to_stock(db, owner_phone, row, payload.inventory_item_id)
+            except ValueError as exc:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=str(exc))
             db.commit()
             db.refresh(row)
-            return {"id": row.id, "name": row.name, "kind": row.kind}
+            return {"id": row.id, "name": row.name, "kind": row.kind,
+                    "inventory_item_id": inv.id}
         finally:
             db.close()
 
@@ -664,6 +685,22 @@ def register_school_routes(app):
     # ── Excusing a child ──────────────────────────────────────────────────────
     # The class schedule is the default, never a rule: a staff child or a pupil
     # on scholarship stays on the register and is billed what was agreed.
+
+    @app.get("/app/api/school/pupils/{customer_id}/books")
+    def web_school_pupil_books(customer_id: int, session: dict = Depends(require_web_auth)):
+        """The books and extras this pupil can be charged — their class's list
+        comes ticked; the bursar unticks what this pupil isn't buying."""
+        import school_service as school
+        db = SessionLocal()
+        try:
+            owner_phone = _owner(db, session)
+            term = school.current_term(db, owner_phone)
+            if not term:
+                raise HTTPException(status_code=400, detail="No term is open yet.")
+            school.link_all_fee_items(db, owner_phone)
+            return {"term_id": term.id, "items": school.books_for_pupil(db, owner_phone, customer_id, term.id)}
+        finally:
+            db.close()
 
     @app.get("/app/api/school/pupils/{customer_id}/fees")
     def web_school_fee_preview(customer_id: int, term_id: str = "",

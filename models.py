@@ -1502,6 +1502,10 @@ class FeeItem(Base):
     default_amount = Column(Integer, nullable=True)
     is_optional    = Column(Boolean, default=False)
     is_active      = Column(Boolean, default=True)
+    # The same thing in stock (school_service.link_fee_item_to_stock): tuition
+    # and levies as service items, books and uniforms as goods with a quantity.
+    # One list — charged here or sold at Select product, it is the same item.
+    inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
     created_at     = Column(DateTime, default=utcnow)
 
 

@@ -310,6 +310,14 @@ def register_pos_routes(app):
                 service_date=payload.service_date,
                 discount=payload.discount,
             )
+            # Sold to a pupil: it is school fees too (their bill for this term)
+            try:
+                import school_service as _school
+                _tx = db.query(Transaction).filter(Transaction.id == result.get("receipt_id")).first()
+                if _school.record_till_sale_for_pupil(db, owner_phone, _tx):
+                    db.commit()
+            except Exception:
+                db.rollback()
             # Settle the customer's prior debt in the same checkout, when they paid
             # extra to clear it (POS "Settle previous debt" line). Recorded as a
             # normal PAY so it reduces their balance exactly like a manual payment.

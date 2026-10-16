@@ -3718,6 +3718,10 @@ SERVICE_PRICE_CATALOG = {
     ],
 }
 
+# Entries in a price list that are goods handed over, not services — added to
+# stock with a quantity (a school's textbooks and uniforms).
+GOODS_IN_PRICE_LISTS = frozenset({"books / supplies", "uniform", "textbooks", "exercise books"})
+
 # Keys that have a SERVICE_PRICE_CATALOG entry
 SERVICE_CATALOG_KEYS = set(SERVICE_PRICE_CATALOG.keys())
 

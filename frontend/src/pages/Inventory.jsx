@@ -148,7 +148,7 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
       if (kind === "service") {
         const items = services
           .filter(s => selected.has(s.name))
-          .map(s => ({ name: s.name, selling_price: s.price, is_service: true }));
+          .map(s => ({ name: s.name, selling_price: s.price, is_service: !s.is_goods }));
         res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, items });
       } else {
         res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names: [...selected] });

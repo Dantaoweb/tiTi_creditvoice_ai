@@ -441,12 +441,15 @@ def register_inventory_routes(app):
             # fallback. Entries carry the suggested price and variant.
             if user and has_service_price_catalog(user):
                 services = []
+                from business_templates import GOODS_IN_PRICE_LISTS
                 for name, variant, price in service_price_catalog_for_user(user):
                     label = f"{name} ({variant})" if variant else name
                     services.append({
                         "name": label,        # unique display/name incl. variant
                         "variant": variant,
                         "price": price,
+                        # Handed over, so kept with a quantity (a school's books)
+                        "is_goods": name in GOODS_IN_PRICE_LISTS,
                     })
                 return {"kind": "service", "services": services}
 

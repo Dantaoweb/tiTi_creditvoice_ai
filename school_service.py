@@ -29,6 +29,122 @@ _log = logging.getLogger(__name__)
 
 TERM_NAMES = ("First Term", "Second Term", "Third Term")
 FEE_KINDS = ("FEE", "LEVY", "BOOK", "UNIFORM", "OTHER")
+GOODS_KINDS = ("BOOK", "UNIFORM")      # things handed over, kept in stock with a quantity
+
+
+# ── One list: what a school charges for IS its stock ─────────────────────────
+#
+# Every business keeps goods and services in the same stock list — a service
+# is an item tagged "service" with no quantity. A school is no different:
+# tuition and the PTA levy are services, textbooks and uniforms are goods.
+# Linking each fee item to its stock item means charging a pupil here and
+# selling to them at Select product are the same thing, never two entries.
+
+def _is_goods(inv):
+    return inv is not None and inv.quantity is not None and inv.category != "service"
+
+
+def link_fee_item_to_stock(db, owner_phone, item, inventory_item_id=None):
+    """Find (or create) the stock item for a fee item and link them."""
+    from models import InventoryItem
+    inv = None
+    if inventory_item_id:
+        inv = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone,
+                                             InventoryItem.id == int(inventory_item_id)).first()
+        if not inv:
+            raise ValueError("That product isn't in your stock.")
+    elif item.inventory_item_id:
+        inv = db.query(InventoryItem).filter(InventoryItem.id == item.inventory_item_id).first()
+    if inv is None:
+        from inventory_suppliers import find_matching_inventory_item
+        inv = find_matching_inventory_item(db, owner_phone, item.name)
+    if inv is None:
+        goods = (item.kind or "").upper() in GOODS_KINDS
+        inv = InventoryItem(
+            owner_phone=owner_phone, name=item.name.strip().lower(),
+            quantity=0.0 if goods else None,
+            category=None if goods else "service",
+            selling_price=item.default_amount, is_available=True,
+        )
+        if goods:
+            from app_settings import apply_new_item_defaults
+            apply_new_item_defaults(db, owner_phone, inv)
+        db.add(inv)
+        db.flush()
+    elif item.default_amount and not inv.selling_price:
+        inv.selling_price = item.default_amount
+    item.inventory_item_id = inv.id
+    return inv
+
+
+def link_all_fee_items(db, owner_phone):
+    """Schools that set up fees before this get their items linked — matched to
+    stock by name, or added to stock — the first time School fees opens."""
+    items = db.query(FeeItem).filter(FeeItem.owner_phone == owner_phone,
+                                     FeeItem.inventory_item_id.is_(None)).all()
+    for item in items:
+        link_fee_item_to_stock(db, owner_phone, item)
+    if items:
+        db.commit()
+    return len(items)
+
+
+def books_for_pupil(db, owner_phone, customer_id, term_id):
+    """The books and other take-when-needed items a pupil can be charged,
+    priced for their class, with what's in stock — for the tick list."""
+    from models import InventoryItem
+    term = db.query(SchoolTerm).filter(SchoolTerm.owner_phone == owner_phone,
+                                       SchoolTerm.id == term_id).first()
+    enrolment = (db.query(StudentEnrolment)
+                 .filter(StudentEnrolment.owner_phone == owner_phone,
+                         StudentEnrolment.customer_id == customer_id,
+                         StudentEnrolment.session_id == (term.session_id if term else None))
+                 .first())
+    class_id = enrolment.class_id if enrolment else None
+    on_list = {row["fee_item_id"]: row["amount"]
+               for row in (schedule_for(db, owner_phone, term_id, class_id) if class_id else [])
+               if row["is_optional"]}
+    items = db.query(FeeItem).filter(FeeItem.owner_phone == owner_phone,
+                                     FeeItem.is_active == True,                  # noqa: E712
+                                     FeeItem.is_optional == True).all()          # noqa: E712
+    out = []
+    for item in items:
+        inv = (db.query(InventoryItem).filter(InventoryItem.id == item.inventory_item_id).first()
+               if item.inventory_item_id else None)
+        price = on_list.get(item.id) or item.default_amount or (inv.selling_price if inv else 0) or 0
+        out.append({
+            "fee_item_id": item.id, "name": item.name, "kind": item.kind, "price": int(price),
+            "for_class": item.id in on_list,             # on this pupil's class list → ticked
+            "in_stock": (inv.quantity if _is_goods(inv) else None),
+            "is_goods": _is_goods(inv),
+        })
+    out.sort(key=lambda r: (not r["for_class"], r["name"].lower()))
+    return out
+
+
+def record_till_sale_for_pupil(db, owner_phone, tx):
+    """A sale at Select product to a pupil is school fees too: it goes on their
+    bill for the current term, so the term summary and defaulters see it — no
+    second entry in School fees. The caller commits."""
+    if not tx or not tx.customer_id or (tx.amount or 0) <= 0:
+        return None
+    term = current_term(db, owner_phone)
+    if not term:
+        return None
+    enrolment = (db.query(StudentEnrolment)
+                 .filter(StudentEnrolment.owner_phone == owner_phone,
+                         StudentEnrolment.customer_id == tx.customer_id,
+                         StudentEnrolment.session_id == term.session_id)
+                 .first())
+    if not enrolment:
+        return None                       # not a pupil this session (a parent buying for themselves)
+    if db.query(FeeInvoice).filter(FeeInvoice.transaction_id == tx.id).first():
+        return None
+    invoice = FeeInvoice(owner_phone=owner_phone, customer_id=tx.customer_id,
+                         term_id=term.id, class_id=enrolment.class_id,
+                         transaction_id=tx.id, total=int(tx.amount), kind="EXTRA")
+    db.add(invoice)
+    return invoice
 FIELD_TYPES = ("text", "number", "date", "choice", "phone")
 
 # What every school is asked on day one. Seeded so a school can register a
@@ -552,6 +668,17 @@ def update_fee_item(db, owner_phone, item_id, name=None, kind=None,
         row.is_optional = bool(is_optional)
     if is_active is not None:
         row.is_active = bool(is_active)
+    # The stock item is the same thing — keep its name and price in step
+    if row.inventory_item_id:
+        from models import InventoryItem
+        inv = db.query(InventoryItem).filter(InventoryItem.id == row.inventory_item_id).first()
+        if inv is not None:
+            if name is not None and name.strip():
+                inv.name = name.strip().lower()
+            if default_amount is not None and int(default_amount or 0):
+                inv.selling_price = int(default_amount)
+    else:
+        link_fee_item_to_stock(db, owner_phone, row)
     db.commit()
     return row
 
@@ -860,12 +987,29 @@ def _charge(db, owner_phone, customer, term, class_id, lines, kind, recorded_by_
     db.add(tx)
     db.flush()
 
+    from models import InventoryItem
+    to_deduct = []
     for line in lines:
         quantity = int(line.get("quantity", 1) or 1)
+        item = (db.query(FeeItem).filter(FeeItem.id == line.get("fee_item_id")).first()
+                if line.get("fee_item_id") else None)
+        inv_id = item.inventory_item_id if item else None
         db.add(TransactionItem(
             transaction_id=tx.id, product=line["name"], quantity=quantity,
             unit_price=int(line["amount"]), total=int(line["amount"]) * quantity,
+            inventory_item_id=inv_id,
         ))
+        if inv_id:
+            inv = db.query(InventoryItem).filter(InventoryItem.id == inv_id).first()
+            if _is_goods(inv):
+                to_deduct.append({"inventory_item_id": inv_id, "name": inv.name,
+                                  "qty": quantity, "unit_price": int(line["amount"])})
+    # Books and uniforms handed to the pupil leave stock; voiding the charge
+    # puts them back (source SCHOOL is a sale source).
+    if to_deduct:
+        from web_pos import deduct_stock_for_items
+        deduct_stock_for_items(db, owner_phone, to_deduct, recorded_by_id,
+                               source_type="SCHOOL", source_id=tx.id, note="School charge")
 
     invoice = FeeInvoice(owner_phone=owner_phone, customer_id=customer.id,
                          term_id=term.id, class_id=class_id,
@@ -973,7 +1117,7 @@ def charge_items(db, owner_phone, customer_id, term_id, items, recorded_by_id=No
         amount, _reason = _apply_exemptions(int(amount), item.id, rules)
         if amount <= 0:
             continue
-        lines.append({"name": item.name, "amount": int(amount),
+        lines.append({"name": item.name, "amount": int(amount), "fee_item_id": item.id,
                       "quantity": int(entry.get("quantity", 1) or 1)})
     if not lines:
         return None
@@ -1020,6 +1164,12 @@ def term_summary(db, owner_phone, term_id):
         if term.ends_on:
             q = q.filter(Transaction.created_at < term.ends_on)
         collected = int(q.scalar() or 0)
+        # Paid in full at Select product: a cash sale, no separate payment
+        paid_at_till = [inv.transaction_id for inv in invoices if inv.transaction_id]
+        if paid_at_till:
+            collected += int(db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+                Transaction.id.in_(paid_at_till), Transaction.type == "SALE",
+                Transaction.is_voided != True).scalar() or 0)              # noqa: E712
 
     by_class = {}
     classes = {c.id: c for c in db.query(SchoolClass).filter(

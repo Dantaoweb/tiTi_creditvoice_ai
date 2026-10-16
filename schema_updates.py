@@ -1001,6 +1001,13 @@ def ensure_schema_updates(engine):
                         f"ALTER TABLE transaction_items ADD COLUMN {col} {typ}"
                     ))
 
+    # ── fee_items: the stock item each school fee item is (school_service) ───
+    if "fee_items" in inspector.get_table_names():
+        fee_item_columns = {col["name"] for col in inspector.get_columns("fee_items")}
+        if "inventory_item_id" not in fee_item_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE fee_items ADD COLUMN inventory_item_id INTEGER"))
+
     # ── Filling-station operations tables (fuel businesses) ──────────────────
     _pk = "SERIAL PRIMARY KEY" if engine.dialect.name == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"
     _bool_true = "BOOLEAN DEFAULT TRUE" if engine.dialect.name == "postgresql" else "INTEGER DEFAULT 1"
