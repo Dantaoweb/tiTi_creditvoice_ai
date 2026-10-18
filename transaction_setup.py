@@ -171,21 +171,59 @@ def _calc_line(qty, unit, product, unit_price, total):
     return f"{label}\n{qty} × N{unit_price:,} = N{total:,}"
 
 
-def _at_hint(qty, unit_price):
-    """
-    When 'at [price]' was used without 'each', the price is ambiguous.
-    Fire a hint when: price divisible by qty (both interpretations give round numbers)
-    and unit price is above trivial threshold.
-    """
-    if qty <= 1 or not unit_price or unit_price <= 100:
+def _at_hint(qty, unit_price, parsed=None):
+    """A bare amount after a quantity is read as the TOTAL ("10 crates eggs
+    35000" = ₦35,000). Say so, with how to mean "each" instead."""
+    if not parsed or parsed.get("price_basis") != "bare" or not qty or qty <= 1:
         return ""
-    if unit_price % qty != 0:
+    total = parsed.get("total") or 0
+    if not total:
         return ""
-    alt_unit = unit_price // qty
     return (
-        f"\n↩️ If N{unit_price:,} was the *total* price: that's N{alt_unit:,} each.\n"
-        "Reply EDIT and resend using 'for' instead of 'at' to record as total."
+        f"\n↩️ Read as N{total:,} for all {qty}. If N{total:,} is the price of *one*, "
+        f"reply EDIT and resend with 'at' or 'each' (e.g. at {total:,} each)."
     )
+
+
+def settle_bare_amount(db, owner_phone, parsed):
+    """A bare amount is the total — unless it is exactly this product's stock
+    price, then it was the price of one: rice at ₦60,000 a bag, "2 bags rice
+    60000" is 2 × ₦60,000. Applied to single items and to each line of a
+    multi-item sale."""
+    from inventory_suppliers import find_matching_inventory_item
+
+    def stock_price(product, unit):
+        if not product:
+            return None
+        try:
+            item = find_matching_inventory_item(db, owner_phone, product, unit)
+        except Exception:
+            return None
+        return item.selling_price if item and item.selling_price else None
+
+    def settle(line):
+        qty = line.get("quantity") or 1
+        if line.get("price_basis") != "bare" or qty <= 1:
+            return line, False
+        price = stock_price(line.get("product"), line.get("unit"))
+        if price and int(line.get("total") or 0) == int(price):
+            return {**line, "unit_price": int(price), "total": int(price * qty), "price_basis": "each"}, True
+        return line, False
+
+    if parsed.get("sale_items"):
+        changed, lines = False, []
+        for line in parsed["sale_items"]:
+            line, did = settle(line)
+            lines.append(line)
+            changed = changed or did
+        if changed:
+            total = sum(int(l.get("total") or 0) for l in lines)
+            parsed = {**parsed, "sale_items": lines, "total": total, "buy_amount": total}
+        return parsed
+    line, did = settle(parsed)
+    if did:
+        line["buy_amount"] = line["total"]
+    return line
 
 
 def direct_sale_item_line(parsed):
@@ -227,7 +265,7 @@ def build_customer_confirm_message(customer, parsed, user=None):
         if parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
             qty = parsed["quantity"]
             item_line = _calc_line(qty, parsed["unit"], parsed["product"], parsed["unit_price"], parsed["total"])
-            hint = _at_hint(qty, parsed["unit_price"])
+            hint = _at_hint(qty, parsed["unit_price"], parsed)
             pfx = confirm_prefix(customer.name, user)
             if parsed["due_date"]:
                 due_date_text = parsed["due_date"].strftime("%d/%m/%Y")
@@ -275,7 +313,7 @@ def build_customer_confirm_message(customer, parsed, user=None):
         elif parsed.get("quantity") and parsed.get("unit") and parsed.get("product") and parsed.get("unit_price"):
             qty = parsed["quantity"]
             item_line = _calc_line(qty, parsed["unit"], parsed["product"], parsed["unit_price"], parsed["total"])
-            hint = _at_hint(qty, parsed["unit_price"])
+            hint = _at_hint(qty, parsed["unit_price"], parsed)
         else:
             item_line = f"N{parsed['buy_amount']:,}"
 
@@ -314,6 +352,10 @@ def handle_transaction_setup(
     # Log every parsed transaction for tiTi training
     source = "voice" if voice_transcript_text else "text"
     log_parse(db, phone, business_owner_phone, voice_transcript_text or parsed.get("raw_text", ""), parsed, source, user)
+
+    # "2 bags rice 60000" when rice is ₦60,000 a bag: the price of one, not the total
+    if parsed.get("action") in ("BUY", "COMBINED", "SALE"):
+        parsed = settle_bare_amount(db, business_owner_phone, parsed)
 
     # Single-amount buy+paid: resolve buy price from stock, or ask for clarification
     if parsed.get("stock_price_needed") and parsed.get("action") == "COMBINED":

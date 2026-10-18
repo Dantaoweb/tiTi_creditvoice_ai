@@ -111,6 +111,8 @@ DELIVERIES & READY-BY DATES (web app):
 - tiTi reminds the owner 2 days before, 1 day before, and on the day.
 - The Deliveries page lists upcoming jobs; there you can change the date or send the customer a "your order is ready" message. Customer messages are only sent when the owner types and taps send — never automatic.
 
+AMOUNTS IN A SALE: a bare amount after a quantity is the TOTAL ("10 crates eggs 35000" = N35,000 for all ten). "at 3500" or "3500 each" is the price of one. If the product is in stock and the bare amount equals its price, it is read as the price of one. The confirmation always shows qty x price = total before YES.
+
 QUOTATIONS & DEPOSITS (jobs: contractors, artisans, tailors, mechanics, printers, consultants — web app):
 - Invoices → New quotation (QT-0001): items, prices, an optional "deposit before work starts" % and the completion date. Nothing is owed while it's a quotation.
 - "Customer accepted" turns it into an invoice (INV number, no retyping). Record deposit / payment → "Deposit": status "Deposit paid — work can start"; the balance on completion goes on the customer's debts, due on the completion date.

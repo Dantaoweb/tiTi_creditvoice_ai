@@ -204,24 +204,26 @@ def test_thrift_contribution_text_parses_as_payment():
 
 
 def test_quantity_unit_item_parses_when_price_has_no_at_keyword():
+    # "at 400" is the price of one; a bare "400" is the total for both
+    # (owner's rule, 2026-10-18 — "10 crates eggs 35000" is ₦35,000).
     samples = [
-        "shade buy 2 congos of rice at 400",
-        "shade buy 2 congos of rice 400",
-        "shade buy 2 congos of rice at 400.",
+        ("shade buy 2 congos of rice at 400", 800),
+        ("shade buy 2 congos of rice 400", 400),
+        ("shade buy 2 congos of rice at 400.", 800),
     ]
 
-    for text in samples:
+    for text, amount in samples:
         parsed = parse_message(text)
         assert parsed is not None, text
         assert parsed["type"] == "TRANSACTION"
         assert parsed["name"] == "shade"
         assert parsed["action"] == "BUY"
-        assert parsed["buy_amount"] == 800
+        assert parsed["buy_amount"] == amount, text
         assert parsed["quantity"] == 2
         assert parsed["unit"] == "congo"
         assert parsed["product"] == "rice"
-        assert parsed["unit_price"] == 400
-        assert parsed["total"] == 800
+        assert parsed["unit_price"] == amount // 2
+        assert parsed["total"] == amount
 
 
 def test_i_buy_without_supplier_does_not_create_customer_i():
@@ -291,11 +293,13 @@ def test_pack_stock_purchase_and_customer_sale_match_inventory():
 
 
 def test_item_normalization_handles_common_shop_variants():
+    # A bare amount after a quantity is the total (owner's rule, 2026-10-18)
     samples = [
-        ("shade buy 2 packs of coke 2400", "coke", "pack", 4800),
-        ("shade buy 2 pack coke 2400", "coke", "pack", 4800),
-        ("shade buy 3 cartons indomie 5000", "indomie", "carton", 15000),
-        ("shade buy 4 bags rice 30000", "rice", "bag", 120000),
+        ("shade buy 2 packs of coke 2400", "coke", "pack", 2400),
+        ("shade buy 2 pack coke 2400", "coke", "pack", 2400),
+        ("shade buy 3 cartons indomie 5000", "indomie", "carton", 5000),
+        ("shade buy 4 bags rice 30000", "rice", "bag", 30000),
+        ("shade buy 4 bags rice at 30000", "rice", "bag", 120000),
     ]
 
     for text, product, unit, total in samples:

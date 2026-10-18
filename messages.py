@@ -925,6 +925,8 @@ def build_app_guide_message(topic):
             "• _Ada bought 3 bags of rice for 9000_\n"
             "• _sold 2 shirts to Emeka 5000 credit_\n"
             "• _cash sale tissue paper 500_\n\n"
+            "💡 *Amounts:* _3 bags rice 9000_ means ₦9,000 for all 3. For the price of one, "
+            "say _at 3000_ or _3000 each_.\n\n"
             "*On the web app:*\n"
             "1. Click *Quick Record* in the sidebar (or bottom bar on mobile)\n"
             "2. Type the sale details in the box\n"

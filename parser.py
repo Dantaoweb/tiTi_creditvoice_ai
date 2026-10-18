@@ -585,7 +585,8 @@ def extract_item_details(text):
         "unit": unit,
         "product": product,
         "unit_price": price_info["unit_price"],
-        "total": price_info["total"]
+        "total": price_info["total"],
+        "price_basis": price_info.get("basis"),
     }
 
 
@@ -650,7 +651,8 @@ def extract_direct_sale_details(text):
         "unit": unit,
         "product": product,
         "unit_price": price_info["unit_price"],
-        "total": price_info["total"]
+        "total": price_info["total"],
+        "price_basis": price_info.get("basis"),
     }
 
 
@@ -1048,7 +1050,8 @@ def parse_sale_item(item_text):
         "quantity": quantity,
         "unit": unit,
         "unit_price": price_info["unit_price"],
-        "total": price_info["total"]
+        "total": price_info["total"],
+        "price_basis": price_info.get("basis"),
     }
 
 
@@ -1500,16 +1503,22 @@ def parse_slash_date(text):
 
 
 def price_total_from_marker(quantity, price, marker=None, priced_each=False):
+    """What an amount typed after a quantity means.
+
+    "at 60000" / "60000 each" / "per bag" → the price of ONE.
+    "for 120000" or a bare amount ("2 bags rice 120000") → the TOTAL. That's
+    how people say it ("he bought 10 crates of egg 35000" is ₦35,000, not
+    ₦350,000); reading a bare amount as the price each put ten times the debt
+    on customers. `basis` says which it was: a bare one can still be settled by
+    the product's stock price (transaction_setup.settle_bare_amount)."""
     quantity = quantity or 1
     marker = (marker or "").lower()
-    if marker == "for" and not priced_each:
-        return {
-            "unit_price": round(price / quantity) if quantity else price,
-            "total": price,
-        }
+    if priced_each or marker == "at":
+        return {"unit_price": price, "total": quantity * price, "basis": "each"}
     return {
-        "unit_price": price,
-        "total": quantity * price,
+        "unit_price": round(price / quantity) if quantity else price,
+        "total": price,
+        "basis": "total" if marker == "for" else "bare",
     }
 
 
@@ -3632,6 +3641,7 @@ def _parse_message(text):
             "unit": _resolved_sale_details["unit"],
             "product": _resolved_sale_details["product"],
             "unit_price": _resolved_sale_details["unit_price"],
+            "price_basis": _resolved_sale_details.get("price_basis"),
             "sale_items": None,
             "total": _resolved_sale_details["total"],
             "due_date": None
@@ -3811,6 +3821,7 @@ def _parse_message(text):
         "total": total if total is not None else buy_amount,
         "due_date": due_date,
         "stock_price_needed": stock_price_needed,
+        "price_basis": (item_details or {}).get("price_basis") if action in ("BUY", "COMBINED") else None,
     }
 
 

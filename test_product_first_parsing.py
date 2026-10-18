@@ -25,14 +25,14 @@ class _Item:
 def test_sale_item_product_first_with_unit_and_total():
     assert parse_sale_item("egg 3 crates for 15000") == {
         "product": "egg", "quantity": 3, "unit": "crate",
-        "unit_price": 5000, "total": 15000,
+        "unit_price": 5000, "total": 15000, "price_basis": "total",
     }
 
 
 def test_sale_item_product_first_each():
     assert parse_sale_item("egg 3 crates at 5000 each") == {
         "product": "egg", "quantity": 3, "unit": "crate",
-        "unit_price": 5000, "total": 15000,
+        "unit_price": 5000, "total": 15000, "price_basis": "each",
     }
 
 

@@ -434,6 +434,23 @@ _PRODUCT_STOCK_PATTERNS = [
 ]
 
 
+def _business_words(db, owner_phone):
+    """This business's own words — students, tenants, clients, patients — and
+    its money labels (Fees invoiced, Rent received…), from biz_language."""
+    try:
+        from biz_language import get_lang
+        from models import User
+        from business_templates import label_group_for_user
+        owner = db.query(User).filter(User.phone == owner_phone).first()
+        cfg = get_lang(owner)
+        group = label_group_for_user(owner)
+    except Exception:
+        cfg, group = {}, "stock"
+    plural = (cfg.get("total_customers") or "Total customers").replace("Total ", "").strip().lower() or "customers"
+    singular = plural[:-1] if plural.endswith("s") else plural
+    return {"one": singular, "many": plural, "cfg": cfg, "group": group}
+
+
 def _first_match(patterns, text):
     """Return first non-empty capture group from any pattern, or None."""
     for pattern in patterns:
@@ -502,16 +519,19 @@ def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Option
             debtors = [d for d in debtors if d["customer_id"] not in paid_ids]
             total = sum(d["balance"] for d in debtors)
             if not debtors:
-                return "Every customer who owes you has made at least a part payment ✓"
+                return f"Every {_business_words(db, owner_phone)['one']} who owes you has made at least a part payment ✓"
 
+        words = _business_words(db, owner_phone)
         if not debtors:
-            return "No customer owes you right now — everyone is settled ✓"
-        header = "have not paid anything" if not_paid else "owe you"
+            return f"No {words['one']} owes you right now — everyone is settled ✓"
+        one = len(debtors) == 1
+        header = ("has" if one else "have") + " not paid anything" if not_paid else ("owes you" if one else "owe you")
+        who = words["one"] if one else words["many"]
         if has_howmany:
-            return f"*{len(debtors)} customer(s)* {header} — total {_fmt(total)}."
+            return f"*{len(debtors)} {who}* {header} — total {_fmt(total)}."
         ds = sorted(debtors, key=lambda d: d["balance"], reverse=True)
-        lines = [f"*{len(debtors)} customer(s)* {header} {_fmt(total)}:\n" if not not_paid
-                 else f"*{len(debtors)} customer(s)* have not paid anything — {_fmt(total)} outstanding:\n"]
+        lines = [f"*{len(debtors)} {who}* {header} {_fmt(total)}:\n" if not not_paid
+                 else f"*{len(debtors)} {who}* {header} — {_fmt(total)} outstanding:\n"]
         for d in ds[:15]:
             od = f"  ⚠️ overdue {d['overdue_days']}d" if d.get("overdue") else ""
             lines.append(f"• {d['name'].title()} — {_fmt(d['balance'])}{od}")
@@ -528,10 +548,12 @@ def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Option
     ):
         from reports import get_unpaid_debtors
         debtors, total = get_unpaid_debtors(db, owner_phone, recorded_by_id)
+        words = _business_words(db, owner_phone)
         if not debtors:
-            return "No customer owes you right now — everyone is settled ✓"
+            return f"No {words['one']} owes you right now — everyone is settled ✓"
         top = max(debtors, key=lambda d: d["balance"])
-        return (f"You are owed *{_fmt(total)}* by {len(debtors)} customer(s).\n"
+        who = words["one"] if len(debtors) == 1 else words["many"]
+        return (f"You are owed *{_fmt(total)}* by {len(debtors)} {who}.\n"
                 f"Largest: {top['name'].title()} — {_fmt(top['balance'])}.\n"
                 f"Ask *who owes me* for the full list.")
 
@@ -550,10 +572,20 @@ def _answer_aggregate(db, owner_phone: str, text: str, recorded_by_id) -> Option
             label = {"TODAY": "today", "WEEK": "this week", "MONTH": "this month"}[period]
             if not stats["transaction_count"]:
                 return f"No transactions recorded {label} yet."
-            return (f"Sales {label}: *{_fmt(stats['total_sales'])}*\n"
-                    f"• Cash/direct: {_fmt(stats['direct_sales'])}\n"
-                    f"• Credit sales: {_fmt(stats['credit_sales'])}\n"
-                    f"• Payments received: {_fmt(stats['total_pay'])}\n"
+            # In each business's own words — a school's money comes in as fees
+            # paid against what pupils were charged, so lead with that.
+            _words = _business_words(db, owner_phone)
+            cfg = _words["cfg"]
+            pay_label = cfg.get("payments") or "Payments received"
+            if _words["group"] == "school" or (not stats["total_sales"] and stats["total_pay"]):
+                return (f"{pay_label} {label}: *{_fmt(stats['total_pay'])}*\n"
+                        f"• {cfg.get('credit_sales') or 'Charged'}: {_fmt(stats['credit_sales'])}\n"
+                        f"• {cfg.get('direct_sales') or 'Paid at once'}: {_fmt(stats['direct_sales'])}\n"
+                        f"• Transactions: {stats['transaction_count']}")
+            return (f"{cfg.get('total_sales') or 'Sales'} {label}: *{_fmt(stats['total_sales'])}*\n"
+                    f"• {cfg.get('direct_sales') or 'Cash/direct'}: {_fmt(stats['direct_sales'])}\n"
+                    f"• {cfg.get('credit_sales') or 'Credit sales'}: {_fmt(stats['credit_sales'])}\n"
+                    f"• {pay_label}: {_fmt(stats['total_pay'])}\n"
                     f"• Transactions: {stats['transaction_count']}")
 
     # 3) Voided transactions count
