@@ -12,6 +12,7 @@ import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
 import GettingStarted from "../components/GettingStarted";
 import PromoCard from "../components/PromoCard";
+import WeekSalesMini from "../components/WeekSalesMini";
 import { usePlan } from "../lib/usePlan";
 import { useToast } from "../components/Toast";
 import { Lock } from "lucide-react";
@@ -529,6 +530,9 @@ export default function Dashboard() {
         <MetricCard loading={loading} label={`Paid ${L.customers || "customers"} ${periodLabel}`} value={Number(s.paid_customers || 0).toLocaleString()} color="brand" small />
         <MetricCard loading={loading} label={`Transactions ${periodLabel}`}  value={Number(s.total_transactions || 0).toLocaleString()}   color="muted" small />
       </div>
+
+      {/* ── Sales this week, at a glance (full graphs on Insights) ── */}
+      <WeekSalesMini />
 
       {/* ── Cards row ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>

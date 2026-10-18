@@ -147,6 +147,30 @@ def register_dashboard_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/reports/charts")
+    def web_report_charts(
+        period: Optional[str] = Query(default=None),
+        branch_id: Optional[int] = Query(default=None),
+        session: dict = Depends(require_web_auth),
+    ):
+        """Everything the Insights graphs draw (business_charts.py): sales,
+        money in vs new debt, what's owed, profit and expenses (owner and
+        authorised staff only), top products, busiest days and hours."""
+        from business_charts import build_charts
+        from biz_language import get_lang
+        from web_common import _can_see_profit
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            eff_branch, rec = _scoped_read(db, session, branch_id)
+            owner = db.query(User).filter(User.phone == owner_phone).first()
+            return build_charts(db, owner_phone, (period or "").upper() or None,
+                                branch_id=eff_branch, recorded_by_id=rec,
+                                can_see_profit=_can_see_profit(db, session),
+                                labels=get_lang(owner))
+        finally:
+            db.close()
+
     # ── Get started (empty-state guidance + business-type inference) ──────────
     @app.get("/app/api/getting-started")
     def web_getting_started(session: dict = Depends(require_web_auth)):

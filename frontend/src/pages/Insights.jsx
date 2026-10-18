@@ -4,6 +4,7 @@ import { useApp } from "../context/AppContext";
 import { apiFetch } from "../lib/api";
 import { nairaFull, dateTimeStr } from "../lib/format";
 import MetricCard from "../components/MetricCard";
+import BusinessGraphs from "../components/BusinessGraphs";
 
 const PERIODS = [
   { value: "TODAY", label: "Today" },
@@ -61,9 +62,9 @@ export default function Insights() {
   return (
     <>
       <div className="card-body" style={{ padding: "0 0 4px" }}>
-        <h2 style={{ margin: "0 0 2px" }}>Inventory Insights</h2>
+        <h2 style={{ margin: "0 0 2px" }}>Insights</h2>
         <p className="text-subtle text-sm" style={{ margin: 0 }}>
-          Margin, price changes and stock received — tracked over time.
+          How your business is moving — then margin, price changes and stock received below.
         </p>
       </div>
 
@@ -85,6 +86,9 @@ export default function Insights() {
           </button>
         ))}
       </div>
+
+      {/* Graphs: sales, money in vs debt, what's owed, profit, top sellers, busy times */}
+      <BusinessGraphs period={period} />
 
       {/* Summary strip */}
       <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
