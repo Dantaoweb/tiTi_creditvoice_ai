@@ -4,6 +4,7 @@ import { Plus, PackageCheck } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import { nairaFull, dateStr } from "../lib/format";
 import { InvoiceStatusBadge } from "./InvoiceView";
+import { useAuth } from "../context/AuthContext";
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
@@ -12,6 +13,8 @@ export default function Invoices() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canQuote = !!user?.can_quote;          // businesses that do jobs
 
   useEffect(() => {
     setLoading(true);
@@ -23,8 +26,10 @@ export default function Invoices() {
 
   const tiles = [
     { key: "",          label: "All" },
+    ...(canQuote || summary.quote ? [{ key: "quote", label: `Quotations (${summary.quote || 0})` }] : []),
     { key: "open",      label: `Waiting (${summary.open})` },
     { key: "overdue",   label: `Overdue (${summary.overdue})` },
+    ...(summary.deposit_paid ? [{ key: "deposit_paid", label: `Deposit paid (${summary.deposit_paid})` }] : []),
     { key: "part_paid", label: `Part paid (${summary.part_paid})` },
     { key: "paid",      label: `Paid (${summary.paid})` },
     ...(summary.cancelled ? [{ key: "cancelled", label: `Cancelled (${summary.cancelled})` }] : []),
@@ -43,9 +48,16 @@ export default function Invoices() {
             Awaiting payment: <strong style={{ color: "#b45309" }}>{nairaFull(summary.total_due)}</strong>
           </span>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate("/invoices/new")}>
-          <Plus size={15} /> New invoice
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {canQuote && (
+            <button className="btn btn-secondary" onClick={() => navigate("/invoices/new?quote=1")}>
+              <Plus size={15} /> New quotation
+            </button>
+          )}
+          <button className="btn btn-primary" onClick={() => navigate("/invoices/new")}>
+            <Plus size={15} /> New invoice
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 8, padding: "10px 16px", flexWrap: "wrap" }}>

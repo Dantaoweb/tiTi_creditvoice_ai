@@ -199,15 +199,38 @@ class InvoiceError(ValueError):
     shown to the user as is."""
 
 
+def format_quote_number(number):
+    return f"QT-{int(number):04d}" if number else "QT-—"
+
+
+def next_quote_number(db, owner_phone):
+    top = db.query(func.max(Invoice.quote_number)).filter(Invoice.owner_phone == owner_phone).scalar()
+    return int(top or 0) + 1
+
+
+def deposit_required(inv):
+    """The deposit to be paid before work starts, in naira (0 = none asked)."""
+    pct = int(inv.deposit_percent or 0)
+    return int(math.ceil((inv.total or 0) * pct / 100)) if pct else 0
+
+
 def invoice_status(inv, now=None):
-    """Draft / Sent / Overdue while waiting for money; Part paid / Paid once it
+    """Quote while a quotation waits for a yes; Draft / Sent / Overdue while
+    waiting for money; Deposit paid (work can start) / Part paid / Paid once it
     has become a sale; Cancelled. Delivery is tracked separately — goods can go
     out before or after the money comes in."""
     now = now or _utcnow()
     if inv.cancelled_at:
         return "cancelled"
+    if getattr(inv, "is_quote", False):
+        return "quote"
     if inv.transaction_id:
-        return "paid" if (inv.amount_paid or 0) >= (inv.total or 0) else "part_paid"
+        paid = inv.amount_paid or 0
+        if paid >= (inv.total or 0):
+            return "paid"
+        if deposit_required(inv) and paid >= deposit_required(inv):
+            return "deposit_paid"
+        return "part_paid"
     if inv.due_date and inv.due_date < now:
         return "overdue"
     if inv.sent_at:
@@ -289,11 +312,23 @@ def invoice_lines(db, inv):
     } for r in rows]
 
 
+def _clean_deposit(deposit_percent):
+    if deposit_percent in (None, "", 0, "0"):
+        return None
+    try:
+        pct = int(deposit_percent)
+    except (TypeError, ValueError):
+        raise InvoiceError("The deposit must be a percentage, like 60.")
+    if not 1 <= pct <= 100:
+        raise InvoiceError("The deposit must be between 1% and 100%.")
+    return pct
+
+
 def create_invoice(db, owner_phone, user_id, customer_id, items, *, due_date=None,
                    note=None, branch_id=None, customer_name=None, customer_phone=None,
-                   discount=0):
-    """Write a new invoice. No debt, no stock movement — just the document,
-    with the next number in the business's INV sequence."""
+                   discount=0, is_quote=False, deposit_percent=None):
+    """Write a new invoice — or a quotation (QT number, not owed until the
+    customer accepts). No debt, no stock movement — just the document."""
     from web_pos import resolve_sale_customer
     lines, lines_total = clean_invoice_items(items)
     total, discount = apply_discount(lines_total, discount)
@@ -304,7 +339,10 @@ def create_invoice(db, owner_phone, user_id, customer_id, items, *, due_date=Non
         owner_phone=owner_phone,
         branch_id=branch_id,
         customer_id=customer_id,
-        number=next_invoice_number(db, owner_phone),
+        number=None if is_quote else next_invoice_number(db, owner_phone),
+        is_quote=bool(is_quote),
+        quote_number=next_quote_number(db, owner_phone) if is_quote else None,
+        deposit_percent=_clean_deposit(deposit_percent),
         total=total,
         discount=discount or None,
         due_date=due_date,
@@ -318,7 +356,7 @@ def create_invoice(db, owner_phone, user_id, customer_id, items, *, due_date=Non
     return inv
 
 
-def update_invoice(db, inv, items, *, due_date=None, note=None, discount=0):
+def update_invoice(db, inv, items, *, due_date=None, note=None, discount=0, deposit_percent="keep"):
     """Change the lines, due date or note — only while nothing has happened to
     it yet. Once goods are out or money is in, the record is what happened."""
     if inv.cancelled_at:
@@ -334,6 +372,22 @@ def update_invoice(db, inv, items, *, due_date=None, note=None, discount=0):
     inv.discount = discount or None
     inv.due_date = due_date
     inv.note = (note or "").strip() or None
+    if deposit_percent != "keep":
+        inv.deposit_percent = _clean_deposit(deposit_percent)
+    db.commit()
+    return inv
+
+
+def accept_quote(db, inv):
+    """The customer agreed to the quotation: it becomes an invoice with the
+    next INV number. The QT number stays on it for reference."""
+    if inv.cancelled_at:
+        raise InvoiceError("This quotation was cancelled.")
+    if not inv.is_quote:
+        raise InvoiceError("This is already an invoice.")
+    inv.is_quote = False
+    inv.number = next_invoice_number(db, inv.owner_phone)
+    inv.accepted_at = _utcnow()
     db.commit()
     return inv
 
@@ -343,6 +397,8 @@ def deliver_invoice(db, inv, user_id):
     from web_pos import deduct_stock_for_items
     if inv.cancelled_at:
         raise InvoiceError("This invoice was cancelled.")
+    if getattr(inv, "is_quote", False):
+        raise InvoiceError("This is still a quotation — mark it accepted first.")
     if inv.delivered_at:
         raise InvoiceError("Already marked as delivered.")
     deduct_stock_for_items(db, inv.owner_phone, invoice_lines(db, inv), user_id,
@@ -365,6 +421,8 @@ def pay_invoice(db, inv, user_id, amount):
     from web_pos import save_pos_sale
     if inv.cancelled_at:
         raise InvoiceError("This invoice was cancelled.")
+    if getattr(inv, "is_quote", False):
+        raise InvoiceError("This is still a quotation — mark it accepted first, then record the deposit.")
     if inv.transaction_id:
         raise InvoiceError("This invoice is already paid. Collect anything still owed from Debts.")
     try:
@@ -431,6 +489,7 @@ def _business_header(db, owner_phone, branch_id):
     owner = db.query(User).filter(User.phone == owner_phone).first()
     out = {
         "biz_name": business_display_name(owner) if owner else None,
+        "biz_logo": getattr(owner, "logo_data", None) if owner else None,
         "biz_phone": owner_phone,
         "biz_address": getattr(owner, "address", None) if owner else None,
         "branch_name": None,
@@ -457,16 +516,25 @@ def invoice_document(db, inv):
     # invoice that hides it understates what the customer has to settle.
     other_debt = max(0, int(customer.balance or 0)) if (customer and waiting) else 0
     doc = _business_header(db, inv.owner_phone, inv.branch_id)
+    deposit = deposit_required(inv)
     doc.update({
         "id": inv.id,
         "number": inv.number,
-        "ref": format_invoice_number(inv.number),
+        "ref": format_quote_number(inv.quote_number) if inv.is_quote else format_invoice_number(inv.number),
+        "is_quote": bool(inv.is_quote),
+        "quote_ref": format_quote_number(inv.quote_number) if inv.quote_number else None,
+        "accepted_at": inv.accepted_at.isoformat() if inv.accepted_at else None,
+        # Deposit before work starts; the balance on completion (due_date)
+        "deposit_percent": inv.deposit_percent,
+        "deposit_amount": deposit,
+        "balance_on_completion": max(0, (inv.total or 0) - deposit) if deposit else 0,
+        "deposit_paid": bool(deposit and inv.transaction_id and (inv.amount_paid or 0) >= deposit),
         "status": status,
         "total": inv.total or 0,
         "discount": inv.discount or 0,
         "subtotal": (inv.total or 0) + (inv.discount or 0),
         "amount_paid": inv.amount_paid or 0,
-        "moved_to_debt": max(0, (inv.total or 0) - (inv.amount_paid or 0)) if status == "part_paid" else 0,
+        "moved_to_debt": max(0, (inv.total or 0) - (inv.amount_paid or 0)) if status in ("part_paid", "deposit_paid") else 0,
         "other_debt": other_debt,
         "total_due_now": ((inv.total or 0) + other_debt) if waiting else 0,
         "due_date": inv.due_date.isoformat() if inv.due_date else None,
@@ -490,7 +558,7 @@ def invoice_document(db, inv):
 
 def format_invoice_doc_text(doc):
     """The WhatsApp message for an invoice: what is being asked for, and by when."""
-    lines = ["*INVOICE*"]
+    lines = ["*QUOTATION*" if doc.get("is_quote") else "*INVOICE*"]
     if doc.get("biz_name"):
         lines.append(doc["biz_name"])
     addr = doc.get("branch_address") or doc.get("biz_address")
@@ -513,14 +581,23 @@ def format_invoice_doc_text(doc):
     if doc.get("discount"):
         lines.append(f"Subtotal: N{doc['subtotal']:,}")
         lines.append(f"Discount: -N{doc['discount']:,}")
-    if doc.get("other_debt"):
+    if doc.get("is_quote"):
+        lines.append(f"*Quoted total: N{doc['total']:,}*")
+    elif doc.get("other_debt"):
         lines.append(f"This invoice:      N{doc['total']:,}")
         lines.append(f"Previous balance:  N{doc['other_debt']:,}")
         lines.append(f"*Total due now:    N{doc['total_due_now']:,}*")
     else:
         lines.append(f"*Amount due: N{doc['total']:,}*")
+    if doc.get("deposit_amount"):
+        lines.append(f"Deposit before work starts ({doc['deposit_percent']}%): N{doc['deposit_amount']:,}")
+        lines.append(f"Balance on completion: N{doc['balance_on_completion']:,}")
+        if doc.get("deposit_paid"):
+            lines.append("Deposit received - work can start.")
     if doc.get("due_date"):
-        lines.append(f"Due by: {doc['due_date'][:10]}")
+        lines.append(f"{'Completion / balance due' if doc.get('deposit_amount') else 'Due by'}: {doc['due_date'][:10]}")
+    if doc.get("is_quote"):
+        lines.append("Reply to accept this quotation.")
     if doc.get("note"):
         lines.append(doc["note"])
     lines.append("--------------------")
@@ -544,8 +621,10 @@ def list_new_invoices(db, owner_phone, branch_id=None, created_by_id=None):
         rows.append({
             "kind": "invoice",
             "id": inv.id,
+            "is_quote": bool(inv.is_quote),
             "invoice_number": inv.number,
-            "invoice_ref": format_invoice_number(inv.number),
+            "invoice_ref": format_quote_number(inv.quote_number) if inv.is_quote else format_invoice_number(inv.number),
+            "deposit_percent": inv.deposit_percent,
             "customer_id": customer.id,
             "customer_name": customer.name,
             "total": inv.total or 0,

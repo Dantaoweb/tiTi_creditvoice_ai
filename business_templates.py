@@ -90,6 +90,9 @@ BUSINESS_CATEGORIES = [
             ("carpentry_furniture", "Carpentry / Furniture"),
             ("phone_repair", "Phone Repair"),
             ("cleaning_service", "Cleaning / Janitorial Service"),
+            ("building_contractor", "Building / Construction Contractor"),
+            ("welding_fabrication", "Welding / Fabrication"),
+            ("painting_decoration", "Painter / Interior Decorator"),
             ("other_services", "Other Service Business"),
         ],
     },
@@ -701,6 +704,9 @@ BUSINESS_TEMPLATE_ALIASES = {
     "carpentry_furniture": "artisan_services",
     "phone_repair": "artisan_services",
     "other_services": "artisan_services",
+    "building_contractor": "artisan_services",
+    "welding_fabrication": "artisan_services",
+    "painting_decoration": "artisan_services",
     "restaurant": "food_hospitality",
     "food_vendor": "food_hospitality",
     "bakery": "food_hospitality",
@@ -3721,6 +3727,28 @@ SERVICE_PRICE_CATALOG = {
 # Entries in a price list that are goods handed over, not services — added to
 # stock with a quantity (a school's textbooks and uniforms).
 GOODS_IN_PRICE_LISTS = frozenset({"books / supplies", "uniform", "textbooks", "exercise books"})
+
+# Businesses that do jobs — quote first, take a deposit before starting, the
+# balance on completion (contractors, artisans, tailors, mechanics, printers,
+# consultants, IT installers). They get quotations on the Invoices page.
+JOB_TEMPLATE_KEYS = frozenset({
+    "artisan_services", "professional_services", "tailor", "mechanic",
+})
+
+
+def does_jobs(user, db=None):
+    """Whether this business (a staff member's owner, for staff) does jobs."""
+    if user is None:
+        return False
+    owner = user
+    if getattr(user, "parent_id", None) and db is not None:
+        from models import User as _U
+        owner = db.query(_U).filter(_U.id == user.parent_id).first() or user
+    try:
+        return template_key_for_user(owner) in JOB_TEMPLATE_KEYS
+    except Exception:
+        return False
+
 
 # Keys that have a SERVICE_PRICE_CATALOG entry
 SERVICE_CATALOG_KEYS = set(SERVICE_PRICE_CATALOG.keys())

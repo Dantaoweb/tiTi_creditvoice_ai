@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiPut } from "../lib/api";
 import MyReview from "../components/MyReview";
+import LogoUploader from "../components/LogoUploader";
 
 export default function Profile() {
   const { user, refreshUser } = useAuth();
@@ -56,6 +57,7 @@ export default function Profile() {
                 placeholder="e.g. 12 Market Rd, Ikeja, Lagos" disabled={busy} style={{ resize: "vertical" }} />
               <span className="form-hint">Shown on receipts and invoices.</span>
             </div>
+            <LogoUploader />
           </>
         )}
 

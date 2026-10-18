@@ -67,6 +67,8 @@ class InvoiceCreateRequest(BaseModel):
     note: Optional[str] = Field(default=None, max_length=500)
     branch_id: Optional[int] = None
     discount: int = 0   # naira off the whole invoice
+    is_quote: bool = False                    # a quotation first (jobs)
+    deposit_percent: Optional[int] = None     # % before work starts; balance on completion
 
 
 class InvoiceUpdateRequest(BaseModel):
@@ -74,6 +76,7 @@ class InvoiceUpdateRequest(BaseModel):
     due_date: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
     discount: int = 0
+    deposit_percent: Optional[int] = None
 
 
 class InvoicePayRequest(BaseModel):
@@ -448,15 +451,17 @@ def register_pos_routes(app):
 
             # "Open" is everything still waiting for money that isn't late yet.
             open_states = ("draft", "sent", "open")
-            summary = {"open": 0, "overdue": 0, "part_paid": 0, "paid": 0, "cancelled": 0, "total_due": 0}
+            summary = {"open": 0, "overdue": 0, "part_paid": 0, "paid": 0, "cancelled": 0,
+                       "quote": 0, "deposit_paid": 0, "total_due": 0}
             for r in rows:
-                summary["open" if r["status"] in open_states else r["status"]] += 1
+                key = "open" if r["status"] in open_states else r["status"]
+                summary[key] = summary.get(key, 0) + 1
                 summary["total_due"] += r["outstanding"]
 
             want = (status or "").lower()
             if want == "open":
                 rows = [r for r in rows if r["status"] in open_states]
-            elif want in ("overdue", "part_paid", "paid", "cancelled"):
+            elif want in ("overdue", "part_paid", "paid", "cancelled", "quote", "deposit_paid"):
                 rows = [r for r in rows if r["status"] == want]
             return {"invoices": rows, "summary": summary}
         finally:
@@ -501,11 +506,17 @@ def register_pos_routes(app):
             eff_branch = _recording_branch(db, session, owner_phone, payload.branch_id)
             _require_items_in_branch(db, owner_phone, items, eff_branch)
             from invoices import create_invoice, invoice_document
+            if payload.is_quote:
+                from business_templates import does_jobs
+                if not does_jobs(db.query(User).filter(User.id == session["user_id"]).first(), db):
+                    raise HTTPException(status_code=403,
+                                        detail="Quotations are for businesses that do jobs.")
             inv = _invoice_action(lambda: create_invoice(
                 db, owner_phone, session["user_id"], payload.customer_id, items,
                 due_date=payload.due_date, note=payload.note, branch_id=eff_branch,
                 customer_name=payload.customer_name, customer_phone=payload.customer_phone,
-                discount=payload.discount,
+                discount=payload.discount, is_quote=payload.is_quote,
+                deposit_percent=payload.deposit_percent,
             ))
             return invoice_document(db, inv)
         finally:
@@ -531,7 +542,8 @@ def register_pos_routes(app):
             _require_items_in_branch(db, inv.owner_phone, items, inv.branch_id)
             from invoices import update_invoice, invoice_document
             _invoice_action(lambda: update_invoice(db, inv, items, due_date=payload.due_date,
-                                                   note=payload.note, discount=payload.discount))
+                                                   note=payload.note, discount=payload.discount,
+                                                   deposit_percent=payload.deposit_percent))
             return invoice_document(db, inv)
         finally:
             db.close()
@@ -556,6 +568,19 @@ def register_pos_routes(app):
             send_whatsapp_message(phone, format_invoice_doc_text(doc))
             inv.sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
+            return invoice_document(db, inv)
+        finally:
+            db.close()
+
+    @app.post("/app/api/invoices/doc/{invoice_id}/accept")
+    def web_accept_quote(invoice_id: int, session: dict = Depends(require_web_auth)):
+        """The customer agreed to the quotation — it becomes an invoice."""
+        db = SessionLocal()
+        try:
+            _require_can_record(db, session, count_sale=False)
+            inv = _load_invoice(db, session, invoice_id)
+            from invoices import accept_quote, invoice_document
+            _invoice_action(lambda: accept_quote(db, inv))
             return invoice_document(db, inv)
         finally:
             db.close()

@@ -2827,6 +2827,9 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "quotation":          ["quotation", "a quote", "send quote", "give quote", "deposit before",
+                                   "before work starts", "mobilization", "mobilisation", "balance on completion"],
+            "logo":               ["logo"],
             "settings":           ["setting", "font", "text size", "text bigger", "bigger text", "dark mode",
                                    "dark theme", "night mode", "group my stock", "group stock", "stock by category",
                                    "products by category", "product categor", "stock categor", "manage categor",
@@ -2898,6 +2901,10 @@ def _parse_message(text):
         return {"type": "APP_GUIDE", "topic": "invoices"}
     if re.match(r"^(?:(?:record|add|new|my)\s+(?:an?\s+)?)?expenses?$", clean_text):
         return {"type": "APP_GUIDE", "topic": "expenses"}
+    if re.match(r"^(?:(?:new|send|make|create|my)\s+)?(?:quotations?|quotes?|estimates?)$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "quotation"}
+    if re.match(r"^(?:(?:my|add|upload|change|business)\s+)*logo$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "logo"}
     if re.match(r"^(?:my\s+)?(?:settings?|preferences?|dark\s+mode|text\s+size|font\s+size|categories)$", clean_text):
         return {"type": "APP_GUIDE", "topic": "settings"}
     if re.match(r"^(?:refunds?|credit\s+notes?|cancel\s+(?:the\s+)?(?:rest|remaining|undelivered(?:\s+goods)?))$", clean_text):

@@ -196,6 +196,9 @@ export default function Receipt() {
 
       <div className="receipt-paper">
         <div className="receipt-header">
+          {receipt.biz_logo && (
+            <img src={receipt.biz_logo} alt="" style={{ maxHeight: 64, maxWidth: 160, objectFit: "contain", margin: "0 auto 6px", display: "block" }} />
+          )}
           <div className="receipt-brand">{bizName}</div>
           {receipt.biz_phone && (
             <div className="receipt-muted" style={{ fontSize: 12 }}>Tel: {receipt.biz_phone}</div>

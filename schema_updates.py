@@ -113,6 +113,7 @@ def ensure_schema_updates(engine):
         "receipt_counter": "INTEGER DEFAULT 0",
         "display_prefs_json": "TEXT",
         "business_settings_json": "TEXT",
+        "logo_data": "TEXT",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():
@@ -1000,6 +1001,15 @@ def ensure_schema_updates(engine):
                     connection.execute(text(
                         f"ALTER TABLE transaction_items ADD COLUMN {col} {typ}"
                     ))
+
+    # ── invoices: quotations, deposit before work (invoices.py) ──────────────
+    if "invoices" in inspector.get_table_names():
+        invoice_columns = {col["name"] for col in inspector.get_columns("invoices")}
+        with engine.begin() as connection:
+            for col, typ in {"is_quote": "BOOLEAN DEFAULT FALSE", "quote_number": "INTEGER",
+                             "accepted_at": "TIMESTAMP", "deposit_percent": "INTEGER"}.items():
+                if col not in invoice_columns:
+                    connection.execute(text(f"ALTER TABLE invoices ADD COLUMN {col} {typ}"))
 
     # ── fee_items: the stock item each school fee item is (school_service) ───
     if "fee_items" in inspector.get_table_names():

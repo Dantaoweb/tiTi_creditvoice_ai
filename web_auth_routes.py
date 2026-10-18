@@ -50,6 +50,10 @@ class SetPinRequest(BaseModel):
     new_pin: str = Field(max_length=10)
 
 
+class LogoRequest(BaseModel):
+    data_url: str = Field(max_length=400_000)
+
+
 class ProfileUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, max_length=120)
     business_type_label: Optional[str] = Field(default=None, max_length=120)
@@ -176,6 +180,53 @@ def register_auth_routes(app):
                 db.commit()
             clear_auth_cookie(response)
             return {"ok": True, "message": "Signed out of all devices."}
+        finally:
+            db.close()
+
+    # ── The business logo (receipts, invoices, quotations) ─────────────────
+    @app.get("/app/api/auth/profile/logo")
+    def web_get_logo(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            owner = user
+            if user and user.parent_id:
+                owner = db.query(User).filter(User.id == user.parent_id).first() or user
+            return {"logo": getattr(owner, "logo_data", None) if owner else None}
+        finally:
+            db.close()
+
+    @app.post("/app/api/auth/profile/logo")
+    def web_set_logo(payload: LogoRequest, session: dict = Depends(require_web_auth)):
+        """The owner's business logo, already shrunk in the browser. Only a
+        small picture is accepted so receipts stay quick to load."""
+        import re as _re
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            if not user or user.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only the business owner can change the logo.")
+            data = (payload.data_url or "").strip()
+            if not _re.match(r"^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$", data):
+                raise HTTPException(status_code=400, detail="That isn't a picture we can use. Upload a PNG or JPG.")
+            if len(data) > 300_000:
+                raise HTTPException(status_code=400, detail="That picture is too big — use a smaller logo.")
+            user.logo_data = data
+            db.commit()
+            return {"logo": data}
+        finally:
+            db.close()
+
+    @app.delete("/app/api/auth/profile/logo")
+    def web_remove_logo(session: dict = Depends(require_web_auth)):
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            if not user or user.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only the business owner can change the logo.")
+            user.logo_data = None
+            db.commit()
+            return {"logo": None}
         finally:
             db.close()
 
@@ -357,6 +408,7 @@ def register_auth_routes(app):
                 "parent_id": user.parent_id,
                 # Owner or branch admin — may manage stock, branches, etc.
                 "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
+            "can_quote": __import__("business_templates").does_jobs(user, db),
             }
         finally:
             db.close()

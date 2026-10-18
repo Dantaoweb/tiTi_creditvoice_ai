@@ -111,6 +111,13 @@ DELIVERIES & READY-BY DATES (web app):
 - tiTi reminds the owner 2 days before, 1 day before, and on the day.
 - The Deliveries page lists upcoming jobs; there you can change the date or send the customer a "your order is ready" message. Customer messages are only sent when the owner types and taps send — never automatic.
 
+QUOTATIONS & DEPOSITS (jobs: contractors, artisans, tailors, mechanics, printers, consultants — web app):
+- Invoices → New quotation (QT-0001): items, prices, an optional "deposit before work starts" % and the completion date. Nothing is owed while it's a quotation.
+- "Customer accepted" turns it into an invoice (INV number, no retyping). Record deposit / payment → "Deposit": status "Deposit paid — work can start"; the balance on completion goes on the customer's debts, due on the completion date.
+- Shops and other non-job businesses only see normal invoices.
+
+LOGO: web app → My Profile → Business logo (owner only). Prints on receipts, invoices and quotations (screen, print, PDF); WhatsApp text receipts stay text.
+
 SETTINGS (web app → More → Settings):
 - My display, each person's own: text size (Small/Normal/Large/Extra large), theme (Light/Dark/Follow my phone), list style (Compact/Comfortable).
 - Owner and authorised staff, for the business: group stock by category (Inventory only, or Inventory and POS), new categories typed or suggested by tiTi, a default low-stock alert for new products, allow selling below zero stock (yes/no), show part delivery at POS, and a daily WhatsApp summary at a chosen time.

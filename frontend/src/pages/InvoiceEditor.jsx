@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { ArrowLeft, Plus, Trash2, User, X, Camera } from "lucide-react";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, fmtAmt, parseAmt } from "../lib/format";
@@ -145,6 +146,13 @@ export default function InvoiceEditor() {
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Jobs (contractors, artisans…): a quotation first, a deposit before work
+  // starts, the balance on completion.
+  const { user } = useAuth();
+  const canQuote = !!user?.can_quote;
+  const [search] = useSearchParams();
+  const [isQuote, setIsQuote] = useState(search.get("quote") === "1");
+  const [depositPct, setDepositPct] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -158,6 +166,8 @@ export default function InvoiceEditor() {
         })));
         setDueDate(doc.due_date ? doc.due_date.slice(0, 10) : "");
         setNote(doc.note || "");
+        setIsQuote(!!doc.is_quote);
+        setDepositPct(doc.deposit_percent ? String(doc.deposit_percent) : "");
         if (doc.discount) setDiscountValue({ input: Number(doc.discount).toLocaleString("en-NG"), pct: false });
       })
       .catch(e => setErr(e.message))
@@ -170,6 +180,8 @@ export default function InvoiceEditor() {
   const subtotal = filled.reduce((s, l) => s + lineTotal(l), 0);
   const discount = discountAmount(subtotal, discountValue);   // off the whole invoice
   const total = subtotal - discount;
+  const pct = Math.min(100, Math.max(0, parseInt(depositPct, 10) || 0));
+  const depositAmt = pct ? Math.ceil(total * pct / 100) : 0;
 
   async function save(e) {
     e.preventDefault();
@@ -181,13 +193,15 @@ export default function InvoiceEditor() {
       qty: parseAmt(l.qty), unit_price: Math.round(parseAmt(l.unit_price)),
       sold_unit: l.sold_unit || null, fraction: l.fraction ?? 1,
     }));
-    const body = { items, due_date: dueDate || null, note: note.trim() || null, discount };
+    const body = { items, due_date: dueDate || null, note: note.trim() || null, discount,
+                   deposit_percent: canQuote && pct ? pct : null };
     setBusy(true);
     try {
       const doc = id
         ? await apiPut(`invoices/doc/${id}`, body)
         : await apiPost("invoices/new", {
             ...body,
+            is_quote: canQuote && isQuote,
             ...(customer.isNew
               ? { customer_name: customer.name, customer_phone: newPhone.trim() || null }
               : { customer_id: customer.id }),
@@ -207,14 +221,25 @@ export default function InvoiceEditor() {
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(id ? `/invoices/${id}` : "/invoices")}>
           <ArrowLeft size={15} />
         </button>
-        <span className="card-title">{id ? "Edit invoice" : "New invoice"}</span>
+        <span className="card-title">
+          {id ? `Edit ${isQuote ? "quotation" : "invoice"}` : isQuote ? "New quotation" : "New invoice"}
+        </span>
       </div>
 
       <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+        {canQuote && !id && (
+          <div className="seg" role="radiogroup" style={{ alignSelf: "flex-start" }}>
+            <button type="button" className={!isQuote ? "on" : ""} onClick={() => setIsQuote(false)}>Invoice</button>
+            <button type="button" className={isQuote ? "on" : ""} onClick={() => setIsQuote(true)}>Quotation</button>
+          </div>
+        )}
         <div className="invoice-hint">
-          An invoice asks the customer to pay. It is <strong>not a debt</strong> and takes nothing
-          out of stock. Stock goes out when you mark it delivered, and any unpaid part becomes
-          debt when you record the payment.
+          {isQuote
+            ? <>A quotation tells the customer what the job will cost. <strong>Nothing is owed</strong> until
+                they accept it — then it becomes an invoice with one tap, no retyping.</>
+            : <>An invoice asks the customer to pay. It is <strong>not a debt</strong> and takes nothing
+                out of stock. Stock goes out when you mark it delivered, and any unpaid part becomes
+                debt when you record the payment.</>}
         </div>
 
         <div>
@@ -269,7 +294,7 @@ export default function InvoiceEditor() {
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 180px" }}>
-            <label className="form-label">Pay by (optional)</label>
+            <label className="form-label">{pct ? "Completion / balance due (optional)" : "Pay by (optional)"}</label>
             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
           </div>
           <div style={{ flex: "2 1 240px" }}>
@@ -278,6 +303,25 @@ export default function InvoiceEditor() {
               value={note} onChange={e => setNote(e.target.value)} />
           </div>
         </div>
+
+        {canQuote && (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: "0 1 200px" }}>
+              <label className="form-label">Deposit before work starts (optional)</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input type="number" min={0} max={100} inputMode="numeric" placeholder="e.g. 60"
+                  value={depositPct} onChange={e => setDepositPct(e.target.value)} style={{ width: 90 }} />
+                <span>%</span>
+              </div>
+            </div>
+            {pct > 0 && total > 0 && (
+              <div style={{ fontSize: 13.5 }}>
+                Deposit <strong>{nairaFull(depositAmt)}</strong> · balance on completion{" "}
+                <strong>{nairaFull(total - depositAmt)}</strong>
+              </div>
+            )}
+          </div>
+        )}
 
         {err && <div className="pos-error" style={{ margin: 0 }}>{err}</div>}
 
@@ -295,7 +339,7 @@ export default function InvoiceEditor() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15 }}>Total: <strong>{nairaFull(total)}</strong></span>
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? "Saving…" : id ? "Save changes" : "Create invoice"}
+            {busy ? "Saving…" : id ? "Save changes" : isQuote ? "Create quotation" : "Create invoice"}
           </button>
         </div>
       </div>

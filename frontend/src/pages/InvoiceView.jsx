@@ -12,6 +12,9 @@ const STATUS = {
   open:      { label: "Open",      bg: "rgba(59,130,246,0.12)",  fg: "#2563eb" },
   overdue:   { label: "Overdue",   bg: "rgba(239,68,68,0.12)",   fg: "#b91c1c" },
   part_paid: { label: "Part paid", bg: "rgba(245,158,11,0.14)",  fg: "#b45309" },
+  // Jobs: a quotation waiting for a yes; the deposit in, so work can start
+  quote:        { label: "Quotation",    bg: "rgba(124,58,237,0.12)", fg: "#6d28d9" },
+  deposit_paid: { label: "Deposit paid", bg: "rgba(13,148,136,0.14)", fg: "#0f766e" },
   paid:      { label: "Paid",      bg: "rgba(22,163,74,0.12)",   fg: "#166534" },
   cancelled: { label: "Cancelled", bg: "rgba(100,116,139,0.14)", fg: "#475569" },
 };
@@ -47,6 +50,10 @@ export default function InvoiceView() {
   if (!doc) return <div className="page-loading">Loading invoice…</div>;
 
   const waiting   = ["draft", "sent", "overdue"].includes(doc.status);
+  const isQuote   = doc.status === "quote";
+  const someOwed  = doc.status === "part_paid" || doc.status === "deposit_paid";
+  const hasDeposit = doc.deposit_amount > 0;
+  const docName   = isQuote ? "quotation" : "invoice";
   const cancelled = doc.status === "cancelled";
   const delivered = !!doc.delivered_at;
   const phone     = doc.customer?.phone;
@@ -72,8 +79,13 @@ export default function InvoiceView() {
   }
 
   function cancel() {
-    if (!window.confirm("Cancel this invoice? It stays in the list, marked cancelled.")) return;
+    if (!window.confirm(`Cancel this ${docName}? It stays in the list, marked cancelled.`)) return;
     act("cancel", "cancel");
+  }
+
+  function accept() {
+    if (!window.confirm("The customer agreed? This quotation becomes an invoice with its own INV number.")) return;
+    act("accept", "accept");
   }
 
   function openPay() {
@@ -93,7 +105,7 @@ export default function InvoiceView() {
   const toDebt = Math.max(0, doc.total - payNum);
 
   function shareText() {
-    const L = ["INVOICE — " + (doc.biz_name || "")];
+    const L = [(isQuote ? "QUOTATION — " : "INVOICE — ") + (doc.biz_name || "")];
     if (addr) L.push(addr);
     L.push(doc.ref);
     L.push(dateStr(doc.created_at));
@@ -110,9 +122,13 @@ export default function InvoiceView() {
       L.push(`Previous balance: ${nairaFull(doc.other_debt)}`);
       L.push(`Total due now: ${nairaFull(doc.total_due_now)}`);
     } else {
-      L.push(`Amount due: ${nairaFull(doc.total)}`);
+      L.push(`${isQuote ? "Quoted total" : "Amount due"}: ${nairaFull(doc.total)}`);
     }
-    if (doc.due_date) L.push(`Due by: ${dateStr(doc.due_date)}`);
+    if (hasDeposit) {
+      L.push(`Deposit before work starts (${doc.deposit_percent}%): ${nairaFull(doc.deposit_amount)}`);
+      L.push(`Balance on completion: ${nairaFull(doc.balance_on_completion)}`);
+    }
+    if (doc.due_date) L.push(`${hasDeposit ? "Completion / balance due" : "Due by"}: ${dateStr(doc.due_date)}`);
     if (doc.note) L.push(doc.note);
     L.push("--------------------");
     L.push(doc.footer);
@@ -123,7 +139,7 @@ export default function InvoiceView() {
     const text = shareText();
     try {
       if (navigator.share) {
-        await navigator.share({ title: `Invoice ${doc.ref}`, text });
+        await navigator.share({ title: `${isQuote ? "Quotation" : "Invoice"} ${doc.ref}`, text });
       } else {
         await navigator.clipboard.writeText(text);
         setShareMsg("Copied — paste it into WhatsApp or anywhere.");
@@ -138,7 +154,7 @@ export default function InvoiceView() {
         <button className="btn btn-ghost" onClick={() => navigate("/invoices")}>
           <ArrowLeft size={15} /> Invoices
         </button>
-        {waiting && !delivered && (
+        {(waiting || isQuote) && !delivered && (
           <button className="btn btn-ghost" onClick={() => navigate(`/invoices/${id}/edit`)}>
             <Pencil size={15} /> Edit
           </button>
@@ -167,23 +183,31 @@ export default function InvoiceView() {
         </div>
 
         <p className="invoice-state__text">
-          {cancelled && "This invoice was cancelled. Nothing was owed and no stock moved."}
+          {cancelled && `This ${docName} was cancelled. Nothing was owed and no stock moved.`}
+          {isQuote && `A quotation: nothing is owed yet. When ${custName} agrees, tap "Customer accepted" — it becomes an invoice${hasDeposit ? ` asking for the ${doc.deposit_percent}% deposit before work starts` : ""}.`}
+          {waiting && hasDeposit && `Ask for the deposit of ${nairaFull(doc.deposit_amount)} (${doc.deposit_percent}%) before work starts; the balance of ${nairaFull(doc.balance_on_completion)} is paid on completion. `}
           {waiting && !delivered && "Nothing is owed yet and no stock has moved. Record the payment when the customer pays; mark it delivered when the goods go out."}
           {waiting && delivered && "The goods are out of stock. Record the payment when the customer pays — anything unpaid becomes their debt."}
           {doc.status === "paid" && `Paid ${nairaFull(doc.amount_paid)} on ${dateStr(doc.paid_at)}.`}
+          {doc.status === "deposit_paid" && `Deposit of ${nairaFull(doc.amount_paid)} paid on ${dateStr(doc.paid_at)} — work can start. The balance of ${nairaFull(doc.moved_to_debt)} is due on completion${doc.due_date ? ` (${dateStr(doc.due_date)})` : ""}; it is on ${custName}'s debts, collect it from Debts.`}
           {doc.status === "part_paid" && (doc.amount_paid > 0
             ? `${nairaFull(doc.amount_paid)} paid on ${dateStr(doc.paid_at)}. The other ${nairaFull(doc.moved_to_debt)} is now ${custName}'s debt — collect it from Debts.`
             : `Taken on credit on ${dateStr(doc.paid_at)}: the full ${nairaFull(doc.moved_to_debt)} is now ${custName}'s debt.`)}
-          {(doc.status === "paid" || doc.status === "part_paid") && !delivered && " Mark it delivered when the goods go out."}
+          {(doc.status === "paid" || someOwed) && !delivered && " Mark it delivered when the goods go out."}
         </p>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {waiting && !paying && (
-            <button className="btn btn-primary" onClick={openPay} disabled={!!busy}>
-              <Banknote size={15} /> Record payment
+          {isQuote && (
+            <button className="btn btn-primary" onClick={accept} disabled={!!busy}>
+              <Banknote size={15} /> {busy === "accept" ? "Saving…" : "Customer accepted"}
             </button>
           )}
-          {!cancelled && !delivered && (
+          {waiting && !paying && (
+            <button className="btn btn-primary" onClick={openPay} disabled={!!busy}>
+              <Banknote size={15} /> {hasDeposit ? "Record deposit / payment" : "Record payment"}
+            </button>
+          )}
+          {!cancelled && !delivered && !isQuote && (
             <button className="btn btn-ghost" onClick={deliver} disabled={!!busy}>
               <PackageCheck size={15} /> {busy === "deliver" ? "Saving…" : "Mark delivered"}
             </button>
@@ -193,9 +217,9 @@ export default function InvoiceView() {
               <ReceiptIcon size={15} /> View receipt
             </button>
           )}
-          {waiting && !delivered && (
+          {(waiting || isQuote) && !delivered && (
             <button className="btn btn-ghost" onClick={cancel} disabled={!!busy} style={{ color: "#b91c1c" }}>
-              <Ban size={15} /> {busy === "cancel" ? "Cancelling…" : "Cancel invoice"}
+              <Ban size={15} /> {busy === "cancel" ? "Cancelling…" : `Cancel ${docName}`}
             </button>
           )}
         </div>
@@ -206,6 +230,11 @@ export default function InvoiceView() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <input id="inv-pay" inputMode="numeric" autoFocus value={amount}
                 onChange={e => setAmount(fmtAmt(e.target.value))} style={{ width: 160 }} />
+              {hasDeposit && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmount(fmtAmt(doc.deposit_amount))}>
+                  Deposit ({doc.deposit_percent}%)
+                </button>
+              )}
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmount(fmtAmt(doc.total))}>All of it</button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmount("0")}>Nothing yet</button>
             </div>
@@ -239,13 +268,17 @@ export default function InvoiceView() {
 
       <div className="receipt-paper">
         <div className="receipt-header">
+          {doc.biz_logo && (
+            <img src={doc.biz_logo} alt="" style={{ maxHeight: 64, maxWidth: 160, objectFit: "contain", margin: "0 auto 6px", display: "block" }} />
+          )}
           <div className="receipt-brand">{doc.biz_name}</div>
           {doc.biz_phone && <div className="receipt-muted" style={{ fontSize: 12 }}>Tel: {doc.biz_phone}</div>}
           {addr && <div className="receipt-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>{addr}</div>}
           {doc.branch_name && <div className="receipt-muted" style={{ fontSize: 12 }}>{doc.branch_name} branch</div>}
-          <div className="receipt-sub">INVOICE</div>
+          <div className="receipt-sub">{isQuote ? "QUOTATION" : "INVOICE"}</div>
           <div className="receipt-date">{dateStr(doc.created_at)}</div>
           <div className="receipt-ref">{doc.ref}</div>
+          {!isQuote && doc.quote_ref && <div className="receipt-muted" style={{ fontSize: 12 }}>From quotation {doc.quote_ref}</div>}
           {(cancelled || doc.status === "paid") && (
             <div className={`invoice-stamp${cancelled ? " invoice-stamp--void" : ""}`}>
               {cancelled ? "CANCELLED" : "PAID"}
@@ -255,7 +288,7 @@ export default function InvoiceView() {
 
         {doc.customer && (
           <div className="receipt-customer">
-            <span className="receipt-label">Bill to</span>
+            <span className="receipt-label">{isQuote ? "Prepared for" : "Bill to"}</span>
             <span>{doc.customer.name}</span>
             {doc.customer.phone && <span className="receipt-muted">{doc.customer.phone}</span>}
           </div>
@@ -294,9 +327,21 @@ export default function InvoiceView() {
               </>
             )}
             <tr className="receipt-total-row">
-              <td colSpan={3}>{waiting ? "Amount due" : "Total"}</td>
+              <td colSpan={3}>{isQuote ? "Quoted total" : waiting ? "Amount due" : "Total"}</td>
               <td className="receipt-right">{nairaFull(doc.total)}</td>
             </tr>
+            {hasDeposit && (
+              <>
+                <tr style={{ fontWeight: 700 }}>
+                  <td colSpan={3}>Deposit before work starts ({doc.deposit_percent}%)</td>
+                  <td className="receipt-right">{nairaFull(doc.deposit_amount)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={3}>Balance on completion</td>
+                  <td className="receipt-right">{nairaFull(doc.balance_on_completion)}</td>
+                </tr>
+              </>
+            )}
             {waiting && doc.other_debt > 0 && (
               <>
                 <tr>
@@ -309,15 +354,15 @@ export default function InvoiceView() {
                 </tr>
               </>
             )}
-            {(doc.status === "paid" || doc.status === "part_paid") && (
+            {(doc.status === "paid" || someOwed) && (
               <tr>
-                <td colSpan={3}>Paid</td>
+                <td colSpan={3}>{doc.status === "deposit_paid" ? "Deposit paid" : "Paid"}</td>
                 <td className="receipt-right">{nairaFull(doc.amount_paid)}</td>
               </tr>
             )}
-            {doc.status === "part_paid" && (
+            {someOwed && (
               <tr style={{ fontWeight: 700, color: "#b91c1c" }}>
-                <td colSpan={3}>Balance owed</td>
+                <td colSpan={3}>{doc.status === "deposit_paid" ? "Balance due on completion" : "Balance owed"}</td>
                 <td className="receipt-right">{nairaFull(doc.moved_to_debt)}</td>
               </tr>
             )}
@@ -325,9 +370,12 @@ export default function InvoiceView() {
         </table>
 
         <div className="receipt-footer">
-          {waiting && doc.due_date && (
-            <div style={{ fontWeight: 700 }}>Please pay by {dateStr(doc.due_date)}</div>
+          {(waiting || isQuote || doc.status === "deposit_paid") && doc.due_date && (
+            <div style={{ fontWeight: 700 }}>
+              {hasDeposit ? `Completion / balance due: ${dateStr(doc.due_date)}` : `Please pay by ${dateStr(doc.due_date)}`}
+            </div>
           )}
+          {isQuote && <div className="receipt-muted" style={{ marginTop: 6 }}>This is a quotation, not a bill. Work starts once it is accepted{hasDeposit ? " and the deposit is paid" : ""}.</div>}
           {doc.note && <div className="receipt-muted" style={{ marginTop: 6, whiteSpace: "pre-line" }}>{doc.note}</div>}
           {doc.created_by && <div className="receipt-muted" style={{ marginTop: 6 }}>Prepared by: {doc.created_by}</div>}
           <div className="receipt-muted" style={{ marginTop: 12 }}>{doc.footer}</div>

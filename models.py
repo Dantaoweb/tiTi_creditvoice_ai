@@ -84,6 +84,11 @@ class User(Base):
     display_prefs_json = Column(String, nullable=True)
     business_settings_json = Column(String, nullable=True)
 
+    # The business's logo, printed on receipts, invoices and quotations. Kept
+    # as a small data: URL (shrunk to ~320px before upload) with the business
+    # record — uploaded files on the server disk can be wiped on a redeploy.
+    logo_data = Column(Text, nullable=True)
+
     # Staff assigned to a branch record their transactions into it.
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
 
@@ -387,6 +392,13 @@ class Invoice(Base):
     amount_paid     = Column(Integer, default=0)
     paid_at         = Column(DateTime, nullable=True)
     cancelled_at    = Column(DateTime, nullable=True)
+    # Quotation first (jobs: contractors, artisans…): QT-0001, not owed, no
+    # INV number until the customer accepts. Then a deposit before work
+    # starts, the balance on completion (due on due_date).
+    is_quote        = Column(Boolean, default=False)
+    quote_number    = Column(Integer, nullable=True)
+    accepted_at     = Column(DateTime, nullable=True)
+    deposit_percent = Column(Integer, nullable=True)
 
 
 class FakeReport(Base):

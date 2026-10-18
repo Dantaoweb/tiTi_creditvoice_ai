@@ -161,6 +161,14 @@ def detect_faq(text):
     ]):
         return "finance_scorecard"
 
+    # ── Quotations / deposit before work; the business logo ──────────────────
+    if any(k in q for k in ("quotation", "quote ", "a quote", "give quote", "send quote", "estimate for",
+                            "deposit before", "before work starts", "before starting work", "mobilization",
+                            "mobilisation", "advance payment", "balance on completion", "balance after")):
+        return "quotation"
+    if re.search(r"\blogo\b", q):
+        return "logo"
+
     # ── Settings: display, categories, daily summary ──────────────────────────
     if any(k in q for k in ("setting", "font", "text size", "text bigger", "bigger text", "bigger letters",
                             "letters bigger", "increase the text", "make the text", "zoom", "dark mode",
@@ -707,6 +715,24 @@ FAQ_ANSWERS = {
         "• Others → a Notes box\n\n"
         "Fill them in and tap *Save*. The details stay on the customer for next time.\n\n"
         "(This is on the web app dashboard, not a WhatsApp command yet.)"
+    ),
+    "quotation": (
+        "Quotations are for businesses that do jobs (contractors, artisans, tailors, mechanics, "
+        "printers, consultants). Web app → *Invoices* → *New quotation*.\n\n"
+        "1. Add the job's items and prices, and who it's for.\n"
+        "2. *Deposit before work starts* — e.g. 60%. The quotation shows the deposit and the "
+        "*balance on completion*.\n"
+        "3. Set the completion date (when the balance is due), then send it on WhatsApp or print it.\n\n"
+        "Nothing is owed while it's a quotation. When the customer agrees, tap *Customer accepted* — "
+        "it becomes an invoice (INV number) with no retyping.\n"
+        "Then *Record deposit / payment* → *Deposit*: it shows *Deposit paid — work can start*, and the "
+        "balance goes on their debts, due on the completion date, with reminders like any debt."
+    ),
+    "logo": (
+        "To put your logo on receipts, invoices and quotations: web app → *My Profile* → "
+        "*Business logo* → *Upload logo* (owner only). A square PNG or JPG works best.\n\n"
+        "It prints at the top of every receipt and invoice you view, print or download. WhatsApp "
+        "text receipts can't carry a picture, so they stay as text."
     ),
     "settings": (
         "Web app → Menu → More → *Settings*.\n\n"
