@@ -217,6 +217,9 @@ def ask_llm_fallback(text: str, user=None, recent_context: str = "") -> str | No
     """
     if not ANTHROPIC_API_KEY:
         return None
+    import ai_budget
+    if not ai_budget.allow():                 # web app: AI use per person per hour
+        return None
 
     try:
         import anthropic

@@ -191,8 +191,25 @@ def register_chat_routes(app):
 
     @app.post("/app/api/chat/send")
     def web_chat_send(payload: ChatSendRequest, session: dict = Depends(require_web_auth)):
-        if not _ai_rate_check(str(session["user_id"])):
-            raise HTTPException(status_code=429, detail="AI request limit reached. Try again in an hour.")
+        """tiTi on the web. Only messages that actually need the AI count
+        against the hourly AI budget (ai_budget.py) — recording a sale, "yes"
+        and menu numbers never do, so a busy shop is never locked out. When the
+        AI budget is used up, tiTi still answers from what it can read itself
+        and says exactly how many minutes are left."""
+        import ai_budget
+        user_id = str(session["user_id"])
+        allowed, minutes = ai_budget.message_allowed(user_id)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=(
+                f"That's a lot of messages in an hour — please wait {minutes} minute"
+                f"{'s' if minutes != 1 else ''} and try again."))
+        with ai_budget.for_user(user_id):
+            result = _chat_send(payload, session)
+            if ai_budget.was_exhausted() and isinstance(result, dict) and result.get("reply"):
+                result = {**result, "reply": result["reply"] + ai_budget.exhausted_note(user_id)}
+        return result
+
+    def _chat_send(payload, session):
         from whatsapp_client import send_whatsapp_message, web_collect_start, web_collect_stop
         from webhook_home_handler import handle_home_menu_request
         from webhook_pending_router import handle_pending_actions
@@ -350,8 +367,13 @@ def register_chat_routes(app):
 
     @app.post("/app/api/capture/voice")
     def web_capture_voice(payload: CaptureVoiceRequest, session: dict = Depends(require_web_auth)):
-        if not _ai_rate_check(str(session["user_id"])):
-            raise HTTPException(status_code=429, detail="AI request limit reached. Try again in an hour.")
+        # A voice note always uses the AI (to turn speech into text)
+        import ai_budget
+        ok, minutes = ai_budget.consume_for(str(session["user_id"]))
+        if not ok:
+            raise HTTPException(status_code=429, detail=(
+                f"You've sent a lot of voice notes this hour — type it for now, or try again in "
+                f"{minutes} minute{'s' if minutes != 1 else ''}."))
         db = SessionLocal()
         try:
             # Voice notes are a Go-plan feature — same gate as WhatsApp

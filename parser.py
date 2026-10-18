@@ -119,6 +119,9 @@ def transcribe_audio_bytes(audio_bytes, mime_type=None):
         return None, "OPENAI_API_KEY is not set."
     if not audio_bytes:
         return None, "No audio received."
+    import ai_budget
+    if not ai_budget.allow():                 # web app: AI use per person per hour
+        return None, "You've sent a lot of voice notes this hour — type it for now, or try again shortly."
 
     filename = f"voice.{extension_for_mime_type(mime_type)}"
     if not _ai_semaphore.acquire(blocking=True, timeout=10):
@@ -269,6 +272,9 @@ def interpret_text_with_openai(text_value):
     text_value = (text_value or "").strip()
     if not text_value or len(text_value) > 600:
         return None
+    import ai_budget
+    if not ai_budget.allow():                 # web app: AI use per person per hour
+        return None
 
     system_prompt = (
         "You help normalize Nigerian WhatsApp business accounting messages for CreditVoice. "
@@ -354,6 +360,9 @@ def interpret_text_with_openai_followup(original_message, clarification_question
     original_message = (original_message or "").strip()
     user_answer = (user_answer or "").strip()
     if not original_message or not user_answer or len(original_message) > 600:
+        return None
+    import ai_budget
+    if not ai_budget.allow():
         return None
 
     system_prompt = (

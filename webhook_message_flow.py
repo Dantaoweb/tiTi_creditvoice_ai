@@ -81,7 +81,8 @@ def handle_webhook_body(body):
             _pending = db.query(PendingAction).filter(PendingAction.phone == phone).first()
             _is_onboarding = bool(_pending and _pending.action in ONBOARDING_ACTIONS)
             if not check_rate_limit(phone, is_registered=False, is_onboarding=_is_onboarding, has_active_bot_conversation=_has_bot_convo):
-                send_whatsapp_message(phone, rate_limit_exceeded_message())
+                from rate_limiter import wait_minutes
+                send_whatsapp_message(phone, rate_limit_exceeded_message(wait_minutes(phone, _has_bot_convo)))
                 return {"status": "rate_limited"}
 
         if not user and message_type == "text":

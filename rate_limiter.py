@@ -53,6 +53,16 @@ class _SlidingWindowLimiter:
             window.append(now)
             return True
 
+    def wait_seconds(self, phone: str, window_seconds: int) -> int:
+        """How long until this phone may send again (0 = now)."""
+        now = time.monotonic()
+        key = f"{phone}:{window_seconds}"
+        with self._lock:
+            window = self._windows.get(key)
+            if not window:
+                return 0
+            return max(0, int(window[0] + window_seconds - now) + 1)
+
     def cleanup_old_keys(self):
         """Remove stale entries (call periodically if needed)."""
         now = time.monotonic()
@@ -83,8 +93,16 @@ def check_rate_limit(phone: str, is_registered: bool, is_onboarding: bool, has_a
     return _limiter.is_allowed(phone, UNREGISTERED_LIMIT, UNREGISTERED_WINDOW)
 
 
-def rate_limit_exceeded_message() -> str:
+def wait_minutes(phone: str, has_active_bot_conversation: bool = False) -> int:
+    """The real wait for a throttled phone, in whole minutes (at least 1)."""
+    window = CUSTOMER_BOT_WINDOW if has_active_bot_conversation else UNREGISTERED_WINDOW
+    secs = _limiter.wait_seconds(phone, window)
+    return max(1, -(-secs // 60))
+
+
+def rate_limit_exceeded_message(minutes: int | None = None) -> str:
+    when = (f"{minutes} minute{'s' if minutes != 1 else ''}" if minutes else "a few minutes")
     return (
         "I want to give you my best because you are special.\n\n"
-        "Please wait 5 minutes and send me any message- I'ill remember exactly where we stopped."
+        f"Please wait {when} and send me any message — I'll remember exactly where we stopped."
     )
