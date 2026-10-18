@@ -22,7 +22,7 @@ from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
     _session_user, _send_web_receipt, _add_notification, _require_can_record,
-    _like_pattern,
+    _like_pattern, _require_tx_in_scope,
 )
 
 
@@ -387,7 +387,8 @@ def register_customer_routes(app):
                     "phone": customer.customer_phone,
                     "balance": _money(get_balance(db, customer_id)),
                 },
-                "goods_to_deliver": goods_to_deliver(db, owner_phone, customer_id),
+                "goods_to_deliver": goods_to_deliver(db, owner_phone, customer_id,
+                                                     scope=_scoped_read(db, session)),
                 "transactions": [
                     {
                         "id": tx.id,
@@ -630,8 +631,9 @@ def register_customer_routes(app):
                     }
                     for p, sup in incoming_rows
                 ],
-                # Goods sold but still in the store, waiting for the customer
-                "goods": goods_to_deliver(db, owner_phone),
+                # Goods sold but still in the store, waiting for the customer —
+                # branch staff see their branch's, staff with no branch their own
+                "goods": goods_to_deliver(db, owner_phone, scope=_scoped_read(db, session)),
             }
         finally:
             db.close()
@@ -658,7 +660,8 @@ def register_customer_routes(app):
                 raise HTTPException(status_code=404, detail="Customer not found.")
             try:
                 done = deliver_goods(db, owner_phone, session["user_id"], customer.id,
-                                     payload.key, payload.quantity, payload.note)
+                                     payload.key, payload.quantity, payload.note,
+                                     scope=_scoped_read(db, session))
             except DeliveryError as e:
                 db.rollback()
                 raise HTTPException(status_code=400, detail=str(e))
@@ -749,7 +752,8 @@ def register_customer_routes(app):
                 raise HTTPException(status_code=404, detail="Customer not found.")
             try:
                 note = cancel_undelivered(db, owner_phone, user.id, customer.id, payload.key,
-                                          payload.quantity, payload.mode, payload.reason)
+                                          payload.quantity, payload.mode, payload.reason,
+                                          scope=_scoped_read(db, session))
             except DeliveryError as e:
                 db.rollback()
                 raise HTTPException(status_code=400, detail=str(e))
@@ -763,6 +767,9 @@ def register_customer_routes(app):
         from deliveries import DeliveryError, returnable_lines
         db = SessionLocal()
         try:
+            _sale = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if _sale:
+                _require_tx_in_scope(db, session, _sale)
             try:
                 return returnable_lines(db, _session_owner_phone(db, session), tx_id)
             except DeliveryError as e:
@@ -779,6 +786,9 @@ def register_customer_routes(app):
         try:
             user = _require_refunder(db, session)
             owner_phone = _session_owner_phone(db, session)
+            _sale = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if _sale:
+                _require_tx_in_scope(db, session, _sale)
             try:
                 note = return_goods(db, owner_phone, user.id, tx_id,
                                     [l.model_dump() for l in payload.lines],

@@ -144,9 +144,14 @@ def test_cancel_undelivered_and_refund_through_the_api():
 
 def test_return_goods_through_the_api():
     phone, cook, item_id, ade = _shop()
-    sale = _sell(phone, cook, item_id, 10, customer_id=ade).json()["receipt_id"]
-    lines = client.get(f"/app/api/sales/{sale}/returnable", cookies=cook).json()["lines"]
-    r = client.post(f"/app/api/sales/{sale}/return", cookies=_staff(phone, True), json={
+    # Authorised staff with no branch act on the sales they recorded (branch
+    # isolation: only the owner, or a branch admin within their branch, sees more)
+    staff = _staff(phone, True)
+    sale = _sell(phone, staff, item_id, 10, customer_id=ade).json()["receipt_id"]
+    owners_sale = _sell(phone, cook, item_id, 1, customer_id=ade).json()["receipt_id"]
+    assert client.get(f"/app/api/sales/{owners_sale}/returnable", cookies=staff).status_code == 404
+    lines = client.get(f"/app/api/sales/{sale}/returnable", cookies=staff).json()["lines"]
+    r = client.post(f"/app/api/sales/{sale}/return", cookies=staff, json={
         "lines": [{"line_id": lines[0]["line_id"], "quantity": 2}], "mode": "CREDIT",
         "restock": "SELLABLE", "reason": "Wrong brand"})
     assert r.status_code == 200, r.text
@@ -154,4 +159,4 @@ def test_return_goods_through_the_api():
     receipt = client.get(f"/app/api/pos/receipt/{sale}", cookies=cook).json()
     assert receipt["credit_notes"][0]["number"] == "CN-0001" and receipt["items"][0]["returned_qty"] == 2
     inv = client.get("/app/api/inventory", cookies=cook).json()["items"][0]
-    assert inv["quantity"] == 292
+    assert inv["quantity"] == 291                                  # 300 − 10 − 1 + 2 back

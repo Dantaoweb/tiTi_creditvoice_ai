@@ -19,6 +19,7 @@ back — a numbered credit note (CN-0001) records it without touching the sale:
 The money is either taken off what the customer owes (CREDIT) or handed back
 (REFUND). Only the owner and authorised staff may do this.
 """
+import math
 import uuid
 from datetime import datetime, timezone
 
@@ -60,9 +61,11 @@ def _returnable(line):
     return max(0.0, _delivered(line) - float(line.returned_qty or 0))
 
 
-def _open_lines(db, owner_phone, customer_id=None, inventory_item_id=None):
+def _open_lines(db, owner_phone, customer_id=None, inventory_item_id=None, scope=None):
     """Sale lines with goods still to hand over, oldest first, as
-    (line, sale, customer)."""
+    (line, sale, customer). `scope` is (branch_id, recorded_by_id) from
+    web_common._scoped_read: branch staff see their branch's sales only,
+    staff with no branch only what they recorded."""
     q = (db.query(TransactionItem, Transaction, Customer)
          .join(Transaction, TransactionItem.transaction_id == Transaction.id)
          .join(Customer, Transaction.customer_id == Customer.id)
@@ -75,6 +78,11 @@ def _open_lines(db, owner_phone, customer_id=None, inventory_item_id=None):
         q = q.filter(Customer.id == customer_id)
     if inventory_item_id:
         q = q.filter(TransactionItem.inventory_item_id == inventory_item_id)
+    branch_id, recorded_by_id = scope or (None, None)
+    if branch_id is not None:
+        q = q.filter(Transaction.branch_id == branch_id)
+    if recorded_by_id is not None:
+        q = q.filter(Transaction.recorded_by_id == recorded_by_id)
     return q.order_by(Transaction.created_at.asc(), TransactionItem.id.asc()).all()
 
 
@@ -98,11 +106,11 @@ def reserved_for_item(db, owner_phone, inventory_item_id):
     return sum(_left(l) for l, _t, _c in _open_lines(db, owner_phone, inventory_item_id=inventory_item_id))
 
 
-def goods_to_deliver(db, owner_phone, customer_id=None):
+def goods_to_deliver(db, owner_phone, customer_id=None, scope=None):
     """Each customer's goods still to hand over, one row per product, oldest
     waiting first."""
     groups = {}
-    for line, tx, cust in _open_lines(db, owner_phone, customer_id):
+    for line, tx, cust in _open_lines(db, owner_phone, customer_id, scope=scope):
         k = (cust.id, _key(line))
         g = groups.get(k)
         if not g:
@@ -131,16 +139,16 @@ def _qty_or_fail(quantity, word="delivered"):
         quantity = float(quantity)
     except (TypeError, ValueError):
         raise DeliveryError(f"Enter how many were {word}.")
-    if quantity <= 0:
+    if not math.isfinite(quantity) or quantity <= 0:      # NaN / Infinity from a crafted request
         raise DeliveryError(f"Enter how many were {word}.")
     return quantity
 
 
-def deliver_goods(db, owner_phone, user_id, customer_id, key, quantity, note=None):
+def deliver_goods(db, owner_phone, user_id, customer_id, key, quantity, note=None, scope=None):
     """Hand over `quantity` of a customer's goods, oldest sale first. Takes it
     out of stock and returns what the delivery note says. The caller commits."""
     quantity = _qty_or_fail(quantity)
-    lines = [(l, t) for l, t, _c in _open_lines(db, owner_phone, customer_id) if _key(l) == key]
+    lines = [(l, t) for l, t, _c in _open_lines(db, owner_phone, customer_id, scope=scope) if _key(l) == key]
     if not lines:
         raise DeliveryError("Nothing is waiting to be delivered for this customer.")
     bought = sum(float(l.quantity or 0) for l, _t in lines)
@@ -279,12 +287,12 @@ def _issue_credit_note(db, owner_phone, user_id, picks, kind, mode, reason, rest
             "reason": reason, "amount": total, "lines": rows}
 
 
-def cancel_undelivered(db, owner_phone, user_id, customer_id, key, quantity, mode, reason):
+def cancel_undelivered(db, owner_phone, user_id, customer_id, key, quantity, mode, reason, scope=None):
     """Cancel goods a customer bought that were never delivered — newest sale
     first, the purchase most likely being called off. They were never out of
     the store, so they simply stop being reserved and can be sold again."""
     quantity = _qty_or_fail(quantity, "cancelled")
-    lines = [(l, t) for l, t, _c in _open_lines(db, owner_phone, customer_id) if _key(l) == key]
+    lines = [(l, t) for l, t, _c in _open_lines(db, owner_phone, customer_id, scope=scope) if _key(l) == key]
     if not lines:
         raise DeliveryError("Nothing is waiting to be delivered for this customer.")
     remaining = sum(_left(l) for l, _t in lines)
@@ -347,8 +355,11 @@ def return_goods(db, owner_phone, user_id, tx_id, lines, mode, restock, reason):
         line = by_id.get(int(want.get("line_id") or 0))
         if not line:
             raise DeliveryError("That item isn't on this sale.")
-        qty = float(want.get("quantity") or 0)
-        if qty <= 0:
+        try:
+            qty = float(want.get("quantity") or 0)
+        except (TypeError, ValueError):
+            raise DeliveryError("Enter how many came back.")
+        if not math.isfinite(qty) or qty <= 0:
             continue
         if qty > _returnable(line) + 1e-9:
             raise DeliveryError(f"Only {_num(_returnable(line))} {(line.product or '').title()} "

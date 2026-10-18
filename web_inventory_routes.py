@@ -199,7 +199,8 @@ def register_inventory_routes(app):
         try:
             if len(name.strip()) < 2:
                 return {"exact": [], "similar": []}
-            return check_new_product(db, _session_owner_phone(db, session), name, unit)
+            owner_phone, scope = _scoped_inventory_query(db, session)
+            return check_new_product(db, owner_phone, name, unit, visible=scope.all())
         finally:
             db.close()
 
@@ -209,7 +210,8 @@ def register_inventory_routes(app):
         from similar_products import possible_duplicates
         db = SessionLocal()
         try:
-            return {"pairs": possible_duplicates(db, _session_owner_phone(db, session))}
+            owner_phone, scope = _scoped_inventory_query(db, session)
+            return {"pairs": possible_duplicates(db, owner_phone, items=scope.all())}
         finally:
             db.close()
 

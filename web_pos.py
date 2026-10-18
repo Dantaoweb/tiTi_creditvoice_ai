@@ -160,12 +160,20 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
     # Reject non-positive quantities/prices — a negative line would create a
     # negative-amount transaction that corrupts reports and can be abused to wipe
     # a customer's debt or invent credit.
+    import math
     for _it in items:
         try:
             _q = float(_it.get("qty", 1)); _p = int(_it.get("unit_price", 0))
-        except (TypeError, ValueError):
+            _f = float(_it.get("fraction", 1.0) or 1.0)
+            _d = _it.get("delivered_qty")
+            _d = None if _d is None or str(_d).strip() == "" else float(_d)
+        except (TypeError, ValueError, OverflowError):
             raise ValueError("Invalid item quantity or price.")
-        if _q <= 0 or _p < 0:
+        # NaN / Infinity can only come from a crafted request — they slipped
+        # past every comparison and left stock silently wrong
+        if not math.isfinite(_q) or not math.isfinite(_f) or (_d is not None and not math.isfinite(_d)):
+            raise ValueError("Invalid item quantity or price.")
+        if _q <= 0 or _p < 0 or _f <= 0:
             raise ValueError("Item quantity must be positive and price cannot be negative.")
     if int(payment_amount or 0) < 0:
         raise ValueError("Payment cannot be negative.")

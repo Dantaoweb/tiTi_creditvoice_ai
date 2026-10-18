@@ -170,11 +170,13 @@ def find_similar(db, owner_phone, name, limit=5, threshold=0.78, mode="search", 
 _ANY_BRANCH = object()
 
 
-def check_new_product(db, owner_phone, name, unit=None, branch_id=_ANY_BRANCH):
+def check_new_product(db, owner_phone, name, unit=None, branch_id=_ANY_BRANCH, visible=None):
     """Before adding a product: is the exact same one there (same name read
     loosely, same unit — and the same branch, since each branch keeps its own
-    stock), and what looks close?"""
-    items = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone).all()
+    stock), and what looks close? `visible` = the products this person may see
+    (branch staff: their branch's); defaults to the whole business."""
+    items = visible if visible is not None else \
+        db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone).all()
     unit = (unit or "").strip().lower()
     twins = [i for i in items if is_exact_twin(name, i.name)
              and (branch_id is _ANY_BRANCH or i.branch_id == branch_id)
@@ -188,10 +190,11 @@ def check_new_product(db, owner_phone, name, unit=None, branch_id=_ANY_BRANCH):
     return {"exact": describe(db, twins), "similar": describe(db, close[:5])}
 
 
-def possible_duplicates(db, owner_phone, threshold=0.85, limit=50):
+def possible_duplicates(db, owner_phone, threshold=0.85, limit=50, items=None):
     """Pairs of products that look like the same thing. Compared within
     buckets (shared first letters of a word) so 600+ products stay quick."""
-    items = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone).all()
+    if items is None:
+        items = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone).all()
     buckets = {}
     for i in items:
         for w in set(tokens(i.name)):

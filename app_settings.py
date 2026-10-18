@@ -115,7 +115,7 @@ def _clean_business(k, v):
             return None
         try:
             n = int(float(v))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ValueError("The low-stock alert must be a number.")
         if n < 0:
             raise ValueError("The low-stock alert can't be negative.")

@@ -58,14 +58,16 @@ def _require_business_editor(db, session):
     return user
 
 
-def _categories(db, owner_phone):
+def _categories(db, owner_phone, branch_id=None):
     """Every category in use, with how many products and what they're worth,
-    in the owner's chosen order."""
+    in the owner's chosen order. Branch staff count their branch's stock."""
     from app_settings import get_business_settings
-    rows = (db.query(InventoryItem.category, func.count(InventoryItem.id),
-                     func.coalesce(func.sum(InventoryItem.quantity * InventoryItem.selling_price), 0))
-            .filter(InventoryItem.owner_phone == owner_phone)
-            .group_by(InventoryItem.category).all())
+    q = (db.query(InventoryItem.category, func.count(InventoryItem.id),
+                  func.coalesce(func.sum(InventoryItem.quantity * InventoryItem.selling_price), 0))
+         .filter(InventoryItem.owner_phone == owner_phone))
+    if branch_id is not None:
+        q = q.filter(InventoryItem.branch_id == branch_id)
+    rows = q.group_by(InventoryItem.category).all()
     order = get_business_settings(db, owner_phone)["category_order"]
     out, none_row = [], None
     for cat, count, value in rows:
@@ -140,6 +142,12 @@ def register_settings_routes(app):
         db = SessionLocal()
         try:
             user = _session_user(db, session)
+            # A real crash is reported once per relaunch; a few a day is plenty
+            from datetime import timedelta as _td
+            if user and db.query(CameraCrashReport).filter(
+                    CameraCrashReport.user_id == user.id,
+                    CameraCrashReport.created_at >= _dt.utcnow() - _td(days=1)).count() >= 5:
+                return {"ok": True, "ignored": True}
             when = None
             try:
                 when = _dt.fromisoformat((payload.crashed_at or "").replace("Z", "+00:00")).replace(tzinfo=None)
@@ -182,9 +190,11 @@ def register_settings_routes(app):
     # ── Stock categories ──────────────────────────────────────────────────
     @app.get("/app/api/categories")
     def web_categories(session: dict = Depends(require_web_auth)):
+        from web_common import _scoped_read
         db = SessionLocal()
         try:
-            return {"categories": _categories(db, _session_owner_phone(db, session))}
+            branch_id, _rec = _scoped_read(db, session)
+            return {"categories": _categories(db, _session_owner_phone(db, session), branch_id)}
         finally:
             db.close()
 
