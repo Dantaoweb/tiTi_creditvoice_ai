@@ -90,3 +90,36 @@ def test_a_school_sees_fees_collected_today(monkeypatch):
     say("Tunde paid school fees 50000"); say("yes")
     _r, text = say("how much did I sell today")
     assert "Fees received today: *₦50,000*" in text, text
+
+
+# ── Sentences that read like a sale but aren't one ────────────────────────────
+
+@pytest.mark.parametrize("text,why", [
+    ("the man wey come yesterday carry two of them", "described"),
+    ("my brother take three yesterday", "described"),
+    ("the customer that came today paid 5000", "described"),
+    ("Ade paid two", "word_amount"),
+])
+def test_unclear_sales_get_asked_not_guessed(monkeypatch, text, why):
+    from parser import parse_message, why_not_a_transaction
+    assert parse_message(text) is None and why_not_a_transaction(text) == why
+    say, _b = _business(monkeypatch, "provision_store")
+    r, reply = say(text)
+    assert r["status"] == f"unclear_sale_{why}"
+    assert ("who" in reply.lower()) if why == "described" else ("figures" in reply)
+
+
+@pytest.mark.parametrize("text,name,amount", [
+    ("Ade paid five thousand", "ade", 5000),                 # used to save ₦5
+    ("Ade paid two hundred and fifty", "ade", 250),
+    ("Ade paid 1.5 million", "ade", 1500000),
+    ("Mama Bisi collected rice 3000", "mama bisi", 3000),
+    ("my customer Ade paid 5000", "ade", 5000),
+    ("Last Born Stores paid 5000", "last born stores", 5000),
+    ("Alhaji Musa Danladi paid 20000", "alhaji musa danladi", 20000),
+    ("Ade paid 50", "ade", 50),                              # small, but typed in figures
+])
+def test_real_names_and_amounts_in_words_still_work(text, name, amount):
+    from parser import parse_message
+    p = parse_message(text)
+    assert p and p["name"] == name and max(p["paid_amount"] or 0, p["buy_amount"] or 0) == amount

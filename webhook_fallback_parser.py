@@ -85,6 +85,15 @@ def handle_fallback_parse(db, phone, text, parsed, user):
         send_whatsapp_message(phone, get_faq_answer(faq_key))
         return FallbackParseResult(response={"status": f"faq_{faq_key}"})
 
+    # Reads like a sale or payment, but who / how much isn't clear ("the man
+    # wey come yesterday carry two of them") — say exactly what's needed,
+    # before any AI is asked to guess.
+    from parser import UNCLEAR_SALE_REPLIES, why_not_a_transaction
+    _unclear = why_not_a_transaction(text)
+    if _unclear:
+        send_whatsapp_message(phone, UNCLEAR_SALE_REPLIES[_unclear])
+        return FallbackParseResult(response={"status": f"unclear_sale_{_unclear}"})
+
     # Off-topic deflection — no LLM cost, instant response
     if _OFFTOPIC_PATTERNS.search(text):
         send_whatsapp_message(phone, _OFFTOPIC_REPLY)

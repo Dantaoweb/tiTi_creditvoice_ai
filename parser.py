@@ -480,6 +480,24 @@ def _normalize_text_for_parsing(text):
     clean = re.sub(r"\bat\s+(?:a\s+)?rate\s+of\b", "at", clean)
     # "at the cost of" / "at a cost of" → "for"
     clean = re.sub(r"\bat\s+(?:a\s+)?cost\s+of\b", "for", clean)
+    # Amounts said in words, typed: "five thousand" → 5000, "two hundred and
+    # fifty" → 250, "1.5 million" / "5 thousand" → 1500000 / 5000. Only phrases
+    # with a hundred / thousand / million in them — "two bags" stays "2 bags"
+    # below. (Typed "Ade paid five thousand" used to save ₦5.)
+    _w = r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|" \
+         r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)"
+    _scale = r"(?:hundred|thousand|million)"
+    clean = re.sub(
+        r"\b(\d+(?:\.\d+)?)\s*(thousand|million)\b",
+        lambda m: str(int(round(float(m.group(1)) * (1000 if m.group(2) == "thousand" else 1_000_000)))),
+        clean,
+    )
+    clean = re.sub(rf"\ba\s+({_scale})\b", r"one \1", clean)          # "a thousand" = one thousand
+    clean = re.sub(
+        rf"\b(?:{_w}\s+(?:and\s+)?)*{_w}\s+{_scale}(?:\s+(?:and\s+)?(?:{_w}|{_scale}))*\b",
+        lambda m: (str(parse_number_words(m.group(0).split())) if parse_number_words(m.group(0).split()) else m.group(0)),
+        clean,
+    )
     # number words → digits (only when isolated, so "twenty bags" → "20 bags")
     clean = re.sub(
         r"\b(" + "|".join(_NUMBER_WORDS_MAP) + r")\b",
@@ -1750,6 +1768,36 @@ def extract_customer_onboarding(text):
 _QUESTION_NAME = re.compile(
     r"^(?:can|could|should|would|will|do|does|did|is|are|how|what|where|why|when|which|who)\b")
 
+# A description of someone, not their name: "the man wey come yesterday",
+# "my brother", "that woman", "the customer that came today". Saving that as a
+# customer makes a debtor nobody can find again — ask for the name instead.
+_DESCRIBED_NOT_NAMED = re.compile(
+    r"^(?:the|that|this|these|those|my|our|his|her|their|your|a|an|one|some|any|somebody|someone)\b"
+    r"|\b(?:wey|who|which|came|come|comes|yesterday|today|tomorrow)\b"
+)
+# "my customer Ade paid 5000" names Ade
+_CUSTOMER_PREFIX = re.compile(r"^(?:my\s+)?(?:customer|client)\s+(?=[a-z])")
+
+
+def _not_a_real_transaction(parsed, text):
+    """Why a parsed sale / payment should not be recorded as one, or None.
+
+    - The name is a description (see above), or a whole sentence (5+ words).
+    - The only money was a number WORD and it is tiny: "carry two of them",
+      "Ade paid two" — two items, not ₦2. A voice note's "five thousand"
+      becomes 5000 and is untouched; only amounts under ₦100 with no digits
+      typed anywhere are refused."""
+    name = str(parsed.get("name") or "").strip().lower()
+    if name:
+        if _DESCRIBED_NOT_NAMED.search(name) or len(name.split()) >= 5:
+            return "described"
+    raw = text or ""
+    money = max(int(parsed.get("buy_amount") or 0), int(parsed.get("paid_amount") or 0),
+                int(parsed.get("total") or 0))
+    if money and money < 100 and not re.search(r"\d", raw):
+        return "word_amount"
+    return None
+
 
 _WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 _WEEKDAY_SHORT = {d[:3]: i for i, d in enumerate(_WEEKDAYS)}
@@ -1811,6 +1859,37 @@ def natural_date(text, now=None):
 _DUE_PHRASE = re.compile(r"\b(?:due|pay\s+by|will\s+pay|to\s+pay|by)\s+(?P<when>.+)$")
 
 
+def why_not_a_transaction(text):
+    """When a message reads like a sale or payment but was refused (a person
+    described, not named; a tiny amount said in words), why — so tiTi can say
+    what it needs instead of "Not understood". None otherwise."""
+    try:
+        parsed = _parse_message(text)
+    except Exception:
+        return None
+    if not parsed or parsed.get("type") != "TRANSACTION":
+        return None
+    name = str(parsed.get("name") or "").strip().lower()
+    if _CUSTOMER_PREFIX.match(name):
+        parsed = {**parsed, "name": _CUSTOMER_PREFIX.sub("", name, count=1)}
+    return _not_a_real_transaction(parsed, text)
+
+
+UNCLEAR_SALE_REPLIES = {
+    "described": (
+        "I couldn't tell *who* that was. Send it with their name, like:\n"
+        "• Musa bought 2 bags rice 120000\n"
+        "• Musa paid 5000\n\n"
+        "Don't know their name? Record it as a cash sale: *sold 2 bags rice 120000*"
+    ),
+    "word_amount": (
+        "Was that money? Write the amount in figures so I record it right, like:\n"
+        "• Ade paid 2000\n"
+        "• Ade bought 2 bags rice 120000"
+    ),
+}
+
+
 def parse_message(text):
     """Parse a message; a question is never recorded as a transaction ("can i
     give 10% discount?" used to save a payment of N10 by someone called
@@ -1823,6 +1902,12 @@ def parse_message(text):
     if parsed and parsed.get("type") == "TRANSACTION" and _QUESTION_NAME.match(
             str(parsed.get("name") or "").strip().lower()):
         return None
+    if parsed and parsed.get("type") == "TRANSACTION":
+        name = str(parsed.get("name") or "").strip().lower()
+        if _CUSTOMER_PREFIX.match(name):
+            parsed["name"] = _CUSTOMER_PREFIX.sub("", name, count=1)
+        if _not_a_real_transaction(parsed, text):
+            return None                 # tiTi asks for a clear sale instead of guessing
     if (parsed and parsed.get("type") == "TRANSACTION" and not parsed.get("due_date")
             and parsed.get("action") in ("BUY", "COMBINED")):
         m = _DUE_PHRASE.search((text or "").strip().lower())
