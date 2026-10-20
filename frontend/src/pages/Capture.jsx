@@ -8,6 +8,7 @@ import { apiFetch, apiPost } from "../lib/api";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { nairaFull, qty } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
+import WaitingCustomersModal from "../components/WaitingCustomersModal";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
 
@@ -477,6 +478,10 @@ function StockForm({ ownerPhone, onSuccess }) {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // After stock arrives: customers still waiting for it, to keep goods aside
+  // for (owner's choice), then on to the supplier receipt.
+  const [waiting, setWaiting]   = useState(null);
 
   useEffect(() => {
     apiFetch("suppliers")
@@ -509,7 +514,9 @@ function StockForm({ ownerPhone, onSuccess }) {
     try {
       const r = await apiPost("inventory/stock-received", _body());
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
+      const name = item.name;
       setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote("");
+      if (r?.item_id) { setWaiting({ itemId: r.item_id, name, purchaseId: r.purchase_id }); return; }
       if (r?.purchase_id) { navigate(`/suppliers/receipt/purchase/${r.purchase_id}`); return; }
     } catch (e) {
       if (isNetworkError(e)) {
@@ -523,6 +530,15 @@ function StockForm({ ownerPhone, onSuccess }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (waiting) {
+    return <WaitingCustomersModal itemId={waiting.itemId} itemName={waiting.name} canKeep={!!user?.full_access}
+      onDone={() => {
+        const pid = waiting.purchaseId;
+        setWaiting(null);
+        if (pid) navigate(`/suppliers/receipt/purchase/${pid}`);
+      }} />;
   }
 
   return (

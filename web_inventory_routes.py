@@ -857,6 +857,7 @@ def register_inventory_routes(app):
             return {
                 "ok": True,
                 "product": product,
+                "item_id": item.id if item else None,      # to show customers waiting for it
                 "new_quantity": item.quantity if item else None,
                 "supplier": supplier.name.title(),
                 "purchase_id": purchase.id,

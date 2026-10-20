@@ -4,6 +4,7 @@ import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
+import WaitingCustomersModal from "../components/WaitingCustomersModal";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import CameraScanner from "../components/CameraScanner";
@@ -820,59 +821,11 @@ function AdjustModal({ item, onClose, onSaved }) {
   const [err, setErr] = useState("");
   // After adding stock: customers still waiting for this product. Nothing is
   // kept aside for them unless the owner ticks it.
-  const [waiting, setWaiting] = useState(null);
+  const [waitingFor, setWaitingFor] = useState(null);
 
-  async function keepAside() {
-    setSaving(true); setErr("");
-    try {
-      for (const w of waiting.rows.filter(w => w.tick && Number(w.qty) > 0)) {
-        await apiPost("deliveries/goods/keep", { customer_id: w.customer_id, key: w.key, kept: w.kept + Number(w.qty) });
-      }
-      onSaved();
-      onClose();
-    } catch (e) { setErr(e.message); setSaving(false); }
-  }
-
-  if (waiting) {
-    // Stock still free for each row: what the rows above it have taken
-    const freeBefore = waiting.rows.map((_, i) => waiting.rows.slice(0, i).reduce(
-      (left, r) => left - (r.tick ? Math.max(0, Math.min(Number(r.qty) || 0, r.remaining - r.kept)) : 0),
-      waiting.free));
-    return (
-      <Modal title={`Customers waiting for ${item.name}`} onClose={() => { onSaved(); onClose(); }}>
-        <div className="modal-body">
-          <div style={{ fontSize: 13, marginBottom: 10 }}>
-            Stock added. These customers bought {item.name} and are still waiting. Tick to keep some aside
-            for them — no one else can buy kept-aside goods. Untick to leave it free to sell.
-          </div>
-          {waiting.rows.map((w, i) => {
-            const most = Math.max(0, Math.min(w.remaining - w.kept, freeBefore[i]));
-            return (
-              <label key={w.key + w.customer_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", fontSize: 13 }}>
-                <input type="checkbox" checked={w.tick} style={{ width: "auto" }} disabled={most <= 0 && !w.tick}
-                  onChange={e => setWaiting(s => ({ ...s, rows: s.rows.map((r, j) => j === i ? { ...r, tick: e.target.checked } : r) }))} />
-                <span style={{ flex: 1 }}>
-                  Keep aside for <strong>{w.customer}</strong>
-                  <span className="td-muted"> · waiting for {w.remaining}{w.kept > 0 ? `, ${w.kept} already kept` : ""}</span>
-                </span>
-                {w.tick && (
-                  <input type="number" min={0} max={most} value={w.qty} style={{ width: 70 }}
-                    onChange={e => setWaiting(s => ({ ...s, rows: s.rows.map((r, j) => j === i ? { ...r, qty: e.target.value } : r) }))} />
-                )}
-              </label>
-            );
-          })}
-          <ErrorNote msg={err} />
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={() => { onSaved(); onClose(); }}>Not now</button>
-          <button className="btn btn-primary" onClick={keepAside}
-            disabled={saving || !waiting.rows.some(w => w.tick && Number(w.qty) > 0)}>
-            {saving ? "Saving…" : "Keep aside"}
-          </button>
-        </div>
-      </Modal>
-    );
+  if (waitingFor) {
+    return <WaitingCustomersModal itemId={waitingFor} itemName={item.name} canKeep
+      onDone={() => { onSaved(); onClose(); }} />;
   }
 
   async function save(direction) {
@@ -893,23 +846,9 @@ function AdjustModal({ item, onClose, onSaved }) {
           due_date: dueDate || null,
           note: note.trim() || null,
         });
-        try {
-          const w = await apiFetch(`inventory/${item.id}/waiting`);
-          const rows = (w.waiting || []).filter(r => r.remaining > r.kept);
-          if (rows.length) {
-            let left = w.item.free || 0;
-            setWaiting({
-              free: w.item.free || 0,
-              rows: rows.map(r => {
-                const q = Math.max(0, Math.min(r.remaining - r.kept, left));
-                left -= q;
-                return { ...r, tick: false, qty: String(q) };
-              }),
-            });
-            setSaving(false);
-            return;
-          }
-        } catch { /* the stock is added; the prompt is only a help */ }
+        setWaitingFor(item.id);
+        setSaving(false);
+        return;
       } else {
         await apiPost(`inventory/${item.id}/adjust`, {
           qty_delta: -qty,

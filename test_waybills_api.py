@@ -147,3 +147,17 @@ def test_another_business_cannot_see_a_waybill():
                        json={"reason": "x"}).status_code == 404
     assert client.post("/app/api/waybills", cookies=cook2, json={
         "customer_id": ade, "lines": [{"key": key, "quantity": 1}]}).status_code == 404
+
+
+def test_quick_record_stock_received_points_at_customers_waiting():
+    phone, cook, _s, item_id, ade = _shop(stock=0)
+    client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": ade, "payment_amount": 0,
+        "items": [{"inventory_item_id": item_id, "name": "cement", "qty": 60, "unit": "bag",
+                   "unit_price": 9000, "delivered_qty": 0}]})
+    r = client.post("/app/api/inventory/stock-received", cookies=cook,
+                    json={"item_id": item_id, "quantity": 100, "cost_per_unit": 8000})
+    assert r.status_code == 200 and r.json()["item_id"] == item_id
+    w = client.get(f"/app/api/inventory/{item_id}/waiting", cookies=cook).json()
+    assert [(x["customer"], x["remaining"], x["kept"]) for x in w["waiting"]] == [("Ade", 60, 0)]
+    assert w["item"]["free"] == 100                    # nothing kept aside until the owner ticks it
