@@ -199,3 +199,60 @@ def test_staff_cancelling_a_waybill_alerts_the_owner_on_whatsapp():
     r = client.post(f"/app/api/waybills/{wb['id']}/cancel", cookies=boss, json={"reason": "Wrong truck"})
     assert r.status_code == 200
     assert [to for to, _m in sent] == [phone] and "WAYBILL CANCELLED" in sent[0][1] and "Wrong truck" in sent[0][1]
+
+
+def test_to_deliver_count_column_and_receipt_ties_its_waybills():
+    phone, cook, _s, item_id, ade = _shop(stock=50)
+    sale = lambda qty, now: client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": ade, "payment_amount": 0,
+        "items": [{"inventory_item_id": item_id, "name": "cement", "qty": qty, "unit": "bag",
+                   "unit_price": 9000, "delivered_qty": now}]}).json()["receipt_id"]
+    r1, r2 = sale(10, 1), sale(5, 0)
+
+    # The badge and the Customers "To deliver" column / tab
+    assert client.get("/app/api/deliveries/count", cookies=cook).json() == {"customers": 1, "quantity": 14}
+    rows = client.get("/app/api/customers?to_deliver=true", cookies=cook).json()["customers"]
+    assert [(r["id"], r["to_deliver"]) for r in rows] == [(ade, 14)]
+    every = client.get("/app/api/customers", cookies=cook).json()["customers"]
+    assert {r["id"]: r["to_deliver"] for r in every}[ade] == 14
+
+    # One waybill from the customer, drawing on both receipts (oldest first)
+    wb = client.post("/app/api/waybills", cookies=cook, json={
+        "customer_id": ade, "lines": [{"key": f"i:{item_id}", "quantity": 12}], "notify": False}).json()
+    assert wb["ref"].startswith("Receipt #") and "," in wb["ref"]
+
+    first = client.get(f"/app/api/pos/receipt/{r1}", cookies=cook).json()["items"][0]
+    assert first["delivered_qty"] == 1 and first["still_to_deliver"] == 0
+    assert [(d["number"], d["quantity"]) for d in first["delivered_later"]] == [("WB-0001", 9)]
+    second = client.get(f"/app/api/pos/receipt/{r2}", cookies=cook).json()["items"][0]
+    assert second["still_to_deliver"] == 2
+    assert [(d["number"], d["quantity"]) for d in second["delivered_later"]] == [("WB-0001", 3)]
+    assert client.get("/app/api/deliveries/count", cookies=cook).json()["quantity"] == 2
+
+    # No waybill is a transaction: the receipts and the debt are unchanged
+    assert client.get(f"/app/api/pos/receipt/{r1}", cookies=cook).json()["total"] == 90000
+
+    # Cancelled → the receipt forgets it and the goods are owed again
+    client.post(f"/app/api/waybills/{wb['id']}/cancel", cookies=cook, json={"reason": "Truck broke down"})
+    first = client.get(f"/app/api/pos/receipt/{r1}", cookies=cook).json()["items"][0]
+    assert first["delivered_later"] == [] and first["still_to_deliver"] == 9
+    assert client.get("/app/api/deliveries/count", cookies=cook).json() == {"customers": 1, "quantity": 14}
+
+
+def test_statement_lists_the_waybills():
+    from customer_statement import build_balance_message
+    phone, cook, _s, item_id, ade = _shop(stock=50)
+    client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": ade, "payment_amount": 0,
+        "items": [{"inventory_item_id": item_id, "name": "cement", "qty": 10, "unit": "bag",
+                   "unit_price": 9000, "delivered_qty": 0}]})
+    client.post("/app/api/waybills", cookies=cook, json={
+        "customer_id": ade, "lines": [{"key": f"i:{item_id}", "quantity": 4}], "notify": False})
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.phone == phone).first()
+        text = build_balance_message(db, owner, db.query(Customer).get(ade))
+    finally:
+        db.close()
+    assert "Goods still to deliver" in text and "6 bag" in text
+    assert "Deliveries (waybills):" in text and "WB-0001" in text and "4 bag Cement" in text

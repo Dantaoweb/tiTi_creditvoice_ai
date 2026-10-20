@@ -499,6 +499,11 @@ def get_pos_receipt(db, tx_id, user=None):
                 "delivered_qty": _delivered_at_sale(db, it),
                 "to_deliver": (None if it.delivered_qty is None
                                else _num_q(float(it.quantity or 0) - _delivered_at_sale(db, it))),
+                # What went out after the sale, on which waybill and when, and
+                # what is still to come — the receipt ties its waybills together.
+                "delivered_later": _delivered_later(db, it),
+                "still_to_deliver": (None if it.delivered_qty is None else _num_q(max(
+                    0.0, float(it.quantity or 0) - float(it.delivered_qty or 0) - float(it.cancelled_qty or 0)))),
                 "cancelled_qty": _num_q(it.cancelled_qty) if it.cancelled_qty else None,
                 "returned_qty": _num_q(it.returned_qty) if it.returned_qty else None,
             }
@@ -523,6 +528,27 @@ def _credit_note_of(db, tx_id):
 
 def _num_q(q):
     return int(q) if float(q) == int(q) else round(float(q), 2)
+
+
+def _delivered_later(db, it):
+    """[{waybill, date, quantity}] for goods of this line sent after the sale.
+    Trips from before waybills existed show as one undated row."""
+    if it.delivered_qty is None:
+        return []
+    from models import Waybill, WaybillLine
+    from waybills import format_waybill_number
+    rows = (db.query(WaybillLine, Waybill).join(Waybill, WaybillLine.waybill_id == Waybill.id)
+            .filter(WaybillLine.sale_line_id == it.id, WaybillLine.moved.is_(True),
+                    Waybill.cancelled_at.is_(None))
+            .order_by(Waybill.created_at.asc(), Waybill.id.asc()).all())
+    out = [{"waybill_id": wb.id, "number": format_waybill_number(wb.number),
+            "date": wb.created_at.isoformat() if wb.created_at else None, "quantity": _num_q(l.quantity)}
+           for l, wb in rows]
+    later = float(it.delivered_qty or 0) - float(_delivered_at_sale(db, it) or 0)
+    other = later - sum(float(l.quantity or 0) for l, _wb in rows)
+    if other > 1e-9:
+        out.insert(0, {"waybill_id": None, "number": None, "date": None, "quantity": _num_q(other)})
+    return out
 
 
 def _delivered_at_sale(db, it):

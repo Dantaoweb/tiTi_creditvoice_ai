@@ -16,6 +16,11 @@ def _day(dt):
     return dt.strftime("%d %b %Y") if dt else ""
 
 
+def _day_iso(iso):
+    from datetime import datetime
+    return _day(datetime.fromisoformat(iso)) if iso else ""
+
+
 def recent_activity(db, customer_id, limit=5):
     """The customer's latest transactions, newest first (voided ones excluded)."""
     return (
@@ -90,6 +95,14 @@ def build_balance_message(db, owner_user, customer, include_items=True):
         lines.append("")
         lines.append("Goods still to deliver:")
         lines.extend(f"• {g}" for g in goods_lines_text(goods))
+    # The trips so far — each waybill with its date
+    from waybills import list_waybills
+    trips = [w for w in list_waybills(db, customer.owner_phone, customer_id=customer.id, limit=10)
+             if not w["cancelled"]][:5]
+    if trips:
+        lines.append("")
+        lines.append("Deliveries (waybills):")
+        lines.extend(f"• {w['number']} · {_day_iso(w['created_at'])} · {w['what']}" for w in trips)
 
     if include_items:
         rows = recent_activity(db, customer.id)

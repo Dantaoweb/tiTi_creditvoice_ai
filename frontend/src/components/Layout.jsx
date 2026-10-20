@@ -92,6 +92,9 @@ export default function Layout() {
   const [titiNumber, setTitiNumber] = useState("");
   const [oppsUnread, setOppsUnread] = useState(0);
   const [adminPending, setAdminPending] = useState(0);
+  // Customers waiting for goods they bought (still to deliver) — like debtors,
+  // for goods. Clears when the goods go out, not when a page is opened.
+  const [toDeliver, setToDeliver] = useState(0);
   // Remember whether "More" was expanded, per device.
   const [moreOpen, setMoreOpen] = useState(() => localStorage.getItem("cv_more_open") === "1");
   const [navUsage, setNavUsage] = useState(readNavUsage);
@@ -158,6 +161,11 @@ export default function Layout() {
     window.addEventListener("cv-admin-pending", load);
     return () => window.removeEventListener("cv-admin-pending", load);
   }, [location.pathname, isAdmin]);
+  useEffect(() => {
+    if (!user?.id) return;
+    apiFetch("deliveries/count").then(d => setToDeliver(d.customers || 0)).catch(() => {});
+  }, [location.pathname, user?.id]);
+
   const FUEL_TYPES = ["filling_station", "fuel_marketer", "kerosene_diesel", "lpg_gas", "lubricants", "other_energy"];
   const isFuel = user?.business_category === "energy_fuel" || FUEL_TYPES.includes(user?.business_type);
   const isPoultry = user?.business_type === "poultry_farm";
@@ -268,6 +276,11 @@ export default function Layout() {
         {item.badge && <span className="nav-badge">{item.badge}</span>}
         {item.to === "/opportunities" && oppsUnread > 0 && (
           <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
+        )}
+        {(item.to === "/customers" || item.to === "/deliveries") && toDeliver > 0 && (
+          <span className="nav-badge nav-badge-alert" title={`${toDeliver} customer${toDeliver === 1 ? "" : "s"} waiting for goods`}>
+            {toDeliver}
+          </span>
         )}
         {item.to === "/admin" && adminPending > 0 && (
           <span className="nav-badge nav-badge-alert"
@@ -473,7 +486,15 @@ export default function Layout() {
             to={item.to}
             className={({ isActive }) => isActive ? "tab-active" : ""}
           >
-            <item.icon size={20} />
+            <span style={{ position: "relative", display: "inline-flex" }}>
+              <item.icon size={20} />
+              {item.to === "/customers" && toDeliver > 0 && (
+                <span className="nav-badge nav-badge-alert" title={`${toDeliver} waiting for goods`}
+                  style={{ position: "absolute", top: -6, right: -12, fontSize: 10, minWidth: 16, padding: "0 4px" }}>
+                  {toDeliver}
+                </span>
+              )}
+            </span>
             <span>{item.label === "Chat with tiTi" ? "tiTi" : item.label}</span>
           </NavLink>
         ))}

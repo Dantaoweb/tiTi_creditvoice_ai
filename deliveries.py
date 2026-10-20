@@ -136,6 +136,15 @@ def owed_by_item(db, owner_phone):
     return out
 
 
+def waiting_by_customer(db, owner_phone, scope=None):
+    """{customer_id: quantity still to deliver} — the Customers "To deliver"
+    column and the menu badge, like debtors for money."""
+    out = {}
+    for line, _tx, cust in _open_lines(db, owner_phone, scope=scope):
+        out[cust.id] = out.get(cust.id, 0.0) + _left(line)
+    return {k: _num(v) for k, v in out.items() if v > 0}
+
+
 def free_in_store(db, owner_phone, item):
     """What of an item's stock is not kept aside for anyone."""
     if item is None or item.quantity is None:

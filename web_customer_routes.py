@@ -151,6 +151,7 @@ def register_customer_routes(app):
         session: dict = Depends(require_web_auth),
         q: str = Query(default="", max_length=120),
         debtors: bool = False,
+        to_deliver: bool = False,
         sort: str = Query(default="", pattern="^(|newest|name|balance)$"),
         dir: str = Query(default="", pattern="^(|asc|desc)$"),
         limit: int = Query(default=50, ge=1, le=500),
@@ -175,6 +176,11 @@ def register_customer_routes(app):
                 query = query.filter(or_(*conds))
             if debtors:
                 query = query.filter(Customer.balance > 0)
+            # Goods bought, still to deliver — like debtors, for goods
+            from deliveries import waiting_by_customer
+            waiting = waiting_by_customer(db, _session_owner_phone(db, session), scope=_scoped_read(db, session))
+            if to_deliver:
+                query = query.filter(Customer.id.in_(list(waiting) or [0]))
             total = query.count()
 
             sort = sort or ("balance" if debtors else "newest")
@@ -208,6 +214,7 @@ def register_customer_routes(app):
                     "phone": c.customer_phone,
                     "owner_phone": c.owner_phone,
                     "balance": bal,
+                    "to_deliver": waiting.get(c.id, 0),
                     "has_overdue": has_overdue,
                     "next_due": _iso(next_due),
                     "created_at": _iso(c.created_at),
@@ -635,6 +642,18 @@ def register_customer_routes(app):
                 # branch staff see their branch's, staff with no branch their own
                 "goods": goods_to_deliver(db, owner_phone, scope=_scoped_read(db, session)),
             }
+        finally:
+            db.close()
+
+    @app.get("/app/api/deliveries/count")
+    def web_deliveries_count(session: dict = Depends(require_web_auth)):
+        """How many customers are waiting for goods — the menu badge. It
+        clears when the goods go out, not when the page is opened."""
+        from deliveries import waiting_by_customer
+        db = SessionLocal()
+        try:
+            w = waiting_by_customer(db, _session_owner_phone(db, session), scope=_scoped_read(db, session))
+            return {"customers": len(w), "quantity": sum(w.values())}
         finally:
             db.close()
 

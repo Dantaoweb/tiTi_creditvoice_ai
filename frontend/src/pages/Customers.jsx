@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText, ChevronRight } from "lucide-react";
+import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText, ChevronRight, Truck } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
@@ -9,6 +9,7 @@ import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
 import WaybillModal from "../components/WaybillModal";
+import WaybillList from "../components/WaybillList";
 import CancelGoodsModal from "../components/CancelGoodsModal";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
@@ -443,6 +444,8 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
             ))}
           </div>
         )}
+        {/* Every trip so far — each waybill with its date */}
+        <WaybillList query={`customer_id=${customer.id}`} refresh={data} title="Waybills" />
         {deliver && (
           <WaybillModal source={{ customer_id: customer.id }} onClose={() => {
             setDeliver(null);
@@ -866,14 +869,21 @@ export default function Customers() {
   // Customers are paged and searched on the server so every customer (and
   // every debtor) is reachable — the list used to stop at the newest 200.
   const isDebtors = activeTab === "debtors";
+  const isToDeliver = activeTab === "to_deliver";
+  // Customers waiting for goods they bought — like debtors, for goods
+  const [waitingCount, setWaitingCount] = useState(0);
+  const [waybillFor, setWaybillFor] = useState(null);
   function pageParams(offset, limit) {
     return isDebtors
       ? { owner_phone: ownerPhone, debtors: "true", offset, limit }
-      : { owner_phone: ownerPhone, q: query, sort: sort?.col || "", dir: sort?.dir || "", offset, limit };
+      : isToDeliver
+        ? { owner_phone: ownerPhone, to_deliver: "true", q: query, offset, limit }
+        : { owner_phone: ownerPhone, q: query, sort: sort?.col || "", dir: sort?.dir || "", offset, limit };
   }
 
   function loadSummary() {
     apiFetch("customers/summary").then(setSummary).catch(() => {});
+    apiFetch("deliveries/count").then(d => setWaitingCount(d.customers || 0)).catch(() => {});
   }
 
   // Reload from the top. `keep` = how many rows to re-fetch, so saving a
@@ -950,7 +960,9 @@ export default function Customers() {
           <span className="card-title" style={{ flex: "1 1 auto", whiteSpace: "nowrap" }}>
             {activeTab === "all"
               ? <>{L.customers} <span className="text-subtle text-sm">({total.toLocaleString()})</span></>
-              : <>Debtors <span className="text-subtle text-sm">({debtorCount.toLocaleString()})</span></>
+              : isToDeliver
+                ? <>Waiting for goods <span className="text-subtle text-sm">({waitingCount.toLocaleString()})</span></>
+                : <>Debtors <span className="text-subtle text-sm">({debtorCount.toLocaleString()})</span></>
             }
           </span>
           {activeTab === "all" && (
@@ -986,6 +998,16 @@ export default function Customers() {
               <span className="tab-badge">{debtorCount}</span>
             )}
           </button>
+          <button
+            className={`page-tab${isToDeliver ? " active" : ""}`}
+            onClick={() => setActiveTab("to_deliver")}
+          >
+            <Truck size={13} style={{ marginRight: 4 }} />
+            To deliver
+            {waitingCount > 0 && (
+              <span className="tab-badge">{waitingCount}</span>
+            )}
+          </button>
         </div>
 
         {/* Tab content */}
@@ -1018,6 +1040,12 @@ export default function Customers() {
                     ? <span className="text-green" style={{ fontWeight: 600 }}>{fmtBalance(r.balance)}</span>
                     : <span className="text-subtle">{nairaFull(0)}</span>,
               },
+              {
+                key: "to_deliver", label: "To deliver",
+                render: r => r.to_deliver > 0
+                  ? <span className="text-rose font-bold" title="Bought, still waiting for the goods">{Number(r.to_deliver).toLocaleString()}</span>
+                  : <span className="text-subtle">—</span>,
+              },
               { key: "created_at", label: "Joined", render: r => <span className="td-muted">{dateStr(r.created_at)}</span> },
               {
                 key: "actions", label: "",
@@ -1031,6 +1059,46 @@ export default function Customers() {
                       <Wallet size={13} /> Pay
                     </button>
                   ) : null
+                ),
+              },
+            ]}
+          />
+          {pager}
+          </>
+        ) : isToDeliver ? (
+          <>
+          <DataTable
+            loading={loading && rows.length === 0}
+            rows={rows}
+            emptyText="No one is waiting for goods. Everything bought has been delivered."
+            columns={[
+              {
+                key: "name", label: "Name",
+                render: r => (
+                  <button type="button" className="name-chip" onClick={() => setDetailCustomer(r)}
+                    title="Click to see what they are waiting for">
+                    <span>{(r.name || "—").replace(/\b\w/g, c => c.toUpperCase())}</span>
+                    <ChevronRight size={14} className="name-chip__chev" />
+                  </button>
+                ),
+              },
+              { key: "phone", label: "Phone", render: r => <span className="td-mono">{r.phone || "—"}</span> },
+              {
+                key: "to_deliver", label: "To deliver",
+                render: r => <span className="text-rose font-bold">{Number(r.to_deliver).toLocaleString()}</span>,
+              },
+              {
+                key: "balance", label: "Balance",
+                render: r => r.balance > 0
+                  ? <span className="text-rose">{nairaFull(r.balance)}</span>
+                  : <span className="text-subtle">{nairaFull(0)}</span>,
+              },
+              {
+                key: "actions", label: "",
+                render: r => (
+                  <button className="btn btn-primary btn-xs" onClick={() => setWaybillFor(r)}>
+                    <Truck size={13} /> Waybill
+                  </button>
                 ),
               },
             ]}
@@ -1053,6 +1121,9 @@ export default function Customers() {
         )}
       </div>
 
+      {waybillFor && (
+        <WaybillModal source={{ customer_id: waybillFor.id }} onClose={() => { setWaybillFor(null); load(rows.length); }} />
+      )}
       {showAdd && (
         <AddCustomerModal
           ownerPhone={ownerPhone}

@@ -76,6 +76,18 @@ export default function Receipt() {
   const hasCustomerPhone = !!(receipt.customer && receipt.customer.phone);
   const sentAt = receipt.invoice_sent_at;
 
+  // Part delivery on a line: what went out at the sale, each later waybill
+  // (with its date), and what is still to come.
+  function deliveryLines(it) {
+    if (it.delivered_qty == null) return [];
+    const L = [`Delivered now: ${it.delivered_qty ?? 0}`];
+    (it.delivered_later || []).forEach(d => L.push(d.number
+      ? `${d.number} · ${dateStr(d.date)}: ${d.quantity} delivered`
+      : `Delivered later: ${d.quantity}`));
+    L.push(it.still_to_deliver > 0 ? `Still to deliver: ${it.still_to_deliver}` : "All delivered ✓");
+    return L;
+  }
+
   // Plain-text version of this receipt/invoice for sharing (WhatsApp, etc.)
   function buildShareText() {
     const L = [];
@@ -94,7 +106,7 @@ export default function Receipt() {
       (receipt.items || []).forEach(it => {
         L.push(`${it.product}${it.unit ? ` (${it.unit})` : ""}  x${it.qty} = ${nairaFull(it.total)}`);
         (it.attributes || []).forEach(a => L.push(`   ${a.label}: ${a.value}`));
-    if (it.to_deliver > 0) L.push(`   Delivered now: ${it.delivered_qty ?? 0} · To deliver: ${it.to_deliver}`);
+        deliveryLines(it).forEach(t => L.push(`   ${t}`));
       });
       L.push("--------------------");
       if (discount > 0) {
@@ -290,9 +302,11 @@ export default function Receipt() {
                       ))}
                     </div>
                   )}
-                  {it.to_deliver > 0 && (
+                  {deliveryLines(it).length > 0 && (
                     <div className="receipt-item-attrs">
-                      <span>Delivered now: {it.delivered_qty ?? 0} · To deliver: {it.to_deliver}</span>
+                      {deliveryLines(it).map((t, j) => (
+                        <span key={j} style={{ fontWeight: j === deliveryLines(it).length - 1 ? 600 : undefined }}>{t}</span>
+                      ))}
                     </div>
                   )}
                   {(it.cancelled_qty > 0 || it.returned_qty > 0) && (
