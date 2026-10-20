@@ -148,8 +148,8 @@ def _listed(db, line):
 def sale_waybill_lines(db, owner_phone, tx):
     """A receipt's lines as the waybill form shows them. Each line can have
     two rows: what went out at the sale ("Delivered now" — loaded with this
-    waybill, already out of stock) and what is still to deliver (a later
-    trip: leaves stock when the waybill is made)."""
+    waybill, already out of stock), and what is still to deliver — shown for
+    information only: it goes on a waybill from Deliveries when it is loaded."""
     store = _Store(db, owner_phone)
     out = []
     for line in (db.query(TransactionItem).filter(TransactionItem.transaction_id == tx.id)
@@ -169,7 +169,7 @@ def sale_waybill_lines(db, owner_phone, tx):
             item = _item(db, line.inventory_item_id)
             can = left if item is None else min(left, _held(line) + store.get(item))
             out.append({**base, "kind": "to_deliver", "handed_over": False, "to_deliver": _num(left),
-                        "max": _num(can), "suggest": 0, "kept": _num(_held(line))})
+                        "max": _num(can), "suggest": 0, "kept": _num(_held(line)), "info_only": True})
     return out
 
 
@@ -177,28 +177,32 @@ def _from_sale(db, owner_phone, user_id, wb, tx, lines):
     if tx.is_voided:
         raise WaybillError("This sale was voided.")
     by_id = {l.id: l for l in db.query(TransactionItem).filter(TransactionItem.transaction_id == tx.id).all()}
-    store = _Store(db, owner_phone)
     made = []
     for want in lines or []:
         line = by_id.get(int(want.get("line_id") or 0))
         if not line or float(line.quantity or 0) <= 0:
-            raise WaybillError("That item isn't on this sale.")
+            raise WaybillError("That item isn't on this receipt.")
         qty = _qty_in(want.get("quantity"))
         if qty <= 0:
             continue
-        kind = want.get("kind") or ("at_sale" if line.delivered_qty is None else "to_deliver")
-        if kind == "at_sale":
-            at_sale = _at_sale(db, line)
-            if qty > at_sale + 1e-9:
-                raise WaybillError(f"Only {_num(at_sale)} {(line.product or '').title()} went out at the sale.")
-            made.append(WaybillLine(product=line.product, unit=line.unit, quantity=qty,
-                                    sale_line_id=line.id, moved=False))
-            continue
-        if line.delivered_qty is None:
-            raise WaybillError(f"All the {(line.product or '').title()} went out at the sale.")
-        mv = _send_sale_line(db, owner_phone, user_id, store, line, tx, qty, wb.number)
+        # A receipt's waybill carries only what was delivered at the sale.
+        # Goods still to deliver go on a waybill from Deliveries when loaded.
+        if (want.get("kind") or "at_sale") != "at_sale":
+            raise WaybillError(f"The {(line.product or '').title()} still to deliver isn't loaded with this "
+                               f"receipt — make its waybill from Deliveries when it goes out.")
+        at_sale = _at_sale(db, line)
+        if at_sale <= 0:
+            raise WaybillError(f"No {(line.product or '').title()} went out at the sale — make its waybill "
+                               f"from Deliveries when it goes out.")
+        if qty > at_sale + 1e-9:
+            raise WaybillError(f"Only {_num(at_sale)} {(line.product or '').title()} went out at the sale.")
+        free = at_sale - _listed(db, line)
+        if qty > free + 1e-9:
+            raise WaybillError(f"{(line.product or '').title()} is already on a waybill for this receipt"
+                               + (f" — only {_num(free)} more can go on." if free > 0 else
+                                  " — reprint that one, or cancel it first."))
         made.append(WaybillLine(product=line.product, unit=line.unit, quantity=qty,
-                                sale_line_id=line.id, movement_id=mv.id if mv else None, moved=True))
+                                sale_line_id=line.id, moved=False))
     return made
 
 

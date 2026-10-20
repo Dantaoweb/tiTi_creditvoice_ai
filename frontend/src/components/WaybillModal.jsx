@@ -30,13 +30,12 @@ export default function WaybillModal({ source, onClose }) {
         // loaded — ticked; what is still to deliver is a later trip, unticked.
         // Deliveries / invoice: still to deliver is ticked with what can go now.
         const anyLeft = f.lines.some(l => !l.handed_over);
-        const anyAtSale = f.lines.some(l => l.kind === "at_sale" && l.suggest > 0);
         setLines(f.lines.map(l => ({
           ...l,
           tick: l.kind === "at_sale" ? l.suggest > 0
-            : l.kind === "to_deliver" ? (!anyAtSale && l.max > 0)
+            : l.info_only ? false
             : l.handed_over ? !anyLeft : l.max > 0,
-          qty: String(l.kind === "at_sale" ? (l.suggest || l.max) : (l.max || 0)),
+          qty: String(l.kind === "at_sale" ? l.suggest : (l.max || 0)),
         })));
         const d = f.details || {};
         setDetails(prev => ({
@@ -55,7 +54,11 @@ export default function WaybillModal({ source, onClose }) {
     const picked = lines.filter(l => l.tick && Number(l.qty) > 0);
     if (!picked.length) { setErr("Tick at least one item and say how many go on this waybill."); return; }
     for (const l of picked) {
-      if (Number(l.qty) > Number(l.max)) {
+      if (l.kind === "at_sale" && Number(l.qty) > Number(l.suggest)) {
+        setErr(`Only ${qtyLabel(l.suggest, l.unit)} of ${l.product} can go on — the rest is already on a waybill.`);
+        return;
+      }
+      if (l.kind !== "at_sale" && Number(l.qty) > Number(l.max)) {
         setErr(l.handed_over
           ? `Only ${qtyLabel(l.max, l.unit)} of ${l.product} were bought.`
           : `Only ${qtyLabel(l.max, l.unit)} of ${l.product} can go out now — that's what is in the store for this customer.`);
@@ -95,20 +98,23 @@ export default function WaybillModal({ source, onClose }) {
                 <div key={`${l.line_id ?? l.key}-${l.kind || ""}`} style={{
                   display: "flex", alignItems: "center", gap: 8, padding: "8px 0",
                   borderBottom: "1px solid var(--border)", fontSize: 13,
+                  opacity: l.info_only ? 0.6 : 1,
                 }}>
-                  <input type="checkbox" checked={l.tick} style={{ width: "auto" }}
-                    disabled={!l.handed_over && !(l.max > 0)}
-                    onChange={e => setLine(i, "tick", e.target.checked)} />
+                  {l.info_only ? (
+                    <span style={{ width: 13, display: "inline-block" }} />
+                  ) : (
+                    <input type="checkbox" checked={l.tick} style={{ width: "auto" }}
+                      disabled={l.kind === "at_sale" ? !(l.suggest > 0) : (!l.handed_over && !(l.max > 0))}
+                      onChange={e => setLine(i, "tick", e.target.checked)} />
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <strong>{l.product}</strong>
                     <div className="td-muted" style={{ fontSize: 12 }}>
                       {l.kind === "at_sale"
                         ? `Delivered now: ${qtyLabel(l.max, l.unit)} of ${qtyLabel(l.bought, l.unit)} — already out of stock`
                           + (l.listed > 0 ? ` · ${qtyLabel(l.listed, l.unit)} already on a waybill` : "")
-                        : l.kind === "to_deliver"
-                        ? (l.max > 0
-                          ? `Still to deliver: ${qtyLabel(l.to_deliver, l.unit)} · ${qtyLabel(l.max, l.unit)} in store for them — tick only if it goes on this trip`
-                          : `Still to deliver: ${qtyLabel(l.to_deliver, l.unit)} · none in store yet — add stock first`)
+                        : l.info_only
+                        ? `Still to deliver: ${qtyLabel(l.to_deliver, l.unit)} — not on this waybill. Make its waybill from Deliveries when it is loaded.`
                         : l.handed_over
                         ? `Bought ${qtyLabel(l.bought, l.unit)} · already handed over (listed only)`
                         : l.max > 0
@@ -117,7 +123,7 @@ export default function WaybillModal({ source, onClose }) {
                     </div>
                   </div>
                   {l.tick && (
-                    <input type="number" min={0} max={l.max} inputMode="decimal" value={l.qty}
+                    <input type="number" min={0} max={l.kind === "at_sale" ? l.suggest : l.max} inputMode="decimal" value={l.qty}
                       onChange={e => setLine(i, "qty", e.target.value)} style={{ width: 76 }} />
                   )}
                 </div>
@@ -161,8 +167,9 @@ export default function WaybillModal({ source, onClose }) {
                 </label>
               )}
               <span className="form-hint">
-                "Delivered now" goods already left stock at the sale. Goods still to deliver leave stock
-                only if you tick them here. Printing or sharing again never takes them again. No prices.
+                {source.tx_id
+                  ? "\"Delivered now\" goods already left stock at the sale, so nothing more leaves stock. No prices."
+                  : "Goods still to deliver leave stock when you make the waybill. Printing or sharing again never takes them again. No prices."}
               </span>
             </>
           )}

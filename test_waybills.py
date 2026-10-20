@@ -21,7 +21,7 @@ from inventory_suppliers import restore_inventory_for_voided_sale
 from invoices import (
     InvoiceError, cancel_invoice, create_invoice, deliver_invoice, update_invoice,
 )
-from models import Customer, InventoryItem, Transaction, User, Waybill
+from models import Customer, InventoryItem, Transaction, TransactionItem, User, Waybill
 from waybills import (
     WaybillError, cancel_waybill, create_waybill, sale_waybill_lines, waybill_document,
     waybill_note_text,
@@ -238,21 +238,60 @@ def test_receipt_waybill_loads_what_was_delivered_now(db):
     db.rollback()
 
 
-def test_receipt_waybill_can_send_what_is_left(db):
+def test_receipt_waybill_never_sends_what_is_still_to_deliver(db):
+    """From a receipt only what was delivered now is loaded. The rest is shown
+    for information and goes on a waybill from Deliveries."""
     sale = _sell(db, 30, delivered=10)
     tx = db.query(Transaction).get(sale["receipt_id"])
-    _now, line = sale_waybill_lines(db, OWNER, tx)
-    assert (line["to_deliver"], line["max"]) == (20, 20)
-    with pytest.raises(WaybillError, match="Only 20 Cement still to deliver"):
-        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line["line_id"], "quantity": 21}])
+    now, later = sale_waybill_lines(db, OWNER, tx)
+    assert later["info_only"] is True and later["to_deliver"] == 20
+    with pytest.raises(WaybillError, match="still to deliver isn't loaded with this receipt"):
+        create_waybill(db, OWNER, "owner-1", tx=tx,
+                       lines=[{"line_id": later["line_id"], "quantity": 5, "kind": "to_deliver"}])
     db.rollback()
+    assert _cement(db).quantity == 30                            # nothing left the store
     with pytest.raises(WaybillError, match="Tick at least one"):
-        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line["line_id"], "quantity": 0}])
+        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": now["line_id"], "quantity": 0}])
     db.rollback()
-    create_waybill(db, OWNER, "owner-1", tx=tx,
-                   lines=[{"line_id": line["line_id"], "quantity": 20, "kind": "to_deliver"}])
+
+
+def test_receipt_waybill_refuses_what_is_not_on_the_receipt(db):
+    other = _sell(db, 5, who="bisi")                              # another receipt
+    sale = _sell(db, 10, delivered=0)                             # nothing went out at the sale
+    tx = db.query(Transaction).get(sale["receipt_id"])
+    other_line = db.query(TransactionItem).filter_by(transaction_id=other["receipt_id"]).one()
+    with pytest.raises(WaybillError, match="isn't on this receipt"):
+        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": other_line.id, "quantity": 5}])
+    db.rollback()
+    with pytest.raises(WaybillError, match="isn't on this receipt"):
+        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": 999999, "quantity": 1}])
+    db.rollback()
+    line = db.query(TransactionItem).filter_by(transaction_id=tx.id).one()
+    with pytest.raises(WaybillError, match="No Cement went out at the sale"):
+        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line.id, "quantity": 1}])
+    db.rollback()
+    assert _cement(db).quantity == 35
+
+
+def test_delivered_now_goods_go_on_one_receipt_waybill(db):
+    sale = _sell(db, 10, delivered=4)
+    tx = db.query(Transaction).get(sale["receipt_id"])
+    line = db.query(TransactionItem).filter_by(transaction_id=tx.id).one()
+    create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line.id, "quantity": 3, "kind": "at_sale"}])
     db.commit()
-    assert _cement(db).quantity == 10 and goods_to_deliver(db, OWNER) == []
+    with pytest.raises(WaybillError, match="only 1 more can go on"):
+        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line.id, "quantity": 2, "kind": "at_sale"}])
+    db.rollback()
+    wb = create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line.id, "quantity": 1, "kind": "at_sale"}])
+    db.commit()
+    with pytest.raises(WaybillError, match="reprint that one, or cancel it first"):
+        create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line.id, "quantity": 1, "kind": "at_sale"}])
+    db.rollback()
+    cancel_waybill(db, OWNER, "owner-1", wb, "lost the paper")      # cancelled → can be listed again
+    db.commit()
+    create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line.id, "quantity": 1, "kind": "at_sale"}])
+    db.commit()
+    assert _cement(db).quantity == 36                            # 40 − 4 at the sale; paperwork never moved stock
 
 
 def test_invoice_goes_out_in_parts(db):
