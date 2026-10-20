@@ -16,12 +16,13 @@ from database import SessionLocal
 from models import Customer, Invoice, Transaction, User, Waybill
 from web_auth import require_web_auth
 from web_common import (
-    _require_can_record, _require_tx_in_scope, _scoped_read, _session_owner_phone, _session_user,
+    _add_notification, _require_can_record, _require_tx_in_scope, _scoped_read, _session_owner_phone, _session_user,
 )
 
 
 class WaybillLineIn(BaseModel):
     line_id: Optional[int] = None                    # receipt / invoice line
+    kind: Optional[str] = Field(default=None, pattern="^(at_sale|to_deliver)$")   # receipt: which part
     key: Optional[str] = Field(default=None, max_length=200)   # a customer's product (Deliveries)
     quantity: float = 0
 
@@ -239,8 +240,34 @@ def register_waybill_routes(app):
             except WaybillError as e:
                 db.rollback()
                 raise HTTPException(status_code=400, detail=str(e))
+            doc = waybill_document(db, wb)
+            what = ", ".join(f"{l['quantity']}{(' ' + l['unit']) if l['unit'] else ''} {l['product']}"
+                             for l in doc["lines"])
+            who = (user.name or "Someone").title()
+            reason = wb.cancel_reason
+            # Like a void: the owner sees every cancelled waybill in the app,
+            # and gets a WhatsApp alert when staff did it.
+            _add_notification(
+                db, wb.owner_phone, "waybill_cancelled",
+                f"Waybill {doc['number']} cancelled",
+                f"{who} cancelled waybill {doc['number']}"
+                + (f" for {doc['customer']['name']}" if doc.get("customer") else "")
+                + f" ({what}) — goods back in store. Reason: {reason}",
+                link=f"/waybills/{wb.id}",
+            )
             db.commit()
-            return waybill_document(db, wb)
+            if user.phone != wb.owner_phone:
+                try:
+                    from whatsapp_client import send_whatsapp_message
+                    send_whatsapp_message(
+                        wb.owner_phone,
+                        f"*WAYBILL CANCELLED* - Staff action\n\n*{who}* cancelled waybill {doc['number']}"
+                        + (f" for {doc['customer']['name']}" if doc.get("customer") else "")
+                        + f" ({what}). The goods are back in stock.\nReason: {reason}\n\n"
+                        "Check your dashboard if this looks wrong.")
+                except Exception:
+                    pass
+            return doc
         finally:
             db.close()
 

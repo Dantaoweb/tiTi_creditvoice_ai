@@ -128,26 +128,48 @@ def _send_sale_line(db, owner_phone, user_id, store, line, tx, qty, wb_number):
     return mv
 
 
+def _at_sale(db, line):
+    """How many went out at the sale itself (loaded then)."""
+    if line.delivered_qty is None:
+        return float(line.quantity or 0)
+    from web_pos import _delivered_at_sale
+    return float(_delivered_at_sale(db, line) or 0)
+
+
+def _listed(db, line):
+    """Of what went out at the sale, how much a waybill already lists."""
+    from sqlalchemy import func
+    return float(db.query(func.coalesce(func.sum(WaybillLine.quantity), 0))
+                 .join(Waybill, WaybillLine.waybill_id == Waybill.id)
+                 .filter(WaybillLine.sale_line_id == line.id, WaybillLine.moved.is_(False),
+                         Waybill.cancelled_at.is_(None)).scalar() or 0)
+
+
 def sale_waybill_lines(db, owner_phone, tx):
-    """A receipt's lines as the waybill form shows them."""
+    """A receipt's lines as the waybill form shows them. Each line can have
+    two rows: what went out at the sale ("Delivered now" — loaded with this
+    waybill, already out of stock) and what is still to deliver (a later
+    trip: leaves stock when the waybill is made)."""
     store = _Store(db, owner_phone)
     out = []
     for line in (db.query(TransactionItem).filter(TransactionItem.transaction_id == tx.id)
                  .order_by(TransactionItem.id.asc()).all()):
         if float(line.quantity or 0) <= 0:
             continue
-        row = {"line_id": line.id, "product": (line.product or "").title(), "unit": line.unit,
-               "bought": _num(line.quantity)}
-        if line.delivered_qty is None:
-            # Handed over at the sale: the waybill only lists it
-            row.update({"handed_over": True, "to_deliver": 0, "max": _num(line.quantity)})
-        else:
-            left = _left(line)
+        base = {"line_id": line.id, "product": (line.product or "").title(), "unit": line.unit,
+                "bought": _num(line.quantity)}
+        at_sale = _at_sale(db, line)
+        if at_sale > 0:
+            listed = _listed(db, line)
+            out.append({**base, "kind": "at_sale", "handed_over": True, "to_deliver": 0,
+                        "max": _num(at_sale), "suggest": _num(max(0.0, at_sale - listed)),
+                        "listed": _num(listed)})
+        left = _left(line)
+        if left > 0:
             item = _item(db, line.inventory_item_id)
             can = left if item is None else min(left, _held(line) + store.get(item))
-            row.update({"handed_over": False, "to_deliver": _num(left), "max": _num(can),
-                        "kept": _num(_held(line))})
-        out.append(row)
+            out.append({**base, "kind": "to_deliver", "handed_over": False, "to_deliver": _num(left),
+                        "max": _num(can), "suggest": 0, "kept": _num(_held(line))})
     return out
 
 
@@ -164,12 +186,16 @@ def _from_sale(db, owner_phone, user_id, wb, tx, lines):
         qty = _qty_in(want.get("quantity"))
         if qty <= 0:
             continue
-        if line.delivered_qty is None:
-            if qty > float(line.quantity or 0) + 1e-9:
-                raise WaybillError(f"Only {_num(line.quantity)} {(line.product or '').title()} were bought.")
+        kind = want.get("kind") or ("at_sale" if line.delivered_qty is None else "to_deliver")
+        if kind == "at_sale":
+            at_sale = _at_sale(db, line)
+            if qty > at_sale + 1e-9:
+                raise WaybillError(f"Only {_num(at_sale)} {(line.product or '').title()} went out at the sale.")
             made.append(WaybillLine(product=line.product, unit=line.unit, quantity=qty,
                                     sale_line_id=line.id, moved=False))
             continue
+        if line.delivered_qty is None:
+            raise WaybillError(f"All the {(line.product or '').title()} went out at the sale.")
         mv = _send_sale_line(db, owner_phone, user_id, store, line, tx, qty, wb.number)
         made.append(WaybillLine(product=line.product, unit=line.unit, quantity=qty,
                                 sale_line_id=line.id, movement_id=mv.id if mv else None, moved=True))
@@ -541,7 +567,7 @@ def _still_after(db, wb, cust):
     if not cust:
         return []
     names = {(l.product or "").strip().lower() for l in
-             db.query(WaybillLine).filter(WaybillLine.waybill_id == wb.id, WaybillLine.moved.is_(True)).all()}
+             db.query(WaybillLine).filter(WaybillLine.waybill_id == wb.id).all()}
     if wb.invoice_id:
         inv = db.query(Invoice).filter(Invoice.id == wb.invoice_id).first()
         rows = db.query(InvoiceItem).filter(InvoiceItem.invoice_id == wb.invoice_id).all() if inv else []

@@ -134,10 +134,7 @@ export default function WaybillView() {
             {doc.lines.map((l, i) => (
               <tr key={i}>
                 <td>☐</td>
-                <td>
-                  {l.product}
-                  {l.handed_over && <div className="receipt-item-attrs"><span>Handed over at the sale</span></div>}
-                </td>
+                <td>{l.product}</td>
                 <td className="receipt-right">{qtyLabel(l.quantity, l.unit)}</td>
               </tr>
             ))}

@@ -212,10 +212,36 @@ def test_waybill_for_an_ordinary_sale_is_paperwork(db):
     assert _cement(db).quantity == 20
 
 
-def test_receipt_waybill_sends_what_is_left(db):
+def test_receipt_waybill_loads_what_was_delivered_now(db):
+    """10 bags sold, 1 delivered now, 9 to deliver: the waybill carries the 1
+    being loaded; the 9 are shown as still to deliver and stay in stock."""
+    sale = _sell(db, 10, delivered=1)
+    assert _cement(db).quantity == 39
+    tx = db.query(Transaction).get(sale["receipt_id"])
+    now, later = sale_waybill_lines(db, OWNER, tx)
+    assert (now["kind"], now["max"], now["suggest"]) == ("at_sale", 1, 1)
+    assert (later["kind"], later["to_deliver"], later["suggest"]) == ("to_deliver", 9, 0)
+    wb = create_waybill(db, OWNER, "owner-1", tx=tx,
+                        lines=[{"line_id": now["line_id"], "quantity": 1, "kind": "at_sale"}])
+    db.commit()
+    assert _cement(db).quantity == 39                            # not taken again
+    doc = waybill_document(db, wb)
+    assert doc["lines"] == [{"product": "Cement", "unit": "bag", "quantity": 1, "handed_over": True}]
+    assert doc["still_to_deliver"] == [{"product": "Cement", "unit": "bag", "quantity": 9}]
+    assert "Still to deliver" in waybill_note_text(doc)
+    # Listed once: the next waybill doesn't suggest it again
+    now, _later = sale_waybill_lines(db, OWNER, tx)
+    assert (now["suggest"], now["listed"]) == (0, 1)
+    with pytest.raises(WaybillError, match="Only 1 Cement went out at the sale"):
+        create_waybill(db, OWNER, "owner-1", tx=tx,
+                       lines=[{"line_id": now["line_id"], "quantity": 2, "kind": "at_sale"}])
+    db.rollback()
+
+
+def test_receipt_waybill_can_send_what_is_left(db):
     sale = _sell(db, 30, delivered=10)
     tx = db.query(Transaction).get(sale["receipt_id"])
-    [line] = sale_waybill_lines(db, OWNER, tx)
+    _now, line = sale_waybill_lines(db, OWNER, tx)
     assert (line["to_deliver"], line["max"]) == (20, 20)
     with pytest.raises(WaybillError, match="Only 20 Cement still to deliver"):
         create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line["line_id"], "quantity": 21}])
@@ -223,7 +249,8 @@ def test_receipt_waybill_sends_what_is_left(db):
     with pytest.raises(WaybillError, match="Tick at least one"):
         create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line["line_id"], "quantity": 0}])
     db.rollback()
-    create_waybill(db, OWNER, "owner-1", tx=tx, lines=[{"line_id": line["line_id"], "quantity": 20}])
+    create_waybill(db, OWNER, "owner-1", tx=tx,
+                   lines=[{"line_id": line["line_id"], "quantity": 20, "kind": "to_deliver"}])
     db.commit()
     assert _cement(db).quantity == 10 and goods_to_deliver(db, OWNER) == []
 

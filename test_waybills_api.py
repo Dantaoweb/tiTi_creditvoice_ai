@@ -107,8 +107,19 @@ def test_short_sale_then_waybills_from_the_deliveries_page():
                        json={"reason": "x"}).status_code == 403
     doc = client.get(f"/app/api/waybills/{wb['id']}", cookies=staff).json()
     assert doc["can_cancel"] is False and "unit_price" not in str(doc["lines"])
+    sent.clear()
     r = client.post(f"/app/api/waybills/{wb['id']}/cancel", cookies=cook, json={"reason": "Truck broke down"})
     assert r.status_code == 200 and r.json()["cancelled_at"] and _stock(item_id) == 100
+    # Like a void: the owner sees it in the bell (WhatsApp only when staff did it)
+    from models import AppNotification
+    db = SessionLocal()
+    try:
+        note = db.query(AppNotification).filter(AppNotification.owner_phone == phone,
+                                                AppNotification.event_type == "waybill_cancelled").one()
+        assert "WB-0001" in note.title and "Truck broke down" in note.body
+    finally:
+        db.close()
+    assert not sent
 
     rows = client.get("/app/api/waybills", cookies=cook).json()["waybills"]
     assert [w["number"] for w in rows] == ["WB-0001"] and rows[0]["cancelled"]
@@ -161,3 +172,30 @@ def test_quick_record_stock_received_points_at_customers_waiting():
     w = client.get(f"/app/api/inventory/{item_id}/waiting", cookies=cook).json()
     assert [(x["customer"], x["remaining"], x["kept"]) for x in w["waiting"]] == [("Ade", 60, 0)]
     assert w["item"]["free"] == 100                    # nothing kept aside until the owner ticks it
+
+
+def test_staff_cancelling_a_waybill_alerts_the_owner_on_whatsapp():
+    phone, cook, _staff, item_id, ade = _shop()
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.phone == phone).first()
+        n = next(_seq)
+        db.add(User(phone=f"2348094{n:06d}", name="Branch Boss", role="delegate", parent_id=owner.id,
+                    can_view_all_transactions=True, recovery_pin_hash=web_auth._hash_pin("1234"),
+                    subscription_status="ACTIVE"))
+        db.commit()
+        boss_phone = f"2348094{n:06d}"
+    finally:
+        db.close()
+    boss = client.post("/app/api/auth/login", json={"phone": boss_phone, "pin": "1234"}).cookies
+    # Staff with no branch see their own records, so they sell and load too
+    client.post("/app/api/pos/save", cookies=boss, json={
+        "owner_phone": phone, "customer_id": ade, "payment_amount": 0,
+        "items": [{"inventory_item_id": item_id, "name": "cement", "qty": 10, "unit": "bag",
+                   "unit_price": 9000, "delivered_qty": 0}]})
+    wb = client.post("/app/api/waybills", cookies=boss, json={
+        "customer_id": ade, "lines": [{"key": f"i:{item_id}", "quantity": 10}], "notify": False}).json()
+    sent.clear()
+    r = client.post(f"/app/api/waybills/{wb['id']}/cancel", cookies=boss, json={"reason": "Wrong truck"})
+    assert r.status_code == 200
+    assert [to for to, _m in sent] == [phone] and "WAYBILL CANCELLED" in sent[0][1] and "Wrong truck" in sent[0][1]
