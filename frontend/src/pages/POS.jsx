@@ -609,8 +609,15 @@ export default function POS() {
     const d = parseInt(it.delivered, 10);
     return Number.isNaN(d) ? it.qty : Math.max(0, Math.min(d, it.qty));
   };
-  const leftToDeliver = partDelivery
-    ? partLines.reduce((s, { it }) => s + (it.qty - deliveredOf(it)), 0) : 0;
+  // Selling more than is in store (Settings allows it): what isn't there is
+  // kept as still to deliver for the customer — unless the till says they
+  // took it all now (the stock count was wrong), as it used to work.
+  const [tookAll, setTookAll] = useState(false);
+  const shortLines = (businessSettings.allow_negative_stock && !partDelivery)
+    ? partLines.filter(({ it }) => it.free != null && it.qty > it.free) : [];
+  const owedShort = tookAll ? 0 : shortLines.reduce((s, { it }) => s + (it.qty - it.free), 0);
+  const leftToDeliver = (partDelivery
+    ? partLines.reduce((s, { it }) => s + (it.qty - deliveredOf(it)), 0) : 0) + owedShort;
 
   // Scroll the credit section into view the first time it appears
   useEffect(() => {
@@ -661,6 +668,8 @@ export default function POS() {
         unit_price: p.selling_price,
         qty: newQty,
         stock: p.quantity,
+        // Not kept aside for customers waiting: what this sale can take now
+        free: Math.max(0, (p.quantity || 0) - (p.kept_aside || 0)),
         is_service: p.is_service,
         retail_unit: p.retail_unit || null,
         retail_per_base: p.retail_per_base || null,
@@ -732,7 +741,8 @@ export default function POS() {
         unit_price: it.unit_price,
         sold_unit:  it.sold_unit || null,
         fraction:   it.fraction || 1.0,
-        delivered_qty: (partDelivery && canPartDeliver(it)) ? deliveredOf(it) : null,
+        delivered_qty: (partDelivery && canPartDeliver(it)) ? deliveredOf(it)
+          : (!tookAll && shortLines.some(l => l.it === it)) ? Math.floor(it.free) : null,
       })),
       payment_amount: paid,
       debt_payment: debtPaid,
@@ -750,6 +760,7 @@ export default function POS() {
         enqueue("pos/save", payload, label);
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
         setPartDelivery(false);
+        setTookAll(false);
         setDiscountValue(NO_DISCOUNT);
         setSaving(false);
         navigate("/capture", {
@@ -1020,6 +1031,30 @@ export default function POS() {
             >
               + Add delivery / ready date
             </button>
+          )}
+
+          {/* Sold more than is in store: the rest is owed as still to deliver */}
+          {shortLines.length > 0 && (
+            <div className="pos-summary-section">
+              {shortLines.map(({ it, idx }) => (
+                <div key={idx} style={{ fontSize: 13, marginBottom: 4 }}>
+                  ⚠ Only <strong>{Math.floor(it.free)}{it.unit ? ` ${it.unit}` : ""}</strong> of {it.name} in store
+                  {tookAll ? "." : <> — the other <strong>{it.qty - Math.floor(it.free)}</strong> will be kept as still to deliver
+                  {customer ? ` for ${customer.name}` : ""}.</>}
+                </div>
+              ))}
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", marginTop: 4 }}>
+                <input type="checkbox" checked={tookAll} style={{ width: "auto" }}
+                  onChange={e => setTookAll(e.target.checked)} />
+                They took all of it now (my stock count is wrong)
+              </label>
+              {!tookAll && (
+                <span className="form-hint">Make a waybill from Deliveries when the new stock arrives.</span>
+              )}
+              {!tookAll && !customer && (
+                <div className="pos-credit-warn">⚠ Pick the customer above — goods still owed must be kept against someone.</div>
+              )}
+            </div>
           )}
 
           {/* Part delivery — the rest stays in the store as the customer's */}

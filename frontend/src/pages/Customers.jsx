@@ -8,7 +8,7 @@ import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtBalance } from "../lib/fo
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
 import MetricCard from "../components/MetricCard";
-import DeliverGoodsModal from "../components/DeliverGoodsModal";
+import WaybillModal from "../components/WaybillModal";
 import CancelGoodsModal from "../components/CancelGoodsModal";
 import { getBizLabels } from "../lib/bizLabels";
 import StaleDataBanner from "../components/StaleDataBanner";
@@ -429,11 +429,12 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
               }}>
                 <span style={{ minWidth: 0 }}>
                   <strong>{g.product}</strong>
-                  <span className="td-muted"> · bought {g.bought} · delivered {g.delivered}</span>
+                  <span className="td-muted"> · bought {g.bought} · delivered {g.delivered}
+                    {g.kept > 0 ? ` · ${g.kept} kept aside` : " · not kept aside"}</span>
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
                   <strong style={{ color: "var(--rose)" }}>{g.remaining}{g.unit ? ` ${g.unit}` : ""} left</strong>
-                  <button className="btn btn-primary btn-sm" onClick={() => setDeliver(g)}>Deliver</button>
+                  <button className="btn btn-primary btn-sm" onClick={() => setDeliver(g)}>Waybill</button>
                   {user?.full_access && (
                     <button className="btn btn-ghost btn-sm" onClick={() => setCancelling(g)}>Cancel / refund</button>
                   )}
@@ -443,7 +444,7 @@ function CustomerDetailModal({ customer, onClose, onPay, onSendBalance, onSaved 
           </div>
         )}
         {deliver && (
-          <DeliverGoodsModal goods={deliver} onClose={() => {
+          <WaybillModal source={{ customer_id: customer.id }} onClose={() => {
             setDeliver(null);
             apiFetch(`customers/${customer.id}/history`).then(setData).catch(() => {});
           }} />

@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { Printer, ArrowLeft, FileText, Send, Share2, RotateCcw } from "lucide-react";
+import { Printer, ArrowLeft, FileText, Send, Share2, RotateCcw, Truck } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import ReturnGoodsModal from "../components/ReturnGoodsModal";
+import WaybillModal from "../components/WaybillModal";
+import WaybillList from "../components/WaybillList";
 import { nairaFull, dateTimeStr, dateStr, fmtAmt } from "../lib/format";
 
 export default function Receipt() {
@@ -17,6 +19,7 @@ export default function Receipt() {
   const [sendErr, setSendErr] = useState("");
   const [shareMsg, setShareMsg] = useState("");
   const [returning, setReturning] = useState(false);
+  const [waybill, setWaybill] = useState(false);
   const { user } = useAuth();
 
   function load() {
@@ -60,6 +63,8 @@ export default function Receipt() {
   const cn = receipt.credit_note;
   const typeLabel = cn ? `Credit note ${cn.number}` : isPayment ? "Payment" : (isCredit ? "Credit Sale" : "Cash Sale");
   const canReturn = !!user?.full_access && !cn && !isPayment && receipt.total > 0;
+  // A waybill / loading order for the loaders and driver — any sale with goods
+  const canWaybill = !cn && !isPayment && receipt.total > 0 && !receipt.is_voided;
 
   // ── Invoice mode (older invoices only) ──────────────────────────────────────
   const isInvoice   = invoiceMode && !!receipt.invoice_number;
@@ -168,6 +173,11 @@ export default function Receipt() {
         {canReturn && !isInvoice && (
           <button className="btn btn-ghost" onClick={() => setReturning(true)}>
             <RotateCcw size={15} /> Return goods
+          </button>
+        )}
+        {canWaybill && !isInvoice && (
+          <button className="btn btn-ghost" onClick={() => setWaybill(true)}>
+            <Truck size={15} /> Waybill
           </button>
         )}
         <button className="btn btn-ghost" onClick={handleShare}>
@@ -408,9 +418,11 @@ export default function Receipt() {
           </div>
         </div>
       </div>
+      {!isPayment && !cn && <WaybillList query={`tx_id=${receipt.id}`} />}
       {returning && (
         <ReturnGoodsModal saleId={receipt.id} onClose={() => { setReturning(false); load(); }} />
       )}
+      {waybill && <WaybillModal source={{ tx_id: receipt.id }} onClose={() => setWaybill(false)} />}
     </div>
   );
 }

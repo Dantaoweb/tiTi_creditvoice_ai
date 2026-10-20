@@ -994,6 +994,7 @@ def ensure_schema_updates(engine):
             "inventory_item_id": "INTEGER",
             "cancelled_qty": "FLOAT",
             "returned_qty": "FLOAT",
+            "held_qty": "FLOAT",
         }
         with engine.begin() as connection:
             for col, typ in tx_item_updates.items():
@@ -1010,6 +1011,12 @@ def ensure_schema_updates(engine):
                              "accepted_at": "TIMESTAMP", "deposit_percent": "INTEGER"}.items():
                 if col not in invoice_columns:
                     connection.execute(text(f"ALTER TABLE invoices ADD COLUMN {col} {typ}"))
+
+    # ── invoice_items: part delivery on waybills (waybills.py) ───────────────
+    if "invoice_items" in inspector.get_table_names():
+        if "delivered_qty" not in {c["name"] for c in inspector.get_columns("invoice_items")}:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE invoice_items ADD COLUMN delivered_qty FLOAT"))
 
     # ── fee_items: the stock item each school fee item is (school_service) ───
     if "fee_items" in inspector.get_table_names():

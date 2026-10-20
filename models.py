@@ -282,6 +282,12 @@ class TransactionItem(Base):
     cancelled_qty = Column(Float, nullable=True)
     returned_qty = Column(Float, nullable=True)
 
+    # Of what is still to deliver, how much is kept aside in the store for this
+    # customer (no one else can buy it). NULL = all of it — every sale made
+    # before keeping aside became the owner's choice. What is not kept aside
+    # is still owed, but the store may sell it (or never had it: sold short).
+    held_qty = Column(Float, nullable=True)
+
     # The stock item sold, so what is still to deliver counts against it.
     inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
 
@@ -307,6 +313,52 @@ class GoodsDelivery(Base):
     note                = Column(String, nullable=True)   # driver, truck no, waybill
     recorded_by_id      = Column(String, ForeignKey("users.id"), nullable=True)
     created_at          = Column(DateTime, default=utcnow)
+
+
+class Waybill(Base):
+    """A waybill / loading order (WB-0001): the paper the loaders and the
+    driver take with the goods — no prices, signed on arrival. Goods still to
+    deliver leave stock when it is created; goods already handed over at the
+    sale are only listed (paperwork). Cancelling puts the goods back."""
+
+    __tablename__ = "waybills"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone     = Column(String, index=True)
+    branch_id       = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    number          = Column(Integer)
+    customer_id     = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    # Made from one receipt or one invoice; NULL for a customer's goods taken
+    # from several sales at once (Deliveries page).
+    transaction_id  = Column(Integer, ForeignKey("transactions.id"), nullable=True, index=True)
+    invoice_id      = Column(Integer, ForeignKey("invoices.id"), nullable=True, index=True)
+    driver_name     = Column(String, nullable=True)
+    driver_phone    = Column(String, nullable=True)
+    vehicle         = Column(String, nullable=True)
+    loaders         = Column(String, nullable=True)
+    address         = Column(String, nullable=True)
+    note            = Column(String, nullable=True)
+    created_by_id   = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=utcnow)
+    cancelled_at    = Column(DateTime, nullable=True)
+    cancelled_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    cancel_reason   = Column(String, nullable=True)
+
+
+class WaybillLine(Base):
+    __tablename__ = "waybill_lines"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    waybill_id      = Column(Integer, ForeignKey("waybills.id"), index=True)
+    product         = Column(String)
+    unit            = Column(String, nullable=True)
+    quantity        = Column(Float)
+    sale_line_id    = Column(Integer, ForeignKey("transaction_items.id"), nullable=True)
+    invoice_line_id = Column(Integer, ForeignKey("invoice_items.id"), nullable=True)
+    # The OUT movement this line made; NULL = paperwork only (already handed
+    # over) or nothing stocked to take out.
+    movement_id     = Column(Integer, ForeignKey("inventory_movements.id"), nullable=True)
+    moved           = Column(Boolean, default=False)   # counted as delivered by this waybill
 
 
 class CameraCrashReport(Base):
@@ -452,6 +504,9 @@ class InvoiceItem(Base):
     fraction          = Column(Float, nullable=True)
     unit_price        = Column(Integer, default=0)
     total             = Column(Integer, default=0)
+    # Sent out on waybills so far (NULL = none, or all of it when the invoice
+    # was marked delivered in one go — see Invoice.delivered_at).
+    delivered_qty     = Column(Float, nullable=True)
 
 
 class TransactionNote(Base):

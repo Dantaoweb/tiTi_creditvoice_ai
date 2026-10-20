@@ -818,6 +818,62 @@ function AdjustModal({ item, onClose, onSaved }) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  // After adding stock: customers still waiting for this product. Nothing is
+  // kept aside for them unless the owner ticks it.
+  const [waiting, setWaiting] = useState(null);
+
+  async function keepAside() {
+    setSaving(true); setErr("");
+    try {
+      for (const w of waiting.rows.filter(w => w.tick && Number(w.qty) > 0)) {
+        await apiPost("deliveries/goods/keep", { customer_id: w.customer_id, key: w.key, kept: w.kept + Number(w.qty) });
+      }
+      onSaved();
+      onClose();
+    } catch (e) { setErr(e.message); setSaving(false); }
+  }
+
+  if (waiting) {
+    // Stock still free for each row: what the rows above it have taken
+    const freeBefore = waiting.rows.map((_, i) => waiting.rows.slice(0, i).reduce(
+      (left, r) => left - (r.tick ? Math.max(0, Math.min(Number(r.qty) || 0, r.remaining - r.kept)) : 0),
+      waiting.free));
+    return (
+      <Modal title={`Customers waiting for ${item.name}`} onClose={() => { onSaved(); onClose(); }}>
+        <div className="modal-body">
+          <div style={{ fontSize: 13, marginBottom: 10 }}>
+            Stock added. These customers bought {item.name} and are still waiting. Tick to keep some aside
+            for them — no one else can buy kept-aside goods. Untick to leave it free to sell.
+          </div>
+          {waiting.rows.map((w, i) => {
+            const most = Math.max(0, Math.min(w.remaining - w.kept, freeBefore[i]));
+            return (
+              <label key={w.key + w.customer_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", fontSize: 13 }}>
+                <input type="checkbox" checked={w.tick} style={{ width: "auto" }} disabled={most <= 0 && !w.tick}
+                  onChange={e => setWaiting(s => ({ ...s, rows: s.rows.map((r, j) => j === i ? { ...r, tick: e.target.checked } : r) }))} />
+                <span style={{ flex: 1 }}>
+                  Keep aside for <strong>{w.customer}</strong>
+                  <span className="td-muted"> · waiting for {w.remaining}{w.kept > 0 ? `, ${w.kept} already kept` : ""}</span>
+                </span>
+                {w.tick && (
+                  <input type="number" min={0} max={most} value={w.qty} style={{ width: 70 }}
+                    onChange={e => setWaiting(s => ({ ...s, rows: s.rows.map((r, j) => j === i ? { ...r, qty: e.target.value } : r) }))} />
+                )}
+              </label>
+            );
+          })}
+          <ErrorNote msg={err} />
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={() => { onSaved(); onClose(); }}>Not now</button>
+          <button className="btn btn-primary" onClick={keepAside}
+            disabled={saving || !waiting.rows.some(w => w.tick && Number(w.qty) > 0)}>
+            {saving ? "Saving…" : "Keep aside"}
+          </button>
+        </div>
+      </Modal>
+    );
+  }
 
   async function save(direction) {
     const qty = parseAmt(delta);
@@ -837,6 +893,23 @@ function AdjustModal({ item, onClose, onSaved }) {
           due_date: dueDate || null,
           note: note.trim() || null,
         });
+        try {
+          const w = await apiFetch(`inventory/${item.id}/waiting`);
+          const rows = (w.waiting || []).filter(r => r.remaining > r.kept);
+          if (rows.length) {
+            let left = w.item.free || 0;
+            setWaiting({
+              free: w.item.free || 0,
+              rows: rows.map(r => {
+                const q = Math.max(0, Math.min(r.remaining - r.kept, left));
+                left -= q;
+                return { ...r, tick: false, qty: String(q) };
+              }),
+            });
+            setSaving(false);
+            return;
+          }
+        } catch { /* the stock is added; the prompt is only a help */ }
       } else {
         await apiPost(`inventory/${item.id}/adjust`, {
           qty_delta: -qty,
@@ -1027,13 +1100,21 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
 
         <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 14 }}>
           {!item.is_service && (
-            <MetricCard label={item.reserved > 0 ? "In store" : "In stock"} value={`${(item.quantity ?? 0).toLocaleString()}${item.unit ? ` ${item.unit}` : ""}`}
+            <MetricCard label={item.waiting > 0 ? "In store" : "In stock"} value={`${(item.quantity ?? 0).toLocaleString()}${item.unit ? ` ${item.unit}` : ""}`}
               color={item.low_stock_alert !== null && (item.quantity ?? 0) <= item.low_stock_alert ? "amber" : undefined} />
           )}
-          {!item.is_service && item.reserved > 0 && (
+          {/* Sold, still to deliver: kept aside in the store, or owed */}
+          {!item.is_service && item.waiting > 0 && (
             <>
-              <MetricCard label="Reserved (sold, to deliver)" value={item.reserved.toLocaleString()} color="rose" />
-              <MetricCard label="Available to sell" value={Math.max(0, (item.quantity ?? 0) - item.reserved).toLocaleString()} color="green" />
+              {item.reserved > 0 && (
+                <MetricCard label="Kept aside for customers" value={item.reserved.toLocaleString()} color="rose" />
+              )}
+              <MetricCard label="Can sell" value={Math.max(0, (item.quantity ?? 0) - item.reserved).toLocaleString()} color="green" />
+              <MetricCard label="Customers still waiting"
+                value={`${item.waiting.toLocaleString()} · ${(item.waiting_customers || []).map(c => `${c.name} ${c.quantity}`).join(", ")}`} />
+              {item.waiting > (item.quantity ?? 0) && (
+                <MetricCard label="Need to buy" value={(item.waiting - (item.quantity ?? 0)).toLocaleString()} color="amber" />
+              )}
             </>
           )}
           <MetricCard label="Selling price" value={nairaFull(item.selling_price)} />
@@ -1440,14 +1521,21 @@ export default function Inventory() {
               key: "qty_or_avail", label: "Stock / Status",
               render: r => r.is_service
                 ? <span className="text-subtle">—</span>
-                : r.reserved > 0
+                : r.waiting > 0
                   ? (
-                    // Sold, still in the store: in store − reserved = what can be sold
-                    <span title={`${r.reserved} sold, waiting for delivery`}>
-                      <strong>{Math.max(0, (r.quantity ?? 0) - r.reserved).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</strong> available
+                    // Sold, still to deliver: in store − kept aside = what can be sold
+                    <span title={`${r.waiting} sold, customers still waiting`}>
+                      <strong>{Math.max(0, (r.quantity ?? 0) - r.reserved).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</strong> can sell
                       <div className="td-muted" style={{ fontSize: 11 }}>
-                        {(r.quantity ?? 0).toLocaleString()} in store · {r.reserved.toLocaleString()} reserved
+                        {(r.quantity ?? 0).toLocaleString()} in store
+                        {r.reserved > 0 ? ` · ${r.reserved.toLocaleString()} kept aside` : ""}
+                        {` · ${r.waiting.toLocaleString()} customers waiting`}
                       </div>
+                      {r.waiting > (r.quantity ?? 0) && (
+                        <div style={{ fontSize: 11, color: "#b45309", fontWeight: 600 }}>
+                          Need to buy {(r.waiting - (r.quantity ?? 0)).toLocaleString()}
+                        </div>
+                      )}
                     </span>
                   )
                   : <span>{(r.quantity ?? 0).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</span>,

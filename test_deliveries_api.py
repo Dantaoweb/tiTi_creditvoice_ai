@@ -69,7 +69,7 @@ def test_sell_part_deliver_then_deliver_the_rest():
 
     # Selling Ade's bags to someone else is refused, in words
     r = _sell(phone, cook, item_id, 200)
-    assert r.status_code == 400 and "165" in r.json()["detail"] and "reserved" in r.json()["detail"]
+    assert r.status_code == 400 and "165" in r.json()["detail"] and "kept aside" in r.json()["detail"]
 
     r = client.post("/app/api/deliveries/goods", cookies=cook, json={
         "customer_id": ade, "key": g["key"], "quantity": 25, "note": "Truck KJA 123"})

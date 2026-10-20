@@ -93,7 +93,7 @@ def test_the_cement_story(db):
 
 def test_reserved_bags_cant_be_sold_again(db):
     _sell(db, 100, delivered=0)                               # 300 in store, 100 reserved
-    with pytest.raises(ValueError, match="Only 200 bag of Cement available"):
+    with pytest.raises(ValueError, match="Only 200 bag of Cement can be sold"):
         _sell(db, 201, customer=False)
     _sell(db, 200, customer=False)                            # exactly what's available
     assert _cement(db).quantity == 100

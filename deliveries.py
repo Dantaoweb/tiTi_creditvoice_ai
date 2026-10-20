@@ -4,9 +4,12 @@ out today, 40 wait in the store for the customer.
 
 - A sale line records how many went out (TransactionItem.delivered_qty; NULL
   means all of it, which is every ordinary sale).
-- Only what goes out leaves stock. What is still to deliver stays in the store
-  as *reserved*: in store − reserved = what can still be sold.
-- Each later trip (GoodsDelivery) takes stock out against the customer's
+- Only what goes out leaves stock. What is still to deliver is either *kept
+  aside* in the store for the customer (no one else can buy it: in store −
+  kept aside = what can be sold) or just owed — the owner chose not to keep
+  it aside, or it was sold short (more sold than was in store). Keeping aside
+  is the owner's choice (Settings → keep goods aside; Add stock; Deliveries).
+- Each later trip (a waybill, waybills.py) takes stock out against the customer's
   oldest open sale first, logged as an OUT movement with source DELIVERY and
   the sale as source_id — so voiding the sale returns it like any sale.
 - The customer gets a delivery note: bought · delivered · still to deliver.
@@ -26,7 +29,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 
 from models import (
-    CreditNote, Customer, GoodsDelivery, InventoryItem, InventoryMovement, Transaction,
+    CreditNote, Customer, InventoryItem, InventoryMovement, Transaction,
     TransactionItem,
 )
 
@@ -55,6 +58,15 @@ def _left(line):
         return 0.0
     return max(0.0, float(line.quantity or 0) - float(line.delivered_qty or 0)
                - float(line.cancelled_qty or 0))
+
+
+def _held(line):
+    """Of what is still to deliver, how much is kept aside in the store.
+    NULL = all of it (every sale made before keeping aside was a choice)."""
+    left = _left(line)
+    if line.held_qty is None:
+        return left
+    return max(0.0, min(left, float(line.held_qty or 0)))
 
 
 def _returnable(line):
@@ -94,16 +106,41 @@ def _key(line):
 
 
 def reserved_by_item(db, owner_phone):
-    """{inventory_item_id: quantity sold but still in the store}."""
+    """{inventory_item_id: quantity kept aside in the store for customers}."""
     out = {}
     for line, _tx, _c in _open_lines(db, owner_phone):
-        if line.inventory_item_id:
-            out[line.inventory_item_id] = out.get(line.inventory_item_id, 0) + _left(line)
+        if line.inventory_item_id and _held(line) > 0:
+            out[line.inventory_item_id] = out.get(line.inventory_item_id, 0) + _held(line)
     return out
 
 
 def reserved_for_item(db, owner_phone, inventory_item_id):
-    return sum(_left(l) for l, _t, _c in _open_lines(db, owner_phone, inventory_item_id=inventory_item_id))
+    return sum(_held(l) for l, _t, _c in _open_lines(db, owner_phone, inventory_item_id=inventory_item_id))
+
+
+def owed_by_item(db, owner_phone):
+    """{inventory_item_id: {"waiting": all still to deliver, "kept": of which
+    kept aside, "customers": [(name, qty)]}} — the Inventory page's story."""
+    out = {}
+    for line, _tx, cust in _open_lines(db, owner_phone):
+        if not line.inventory_item_id:
+            continue
+        o = out.setdefault(line.inventory_item_id, {"waiting": 0.0, "kept": 0.0, "customers": {}})
+        o["waiting"] += _left(line)
+        o["kept"] += _held(line)
+        name = (cust.name or "").title()
+        o["customers"][name] = o["customers"].get(name, 0) + _left(line)
+    for o in out.values():
+        o["customers"] = [{"name": n, "quantity": _num(q)} for n, q in o["customers"].items()]
+        o["waiting"], o["kept"] = _num(o["waiting"]), _num(o["kept"])
+    return out
+
+
+def free_in_store(db, owner_phone, item):
+    """What of an item's stock is not kept aside for anyone."""
+    if item is None or item.quantity is None:
+        return None
+    return max(0.0, float(item.quantity or 0) - reserved_for_item(db, owner_phone, item.id))
 
 
 def goods_to_deliver(db, owner_phone, customer_id=None, scope=None):
@@ -118,20 +155,67 @@ def goods_to_deliver(db, owner_phone, customer_id=None, scope=None):
                 "customer_id": cust.id, "customer": (cust.name or "").title(),
                 "customer_phone": cust.customer_phone, "key": _key(line),
                 "product": (line.product or "").title(), "unit": line.unit,
-                "bought": 0, "delivered": 0, "cancelled": 0, "remaining": 0,
+                "bought": 0, "delivered": 0, "cancelled": 0, "remaining": 0, "kept": 0,
                 "since": tx.created_at.isoformat() if tx.created_at else None,
-                "sales": [],
+                "sales": [], "inventory_item_id": line.inventory_item_id,
             }
         g["bought"] += float(line.quantity or 0)
         g["delivered"] += float(line.delivered_qty or 0)
         g["cancelled"] += float(line.cancelled_qty or 0)
         g["remaining"] += _left(line)
+        g["kept"] += _held(line)
         g["sales"].append(tx.receipt_number or tx.id)
     rows = list(groups.values())
+    # What can go out now: what is kept aside for them, plus whatever of the
+    # stock is not kept for anyone. None = not a stocked item (no limit).
+    items, free = {}, {}
     for r in rows:
-        for f in ("bought", "delivered", "cancelled", "remaining"):
-            r[f] = _num(r[f])
+        iid = r["inventory_item_id"]
+        if iid and iid not in items:
+            items[iid] = db.query(InventoryItem).filter(InventoryItem.id == iid).first()
+            free[iid] = free_in_store(db, owner_phone, items[iid])
+    for r in rows:
+        f = free.get(r["inventory_item_id"])
+        r["in_store_free"] = None if f is None else _num(f)
+        r["can_send"] = (_num(r["remaining"]) if f is None
+                         else _num(min(r["remaining"], r["kept"] + f)))
+        for k in ("bought", "delivered", "cancelled", "remaining", "kept"):
+            r[k] = _num(r[k])
     return rows
+
+
+def set_kept_aside(db, owner_phone, customer_id, key, kept, scope=None):
+    """Keep `kept` of a customer's goods aside in the store (0 = release them
+    all, sellable to anyone again; they stay owed). Oldest sale first. Only
+    goods actually in the store and not kept for someone else can be kept."""
+    try:
+        kept = float(kept)
+    except (TypeError, ValueError):
+        raise DeliveryError("Enter how many to keep aside.")
+    if not math.isfinite(kept) or kept < 0:
+        raise DeliveryError("Enter how many to keep aside.")
+    lines = [l for l, _t, _c in _open_lines(db, owner_phone, customer_id, scope=scope) if _key(l) == key]
+    if not lines:
+        raise DeliveryError("Nothing is waiting to be delivered for this customer.")
+    remaining = sum(_left(l) for l in lines)
+    if kept > remaining + 1e-9:
+        raise DeliveryError(f"They are only waiting for {_num(remaining)}.")
+    now = sum(_held(l) for l in lines)
+    item = (db.query(InventoryItem).filter(InventoryItem.id == lines[0].inventory_item_id).first()
+            if lines[0].inventory_item_id else None)
+    if kept > now + 1e-9 and item is not None and item.quantity is not None:
+        free = free_in_store(db, owner_phone, item)
+        if kept - now > free + 1e-9:
+            raise DeliveryError(
+                f"Only {_num(free)} {item.unit or ''} of {item.name.title()} in store is free to "
+                f"keep aside.".replace("  ", " "))
+    left = kept
+    for line in lines:
+        take = min(left, _left(line))
+        line.held_qty = take
+        left -= take
+    db.flush()
+    return {"kept": _num(kept), "remaining": _num(remaining)}
 
 
 def _qty_or_fail(quantity, word="delivered"):
@@ -145,50 +229,31 @@ def _qty_or_fail(quantity, word="delivered"):
 
 
 def deliver_goods(db, owner_phone, user_id, customer_id, key, quantity, note=None, scope=None):
-    """Hand over `quantity` of a customer's goods, oldest sale first. Takes it
-    out of stock and returns what the delivery note says. The caller commits."""
+    """Hand over `quantity` of a customer's goods, oldest sale first — a
+    waybill with one product (waybills.py). Takes it out of stock and returns
+    what the delivery note says. The caller commits."""
+    from waybills import create_waybill
     quantity = _qty_or_fail(quantity)
     lines = [(l, t) for l, t, _c in _open_lines(db, owner_phone, customer_id, scope=scope) if _key(l) == key]
     if not lines:
         raise DeliveryError("Nothing is waiting to be delivered for this customer.")
+    first = lines[0][0]
     bought = sum(float(l.quantity or 0) for l, _t in lines)
     before = sum(float(l.delivered_qty or 0) for l, _t in lines)
     cancelled = sum(float(l.cancelled_qty or 0) for l, _t in lines)
     remaining = sum(_left(l) for l, _t in lines)
     if quantity > remaining + 1e-9:
         raise DeliveryError(f"Only {_num(remaining)} left to deliver.")
-
-    first = lines[0][0]
-    item = (db.query(InventoryItem).filter(InventoryItem.id == first.inventory_item_id).first()
-            if first.inventory_item_id else None)
-    left = quantity
-    for line, tx in lines:
-        if left <= 0:
-            break
-        take = min(left, _left(line))
-        line.delivered_qty = float(line.delivered_qty or 0) + take
-        left -= take
-        if item is not None and item.quantity is not None:
-            item.quantity = max(0.0, float(item.quantity or 0) - take)
-            item.updated_at = _utcnow()
-            db.add(InventoryMovement(
-                owner_phone=owner_phone, item_id=item.id, movement_type="OUT",
-                quantity=take, unit_price=line.unit_price, source_type="DELIVERY",
-                source_id=tx.id, recorded_by_id=user_id,
-                note=f"Delivered to customer — sale #{tx.receipt_number or tx.id}",
-            ))
-    db.add(GoodsDelivery(
-        owner_phone=owner_phone, customer_id=customer_id, product=first.product,
-        unit=first.unit, quantity=quantity, note=(note or "").strip() or None,
-        recorded_by_id=user_id,
-    ))
-    db.flush()
+    wb = create_waybill(db, owner_phone, user_id, customer_id=customer_id,
+                        lines=[{"key": key, "quantity": quantity}], details={"note": note}, scope=scope)
+    from waybills import format_waybill_number
     return {
         "product": (first.product or "").title(), "unit": first.unit,
         "delivered_now": _num(quantity), "bought": _num(bought),
         "delivered": _num(before + quantity), "cancelled": _num(cancelled),
         "remaining": _num(remaining - quantity),
         "note": (note or "").strip() or None,
+        "waybill_id": wb.id, "waybill_number": format_waybill_number(wb.number),
     }
 
 
@@ -409,6 +474,8 @@ def on_transaction_voided(db, owner_phone, tx, user_id=None):
     if rows:
         _undo_credit_rows(db, owner_phone, rows, user_id)
         return
+    from waybills import on_sale_voided
+    on_sale_voided(db, tx, user_id)
     for credit_tx_id, in (db.query(CreditNote.credit_tx_id)
                           .filter(CreditNote.sale_tx_id == tx.id, CreditNote.voided_at.is_(None))
                           .distinct().all()):

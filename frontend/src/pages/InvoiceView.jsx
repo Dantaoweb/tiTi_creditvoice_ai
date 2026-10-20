@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Receipt as ReceiptIcon } from "lucide-react";
+import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Truck, Receipt as ReceiptIcon } from "lucide-react";
+import WaybillModal from "../components/WaybillModal";
+import WaybillList from "../components/WaybillList";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr, fmtAmt, parseAmt } from "../lib/format";
 
@@ -41,6 +43,7 @@ export default function InvoiceView() {
   const [paying, setPaying] = useState(false);
   const [amount, setAmount] = useState("");
   const [shareMsg, setShareMsg] = useState("");
+  const [waybill, setWaybill] = useState(false);
 
   useEffect(() => {
     apiFetch(`invoices/doc/${id}`).then(setDoc).catch(e => setErr(e.message));
@@ -56,6 +59,7 @@ export default function InvoiceView() {
   const docName   = isQuote ? "quotation" : "invoice";
   const cancelled = doc.status === "cancelled";
   const delivered = !!doc.delivered_at;
+  const partDelivered = !!doc.part_delivered;       // some went out on waybills
   const phone     = doc.customer?.phone;
   const custName  = doc.customer?.name || "the customer";
   const addr      = doc.branch_address || doc.biz_address;
@@ -74,7 +78,9 @@ export default function InvoiceView() {
   }
 
   function deliver() {
-    if (!window.confirm("Mark as delivered? The items on this invoice will be taken out of stock.")) return;
+    if (!window.confirm(partDelivered
+      ? "Mark the rest as delivered? Whatever hasn't gone out on a waybill yet will be taken out of stock."
+      : "Mark as delivered? The items on this invoice will be taken out of stock.")) return;
     act("deliver", "deliver");
   }
 
@@ -154,7 +160,7 @@ export default function InvoiceView() {
         <button className="btn btn-ghost" onClick={() => navigate("/invoices")}>
           <ArrowLeft size={15} /> Invoices
         </button>
-        {(waiting || isQuote) && !delivered && (
+        {(waiting || isQuote) && !delivered && !partDelivered && (
           <button className="btn btn-ghost" onClick={() => navigate(`/invoices/${id}/edit`)}>
             <Pencil size={15} /> Edit
           </button>
@@ -178,6 +184,7 @@ export default function InvoiceView() {
           <InvoiceStatusBadge status={doc.status} />
           {delivered
             ? <span className="invoice-flag invoice-flag--done"><PackageCheck size={13} /> Delivered {dateStr(doc.delivered_at)}</span>
+            : partDelivered ? <span className="invoice-flag"><PackageCheck size={13} /> Part delivered</span>
             : !cancelled && <span className="invoice-flag">Not delivered yet</span>}
           {doc.sent_at && <span className="td-muted" style={{ fontSize: 12 }}>Sent {dateStr(doc.sent_at)}</span>}
         </div>
@@ -186,7 +193,8 @@ export default function InvoiceView() {
           {cancelled && `This ${docName} was cancelled. Nothing was owed and no stock moved.`}
           {isQuote && `A quotation: nothing is owed yet. When ${custName} agrees, tap "Customer accepted" — it becomes an invoice${hasDeposit ? ` asking for the ${doc.deposit_percent}% deposit before work starts` : ""}.`}
           {waiting && hasDeposit && `Ask for the deposit of ${nairaFull(doc.deposit_amount)} (${doc.deposit_percent}%) before work starts; the balance of ${nairaFull(doc.balance_on_completion)} is paid on completion. `}
-          {waiting && !delivered && "Nothing is owed yet and no stock has moved. Record the payment when the customer pays; mark it delivered when the goods go out."}
+          {waiting && !delivered && !partDelivered && "Nothing is owed yet and no stock has moved. Record the payment when the customer pays; make a waybill or mark it delivered when the goods go out."}
+          {waiting && partDelivered && "Some goods have gone out on waybills. Record the payment when the customer pays; make another waybill when the rest goes."}
           {waiting && delivered && "The goods are out of stock. Record the payment when the customer pays — anything unpaid becomes their debt."}
           {doc.status === "paid" && `Paid ${nairaFull(doc.amount_paid)} on ${dateStr(doc.paid_at)}.`}
           {doc.status === "deposit_paid" && `Deposit of ${nairaFull(doc.amount_paid)} paid on ${dateStr(doc.paid_at)} — work can start. The balance of ${nairaFull(doc.moved_to_debt)} is due on completion${doc.due_date ? ` (${dateStr(doc.due_date)})` : ""}; it is on ${custName}'s debts, collect it from Debts.`}
@@ -207,9 +215,14 @@ export default function InvoiceView() {
               <Banknote size={15} /> {hasDeposit ? "Record deposit / payment" : "Record payment"}
             </button>
           )}
+          {!cancelled && !isQuote && (
+            <button className="btn btn-ghost" onClick={() => setWaybill(true)} disabled={!!busy}>
+              <Truck size={15} /> Waybill
+            </button>
+          )}
           {!cancelled && !delivered && !isQuote && (
             <button className="btn btn-ghost" onClick={deliver} disabled={!!busy}>
-              <PackageCheck size={15} /> {busy === "deliver" ? "Saving…" : "Mark delivered"}
+              <PackageCheck size={15} /> {busy === "deliver" ? "Saving…" : partDelivered ? "Mark the rest delivered" : "Mark delivered"}
             </button>
           )}
           {doc.transaction_id && (
@@ -217,7 +230,7 @@ export default function InvoiceView() {
               <ReceiptIcon size={15} /> View receipt
             </button>
           )}
-          {(waiting || isQuote) && !delivered && (
+          {(waiting || isQuote) && !delivered && !partDelivered && (
             <button className="btn btn-ghost" onClick={cancel} disabled={!!busy} style={{ color: "#b91c1c" }}>
               <Ban size={15} /> {busy === "cancel" ? "Cancelling…" : `Cancel ${docName}`}
             </button>
@@ -381,6 +394,8 @@ export default function InvoiceView() {
           <div className="receipt-muted" style={{ marginTop: 12 }}>{doc.footer}</div>
         </div>
       </div>
+      {!isQuote && <WaybillList query={`invoice_id=${doc.id}`} />}
+      {waybill && <WaybillModal source={{ invoice_id: doc.id }} onClose={() => setWaybill(false)} />}
     </div>
   );
 }

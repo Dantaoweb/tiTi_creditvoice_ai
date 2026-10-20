@@ -198,6 +198,11 @@ def detect_faq(text):
         return "return_goods"
     if any(k in q for k in refund_words):
         return "cancel_refund"
+    if any(k in q for k in ("waybill", "way bill", "way-bill", "loading order", "loading list",
+                            "keep aside", "kept aside", "keep goods aside", "sell more than",
+                            "sold more than", "selling more than", "more than i have",
+                            "more than is in store", "customers still waiting")):
+        return "waybill"
     if any(k in q for k in ("part delivery", "partly delivered", "partially delivered", "part delivered",
                             "not all delivered", "not all the goods", "deliver later", "deliver the rest",
                             "remaining to deliver", "yet to be delivered", "yet to deliver", "still to deliver",
@@ -774,17 +779,38 @@ FAQ_ANSWERS = {
         "*1. Record the sale* — web app → *POS*\n"
         "• Add the items and pick the customer (needed — the rest is kept for them).\n"
         "• Tick *Not all goods delivered now* and enter how many went out (e.g. 60 of 100).\n"
-        "• Only those leave stock. The rest stays in your store as *reserved* for the customer.\n\n"
-        "*2. Your stock* — *Inventory* shows *In store / Reserved / Available*.\n"
-        "Available = in store − reserved, and nobody can sell the reserved goods by mistake.\n\n"
-        "*3. Deliver the rest later* — *Deliveries* → *Goods to deliver* → *Deliver* "
+        "• Only those leave stock. The rest stays in your store, *kept aside* for the customer "
+        "(Settings → *Keep goods aside for customers who have not collected*).\n\n"
+        "*2. Your stock* — *Inventory* shows *In store / Kept aside for customers / Can sell / "
+        "Customers still waiting*.\n"
+        "Can sell = in store − kept aside, and nobody can sell kept-aside goods by mistake.\n\n"
+        "*3. Deliver the rest later* — *Deliveries* → *Goods to deliver* → *Waybill* "
         "(also on the customer's page).\n"
-        "• Enter how many went out today, and the driver/truck if you like.\n"
-        "• Stock goes down then, and the customer gets a WhatsApp delivery note: "
-        "bought · delivered so far · still to deliver.\n\n"
+        "• Tick how many go on this trip, and add the driver, vehicle and loaders.\n"
+        "• Stock goes down then, and the customer gets a WhatsApp note: "
+        "what is on its way · still to deliver.\n\n"
         "More sales to the same customer add to what they're waiting for. Their receipt and "
         "statement show it too.\n\n"
         "Customer cancels the rest? Ask me: *how do I refund undelivered goods*"
+    ),
+    "waybill": (
+        "A *waybill* (loading order) is the paper the loaders and driver take with the goods — "
+        "no prices, signed on arrival.\n\n"
+        "*Make one* — web app:\n"
+        "• From a receipt or an invoice → *Waybill*, or\n"
+        "• *Deliveries* → *Goods to deliver* → *Waybill* (everything a customer is still waiting for).\n"
+        "Tick each item and how many go on this trip, add the driver, phone, vehicle no., loaders and "
+        "address → *Make waybill*. Then *Download / Print* or *Share*.\n\n"
+        "*Stock*: goods still to deliver leave stock when the waybill is made — only what is in the "
+        "store for that customer. Printing it again never takes them twice. Goods already handed over "
+        "at the sale are just listed.\n\n"
+        "*Selling more than you have in store*: with Settings → *Allow selling more than you have in "
+        "store* = Yes, the sale goes through and the rest is kept as *still to deliver* for the customer "
+        "(pick the customer). With No, the sale is refused.\n\n"
+        "*New stock arrives*: after adding stock I show the customers still waiting — tick to *keep goods "
+        "aside* for them, or leave it free to sell. Deliveries → *Keep aside* does the same any time.\n\n"
+        "*Cancel a waybill* (owner or authorised staff): the goods go back into the store and back on "
+        "the customer's still-to-deliver list."
     ),
     "cancel_refund": (
         "When goods a customer bought were *not delivered* and are called off or refunded:\n\n"

@@ -226,6 +226,10 @@ def register_web_routes(app):
     from web_customer_routes import register_customer_routes
     register_customer_routes(app)
 
+    # ── Waybills / loading orders + keeping goods aside ──────────────────
+    from web_waybill_routes import register_waybill_routes
+    register_waybill_routes(app)
+
     # ── Inventory — split into web_inventory_routes ───────────────────────────
     from web_inventory_routes import register_inventory_routes
     register_inventory_routes(app)

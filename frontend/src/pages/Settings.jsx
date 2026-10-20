@@ -106,8 +106,14 @@ function StockSection({ business }) {
               onClick={() => save({ default_low_stock: low === "" ? null : Number(low) })}>Save</button>
           </div>
         </Row>
-        <Row title="Allow selling below zero stock" hint="When No, a sale can't take more than what's in stock.">
+        <Row title="Allow selling more than you have in store"
+          hint="Yes: the sale goes through and what isn't in store is kept as still to deliver for the customer. No: a sale can't take more than what's in store. Only changes new sales.">
           <Seg value={business.allow_negative_stock} onChange={v => save({ allow_negative_stock: v })}
+            options={[[true, "Yes"], [false, "No"]]} />
+        </Row>
+        <Row title="Keep goods aside for customers who have not collected"
+          hint="Yes: goods a customer bought but left in the store are kept aside — no one else can buy them. No: they stay free to sell until you keep them aside yourself (Deliveries or Add stock).">
+          <Seg value={business.keep_aside} onChange={v => save({ keep_aside: v })}
             options={[[true, "Yes"], [false, "No"]]} />
         </Row>
         <Row title='Show "Not all goods delivered now" at POS' hint="For goods a customer pays for but collects in parts.">

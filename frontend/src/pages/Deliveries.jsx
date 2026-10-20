@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { dateStr, nairaFull } from "../lib/format";
-import DeliverGoodsModal from "../components/DeliverGoodsModal";
+import WaybillModal from "../components/WaybillModal";
+import WaybillList from "../components/WaybillList";
+import KeepAsideModal from "../components/KeepAsideModal";
 import CancelGoodsModal from "../components/CancelGoodsModal";
 import { useAuth } from "../context/AuthContext";
 
@@ -67,6 +69,8 @@ export default function Deliveries() {
   const [goods, setGoods] = useState([]);           // bought, still in the store
   const [deliver, setDeliver] = useState(null);
   const [cancelling, setCancelling] = useState(null);
+  const [keeping, setKeeping] = useState(null);
+  const [loaded, setLoaded] = useState(0);         // reloads the waybill list
   const { user } = useAuth();
   const canRefund = !!user?.full_access;          // owner or authorised staff
   const [loading, setLoading] = useState(true);
@@ -77,7 +81,7 @@ export default function Deliveries() {
   function load() {
     setLoading(true);
     apiFetch("deliveries")
-      .then(d => { setRows(d.deliveries || []); setIncoming(d.incoming || []); setGoods(d.goods || []); })
+      .then(d => { setRows(d.deliveries || []); setIncoming(d.incoming || []); setGoods(d.goods || []); setLoaded(n => n + 1); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }
@@ -102,14 +106,15 @@ export default function Deliveries() {
       {rows.length === 0 && incoming.length === 0 && goods.length === 0 ? (
         <div className="td-muted" style={{ padding: 16 }}>
           No deliveries scheduled. Set a "Deliver / ready by" date when recording a sale,
-          tick "Not all goods delivered now" when a customer leaves goods behind,
+          tick "Not all goods delivered now" when a customer leaves goods behind (or sell
+          more than you have in store),
           or set a payment-due date when recording stock received.
         </div>
       ) : (
         <div>
           {goods.length > 0 && (
             <div className="td-muted" style={{ padding: "10px 16px 4px", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>
-              Goods to deliver · bought, still in your store
+              Goods to deliver · bought, still waiting
             </div>
           )}
           {goods.map(g => (
@@ -123,12 +128,25 @@ export default function Deliveries() {
                   {g.product} · bought {g.bought} · delivered {g.delivered}
                   {g.since ? ` · waiting since ${dateStr(g.since)}` : ""}
                 </div>
+                <div style={{ fontSize: 12, marginTop: 2 }}>
+                  {g.kept > 0
+                    ? <span style={{ color: "#166534" }}>{g.kept} kept aside for them</span>
+                    : <span className="td-muted">Not kept aside</span>}
+                  {g.can_send > 0
+                    ? <span className="td-muted"> · {g.can_send} can go out now</span>
+                    : <span style={{ color: "#b45309" }}> · none in store yet — add stock</span>}
+                </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "var(--rose)" }}>
                   {g.remaining}{g.unit ? ` ${g.unit}` : ""} to deliver
                 </span>
-                <button className="btn btn-primary btn-sm" onClick={() => setDeliver(g)}>Deliver</button>
+                <button className="btn btn-primary btn-sm" onClick={() => setDeliver(g)}>Waybill</button>
+                {canRefund && (g.kept > 0 || g.in_store_free > 0 || g.in_store_free == null) && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setKeeping(g)}>
+                    {g.kept > 0 ? "Kept aside…" : "Keep aside"}
+                  </button>
+                )}
                 {canRefund && (
                   <button className="btn btn-ghost btn-sm" onClick={() => setCancelling(g)}>Cancel / refund</button>
                 )}
@@ -194,8 +212,14 @@ export default function Deliveries() {
           })}
         </div>
       )}
+      <div style={{ padding: "0 16px 12px" }}>
+        <WaybillList query="" refresh={loaded} title="Recent waybills" />
+      </div>
       {deliver && (
-        <DeliverGoodsModal goods={deliver} onClose={() => { setDeliver(null); load(); }} />
+        <WaybillModal source={{ customer_id: deliver.customer_id }} onClose={() => { setDeliver(null); load(); }} />
+      )}
+      {keeping && (
+        <KeepAsideModal goods={keeping} onClose={() => { setKeeping(null); load(); }} />
       )}
       {cancelling && (
         <CancelGoodsModal goods={cancelling} onClose={() => { setCancelling(null); load(); }} />

@@ -31,6 +31,11 @@ def _topic(text):
     ("how do I take back returned goods", "return_goods"),
     ("a customer returned 5 bags that were damaged, what do I do?", "return_goods"),
     ("return goods", "return_goods"),
+    ("waybill", "waybill"),
+    ("how do I make a waybill for the driver", "waybill"),
+    ("print loading order", "waybill"),
+    ("can I sell more than I have in store?", "waybill"),
+    ("how do i keep goods aside for a customer", "waybill"),
 ])
 def test_tit_knows_which_answer(text, topic):
     assert _topic(text) == topic
@@ -38,7 +43,9 @@ def test_tit_knows_which_answer(text, topic):
 
 def test_the_answers_say_where_and_how():
     part = build_app_guide_message("part_delivery")
-    assert "Not all goods delivered now" in part and "Deliver" in part and "Reserved" in part
+    assert "Not all goods delivered now" in part and "Waybill" in part and "Kept aside" in part
+    wb = build_app_guide_message("waybill")
+    assert "no prices" in wb and "Make waybill" in wb and "keep goods aside" in wb
     refund = build_app_guide_message("cancel_refund")
     assert "Cancel / refund" in refund and "credit note" in refund and "available to sell again" in refund
     assert "owner or authorised staff" in refund

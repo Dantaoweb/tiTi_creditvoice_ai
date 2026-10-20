@@ -2942,6 +2942,10 @@ def _parse_message(text):
                                    "duplicate", "not sure if i added", "missing from my stock",
                                    "can't find a product", "cant find a product", "can't find my product",
                                    "cant find my product", "product is missing"],
+            "waybill":            ["waybill", "way bill", "way-bill", "loading order", "loading list", "keep aside", "kept aside",
+                                   "keep goods aside", "sell more than", "sold more than", "selling more than",
+                                   "more than i have", "more than is in store", "customers still waiting",
+                                   "need to buy"],
             "return_goods":       ["returned goods", "return goods", "goods returned", "brought back",
                                    "bring back", "customer returned", "return the goods", "take back"],
             "cancel_refund":      ["refund", "money back", "credit note", "cancel the rest", "cancel the remaining",
@@ -3014,6 +3018,8 @@ def _parse_message(text):
         return {"type": "APP_GUIDE", "topic": "cancel_refund"}
     if re.match(r"^(?:returns?|returned\s+goods|return\s+goods|goods\s+returned)$", clean_text):
         return {"type": "APP_GUIDE", "topic": "return_goods"}
+    if re.match(r"^(?:(?:make|new|print|my)\s+(?:an?\s+)?)?(?:way\s*-?\s*bills?|loading\s+orders?)$", clean_text):
+        return {"type": "APP_GUIDE", "topic": "waybill"}
     if re.match(r"^(?:part\s+delivery|partial\s+delivery|goods\s+to\s+deliver|deliver\s+later|reserved(?:\s+stock)?)$", clean_text):
         return {"type": "APP_GUIDE", "topic": "part_delivery"}
 

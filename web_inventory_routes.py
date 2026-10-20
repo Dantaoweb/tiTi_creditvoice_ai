@@ -259,10 +259,11 @@ def register_inventory_routes(app):
                 name_l = func.lower(InventoryItem.name)
                 order = [case((name_l == term, 0), (name_l.like(term + "%"), 1), else_=2), name_l.asc()]
             rows = query.order_by(*order, InventoryItem.id.desc()).offset(offset).limit(limit).all()
-            # Sold but still in the store, waiting for delivery: in store −
-            # reserved is what can be sold.
-            from deliveries import reserved_by_item
-            reserved = reserved_by_item(db, _owner_phone)
+            # Sold, still to deliver: what is kept aside in the store for the
+            # customer (in store − kept aside = what can be sold) and what is
+            # owed but not kept aside — sold short, or released by the owner.
+            from deliveries import owed_by_item
+            owed = owed_by_item(db, _owner_phone)
             # Spelling slips: "paracetemol" finds nothing by letters, but the
             # owner must not think the product is missing and add it twice.
             close_matches = []
@@ -285,7 +286,9 @@ def register_inventory_routes(app):
                         "name": item.name,
                         "unit": item.unit,
                         "quantity": item.quantity,
-                        "reserved": reserved.get(item.id) or 0,
+                        "reserved": (owed.get(item.id) or {}).get("kept") or 0,
+                        "waiting": (owed.get(item.id) or {}).get("waiting") or 0,
+                        "waiting_customers": (owed.get(item.id) or {}).get("customers") or [],
                         "cost_price": _money(item.cost_price),
                         "selling_price": _money(item.selling_price),
                         "low_stock_alert": item.low_stock_alert,

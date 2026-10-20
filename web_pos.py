@@ -212,10 +212,15 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
     db.flush()
 
     from inventory_suppliers import find_matching_inventory_item
-    from deliveries import reserved_for_item
+    from deliveries import reserved_for_item, _num
     from app_settings import business_setting
-    # Settings → "Allow selling below zero stock". Default yes, as before.
-    allow_negative = deduct_stock and business_setting(db, owner_phone, "allow_negative_stock")
+    # Settings → "Allow selling more than you have in store". Default yes, as
+    # before: what isn't in the store is owed to the customer (still to
+    # deliver) — or, if the till says it all went out, stock just stops at 0.
+    allow_more = deduct_stock and business_setting(db, owner_phone, "allow_negative_stock")
+    # Settings → "Keep goods aside for customers who have not collected"
+    keep_aside = business_setting(db, owner_phone, "keep_aside")
+    used = {}          # per stock item: taken or kept aside by earlier lines of this sale
     to_deduct = []
     for it in items:
         qty = int(it.get("qty", 1))
@@ -230,37 +235,8 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
             _inv = find_matching_inventory_item(db, owner_phone, _nm, it.get("unit")) if _nm else None
         _stocked = _inv is not None and _inv.quantity is not None and _inv.category != "service"
 
-        # Bags already sold to someone else, still in the store, can't be sold
-        # again: a sale is checked against what's available, not what's there.
-        if deduct_stock and _stocked:
-            _reserved = reserved_for_item(db, owner_phone, _inv.id)
-            if _reserved > 0:
-                _whole = not it.get("sold_unit") and float(it.get("fraction", 1.0) or 1.0) == 1.0
-                _need = qty if _whole else 0
-                _available = float(_inv.quantity or 0) - _reserved
-                if _need > _available + 1e-9:
-                    from deliveries import _num
-                    raise ValueError(
-                        f"Only {_num(max(_available, 0))} {_inv.unit or ''} of {_inv.name.title()} "
-                        f"available — {_num(_reserved)} are reserved for customers waiting "
-                        f"for delivery.".replace("  ", " "))
-            if not allow_negative:
-                # What this line takes out of the store, in the product's own unit
-                if it.get("sold_unit") and _inv.retail_unit and _inv.retail_per_base \
-                        and str(it.get("sold_unit")).lower() == _inv.retail_unit.lower():
-                    _take = qty / _inv.retail_per_base
-                else:
-                    _take = qty * float(it.get("fraction", 1.0) or 1.0)
-                _left = float(_inv.quantity or 0) - (_reserved if _reserved > 0 else 0)
-                if _take > _left + 1e-9:
-                    from deliveries import _num
-                    raise ValueError(
-                        f"Not enough {_inv.name.title()} — only {_num(max(_left, 0))} "
-                        f"{_inv.unit or ''} in stock. Selling below zero is switched off in "
-                        f"Settings.".replace("  ", " "))
-
-        # Part delivery: only what goes out now leaves stock; the rest waits in
-        # the store for this customer.
+        # Part delivery: only what goes out now leaves stock; the rest waits
+        # for the customer — kept aside in the store, or owed.
         delivered = None
         if it.get("delivered_qty") is not None and str(it.get("delivered_qty")).strip() != "":
             try:
@@ -276,6 +252,35 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
                                  "be kept against someone.")
             elif it.get("sold_unit") or float(it.get("fraction", 1.0) or 1.0) != 1.0:
                 raise ValueError("Part delivery works on whole units only.")
+
+        held = None
+        if deduct_stock and _stocked:
+            # What this sale takes out of the store now, in the product's own unit
+            if it.get("sold_unit") and _inv.retail_unit and _inv.retail_per_base                     and str(it.get("sold_unit")).lower() == _inv.retail_unit.lower():
+                _whole = qty / _inv.retail_per_base
+            else:
+                _whole = qty * float(it.get("fraction", 1.0) or 1.0)
+            _now = _whole if delivered is None else delivered
+            _kept = reserved_for_item(db, owner_phone, _inv.id)
+            _free = float(_inv.quantity or 0) - _kept - used.get(_inv.id, 0.0)
+            _unit = f" {_inv.unit}" if _inv.unit else ""
+            # Goods kept aside for customers waiting for delivery can't be
+            # sold again: a sale is checked against what's free, not what's there.
+            if _kept > 0 and _now > _free + 1e-9:
+                raise ValueError(
+                    f"Only {_num(max(_free, 0))}{_unit} of {_inv.name.title()} can be sold — "
+                    f"{_num(_kept)} are kept aside for customers waiting for delivery.")
+            if not allow_more and _whole > _free + 1e-9:
+                raise ValueError(
+                    f"Not enough {_inv.name.title()} — only {_num(max(_free, 0))}{_unit} in stock. "
+                    f"Selling more than you have is switched off in Settings.")
+            if delivered is not None:
+                # Left behind: kept aside out of what is in the store (if the
+                # owner wants that), the rest just owed.
+                _after = max(0.0, _free - delivered)
+                held = min(qty - delivered, _after) if keep_aside else 0.0
+            used[_inv.id] = used.get(_inv.id, 0.0) + _now + (held or 0.0)
+
         db.add(TransactionItem(
             transaction_id=main_tx.id,
             product=it.get("name", ""),
@@ -285,6 +290,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
             total=qty * up,
             attributes_json=(getattr(_inv, "attributes_json", None) if _inv else None),
             delivered_qty=delivered,
+            held_qty=held,
             inventory_item_id=(_inv.id if _inv else None),
         ))
         if delivered is None:

@@ -173,6 +173,10 @@ def register_pos_routes(app):
             from subscriptions import get_business_subscription, monthly_transaction_usage
             _sub = get_business_subscription(db, _session_user(db, session))
             _count, _limit, _remaining = monthly_transaction_usage(db, owner_phone, _sub)
+            # Kept aside for customers waiting for delivery — the till shows
+            # what can be sold, and what will be owed when a sale is short.
+            from deliveries import reserved_by_item
+            _kept = reserved_by_item(db, owner_phone)
             return {
                 "products": [
                     {
@@ -180,6 +184,7 @@ def register_pos_routes(app):
                         "name": item.name,
                         "unit": item.unit,
                         "quantity": item.quantity or 0,
+                        "kept_aside": _kept.get(item.id) or 0,
                         "selling_price": _money(item.selling_price),
                         "cost_price": _money(item.cost_price),
                         "is_service": item.quantity is None or item.category == "service",
@@ -356,7 +361,7 @@ def register_pos_routes(app):
         except HTTPException:
             raise
         except ValueError as e:
-            # Our own refusals ("Only 165 available — 75 reserved…") are written
+            # Our own refusals ("Only 165 can be sold — 75 are kept aside…") are written
             # for the user; say them.
             db.rollback()
             raise HTTPException(status_code=400, detail=str(e))

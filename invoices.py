@@ -363,8 +363,9 @@ def update_invoice(db, inv, items, *, due_date=None, note=None, discount=0, depo
         raise InvoiceError("This invoice was cancelled.")
     if inv.transaction_id:
         raise InvoiceError("This invoice is already paid, so it can't be changed.")
-    if inv.delivered_at:
-        raise InvoiceError("The goods on this invoice are already delivered, so it can't be changed.")
+    from waybills import invoice_delivered_any
+    if invoice_delivered_any(db, inv):
+        raise InvoiceError("Goods on this invoice have already gone out, so it can't be changed.")
     lines, lines_total = clean_invoice_items(items)
     total, discount = apply_discount(lines_total, discount)
     _set_items(db, inv, lines)
@@ -401,9 +402,14 @@ def deliver_invoice(db, inv, user_id):
         raise InvoiceError("This is still a quotation — mark it accepted first.")
     if inv.delivered_at:
         raise InvoiceError("Already marked as delivered.")
-    deduct_stock_for_items(db, inv.owner_phone, invoice_lines(db, inv), user_id,
-                           source_type="INVOICE", source_id=inv.id,
-                           note=f"Delivered on {format_invoice_number(inv.number)}")
+    from waybills import deliver_rest_of_invoice, invoice_delivered_any
+    if invoice_delivered_any(db, inv):
+        # Some already went out on waybills: take out only the rest
+        deliver_rest_of_invoice(db, inv, user_id)
+    else:
+        deduct_stock_for_items(db, inv.owner_phone, invoice_lines(db, inv), user_id,
+                               source_type="INVOICE", source_id=inv.id,
+                               note=f"Delivered on {format_invoice_number(inv.number)}")
     inv.delivered_at = _utcnow()
     inv.delivered_by_id = user_id
     db.commit()
@@ -472,9 +478,10 @@ def cancel_invoice(db, inv):
         return inv
     if inv.transaction_id:
         raise InvoiceError("This invoice is already paid, so it can't be cancelled.")
-    if inv.delivered_at:
-        raise InvoiceError("The goods are already delivered. Record the payment instead "
-                           "(enter 0 to put it all on the customer's debt).")
+    from waybills import invoice_delivered_any
+    if invoice_delivered_any(db, inv):
+        raise InvoiceError("Goods on this invoice have already gone out. Record the payment instead "
+                           "(enter 0 to put it all on the customer's debt), or cancel the waybill first.")
     inv.cancelled_at = _utcnow()
     db.commit()
     return inv
@@ -553,6 +560,9 @@ def invoice_document(db, inv):
         "items": invoice_lines(db, inv),
     })
     doc["footer"] = invoice_footer_for(doc["config"])
+    # Some of it gone out on waybills, not all yet
+    from waybills import invoice_delivered_any
+    doc["part_delivered"] = bool(not inv.delivered_at and invoice_delivered_any(db, inv))
     return doc
 
 

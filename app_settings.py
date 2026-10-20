@@ -4,7 +4,8 @@ Settings people choose for themselves.
 - Display (each person's own, staff too): text size, theme, list style.
 - Business (owner and authorised staff, for everyone in the business): how
   stock is grouped, where categories come from, defaults for new products,
-  selling below zero, part delivery at the till, the daily summary.
+  selling more than is in store, keeping goods aside for customers, part
+  delivery at the till, the daily summary.
 
 Every default is how the app behaved before settings existed, so nothing
 changes for anyone until they choose. Stored as JSON on the user row
@@ -34,7 +35,8 @@ BUSINESS_DEFAULTS = {
     "group_on_pos": True,                 # when grouping: Inventory and POS (False = Inventory only)
     "category_source": "suggest",         # suggest | manual
     "default_low_stock": None,            # number for new products, or None
-    "allow_negative_stock": True,
+    "allow_negative_stock": True,         # sell more than is in store; the rest is owed (with a customer)
+    "keep_aside": True,                   # goods left behind at a sale stay kept for that customer
     "show_part_delivery": True,
     "daily_summary": False,
     "daily_summary_time": "20:00",        # Lagos time, HH:MM
@@ -103,7 +105,7 @@ def business_setting(db, owner_phone, key):
 
 
 def _clean_business(k, v):
-    if k in ("group_by_category", "group_on_pos", "allow_negative_stock",
+    if k in ("group_by_category", "group_on_pos", "allow_negative_stock", "keep_aside",
              "show_part_delivery", "daily_summary"):
         return bool(v)
     if k == "category_source":
