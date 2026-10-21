@@ -329,3 +329,10 @@ def test_invoice_waybill_finishing_marks_it_delivered(db):
     create_waybill(db, OWNER, "owner-1", inv=inv, lines=[{"line_id": r.id, "quantity": 5}])
     db.commit()
     assert inv.delivered_at is not None and _cement(db).quantity == 35
+
+
+def test_walk_in_selling_more_than_in_store_sells_as_before(db):
+    """No customer, nobody to owe goods to: the sale goes through and stock
+    stops at 0, the way it always worked."""
+    _sell(db, 100, who=None)
+    assert _cement(db).quantity == 0 and goods_to_deliver(db, OWNER) == []

@@ -609,13 +609,12 @@ export default function POS() {
     const d = parseInt(it.delivered, 10);
     return Number.isNaN(d) ? it.qty : Math.max(0, Math.min(d, it.qty));
   };
-  // Selling more than is in store (Settings allows it): what isn't there is
-  // kept as still to deliver for the customer — unless the till says they
-  // took it all now (the stock count was wrong), as it used to work.
-  const [tookAll, setTookAll] = useState(false);
-  const shortLines = (businessSettings.allow_negative_stock && !partDelivery)
+  // Selling more than is in store (Settings allows it) to a named customer:
+  // what isn't there is kept as still to deliver for them. A walk-in sale
+  // sells as before (stock stops at 0) — nobody to owe goods to.
+  const shortLines = (businessSettings.allow_negative_stock && !partDelivery && customer)
     ? partLines.filter(({ it }) => it.free != null && it.qty > it.free) : [];
-  const owedShort = tookAll ? 0 : shortLines.reduce((s, { it }) => s + (it.qty - it.free), 0);
+  const owedShort = shortLines.reduce((s, { it }) => s + (it.qty - Math.floor(it.free)), 0);
   const leftToDeliver = (partDelivery
     ? partLines.reduce((s, { it }) => s + (it.qty - deliveredOf(it)), 0) : 0) + owedShort;
 
@@ -742,7 +741,7 @@ export default function POS() {
         sold_unit:  it.sold_unit || null,
         fraction:   it.fraction || 1.0,
         delivered_qty: (partDelivery && canPartDeliver(it)) ? deliveredOf(it)
-          : (!tookAll && shortLines.some(l => l.it === it)) ? Math.floor(it.free) : null,
+          : shortLines.some(l => l.it === it) ? Math.floor(it.free) : null,
       })),
       payment_amount: paid,
       debt_payment: debtPaid,
@@ -760,7 +759,6 @@ export default function POS() {
         enqueue("pos/save", payload, label);
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
         setPartDelivery(false);
-        setTookAll(false);
         setDiscountValue(NO_DISCOUNT);
         setSaving(false);
         navigate("/capture", {
@@ -1038,22 +1036,14 @@ export default function POS() {
             <div className="pos-summary-section">
               {shortLines.map(({ it, idx }) => (
                 <div key={idx} style={{ fontSize: 13, marginBottom: 4 }}>
-                  ⚠ Only <strong>{Math.floor(it.free)}{it.unit ? ` ${it.unit}` : ""}</strong> of {it.name} in store
-                  {tookAll ? "." : <> — the other <strong>{it.qty - Math.floor(it.free)}</strong> will be kept as still to deliver
-                  {customer ? ` for ${customer.name}` : ""}.</>}
+                  ⚠ Only <strong>{Math.floor(it.free)}{it.unit ? ` ${it.unit}` : ""}</strong> of {it.name} in store —
+                  the other <strong>{it.qty - Math.floor(it.free)}</strong> will be kept as still to deliver for {customer.name}.
                 </div>
               ))}
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", marginTop: 4 }}>
-                <input type="checkbox" checked={tookAll} style={{ width: "auto" }}
-                  onChange={e => setTookAll(e.target.checked)} />
-                They took all of it now (my stock count is wrong)
-              </label>
-              {!tookAll && (
-                <span className="form-hint">Make a waybill from Deliveries when the new stock arrives.</span>
-              )}
-              {!tookAll && !customer && (
-                <div className="pos-credit-warn">⚠ Pick the customer above — goods still owed must be kept against someone.</div>
-              )}
+              <span className="form-hint">
+                Make a waybill from Deliveries when the new stock arrives. If they took it all now,
+                add the missing stock in Inventory first.
+              </span>
             </div>
           )}
 
