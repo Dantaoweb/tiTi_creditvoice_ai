@@ -881,7 +881,7 @@ def build_what_can_do_message(user=None):
         "• _stock rice 10 bags cost 30000_\n"
         "• _summary today_\n"
         "• _who owes me the most_\n\n"
-        "Type *menu* anytime to see the main menu, or ask me anything!"
+        "Type *menu* anytime to see the main menu, or ask me anything about your business!"
     )
 
 

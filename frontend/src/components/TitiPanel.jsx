@@ -286,7 +286,7 @@ export default function TitiPanel() {
         <div className="titi-panel-thread">
           {messages.length === 0 && (
             <div className="titi-bubble titi-bubble-titi">
-              Hi {firstName}! Ask me anything or record a transaction.
+              Hi {firstName}! Ask me anything about your business, or record a transaction.
             </div>
           )}
           {messages.map((msg, i) =>
