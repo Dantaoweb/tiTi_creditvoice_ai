@@ -244,3 +244,39 @@ def confirm_prefix(customer_name: str, user=None) -> str:
     if cfg["confirm_style"] == "label":
         return f"Confirm:\n{customer_name} {word}:"
     return f"Confirm:\n{customer_name} {word}"
+
+
+# The web menu's names for the till and for Quick Record, per wording group —
+# the same as frontend/src/lib/bizLabels.js NAV_LABELS. tiTi's answers name
+# what the menu actually shows ("Select product"), never "POS".
+NAV_NAMES = {
+    "school":       {"till": "Sell textbooks", "record": "Record fee payment"},
+    "thrift":       {"till": "Select product", "record": "Record contribution"},
+    "service":      {"till": "Select service", "record": "Record job"},
+    "clinic":       {"till": "Select service", "record": "Record payment"},
+    "food":         {"till": "Select product", "record": "Record sale"},
+    "fee":          {"till": "Select product", "record": "Record payment"},
+    "professional": {"till": "Select service", "record": "Record fee"},
+    "tenancy":      {"till": "Select service", "record": "Record rent"},
+    "rental":       {"till": "Select item",    "record": "Record hire"},
+    "transport":    {"till": "Select service", "record": "Record trip"},
+}
+DEFAULT_NAV_NAMES = {"till": "Select product", "record": "Record sale"}
+
+
+def nav_names(user=None) -> dict:
+    if not user:
+        return DEFAULT_NAV_NAMES
+    try:
+        from business_templates import label_group_for_user
+        return NAV_NAMES.get(label_group_for_user(user), DEFAULT_NAV_NAMES)
+    except Exception:
+        return DEFAULT_NAV_NAMES
+
+
+def in_menu_words(text, user=None):
+    """Fill {till} / {record} in a help answer with this business's menu names."""
+    if not text or "{" not in text:
+        return text
+    names = nav_names(user)
+    return text.replace("{till}", names["till"]).replace("{record}", names["record"])

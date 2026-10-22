@@ -757,7 +757,7 @@ def handle_parsed_command(
     # ── App navigation guide ─────────────────────────────────────────────────
     if parsed["type"] == "APP_GUIDE":
         topic = parsed.get("topic", "")
-        send_whatsapp_message(phone, build_app_guide_message(topic))
+        send_whatsapp_message(phone, build_app_guide_message(topic, user))
         return {"status": "app_guide"}
 
     # ── Bulk product name add ────────────────────────────────────────────────

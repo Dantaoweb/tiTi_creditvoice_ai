@@ -82,7 +82,7 @@ def handle_fallback_parse(db, phone, text, parsed, user):
 
     faq_key = detect_faq(text)
     if faq_key:
-        send_whatsapp_message(phone, get_faq_answer(faq_key))
+        send_whatsapp_message(phone, get_faq_answer(faq_key, user))
         return FallbackParseResult(response={"status": f"faq_{faq_key}"})
 
     # Reads like a sale or payment, but who / how much isn't clear ("the man

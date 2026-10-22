@@ -116,7 +116,7 @@ function StockSection({ business }) {
           <Seg value={business.keep_aside} onChange={v => save({ keep_aside: v })}
             options={[[true, "Yes"], [false, "No"]]} />
         </Row>
-        <Row title='Show "Not all goods delivered now" at POS' hint="For goods a customer pays for but collects in parts.">
+        <Row title='Show "Not all goods delivered now" when selling' hint="For goods a customer pays for but collects in parts.">
           <Seg value={business.show_part_delivery} onChange={v => save({ show_part_delivery: v })}
             options={[[true, "Yes"], [false, "No"]]} />
         </Row>

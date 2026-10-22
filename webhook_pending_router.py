@@ -1722,7 +1722,7 @@ def _handle_inactivity_checkin(db, phone, text, pending, user, send_message):
         send_message(
             phone,
             f"No problem, {first_name}! Let me show you how.\n\n"
-            + build_app_guide_message("record_sale")
+            + build_app_guide_message("record_sale", user)
         )
     elif choice in ("3", "slow", "business slow", "no sales", "slow business"):
         send_message(

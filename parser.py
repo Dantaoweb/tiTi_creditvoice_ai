@@ -2855,10 +2855,10 @@ def _parse_message(text):
             "transaction_id": int(note_match.group("transaction_id"))
         }
 
+    # "how do I record part payment" — a how-to, answered step by step (it
+    # used to fall through to the plain list of message formats)
     if "partial payment" in clean_text or "part payment" in clean_text:
-        return {
-            "type": "FORMATS"
-        }
+        return {"type": "APP_GUIDE", "topic": "record_payment"}
 
     if clean_text.startswith("add staff"):
         # Matches with or without brackets: "add staff [080...] [Name]" or "add staff 080... Name"
@@ -2962,7 +2962,9 @@ def _parse_message(text):
             "expenses":           ["expense", "rent and salar", "salary", "salaries", "money i spent", "spent on", "running cost"],
             "delivery_date":      ["order is ready", "order ready", "ready by", "delivery date", "deliver by", "deliveries"],
             "record_payment":     ["part of his debt", "part of her debt", "part of their debt", "paid part",
-                                   "record a payment", "record payment", "part payment", "customer paid", "paid me"],
+                                   "record a payment", "record payment", "part payment", "partial payment",
+                                   "customer paid", "paid me", "paid some", "part of the money", "balance later",
+                                   "pay small small", "pay the rest later", "pays the rest later"],
             "site_review":        ["review", "testimonial", "homepage", "home page", "free advert"],
             "supplier_directory": ["verified supplier", "supplier directory", "become a supplier", "be a supplier", "find a supplier"],
             "supplier_owed":      ["pay my supplier", "pay supplier", "pay a supplier", "owe my supplier", "owe supplier"],
@@ -2972,7 +2974,9 @@ def _parse_message(text):
             # price_list before record_sale: "how to record price list" must map
             # to price_list, not be caught by record_sale's "how to record".
             "price_list":   ["price list", "record price list", "set up price list", "add price list", "create price list", "my price list", "service prices", "record my prices", "set up my prices"],
-            "record_sale":  ["record a sale", "record sale", "add a sale", "add sale", "how to sell", "how to record", "enter a sale", "input sale"],
+            "record_sale":  ["record a sale", "record sale", "add a sale", "add sale", "how to sell", "how do i sell",
+                             "how can i sell", "how do we sell", "sell a service", "sell my service", "sell a product",
+                             "how to record", "enter a sale", "input sale"],
             "void":         ["void transaction", "void a transaction", "void the transaction", "void last", "void sale", "void a sale",
                              "remove transaction", "remove a transaction", "delete transaction", "delete a transaction",
                              "cancel transaction", "cancel a transaction", "cancel sale", "cancel a sale",

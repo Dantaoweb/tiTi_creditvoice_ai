@@ -885,7 +885,7 @@ def build_what_can_do_message(user=None):
     )
 
 
-def build_app_guide_message(topic):
+def build_app_guide_message(topic, user=None):
     """
     Returns step-by-step navigation instructions for a given app feature.
     Works on both WhatsApp (plain text) and web app (same text shown in tiTi panel).
@@ -927,11 +927,12 @@ def build_app_guide_message(topic):
             "• _cash sale tissue paper 500_\n\n"
             "💡 *Amounts:* _3 bags rice 9000_ means ₦9,000 for all 3. For the price of one, "
             "say _at 3000_ or _3000 each_.\n\n"
-            "*On the web app:*\n"
-            "1. Click *Quick Record* in the sidebar (or bottom bar on mobile)\n"
-            "2. Type the sale details in the box\n"
-            "3. Tap *Send* — tiTi will process it the same way\n\n"
-            "💡 For shop checkout with receipt, use *POS* instead."
+            "*On the web app* — *{till}* in the menu is where you sell:\n"
+            "1. Tap what the customer is buying (search or scan), set how many\n"
+            "2. Pick the customer, or leave it empty for a walk-in\n"
+            "3. In *Payment Received*, enter what they paid — less than the total becomes their debt\n"
+            "4. Tap *Save Sale* — the receipt opens to print or share\n\n"
+            "Or use *{record}* in the menu to fill a short form instead."
         ),
         "price_list": (
             "🧾 *How to set up your price list*\n\n"
@@ -1043,15 +1044,15 @@ def build_app_guide_message(topic):
             "Notes with amounts appear in your expense/income summary."
         ),
         "pos": (
-            "🛒 *How to use POS (Point of Sale)*\n\n"
-            "*On the web app:*\n"
-            "1. Click *POS* in the sidebar (or bottom bar on mobile)\n"
-            "2. Search for a product or tap it from the catalog\n"
-            "3. Set quantity — tap *Add to Cart*\n"
-            "4. When done, tap *Checkout*\n"
-            "5. Choose payment type and enter customer name (optional)\n"
-            "6. A receipt is generated — you can print or download as PDF\n\n"
-            "💡 POS works great for shops with a tablet or phone on the counter."
+            "🛒 *Selling from {till}*\n\n"
+            "*{till}* in the menu (bottom bar on a phone) is your till — where you sell "
+            "what's on your price list or in your stock:\n"
+            "1. Search or scan, and tap each item the customer is buying\n"
+            "2. Set how many of each\n"
+            "3. Pick the customer (or leave it for a walk-in)\n"
+            "4. Enter what they paid in *Payment Received* — less than the total becomes their debt\n"
+            "5. Tap *Save Sale* — the receipt opens to print, download or share\n\n"
+            "💡 Works well on a phone or tablet on the counter."
         ),
         "bulk_add": (
             "📦 *How to add many products at once*\n\n"
@@ -1168,13 +1169,16 @@ def build_app_guide_message(topic):
         ),
     }
 
+    # Answers name the menu items as this business's menu shows them
+    # ("Select product", "Select service"…), never "POS".
+    from biz_language import in_menu_words
     text = guides.get(topic)
     if text:
-        return text
+        return in_menu_words(text, user)
     # Newer features are written once, as FAQ answers.
     from faq import FAQ_ANSWERS
     if topic in FAQ_ANSWERS:
-        return FAQ_ANSWERS[topic]
+        return in_menu_words(FAQ_ANSWERS[topic], user)
     return (
         "I'm not sure which feature you're asking about.\n\n"
         "Try asking more specifically, like:\n"

@@ -622,6 +622,8 @@ def detect_faq(text):
         "record payment", "record a payment", "customer paid",
         "paid me", "mark as paid", "payment received", "collect payment",
         "record that he paid", "record that she paid",
+        "part payment", "partial payment", "paid part", "paid some", "part of the money",
+        "balance later", "pay small small", "pay the rest later", "pays the rest later",
     ]):
         return "record_payment"
     if "payment" in q and any(k in q for k in ["how", "record", "save", "enter"]):
@@ -750,11 +752,11 @@ FAQ_ANSWERS = {
         "phones that switch off when scanning)\n\n"
         "*Stock* (owner and authorised staff, for the whole business):\n"
         "• *Group stock by category* — products shown in groups (Drinks, Provisions…) on "
-        "Inventory, and at the POS if you choose\n"
+        "Inventory, and on *{till}* if you choose\n"
         "• *New categories come from* — you type them, or tiTi suggests from the product name\n"
         "• *Low-stock alert for new products*\n"
         "• *Allow selling below zero stock* — Yes or No\n"
-        "• *Show \"Not all goods delivered now\" at POS*\n\n"
+        "• *Show \"Not all goods delivered now\" when selling*\n\n"
         "*Manage categories* — rename, reorder, put many products into a category at once, or "
         "let tiTi suggest categories for products that have none.\n\n"
         "*WhatsApp* — a *daily summary* of the day's sales at the time you pick."
@@ -776,7 +778,7 @@ FAQ_ANSWERS = {
     ),
     "part_delivery": (
         "When a customer buys goods but takes only part now (e.g. 100 bags sold, 60 delivered):\n\n"
-        "*1. Record the sale* — web app → *POS*\n"
+        "*1. Record the sale* — web app → *{till}*\n"
         "• Add the items and pick the customer (needed — the rest is kept for them).\n"
         "• Tick *Not all goods delivered now* and enter how many went out (e.g. 60 of 100).\n"
         "• Only those leave stock. The rest stays in your store, *kept aside* for the customer "
@@ -847,7 +849,7 @@ FAQ_ANSWERS = {
     ),
     "delivery_date": (
         "To set when a job/order will be ready and be reminded:\n\n"
-        "1. Record the sale on the web app POS (*Select product*).\n"
+        "1. Record the sale on the web app → *{till}*.\n"
         "2. Set the *Deliver / ready by* date before saving.\n\n"
         "tiTi reminds you *2 days before, 1 day before, and on the day*.\n\n"
         "Open *Deliveries* in the app to change the date, or to send the customer a "
@@ -871,12 +873,18 @@ FAQ_ANSWERS = {
     ),
     # add_stock, record_sale → merged into build_app_guide_message (single source).
     "record_payment": (
-        "How to record a payment:\n\n"
-        "Ade paid 3000\n"
-        "Ade paid 5000 balance 2000\n\n"
-        "To clear the full debt:\n"
-        "Ade paid 10000\n\n"
-        "tiTi will update the balance automatically."
+        "💵 *Recording a payment or part payment*\n\n"
+        "*1. Customer pays part now, the rest later* — web app → *{till}*\n"
+        "• Tap what they're buying, then pick or add the customer.\n"
+        "• In *Payment Received*, type what they paid now (e.g. 5,000 of 20,000).\n"
+        "• Tap *Save Sale*. The rest becomes their debt; you can set a due date.\n\n"
+        "*2. Customer pays some of what they already owe*\n"
+        "• *Customers* → tap *Pay* beside their name, enter the amount, or\n"
+        "• *{record}* → *Payment* tab, pick the customer, enter the amount.\n\n"
+        "*3. On WhatsApp* — just type it:\n"
+        "• _Ade paid 5000_ — part of his debt\n"
+        "• _Ade bought rice 20000 paid 5000_ — a sale with part payment\n\n"
+        "tiTi updates the balance automatically and sends the customer a receipt."
     ),
     "check_balance": (
         "To see what a customer owes:\n\n"
@@ -1406,11 +1414,13 @@ def _where_answer(route):
             "rise to the top; the rest are under *More* at the bottom.")
 
 
-def get_faq_answer(key):
+def get_faq_answer(key, user=None):
+    """The answer, in this business's menu words ({till} → "Select product")."""
+    from biz_language import in_menu_words
     if key and key.startswith("where:"):
-        return _where_answer(key[len("where:"):])
+        return in_menu_words(_where_answer(key[len("where:"):]), user)
     topic = _FAQ_KEY_TO_GUIDE_TOPIC.get(key)
     if topic:
         from messages import build_app_guide_message
-        return build_app_guide_message(topic)
-    return FAQ_ANSWERS.get(key, FAQ_ANSWERS["formats"])
+        return build_app_guide_message(topic, user)
+    return in_menu_words(FAQ_ANSWERS.get(key, FAQ_ANSWERS["formats"]), user)
