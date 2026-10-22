@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Truck, Receipt as ReceiptIcon } from "lucide-react";
+import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Truck, Link2, Receipt as ReceiptIcon } from "lucide-react";
 import WaybillModal from "../components/WaybillModal";
 import WaybillList from "../components/WaybillList";
 import PrintHeader, { PrintBank } from "../components/PrintHeader";
@@ -174,6 +174,16 @@ export default function InvoiceView() {
         )}
         {!cancelled && (
           <button className="btn btn-ghost" onClick={share}><Share2 size={15} /> Share</button>
+        )}
+        {doc.pay_link && (
+          <button className="btn btn-ghost" title="The customer's page to pay and say 'I've paid'"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(doc.pay_link); setShareMsg("Pay link copied — paste it to the customer."); }
+              catch { setShareMsg(doc.pay_link); }
+              setTimeout(() => setShareMsg(""), 4000);
+            }}>
+            <Link2 size={15} /> Copy pay link
+          </button>
         )}
         <button className="btn btn-ghost" onClick={() => window.print()}>
           <Printer size={15} /> Download / Print

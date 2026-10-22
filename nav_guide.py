@@ -77,7 +77,13 @@ NAV_GUIDE = {
     "/deliveries": {
         "name": "Deliveries",
         "what": "Jobs with a deliver/ready-by date, and goods customers bought that are still in your store "
-                "(Goods to deliver) — tap Deliver for each trip, or Cancel / refund for goods called off.",
+                "(Goods to deliver) — tap Waybill for each trip, Keep aside, or Cancel / refund for goods called off.",
+    },
+    "/payment-claims": {
+        "name": "Payments to confirm",
+        "what": "Customers who say they've paid by transfer (from the pay link or by replying PAID on "
+                "WhatsApp). Check your bank, then tap Confirm (recorded, receipt sent) or Not received. "
+                "Owner and authorised staff only.",
     },
     "/wallet": {
         "name": "Wallet",

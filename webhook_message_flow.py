@@ -134,6 +134,33 @@ def handle_webhook_body(body):
                 )
                 return {"status": "link_pending_reminder"}
 
+            # A customer replying "PAID" to an invoice / balance message: the
+            # owner is asked to confirm (payment_links.py). Nothing is recorded yet.
+            from payment_links import PayLinkError, whatsapp_paid_reply
+            try:
+                _paid = whatsapp_paid_reply(db, phone, text)
+            except PayLinkError as _e:
+                send_whatsapp_message(phone, str(_e))
+                return {"status": "paid_reply_refused"}
+            if _paid:
+                _c = _paid["claim"]
+                if _c is not None:
+                    from web_common import _add_notification
+                    _add_notification(db, _c.owner_phone, "payment_claim",
+                                      f"{_c.payer_name or 'A customer'} says they paid ₦{_c.amount:,}",
+                                      f"For {_c.label}, by WhatsApp. Check your bank, then confirm it in "
+                                      "Payments to confirm.", link="/payment-claims")
+                    db.commit()
+                    try:
+                        send_whatsapp_message(_c.owner_phone,
+                                              f"*PAYMENT TO CONFIRM*\n\n{_c.payer_name or 'A customer'} says they "
+                                              f"paid ₦{_c.amount:,} for {_c.label}.\n\nCheck your bank, then confirm "
+                                              "it on the app: Payments to confirm.")
+                    except Exception:
+                        pass
+                send_whatsapp_message(phone, _paid["reply"])
+                return {"status": "paid_reply"}
+
             customer_bot_result = handle_customer_automation_message(
                 db,
                 phone,

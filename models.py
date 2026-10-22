@@ -365,6 +365,33 @@ class WaybillLine(Base):
     moved           = Column(Boolean, default=False)   # counted as delivered by this waybill
 
 
+class PaymentClaim(Base):
+    """A customer says they've paid — from the pay link page (or by replying
+    PAID on WhatsApp). Nothing is recorded until the owner checks their bank
+    and confirms; then it becomes an ordinary payment with a receipt
+    (payment_links.py). The money never passes through the app."""
+
+    __tablename__ = "payment_claims"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone     = Column(String, index=True)
+    customer_id     = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    invoice_id      = Column(Integer, ForeignKey("invoices.id"), nullable=True, index=True)
+    kind            = Column(String)                    # invoice | debt
+    label           = Column(String, nullable=True)     # "Invoice INV-0012", "Balance"
+    amount          = Column(Integer)                   # what they say they paid
+    payer_name      = Column(String, nullable=True)
+    note            = Column(String, nullable=True)
+    proof_data      = Column(Text, nullable=True)       # photo of the transfer (data URL)
+    source          = Column(String, default="link")    # link | whatsapp
+    status          = Column(String, default="pending") # pending | confirmed | rejected
+    created_at      = Column(DateTime, default=utcnow)
+    decided_at      = Column(DateTime, nullable=True)
+    decided_by_id   = Column(String, ForeignKey("users.id"), nullable=True)
+    reject_reason   = Column(String, nullable=True)
+    pay_tx_id       = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+
+
 class StockCount(Base):
     """A stock count (SC-0001): someone walks the shelves and writes down what
     is really there. Staff count; the owner or authorised staff approves, and

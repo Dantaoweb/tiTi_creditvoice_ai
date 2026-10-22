@@ -486,6 +486,8 @@ def get_pos_receipt(db, tx_id, user=None):
         "biz_phone": biz_phone,
         "biz_address": biz_address,
         **(print_profile(db, owner_user, "receipt") if owner_user else {}),
+        # Still owes: where to pay and say "I've paid" (needs a bank account on the Profile)
+        "pay_link": _debt_link(db, customer),
         "branch_name": branch_name,
         "branch_address": branch_address,
         "receipt_number": tx.receipt_number,
@@ -522,6 +524,13 @@ def get_pos_receipt(db, tx_id, user=None):
         # This receipt IS a credit note (a negative amount)
         "credit_note": _credit_note_of(db, tx.id) if (tx.amount or 0) < 0 else None,
     }
+
+
+def _debt_link(db, customer):
+    if not customer:
+        return None
+    from payment_links import debt_pay_link
+    return debt_pay_link(db, customer)
 
 
 def _credit_notes_for(db, tx_id):
@@ -643,6 +652,8 @@ def format_receipt_text(receipt):
     if receipt.get("bank_accounts"):           # Settings: bank details on receipts
         from printables import bank_lines_text
         lines.extend(bank_lines_text(receipt["bank_accounts"]))
+    if receipt.get("pay_link"):
+        lines.append(f"Pay the balance or tell us you've paid: {receipt['pay_link']}")
     if cfg.get("footer"):
         lines.append(cfg["footer"])
     return "\n".join(lines)

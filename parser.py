@@ -2942,6 +2942,7 @@ def _parse_message(text):
                                    "duplicate", "not sure if i added", "missing from my stock",
                                    "can't find a product", "cant find a product", "can't find my product",
                                    "cant find my product", "product is missing"],
+            "pay_link":           ["pay link", "payment link", "link to pay", "pay online", "pay by transfer", "paid by transfer", "confirm payment", "confirm a payment", "payments to confirm", "says he paid", "says she paid", "said he paid", "said she paid", "says they paid", "i've paid button", "i have paid button"],
             "stock_count":        ["stock count", "stocktake", "stock take", "stock-take", "count my stock", "count stock",
                                    "count my shelves", "count my goods", "stock is wrong", "stock not correct",
                                    "stock is not correct", "stock loss", "stock lost", "missing goods",

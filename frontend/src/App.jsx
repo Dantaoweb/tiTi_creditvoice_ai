@@ -35,6 +35,8 @@ import InvoiceView  from "./pages/InvoiceView";
 import Deliveries   from "./pages/Deliveries";
 import WaybillView  from "./pages/WaybillView";
 import StockCounts  from "./pages/StockCounts";
+import PayPage      from "./pages/PayPage";
+import PaymentClaims from "./pages/PaymentClaims";
 import StockCount   from "./pages/StockCount";
 import Wallet       from "./pages/Wallet";
 import Thrift        from "./pages/Thrift";
@@ -66,6 +68,8 @@ export default function App() {
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />
         <Route path="data-deletion" element={<DataDeletion />} />
+        {/* A customer's pay page — opened from WhatsApp, no login */}
+        <Route path="pay/:token" element={<PayPage />} />
 
         {/* Authenticated — all inside sidebar Layout */}
         <Route
@@ -94,6 +98,7 @@ export default function App() {
           <Route path="deliveries"   element={<Deliveries />}   />
           <Route path="waybills/:id" element={<WaybillView />}  />
           <Route path="stock-counts"     element={<StockCounts />} />
+          <Route path="payment-claims"   element={<PaymentClaims />} />
           <Route path="stock-counts/:id" element={<StockCount />}  />
           <Route path="customers"    element={<Customers />}    />
           <Route path="transactions" element={<Transactions />} />

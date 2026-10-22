@@ -566,6 +566,9 @@ def invoice_document(db, inv):
         "items": invoice_lines(db, inv),
     })
     doc["footer"] = invoice_footer_for(doc["config"])
+    # Where the customer pays (needs a bank account on the Profile)
+    from payment_links import invoice_pay_link
+    doc["pay_link"] = invoice_pay_link(db, inv)
     # Some of it gone out on waybills, not all yet
     from waybills import invoice_delivered_any
     doc["part_delivered"] = bool(not inv.delivered_at and invoice_delivered_any(db, inv))
@@ -620,6 +623,8 @@ def format_invoice_doc_text(doc):
         from printables import bank_lines_text
         lines.append("--------------------")
         lines.extend(bank_lines_text(doc["bank_accounts"]))
+    if doc.get("pay_link") and not doc.get("is_quote"):
+        lines.append(f"Paid? Tell us here: {doc['pay_link']}")
     lines.append("--------------------")
     lines.append(doc["footer"])
     return "\n".join(lines)

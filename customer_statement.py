@@ -87,6 +87,13 @@ def build_balance_message(db, owner_user, customer, include_items=True):
     else:
         lines.append(f"Hello {name}, your account is fully settled. Thank you!")
 
+    # Where to pay, and "I've paid" — when the business has a bank account
+    if balance > 0:
+        from payment_links import debt_pay_link
+        _link = debt_pay_link(db, customer)
+        if _link:
+            lines.append(f"Pay or tell us you've paid: {_link}")
+
     # Goods they bought that are still in our store — as much a part of the
     # account as the money ("I paid for 135 bags, how many have I collected?").
     from deliveries import goods_lines_text, goods_to_deliver

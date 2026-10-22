@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
-  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap,
+  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap, CheckCircle2,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
   MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, Settings as SettingsIcon,
 } from "lucide-react";
@@ -62,6 +62,8 @@ function buildNav(L, group) {
     { to: "/receipts",     label: "Receipts",         icon: Receipt },
     { to: "/invoices",     label: "Invoices",         icon: ScrollText },
     { to: "/deliveries",   label: "Deliveries",       icon: PackageCheck },
+    // Customers who say they've paid by transfer — owner / authorised staff confirm
+    { to: "/payment-claims", label: "Payments to confirm", icon: CheckCircle2, fullAccessOnly: true },
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
@@ -95,6 +97,8 @@ export default function Layout() {
   // Customers waiting for goods they bought (still to deliver) — like debtors,
   // for goods. Clears when the goods go out, not when a page is opened.
   const [toDeliver, setToDeliver] = useState(0);
+  // "I've paid" waiting for the owner to check the bank and confirm
+  const [claimsWaiting, setClaimsWaiting] = useState(0);
   // Remember whether "More" was expanded, per device.
   const [moreOpen, setMoreOpen] = useState(() => localStorage.getItem("cv_more_open") === "1");
   const [navUsage, setNavUsage] = useState(readNavUsage);
@@ -164,6 +168,10 @@ export default function Layout() {
   useEffect(() => {
     if (!user?.id) return;
     apiFetch("deliveries/count").then(d => setToDeliver(d.customers || 0)).catch(() => {});
+    const loadClaims = () => apiFetch("payment-claims/count").then(d => setClaimsWaiting(d.pending || 0)).catch(() => {});
+    loadClaims();
+    window.addEventListener("cv-payment-claims", loadClaims);
+    return () => window.removeEventListener("cv-payment-claims", loadClaims);
   }, [location.pathname, user?.id]);
 
   const FUEL_TYPES = ["filling_station", "fuel_marketer", "kerosene_diesel", "lpg_gas", "lubricants", "other_energy"];
@@ -276,6 +284,9 @@ export default function Layout() {
         {item.badge && <span className="nav-badge">{item.badge}</span>}
         {item.to === "/opportunities" && oppsUnread > 0 && (
           <span className="nav-badge nav-badge-alert">{oppsUnread}</span>
+        )}
+        {item.to === "/payment-claims" && claimsWaiting > 0 && (
+          <span className="nav-badge nav-badge-alert" title={`${claimsWaiting} payment(s) to confirm`}>{claimsWaiting}</span>
         )}
         {(item.to === "/customers" || item.to === "/deliveries") && toDeliver > 0 && (
           <span className="nav-badge nav-badge-alert" title={`${toDeliver} customer${toDeliver === 1 ? "" : "s"} waiting for goods`}>

@@ -198,6 +198,8 @@ def detect_faq(text):
         return "return_goods"
     if any(k in q for k in refund_words):
         return "cancel_refund"
+    if any(k in q for k in ("pay link", "payment link", "link to pay", "pay online", "pay by transfer", "paid by transfer", "confirm payment", "confirm a payment", "payments to confirm", "says he paid", "says she paid", "said he paid", "said she paid", "says they paid", "i've paid button", "i have paid button")):
+        return "pay_link"
     if any(k in q for k in ("stock count", "stocktake", "stock take", "stock-take", "count my stock",
                             "count stock", "count my shelves", "count my goods", "stock is wrong",
                             "stock not correct", "stock is not correct", "stock loss", "stock lost",
@@ -799,6 +801,21 @@ FAQ_ANSWERS = {
         "More sales to the same customer add to what they're waiting for. Their receipt and "
         "statement show it too.\n\n"
         "Customer cancels the rest? Ask me: *how do I refund undelivered goods*"
+    ),
+    "pay_link": (
+        "💳 *Pay links — customers pay by transfer and tell you*\n\n"
+        "*1. Add your bank account* — web app → *My Profile* → Bank account for payments.\n"
+        "*2. The link goes out by itself* in invoices, receipts with a balance, and balance messages: "
+        "_Paid? Tell us here: creditvoiceai.com/app/pay/…_\n"
+        "*3. The customer taps it* — no app or account needed. They see your business, the amount and "
+        "your bank account (with a Copy button), transfer, then tap *I've paid* (a photo of the transfer "
+        "is optional). They can also just reply *PAID* to your message on WhatsApp.\n"
+        "*4. You're alerted* — check your bank, then open *Payments to confirm* and tap *Confirm — money "
+        "is in* (change the amount if less arrived). It's recorded and the customer gets a receipt. If it "
+        "didn't arrive, tap *Not received* and say why — they're told.\n\n"
+        "Nothing is recorded until you confirm, and the money goes straight to your bank — the app never "
+        "holds it. Only the owner or authorised staff can confirm.\n"
+        "On an invoice, *Copy pay link* gives you the link to send yourself."
     ),
     "stock_count": (
         "📋 *Stock count — when your stock in the app doesn't match the shelf*\n\n"
