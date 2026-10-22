@@ -177,6 +177,9 @@ def register_pos_routes(app):
             # what can be sold, and what will be owed when a sale is short.
             from deliveries import reserved_by_item
             _kept = reserved_by_item(db, owner_phone)
+            # Expired goods still in stock — the till warns, never blocks
+            from expiry import expiry_by_item, item_expiry_summary
+            _exp = {k: item_expiry_summary(v, 1)["expired_qty"] for k, v in expiry_by_item(db, rows).items()}
             return {
                 "products": [
                     {
@@ -185,6 +188,7 @@ def register_pos_routes(app):
                         "unit": item.unit,
                         "quantity": item.quantity or 0,
                         "kept_aside": _kept.get(item.id) or 0,
+                        "expired_qty": _exp.get(item.id) or 0,
                         "selling_price": _money(item.selling_price),
                         "cost_price": _money(item.cost_price),
                         "is_service": item.quantity is None or item.category == "service",

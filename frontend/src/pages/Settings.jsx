@@ -76,6 +76,7 @@ function DisplaySection({ display }) {
 
 function StockSection({ business }) {
   const { save, msg, err } = useSaver(saveBusiness);
+  const [warnDays, setWarnDays] = useState(business.expiry_warn_days ?? 30);
   const [low, setLow] = useState(business.default_low_stock ?? "");
   useEffect(() => { setLow(business.default_low_stock ?? ""); }, [business.default_low_stock]);
   return (
@@ -117,6 +118,14 @@ function StockSection({ business }) {
           hint="Yes: goods a customer bought but left in the store are kept aside — no one else can buy them. No: they stay free to sell until you keep them aside yourself (Deliveries or Add stock).">
           <Seg value={business.keep_aside} onChange={v => save({ keep_aside: v })}
             options={[[true, "Yes"], [false, "No"]]} />
+        </Row>
+        <Row title="Warn me before goods expire"
+          hint={`tiTi tells you about goods that expire within ${business.expiry_warn_days} days, and marks them in Inventory. Food sellers often use 7.`}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input type="number" min={1} max={365} value={warnDays} onChange={e => setWarnDays(e.target.value)} style={{ width: 80 }} />
+            <span style={{ alignSelf: "center", fontSize: 13 }}>days</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => save({ expiry_warn_days: Number(warnDays) })}>Save</button>
+          </div>
         </Row>
         <Row title="Stock count: hide the app's numbers while counting"
           hint={business.count_blind ? "Counters see only empty boxes, so they count what's really there instead of copying." : "Counters see what the app says next to each box."}>

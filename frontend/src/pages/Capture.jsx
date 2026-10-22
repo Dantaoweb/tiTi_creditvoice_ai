@@ -474,6 +474,9 @@ function StockForm({ ownerPhone, onSuccess }) {
   const [supplier, setSupplier] = useState("");
   const [supplierNames, setSupplierNames] = useState([]);   // existing suppliers, for autocomplete
   const [dueDate, setDueDate]   = useState("");
+  // This delivery's expiry (medicines, food…) — tiTi warns before it expires
+  const [expiry, setExpiry]     = useState("");
+  const [batchNo, setBatchNo]   = useState("");
   const [note, setNote]         = useState("");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
@@ -502,6 +505,8 @@ function StockForm({ ownerPhone, onSuccess }) {
       paid_now:      paidAmount(paidNow),   // empty = 0 = owed to the supplier
       supplier:      supplier.trim() || null,   // blank → "Others" server-side
       due_date:      dueDate || null,           // when the balance owed is due
+      expiry_date:   expiry || null,
+      batch_no:      batchNo.trim() || null,
       note:          note.trim() || null,
     };
   }
@@ -515,7 +520,7 @@ function StockForm({ ownerPhone, onSuccess }) {
       const r = await apiPost("inventory/stock-received", _body());
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
       const name = item.name;
-      setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote("");
+      setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote(""); setExpiry(""); setBatchNo("");
       if (r?.item_id) { setWaiting({ itemId: r.item_id, name, purchaseId: r.purchase_id }); return; }
       if (r?.purchase_id) { navigate(`/suppliers/receipt/purchase/${r.purchase_id}`); return; }
     } catch (e) {
@@ -523,7 +528,7 @@ function StockForm({ ownerPhone, onSuccess }) {
         enqueue("inventory/stock-received", _body(),
           `Stock +${qty} ${item.unit || "units"} of ${item.name}${who}`);
         onSuccess("No internet — stock entry saved offline. Will sync automatically when you reconnect.");
-        setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote("");
+        setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote(""); setExpiry(""); setBatchNo("");
       } else {
         setError(e.message);
       }
@@ -579,6 +584,16 @@ function StockForm({ ownerPhone, onSuccess }) {
         <div className="form-group">
           <label className="form-label">Note <span className="text-subtle">(optional)</span></label>
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="Delivery ref, batch…" />
+        </div>
+      </div>
+      <div className="qf-row qf-row--sm-lg">
+        <div className="form-group">
+          <label className="form-label">Expiry date <span className="text-subtle">(optional)</span></label>
+          <input type="date" value={expiry} onChange={e => setExpiry(e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Batch / NAFDAC no. <span className="text-subtle">(optional)</span></label>
+          <input value={batchNo} maxLength={60} onChange={e => setBatchNo(e.target.value)} placeholder="e.g. BN-1234" />
         </div>
       </div>
       {error && <div className="modal-error">{error}</div>}

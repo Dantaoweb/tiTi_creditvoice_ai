@@ -200,6 +200,9 @@ def detect_faq(text):
         return "cancel_refund"
     if any(k in q for k in ("pay link", "payment link", "link to pay", "pay online", "pay by transfer", "paid by transfer", "confirm payment", "confirm a payment", "payments to confirm", "says he paid", "says she paid", "said he paid", "said she paid", "says they paid", "i've paid button", "i have paid button")):
         return "pay_link"
+    if any(k in q for k in ("expiry", "expiries", "expire", "expired", "expiring", "expiration", "batch number", "batch no", "nafdac number", "write off", "write-off", "sell first")) and "subscription" not in q and "plan" not in q \
+            and "code" not in q:
+        return "expiry"
     if any(k in q for k in ("stock count", "stocktake", "stock take", "stock-take", "count my stock",
                             "count stock", "count my shelves", "count my goods", "stock is wrong",
                             "stock not correct", "stock is not correct", "stock loss", "stock lost",
@@ -816,6 +819,21 @@ FAQ_ANSWERS = {
         "Nothing is recorded until you confirm, and the money goes straight to your bank — the app never "
         "holds it. Only the owner or authorised staff can confirm.\n"
         "On an invoice, *Copy pay link* gives you the link to send yourself."
+    ),
+    "expiry": (
+        "⏳ *Expiry dates — sell first, don't sell expired*\n\n"
+        "*1. Add the date when stock arrives* — *{record}* → Stock tab, or Inventory → a product → "
+        "Adjust → add: fill *Expiry date* (and batch / NAFDAC no. if you like). Each delivery keeps its "
+        "own date.\n"
+        "*2. tiTi works out what's still on the shelf* — the oldest goods are taken as sold first, so "
+        "it knows e.g. 12 of your 40 packs expire in March.\n"
+        "*3. You're warned* — once a day I tell you what has expired or expires soon (30 days, or what "
+        "you set in Settings → Stock → *Warn me before goods expire*). Inventory marks them too: "
+        "☠ expired, ⏳ expiring.\n"
+        "*4. At the till* — selling a product with expired stock shows a warning (it never blocks you).\n"
+        "*5. Throw away expired goods* — Inventory → *Expiry* → *Write off expired*. They leave stock "
+        "and show as a loss in Stock count → Last 30 days.\n\n"
+        "On WhatsApp you can still set one date for a product from its stock menu (MM/YYYY)."
     ),
     "stock_count": (
         "📋 *Stock count — when your stock in the app doesn't match the shelf*\n\n"

@@ -669,6 +669,7 @@ export default function POS() {
         stock: p.quantity,
         // Not kept aside for customers waiting: what this sale can take now
         free: Math.max(0, (p.quantity || 0) - (p.kept_aside || 0)),
+        expired_qty: p.expired_qty || 0,             // some of it in stock has expired
         is_service: p.is_service,
         retail_unit: p.retail_unit || null,
         retail_per_base: p.retail_per_base || null,
@@ -1029,6 +1030,17 @@ export default function POS() {
             >
               + Add delivery / ready date
             </button>
+          )}
+
+          {/* Expired goods in stock: warn, never block — the seller checks the date */}
+          {cart.some(it => it.expired_qty > 0) && (
+            <div className="pos-summary-section">
+              {cart.filter(it => it.expired_qty > 0).map((it, i) => (
+                <div key={i} className="pos-credit-warn" style={{ marginBottom: 4 }}>
+                  ⚠ {it.expired_qty}{it.unit ? ` ${it.unit}` : ""} of {it.name} in stock have expired — check the date before selling.
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Sold more than is in store: the rest is owed as still to deliver */}

@@ -392,6 +392,24 @@ class PaymentClaim(Base):
     pay_tx_id       = Column(Integer, ForeignKey("transactions.id"), nullable=True)
 
 
+class StockBatch(Base):
+    """One delivery of a product: how many came in, and when they expire
+    (if anyone said). What is still in the store is worked out oldest-sold-
+    first from the product's stock, so selling never has to pick a batch
+    (expiry.py)."""
+
+    __tablename__ = "stock_batches"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone  = Column(String, index=True)
+    item_id      = Column(Integer, ForeignKey("inventory_items.id"), index=True)
+    quantity     = Column(Float)
+    expiry_date  = Column(DateTime, nullable=True)
+    batch_no     = Column(String, nullable=True)
+    received_at  = Column(DateTime, default=utcnow)
+    source_type  = Column(String, nullable=True)
+
+
 class StockCount(Base):
     """A stock count (SC-0001): someone walks the shelves and writes down what
     is really there. Staff count; the owner or authorised staff approves, and

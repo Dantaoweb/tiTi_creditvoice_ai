@@ -118,6 +118,45 @@ def _check_low_stock(db):
             print(f"[proactive] low_stock error for {owner.phone}: {e}", flush=True)
 
 
+# ── Expiry check ────────────────────────────────────────────────────────────────
+
+def _check_expiry(db):
+    """Once a day: goods expired or expiring within the owner's chosen days
+    (Settings → Stock), so they're sold first or written off (expiry.py)."""
+    from app_settings import business_setting
+    from business_templates import business_display_name
+    from expiry import expiring, expiry_alert_text
+    from models import ProactiveLog, StockBatch, User
+
+    owner_phones = {p for p, in db.query(StockBatch.owner_phone).filter(StockBatch.expiry_date.isnot(None)).distinct()}
+    from models import InventoryItem
+    owner_phones |= {p for p, in db.query(InventoryItem.owner_phone).filter(InventoryItem.expiry_date.isnot(None)).distinct()}
+    for phone in owner_phones:
+        try:
+            owner = db.query(User).filter(User.phone == phone, User.parent_id == None).first()
+            if not owner:
+                continue
+            last = db.query(ProactiveLog).filter(
+                ProactiveLog.owner_phone == phone, ProactiveLog.event_type == "expiry",
+            ).order_by(ProactiveLog.sent_at.desc()).first()
+            if last and (_utcnow() - last.sent_at).total_seconds() < 86400:
+                continue
+            days = business_setting(db, phone, "expiry_warn_days")
+            rows = expiring(db, phone, days)
+            if not rows:
+                continue
+            n_exp = sum(1 for r in rows if r["expired_qty"])
+            title = (f"⏳ {n_exp} product(s) expired" if n_exp else f"⏳ {len(rows)} product(s) expire within {days} days")
+            text = expiry_alert_text(rows, days)
+            body = text.split("\n", 2)[2] if text.count("\n") >= 2 else text   # drop the heading line
+            _notify(db, phone, "expiry", title, body, link="/inventory?expiry=1")
+            db.add(ProactiveLog(owner_phone=phone, event_type="expiry", sent_at=_utcnow()))
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"[proactive] expiry error for {phone}: {e}", flush=True)
+
+
 # ── Overdue debt check ──────────────────────────────────────────────────────────
 
 def _check_overdue_debt(db):
@@ -815,6 +854,7 @@ def _check_unanswered_supplier_requests(db):
 
 _CHECKS = (
     _check_low_stock,
+    _check_expiry,
     _check_overdue_debt,
     _check_inactivity,
     _check_business_insights,

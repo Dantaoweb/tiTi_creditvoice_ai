@@ -129,6 +129,8 @@ class StockReceivedRequest(BaseModel):
     supplier: Optional[str] = Field(default=None, max_length=120)   # blank → "Others"
     note: Optional[str] = Field(default=None, max_length=500)
     due_date: Optional[str] = None   # "YYYY-MM-DD" — when the supplier balance is due
+    expiry_date: Optional[str] = Field(default=None, max_length=20)   # this delivery's expiry
+    batch_no: Optional[str] = Field(default=None, max_length=60)
 
 
 class BulkCatalogItem(BaseModel):
@@ -264,6 +266,11 @@ def register_inventory_routes(app):
             # owed but not kept aside — sold short, or released by the owner.
             from deliveries import owed_by_item
             owed = owed_by_item(db, _owner_phone)
+            # Goods in store with an expiry date: expired / expiring soon
+            from app_settings import business_setting
+            from expiry import expiry_by_item, item_expiry_summary
+            _warn = business_setting(db, _owner_phone, "expiry_warn_days")
+            _exp = {k: item_expiry_summary(v, _warn) for k, v in expiry_by_item(db, rows).items()}
             # Spelling slips: "paracetemol" finds nothing by letters, but the
             # owner must not think the product is missing and add it twice.
             close_matches = []
@@ -289,6 +296,7 @@ def register_inventory_routes(app):
                         "reserved": (owed.get(item.id) or {}).get("kept") or 0,
                         "waiting": (owed.get(item.id) or {}).get("waiting") or 0,
                         "waiting_customers": (owed.get(item.id) or {}).get("customers") or [],
+                        "expiry": _exp.get(item.id),
                         "cost_price": _money(item.cost_price),
                         "selling_price": _money(item.selling_price),
                         "low_stock_alert": item.low_stock_alert,
@@ -838,10 +846,16 @@ def register_inventory_routes(app):
 
             # Adds quantity to physical stock (creating the item if it doesn't
             # exist yet) and logs the IN movement linked to this purchase.
+            from expiry import ExpiryError, parse_expiry
+            try:
+                _exp = parse_expiry(payload.expiry_date)
+            except ExpiryError as e:
+                raise HTTPException(status_code=400, detail=str(e))
             item = add_inventory_movement(
                 db, owner_phone, product, qty, unit, cost,
                 "IN", "SUPPLIER_PURCHASE", purchase.id, session["user_id"],
                 (payload.note or "").strip() or f"Received from {supplier.name.title()}",
+                expiry_date=_exp, batch_no=(payload.batch_no or "").strip() or None,
             )
             # The first real supplier a product is received from becomes its usual one.
             if item is not None and not item.usual_supplier and supplier_name.lower() != "others":

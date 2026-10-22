@@ -43,7 +43,8 @@ BUSINESS_DEFAULTS = {
     "category_order": [],
     # Receipts & printables (printables.py). Paper: the small thermal printer
     # most shops use; everything else is how printables looked before.
-    "count_blind": True,                  # stock count: counters don't see the app's numbers
+    "count_blind": True,
+    "expiry_warn_days": 30,               # warn this many days before goods expire                  # stock count: counters don't see the app's numbers
     "print_paper": "80mm",                # 80mm | 58mm | a4
     "print_logo": "top",                  # top | left | right | none
     "print_align": "center",              # center | left
@@ -143,6 +144,14 @@ def _clean_business(k, v):
             raise ValueError("The low-stock alert must be a number.")
         if n < 0:
             raise ValueError("The low-stock alert can't be negative.")
+        return n
+    if k == "expiry_warn_days":
+        try:
+            n = int(float(v))
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("Enter a number of days.")
+        if not 1 <= n <= 365:
+            raise ValueError("Pick between 1 and 365 days.")
         return n
     if k == "daily_summary_time":
         if not isinstance(v, str) or not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):

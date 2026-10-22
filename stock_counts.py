@@ -256,6 +256,19 @@ def losses(db, owner_phone, since, branch_id=None):
     if branch_id is not None:
         q = q.filter(StockCount.branch_id == branch_id)
     by_reason, lost, found = {}, 0, 0
+    # Expired goods written off (Inventory → Expiry) are losses too
+    from models import InventoryMovement
+    wq = db.query(InventoryMovement).filter(InventoryMovement.owner_phone == owner_phone,
+                                            InventoryMovement.source_type == "EXPIRED_WRITE_OFF",
+                                            InventoryMovement.created_at >= since)
+    if branch_id is not None:
+        wq = wq.join(InventoryItem, InventoryItem.id == InventoryMovement.item_id).filter(
+            InventoryItem.branch_id == branch_id)
+    for mv in wq.all():
+        v = -int(round(float(mv.quantity or 0) * (mv.unit_price or 0)))
+        r = by_reason.setdefault("expired", {"reason": REASONS["expired"], "value": 0})
+        r["value"] += v
+        lost += -v
     for l, _sc in q.all():
         v = int(round(float(l.applied_qty) * (l.cost_price or 0)))
         r = by_reason.setdefault(l.reason or "other", {"reason": REASONS.get(l.reason or "other"), "value": 0})

@@ -238,6 +238,10 @@ def register_web_routes(app):
     from web_pay_link_routes import register_pay_link_routes
     register_pay_link_routes(app)
 
+    # ── Expiry: expiring / expired goods, write-offs ─────────────────────
+    from web_expiry_routes import register_expiry_routes
+    register_expiry_routes(app)
+
     # ── Inventory — split into web_inventory_routes ───────────────────────────
     from web_inventory_routes import register_inventory_routes
     register_inventory_routes(app)

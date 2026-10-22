@@ -378,7 +378,7 @@ def _new_item_defaults(db, owner_phone, item):
     apply_new_item_defaults(db, owner_phone, item)
 
 
-def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None, created_at=None):
+def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price, movement_type, source_type, source_id, recorded_by_id=None, note=None, created_at=None, expiry_date=None, batch_no=None):
     if not product or not quantity:
         return None
     # Match on the RAW name so find_matching's whole-name check can catch items
@@ -403,6 +403,12 @@ def add_inventory_movement(db, owner_phone, product, quantity, unit, unit_price,
         item.quantity = (item.quantity or 0) + quantity
         if unit_price:
             item.cost_price = unit_price
+        # Every delivery is a batch, so what's left of each (oldest sold
+        # first) and its expiry can be worked out later (expiry.py)
+        from models import StockBatch
+        db.add(StockBatch(owner_phone=owner_phone, item_id=item.id, quantity=float(quantity),
+                          expiry_date=expiry_date, batch_no=(batch_no or None), source_type=source_type,
+                          **({"received_at": created_at} if created_at is not None else {})))
     elif movement_type == "OUT":
         item.quantity = max(0.0, (item.quantity or 0.0) - quantity)
     else:

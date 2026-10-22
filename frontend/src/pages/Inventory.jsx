@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import WaitingCustomersModal from "../components/WaitingCustomersModal";
+import ExpiryModal from "../components/ExpiryModal";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import CameraScanner from "../components/CameraScanner";
@@ -810,6 +811,19 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [] })
   );
 }
 
+// Expired / expiring-soon goods of a product (Settings → Stock: how soon)
+function ExpiryBadge({ e }) {
+  if (!e || (!e.expired_qty && !e.soon_qty)) return null;
+  const when = e.next_expiry ? new Date(e.next_expiry).toLocaleDateString("en-NG", { day: "numeric", month: "short" }) : "";
+  return (
+    <div style={{ fontSize: 11, fontWeight: 600, color: e.expired_qty ? "#b91c1c" : "#b45309" }}>
+      {e.expired_qty ? `☠ ${e.expired_qty} expired` : ""}
+      {e.expired_qty && e.soon_qty ? " · " : ""}
+      {e.soon_qty ? `⏳ ${e.soon_qty} expire ${when}` : ""}
+    </div>
+  );
+}
+
 // ── Adjust stock modal (only for physical stock items) ───────────────────────
 function AdjustModal({ item, onClose, onSaved }) {
   const [delta, setDelta] = useState("");
@@ -817,6 +831,8 @@ function AdjustModal({ item, onClose, onSaved }) {
   const [cost, setCost] = useState("");
   const [paidNow, setPaidNow] = useState("");     // empty = nothing paid: all owed
   const [dueDate, setDueDate] = useState("");
+  const [expiry, setExpiry] = useState("");       // this delivery's expiry
+  const [batchNo, setBatchNo] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -845,6 +861,8 @@ function AdjustModal({ item, onClose, onSaved }) {
           supplier: supplier.trim() || null,
           paid_now: paidAmount(paidNow),   // empty = 0 = owed to the supplier
           due_date: dueDate || null,
+          expiry_date: expiry || null,
+          batch_no: batchNo.trim() || null,
           note: note.trim() || null,
         });
         setWaitingFor(item.id);
@@ -897,6 +915,16 @@ function AdjustModal({ item, onClose, onSaved }) {
             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
           </div>
         )}
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Expiry date <span className="text-subtle">(when adding)</span></label>
+            <input type="date" value={expiry} onChange={e => setExpiry(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Batch no. <span className="text-subtle">(optional)</span></label>
+            <input value={batchNo} maxLength={60} onChange={e => setBatchNo(e.target.value)} />
+          </div>
+        </div>
         <div className="form-group">
           <label className="form-label">Note (optional)</label>
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. New delivery, damage, etc." />
@@ -1227,6 +1255,8 @@ export default function Inventory() {
   const [detailItem, setDetailItem] = useState(null);
   const [closeMatches, setCloseMatches] = useState([]);   // spelling-forgiving matches for the search
   const [showDupes, setShowDupes] = useState(false);
+  // Expired / expiring goods — also opened from the daily expiry alert (?expiry=1)
+  const [showExpiry, setShowExpiry] = useState(() => new URLSearchParams(window.location.search).has("expiry"));
   const [fields, setFields] = useState([]);   // per-business custom stock fields
 
   // Stock is paged and searched on the server so large catalogues (200+ items)
@@ -1328,6 +1358,9 @@ export default function Inventory() {
             <button className="btn btn-ghost btn-sm" onClick={() => setShowDupes(true)}
               title="Find products that look like the same thing entered twice">
               Check duplicates
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowExpiry(true)} title="Expired and expiring goods">
+              Expiry
             </button>
             <Link to="/stock-counts" className="btn btn-ghost btn-sm" title="Count your shelves and fix stock">
               Count stock
@@ -1462,7 +1495,7 @@ export default function Inventory() {
             },
             {
               key: "qty_or_avail", label: "Stock / Status",
-              render: r => r.is_service
+              render: r => <>{r.is_service
                 ? <span className="text-subtle">—</span>
                 : r.waiting > 0
                   ? (
@@ -1481,7 +1514,8 @@ export default function Inventory() {
                       )}
                     </span>
                   )
-                  : <span>{(r.quantity ?? 0).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</span>,
+                  : <span>{(r.quantity ?? 0).toLocaleString()}{r.unit ? ` ${r.unit}` : ""}</span>}
+                <ExpiryBadge e={r.expiry} /></>,
             },
             { key: "selling_price", label: "Price", sortKey: "selling_price", render: r => nairaFull(r.selling_price) },
             {
@@ -1572,6 +1606,7 @@ export default function Inventory() {
         />
       )}
 
+      {showExpiry && <ExpiryModal canManage={canManageStock} onClose={() => { setShowExpiry(false); load(); }} />}
       {showDupes && (
         <DuplicatesModal onClose={() => setShowDupes(false)}
           onPick={name => { setShowDupes(false); setSearch(name); }} />
