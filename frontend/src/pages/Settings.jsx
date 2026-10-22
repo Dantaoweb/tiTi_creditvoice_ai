@@ -118,6 +118,11 @@ function StockSection({ business }) {
           <Seg value={business.keep_aside} onChange={v => save({ keep_aside: v })}
             options={[[true, "Yes"], [false, "No"]]} />
         </Row>
+        <Row title="Stock count: hide the app's numbers while counting"
+          hint={business.count_blind ? "Counters see only empty boxes, so they count what's really there instead of copying." : "Counters see what the app says next to each box."}>
+          <Seg value={business.count_blind} onChange={v => save({ count_blind: v })}
+            options={[[true, "Hide (blind)"], [false, "Show"]]} />
+        </Row>
         <Row title='Show "Not all goods delivered now" when selling' hint="For goods a customer pays for but collects in parts.">
           <Seg value={business.show_part_delivery} onChange={v => save({ show_part_delivery: v })}
             options={[[true, "Yes"], [false, "No"]]} />

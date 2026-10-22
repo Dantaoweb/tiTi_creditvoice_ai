@@ -230,6 +230,10 @@ def register_web_routes(app):
     from web_waybill_routes import register_waybill_routes
     register_waybill_routes(app)
 
+    # ── Stock count (SC-0001) ─────────────────────────────────────────────
+    from web_stock_count_routes import register_stock_count_routes
+    register_stock_count_routes(app)
+
     # ── Inventory — split into web_inventory_routes ───────────────────────────
     from web_inventory_routes import register_inventory_routes
     register_inventory_routes(app)

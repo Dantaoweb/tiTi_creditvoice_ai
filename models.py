@@ -365,6 +365,47 @@ class WaybillLine(Base):
     moved           = Column(Boolean, default=False)   # counted as delivered by this waybill
 
 
+class StockCount(Base):
+    """A stock count (SC-0001): someone walks the shelves and writes down what
+    is really there. Staff count; the owner or authorised staff approves, and
+    only then does stock change — by each product's difference, so sales made
+    while it waited aren't wiped out (stock_counts.py)."""
+
+    __tablename__ = "stock_counts"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone     = Column(String, index=True)
+    branch_id       = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    number          = Column(Integer)
+    scope_label     = Column(String, nullable=True)     # "All products", "Drinks"…
+    status          = Column(String, default="counting")  # counting | submitted | approved | cancelled
+    blind           = Column(Boolean, default=True)     # counter didn't see the app's numbers
+    note            = Column(String, nullable=True)
+    created_by_id   = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=utcnow)
+    submitted_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    submitted_at    = Column(DateTime, nullable=True)
+    approved_by_id  = Column(String, ForeignKey("users.id"), nullable=True)
+    approved_at     = Column(DateTime, nullable=True)
+    cancelled_at    = Column(DateTime, nullable=True)
+
+
+class StockCountLine(Base):
+    __tablename__ = "stock_count_lines"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    count_id     = Column(Integer, ForeignKey("stock_counts.id"), index=True)
+    item_id      = Column(Integer, ForeignKey("inventory_items.id"), index=True)
+    product      = Column(String)
+    unit         = Column(String, nullable=True)
+    category     = Column(String, nullable=True)
+    counted_qty  = Column(Float, nullable=True)         # NULL = not counted (left as it is)
+    expected_qty = Column(Float, nullable=True)         # what the app said when it was submitted
+    cost_price   = Column(Integer, nullable=True)       # at submission, to value the difference
+    reason       = Column(String, nullable=True)        # see stock_counts.REASONS
+    applied_qty  = Column(Float, nullable=True)         # the change made on approval
+
+
 class CameraCrashReport(Base):
     """A phone that went off (or the browser died) while the scanner was
     opening the camera — noticed the next time the app opened on that phone.

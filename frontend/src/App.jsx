@@ -34,6 +34,8 @@ import InvoiceEditor from "./pages/InvoiceEditor";
 import InvoiceView  from "./pages/InvoiceView";
 import Deliveries   from "./pages/Deliveries";
 import WaybillView  from "./pages/WaybillView";
+import StockCounts  from "./pages/StockCounts";
+import StockCount   from "./pages/StockCount";
 import Wallet       from "./pages/Wallet";
 import Thrift        from "./pages/Thrift";
 import FuelStation   from "./pages/FuelStation";
@@ -91,6 +93,8 @@ export default function App() {
           <Route path="invoices/:id/edit" element={<InvoiceEditor />} />
           <Route path="deliveries"   element={<Deliveries />}   />
           <Route path="waybills/:id" element={<WaybillView />}  />
+          <Route path="stock-counts"     element={<StockCounts />} />
+          <Route path="stock-counts/:id" element={<StockCount />}  />
           <Route path="customers"    element={<Customers />}    />
           <Route path="transactions" element={<Transactions />} />
           <Route path="inventory"    element={<Inventory />}    />

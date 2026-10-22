@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, PlusCircle, MinusCircle, ChevronRight, Camera } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -1328,6 +1329,9 @@ export default function Inventory() {
               title="Find products that look like the same thing entered twice">
               Check duplicates
             </button>
+            <Link to="/stock-counts" className="btn btn-ghost btn-sm" title="Count your shelves and fix stock">
+              Count stock
+            </Link>
             {canManageStock && (
               <button className="btn btn-secondary btn-sm" onClick={() => setShowCatalog(true)} title="Pick from suggested product list">
                 <Plus size={14} /> Catalog

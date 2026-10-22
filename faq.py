@@ -198,6 +198,11 @@ def detect_faq(text):
         return "return_goods"
     if any(k in q for k in refund_words):
         return "cancel_refund"
+    if any(k in q for k in ("stock count", "stocktake", "stock take", "stock-take", "count my stock",
+                            "count stock", "count my shelves", "count my goods", "stock is wrong",
+                            "stock not correct", "stock is not correct", "stock loss", "stock lost",
+                            "missing goods", "blind count", "approve count", "approve the count")):
+        return "stock_count"
     if any(k in q for k in ("waybill", "way bill", "way-bill", "loading order", "loading list",
                             "keep aside", "kept aside", "keep goods aside", "sell more than",
                             "sold more than", "selling more than", "more than i have",
@@ -794,6 +799,24 @@ FAQ_ANSWERS = {
         "More sales to the same customer add to what they're waiting for. Their receipt and "
         "statement show it too.\n\n"
         "Customer cancels the rest? Ask me: *how do I refund undelivered goods*"
+    ),
+    "stock_count": (
+        "📋 *Stock count — when your stock in the app doesn't match the shelf*\n\n"
+        "*1. Start* — web app → *Inventory* → *Count stock* → *Start a count* "
+        "(all products, or one category).\n"
+        "*2. Count* — walk the shelves and type what is really there. The app's numbers are hidden "
+        "(a *blind count*), so you count instead of copying. Leave a box empty to skip a product. "
+        "It saves as you go.\n"
+        "*3. Send for approval* — staff counts go to the owner. Nothing in stock changes yet.\n"
+        "*4. Approve* (owner or authorised staff) — you see app vs counted, the difference and what "
+        "it's worth at cost. Pick why for each one: *counted wrong before · damaged · expired · "
+        "stolen/missing · found extra*. Tap *Approve* and stock is fixed.\n\n"
+        "Sales made while the count waited are kept — stock moves by the difference only.\n"
+        "Each count gets a number (SC-0001) you can print and sign. *Stock count* shows what you lost "
+        "in the last 30 days, by reason.\n\n"
+        "Want counters to see the app's numbers? Settings → Stock → *hide the app's numbers while "
+        "counting* → Show.\n\n"
+        "On WhatsApp, to fix one product: _set stock rice 50 bags_"
     ),
     "waybill": (
         "A *waybill* (loading order) is the paper the loaders and driver take with the goods — "
