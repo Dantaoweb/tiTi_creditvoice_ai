@@ -107,6 +107,7 @@ BUSINESS_CATEGORIES = [
             ("agrochemical_seller", "Agrochemical Seller"),
             ("livestock_seller", "Livestock Seller"),
             ("cooperative", "Farmers Cooperative"),
+            ("vet_service", "Veterinary Service"),
             ("other_agriculture", "Other Agriculture Business"),
         ],
     },
@@ -256,6 +257,11 @@ PARTIAL_SUPPORT_TYPES = {
 }
 
 INDUSTRY_EXAMPLES = {
+    "vet_service": [
+        "Musa vaccination of 200 birds 30000 paid 20000",
+        "Ada treatment of 2 goats 15000",
+        "I sold 5 sachets of dewormer at 1500 each",
+    ],
     "poultry_farm": [
         "Ada bought 5 crates of eggs at 4500 each",
         "I sold 20 broilers at 6500 each",
@@ -721,6 +727,7 @@ BUSINESS_TEMPLATE_ALIASES = {
     "agrochemical_seller": "agriculture",
     "livestock_seller": "agriculture",
     "cooperative": "agriculture",
+    "vet_service": "agriculture",
     "other_agriculture": "agriculture",
     "dispatch_delivery": "transport_logistics",
     "logistics_company": "transport_logistics",
@@ -1587,6 +1594,12 @@ INDUSTRY_TEMPLATES = {
 
 
 RECEIPT_CONFIG = {
+    "vet_service": {
+        "title": "Veterinary Receipt",
+        "customer_label": "Client",
+        "amount_label": "Total",
+        "footer": "Thank you. Keep your animals healthy!",
+    },
     "retail_trading": {
         "title": "Receipt",
         "customer_label": "Customer",
@@ -2322,6 +2335,24 @@ def industry_plan_matrix():
 # ─────────────────────────────────────────────────────────────────────────────
 
 INDUSTRY_PRODUCT_CATALOG = {
+    "vet_service": [
+        ("newcastle vaccine", "vaccine"),
+        ("gumboro vaccine", "vaccine"),
+        ("anti-rabies vaccine", "vaccine"),
+        ("dewormer", "dewormer"),
+        ("ivermectin", "dewormer"),
+        ("antibiotic powder", "antibiotic"),
+        ("oxytetracycline", "antibiotic"),
+        ("multivitamin", "vitamin"),
+        ("anti-stress", "vitamin"),
+        ("coccidiostat", "poultry medicine"),
+        ("disinfectant", "farm hygiene"),
+        ("tick spray", "parasite control"),
+        ("syringe", "consumable"),
+        ("needle", "consumable"),
+        ("glove", "consumable"),
+        ("dog food", "pet supplies"),
+    ],
     "phone_accessories": [
         ("phone case", "case & protection"),
         ("tempered glass", "case & protection"),
@@ -2971,6 +3002,7 @@ INDUSTRY_PRODUCT_CATALOG = {
 
 # Preferred units per industry — shown in stock-add guides and as hints
 INDUSTRY_DEFAULT_UNITS = {
+    "vet_service": ["vial", "sachet", "bottle", "dose", "pack"],
     "pharmacy": ["pack", "strip", "tablet", "sachet", "bottle", "vial"],
     "clinic":   ["piece", "pack", "vial", "bottle", "sachet", "roll"],
     "agriculture": ["bag", "mudu", "congo", "crate", "tray", "kg"],
@@ -3003,6 +3035,21 @@ INDUSTRY_DEFAULT_UNITS = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 SERVICE_PRICE_CATALOG = {
+    "vet_service": [
+        ("consultation",             None,          3000),
+        ("farm visit",               "per visit",   10000),
+        ("vaccination (poultry)",    "per 100 birds", 5000),
+        ("vaccination (dog)",        "per dog",     8000),
+        ("deworming",                "per animal",  1500),
+        ("treatment",                "per animal",  5000),
+        ("injection",                "per animal",  1500),
+        ("wound dressing",           "per animal",  3000),
+        ("castration",               "per animal",  5000),
+        ("pregnancy check",          "per animal",  4000),
+        ("debeaking",                "per 100 birds", 3000),
+        ("post-mortem",              None,          5000),
+        ("grooming",                 None,          5000),
+    ],
     "transport_logistics": [
         ("intra-city delivery", "per drop", 1500),
         ("inter-city delivery", "per trip", 5000),
@@ -3799,6 +3846,13 @@ CUSTOMER_PROFILE_FIELDS = {
         {"key": "color",         "label": "Colour",             "type": "text"},
         {"key": "engine_no",     "label": "Engine / Chassis no", "type": "text"},
         {"key": "notes",         "label": "Notes",              "type": "text"},
+    ],
+    "vet_service": [
+        {"key": "animal",   "label": "Animal (e.g. goat, dog, layers)", "type": "text"},
+        {"key": "count",    "label": "How many",              "type": "text"},
+        {"key": "name_tag", "label": "Animal name / tag",     "type": "text"},
+        {"key": "farm",     "label": "Farm / location",       "type": "text"},
+        {"key": "notes",    "label": "Notes (treatment, vaccines due)", "type": "text"},
     ],
     "computer_repair": [
         {"key": "device",   "label": "Device / Brand",        "type": "text"},
