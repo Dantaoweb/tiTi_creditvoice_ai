@@ -487,8 +487,10 @@ def cancel_invoice(db, inv):
     return inv
 
 
-def _business_header(db, owner_phone, branch_id):
-    """Who the invoice is from: the same name, phone and address a receipt shows."""
+def _business_header(db, owner_phone, branch_id, kind="invoice"):
+    """Who the invoice is from: the same name, phone and address a receipt
+    shows, laid out as the owner chose (printables.py). `kind` decides whether
+    bank details print: invoices yes, waybills never."""
     from business_templates import (
         DEFAULT_RECEIPT_CONFIG, business_display_name, receipt_config_for_user,
     )
@@ -503,6 +505,10 @@ def _business_header(db, owner_phone, branch_id):
         "branch_address": None,
         "config": receipt_config_for_user(owner) if owner else DEFAULT_RECEIPT_CONFIG,
     }
+    if owner:
+        from printables import print_profile, with_own_words
+        out.update(print_profile(db, owner, kind))
+        out["config"] = with_own_words(db, owner, out["config"])
     if branch_id:
         br = db.query(Branch).filter(Branch.id == branch_id).first()
         if br:
@@ -610,6 +616,10 @@ def format_invoice_doc_text(doc):
         lines.append("Reply to accept this quotation.")
     if doc.get("note"):
         lines.append(doc["note"])
+    if doc.get("bank_accounts"):
+        from printables import bank_lines_text
+        lines.append("--------------------")
+        lines.extend(bank_lines_text(doc["bank_accounts"]))
     lines.append("--------------------")
     lines.append(doc["footer"])
     return "\n".join(lines)

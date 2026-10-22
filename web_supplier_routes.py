@@ -28,10 +28,13 @@ def _owner_header(db, owner_phone):
     receipt uses). Uses the real business name, never the generic type label."""
     from business_templates import business_display_name
     u = db.query(User).filter(User.phone == owner_phone).first()
+    from printables import print_profile
     return {
         "biz_name": business_display_name(u) if u else "Your business",
+        "biz_logo": getattr(u, "logo_data", None) if u else None,
         "biz_address": getattr(u, "address", None) if u else None,
         "biz_phone": owner_phone,
+        **(print_profile(db, u, "supplier") if u else {}),
         "recorded_by": (u.name if u else None),   # default; overridden per-receipt
     }
 

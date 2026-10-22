@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Printer, ArrowLeft, Share2 } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import { nairaFull, dateTimeStr, dateStr, fmtAmt } from "../lib/format";
+import PrintHeader from "../components/PrintHeader";
+import { paperClass } from "../lib/print";
 
 // Supplier-side receipt (stock received or supplier payment), styled to match
 // the sale receipt (same receipt-* classes).
@@ -76,15 +78,8 @@ export default function SupplierReceipt() {
         <div className="no-print" style={{ textAlign: "center", margin: "0 0 8px", fontSize: 13, color: "#166534" }}>{shareMsg}</div>
       )}
 
-      <div className="receipt-paper">
-        <div className="receipt-header">
-          <div className="receipt-brand">{r.biz_name}</div>
-          {r.biz_phone && <div className="receipt-muted" style={{ fontSize: 12 }}>Tel: {r.biz_phone}</div>}
-          {r.biz_address && <div className="receipt-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>{r.biz_address}</div>}
-          <div className="receipt-sub">{r.title}</div>
-          <div className="receipt-date">{dateTimeStr(r.created_at)}</div>
-          <div className="receipt-ref">Ref #{r.id}</div>
-        </div>
+      <div className={paperClass(r)}>
+        <PrintHeader doc={r} title={r.title} date={dateTimeStr(r.created_at)} refText={`Ref #${r.id}`} />
 
         <div className="receipt-customer">
           <span className="receipt-label">Supplier</span>

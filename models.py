@@ -100,6 +100,10 @@ class User(Base):
 
     # Business address — shown on receipts/invoices, editable in Profile.
     address = Column(String, nullable=True)
+    # For printables (Profile): the business's contact email — not the login
+    # email — and up to 2 bank accounts [{bank, number, name}] (printables.py)
+    business_email = Column(String, nullable=True)
+    bank_accounts_json = Column(Text, nullable=True)
 
     subscription_plan = Column(String, default="BASIC")
 

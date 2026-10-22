@@ -3,6 +3,8 @@ import { ArrowUp, ArrowDown, Pencil, Check, X } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import { saveBusiness, saveDisplay, useSettings } from "../lib/settings";
+import PrintHeader, { PrintBank } from "../components/PrintHeader";
+import { paperClass } from "../lib/print";
 
 /* Settings people choose for themselves. "My display" is each person's own;
    the business sections are for the owner and authorised staff. Every default
@@ -313,6 +315,107 @@ function SummarySection({ business }) {
   );
 }
 
+// What each choice does to the printout — shown under the buttons
+const PAPER_OUTCOME = {
+  "80mm": "Narrow receipt for the small thermal printer most shops use (80mm roll).",
+  "58mm": "Extra-narrow receipt for the smallest handheld printers (58mm roll). Long names wrap.",
+  a4: "Full page for an office printer or to save as PDF and send. Wider, with more space.",
+};
+const LOGO_OUTCOME = {
+  top: "Logo sits above your business name, in the middle.",
+  left: "Logo sits on the left, your name and details beside it.",
+  right: "Logo sits on the right, your name and details beside it.",
+  none: "No logo is printed (saves ink on thermal printers).",
+};
+
+function PrintSection({ business }) {
+  const { save, msg, err } = useSaver(saveBusiness);
+  // The business's real name, logo, address, email and bank accounts
+  const [biz, setBiz] = useState(null);
+  useEffect(() => { apiFetch("settings/print-preview").then(setBiz).catch(() => setBiz({})); }, []);
+  const [title, setTitle] = useState(business.receipt_title || "");
+  const [footer, setFooter] = useState(business.receipt_footer || "");
+  const b = business;
+  // A preview with the business's own details, as the choices stand
+  const banks = biz?.all_bank_accounts || [];
+  const sample = {
+    ...(biz || {}),
+    biz_name: biz?.biz_name || "Your business",
+    biz_address: biz?.biz_address || "Your address",
+    bank_accounts: b.print_bank_receipts ? banks : [],
+    print: {
+      paper: b.print_paper, logo: b.print_logo, align: b.print_align,
+      show_phone: b.print_show_phone, show_address: b.print_show_address, show_email: b.print_show_email,
+    },
+  };
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">Receipts & printables</span>
+        <span className="td-muted" style={{ fontSize: 12 }}>{msg || "Receipts, invoices, quotations, waybills"}</span>
+      </div>
+      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+        {err && <div className="modal-error">{err}</div>}
+        <Row title="Paper size" hint={PAPER_OUTCOME[b.print_paper]}>
+          <Seg value={b.print_paper} onChange={v => save({ print_paper: v })}
+            options={[["80mm", "Thermal 80mm"], ["58mm", "Thermal 58mm"], ["a4", "A4 page"]]} />
+        </Row>
+        <Row title="Logo" hint={biz?.biz_logo ? LOGO_OUTCOME[b.print_logo] : "Add your logo on My Profile first. " + LOGO_OUTCOME[b.print_logo]}>
+          <Seg value={b.print_logo} onChange={v => save({ print_logo: v })}
+            options={[["top", "On top"], ["left", "Left"], ["right", "Right"], ["none", "Hide"]]} />
+        </Row>
+        <Row title="Business name and details"
+          hint={b.print_align === "left" ? "Lined up on the left, like a letterhead." : "Centred, like a shop receipt."}>
+          <Seg value={b.print_align} onChange={v => save({ print_align: v })}
+            options={[["center", "Centre"], ["left", "Left"]]} />
+        </Row>
+        <Row title="Phone number" hint={b.print_show_phone ? "Your phone number prints under your name." : "Your phone number is left off."}>
+          <Seg value={b.print_show_phone} onChange={v => save({ print_show_phone: v })} options={[[true, "Show"], [false, "Hide"]]} />
+        </Row>
+        <Row title="Address" hint={b.print_show_address ? "Your address (or the branch's) prints under your name." : "Your address is left off."}>
+          <Seg value={b.print_show_address} onChange={v => save({ print_show_address: v })} options={[[true, "Show"], [false, "Hide"]]} />
+        </Row>
+        <Row title="Email" hint={!biz?.biz_email ? "Add your business email on My Profile first."
+          : b.print_show_email ? "Your business email prints under your name." : "Your email is left off."}>
+          <Seg value={b.print_show_email} onChange={v => save({ print_show_email: v })} options={[[true, "Show"], [false, "Hide"]]} />
+        </Row>
+        <Row title="Bank details on invoices & quotations"
+          hint={!banks.length ? "Add your bank account on My Profile first."
+            : b.print_bank_invoices ? "Customers see where to pay on every invoice and quotation." : "Bank details are left off invoices and quotations."}>
+          <Seg value={b.print_bank_invoices} onChange={v => save({ print_bank_invoices: v })} options={[[true, "Show"], [false, "Hide"]]} />
+        </Row>
+        <Row title="Bank details on receipts"
+          hint={b.print_bank_receipts ? "Receipts also show your bank account — handy when customers pay balances by transfer." : "Receipts don't show your bank account."}>
+          <Seg value={b.print_bank_receipts} onChange={v => save({ print_bank_receipts: v })} options={[[false, "Hide"], [true, "Show"]]} />
+        </Row>
+        <Row title="Receipt title" hint="The word at the top of a receipt. Leave empty for your business type's own (e.g. Receipt).">
+          <div style={{ display: "flex", gap: 6 }}>
+            <input value={title} maxLength={40} onChange={e => setTitle(e.target.value)} placeholder="Receipt" style={{ width: 160 }} />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => save({ receipt_title: title })}>Save</button>
+          </div>
+        </Row>
+        <Row title="Closing line" hint="Printed at the bottom of every receipt, and on WhatsApp receipts.">
+          <div style={{ display: "flex", gap: 6 }}>
+            <input value={footer} maxLength={160} onChange={e => setFooter(e.target.value)}
+              placeholder="Thank you for your business." style={{ width: 220 }} />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => save({ receipt_footer: footer })}>Save</button>
+          </div>
+        </Row>
+        <div style={{ padding: "12px 0" }}>
+          <div className="td-muted" style={{ fontSize: 12, marginBottom: 6 }}>Preview</div>
+          <div className={paperClass(sample)} style={{ margin: "0 auto", boxShadow: "none" }}>
+            <PrintHeader doc={sample} title={(title || "Receipt").toUpperCase()} date="22 Oct 2026, 10:30" refText="Receipt #120" />
+            <PrintBank doc={sample} />
+            <div className="receipt-footer" style={{ marginTop: 8 }}>
+              <div className="receipt-muted">{footer || "Thank you for your business."}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { loaded, display, business, canEditBusiness } = useSettings();
   if (!loaded) return <div className="page-loading">Loading settings…</div>;
@@ -324,10 +427,11 @@ export default function Settings() {
           <StockSection business={business} />
           <CategoriesSection business={business} />
           <SummarySection business={business} />
+          <PrintSection business={business} />
         </>
       ) : (
         <div className="card card-body td-muted" style={{ fontSize: 13 }}>
-          Business settings (stock, categories, daily summary) are set by the owner.
+          Business settings (stock, categories, daily summary, receipts) are set by the owner.
         </div>
       )}
     </div>

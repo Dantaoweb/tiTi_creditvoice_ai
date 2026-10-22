@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Truck, Receipt as ReceiptIcon } from "lucide-react";
 import WaybillModal from "../components/WaybillModal";
 import WaybillList from "../components/WaybillList";
+import PrintHeader, { PrintBank } from "../components/PrintHeader";
+import { paperClass } from "../lib/print";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr, fmtAmt, parseAmt } from "../lib/format";
 
@@ -279,25 +281,16 @@ export default function InvoiceView() {
         {shareMsg && <div style={{ fontSize: 13, color: "#166534", marginTop: 8 }}>{shareMsg}</div>}
       </div>
 
-      <div className="receipt-paper">
-        <div className="receipt-header">
-          {doc.biz_logo && (
-            <img src={doc.biz_logo} alt="" style={{ maxHeight: 64, maxWidth: 160, objectFit: "contain", margin: "0 auto 6px", display: "block" }} />
-          )}
-          <div className="receipt-brand">{doc.biz_name}</div>
-          {doc.biz_phone && <div className="receipt-muted" style={{ fontSize: 12 }}>Tel: {doc.biz_phone}</div>}
-          {addr && <div className="receipt-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>{addr}</div>}
-          {doc.branch_name && <div className="receipt-muted" style={{ fontSize: 12 }}>{doc.branch_name} branch</div>}
-          <div className="receipt-sub">{isQuote ? "QUOTATION" : "INVOICE"}</div>
-          <div className="receipt-date">{dateStr(doc.created_at)}</div>
-          <div className="receipt-ref">{doc.ref}</div>
+      <div className={paperClass(doc)}>
+        <PrintHeader doc={doc} title={isQuote ? "QUOTATION" : "INVOICE"}
+          date={dateStr(doc.created_at)} refText={doc.ref}>
           {!isQuote && doc.quote_ref && <div className="receipt-muted" style={{ fontSize: 12 }}>From quotation {doc.quote_ref}</div>}
           {(cancelled || doc.status === "paid") && (
             <div className={`invoice-stamp${cancelled ? " invoice-stamp--void" : ""}`}>
               {cancelled ? "CANCELLED" : "PAID"}
             </div>
           )}
-        </div>
+        </PrintHeader>
 
         {doc.customer && (
           <div className="receipt-customer">
@@ -391,6 +384,7 @@ export default function InvoiceView() {
           {isQuote && <div className="receipt-muted" style={{ marginTop: 6 }}>This is a quotation, not a bill. Work starts once it is accepted{hasDeposit ? " and the deposit is paid" : ""}.</div>}
           {doc.note && <div className="receipt-muted" style={{ marginTop: 6, whiteSpace: "pre-line" }}>{doc.note}</div>}
           {doc.created_by && <div className="receipt-muted" style={{ marginTop: 6 }}>Prepared by: {doc.created_by}</div>}
+          {!cancelled && doc.status !== "paid" && <PrintBank doc={doc} />}
           <div className="receipt-muted" style={{ marginTop: 12 }}>{doc.footer}</div>
         </div>
       </div>

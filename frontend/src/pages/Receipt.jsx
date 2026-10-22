@@ -6,6 +6,8 @@ import { useAuth } from "../context/AuthContext";
 import ReturnGoodsModal from "../components/ReturnGoodsModal";
 import WaybillModal from "../components/WaybillModal";
 import WaybillList from "../components/WaybillList";
+import PrintHeader, { PrintBank } from "../components/PrintHeader";
+import { paperClass } from "../lib/print";
 import { nairaFull, dateTimeStr, dateStr, fmtAmt } from "../lib/format";
 
 export default function Receipt() {
@@ -216,27 +218,13 @@ export default function Receipt() {
         </div>
       )}
 
-      <div className="receipt-paper">
-        <div className="receipt-header">
-          {receipt.biz_logo && (
-            <img src={receipt.biz_logo} alt="" style={{ maxHeight: 64, maxWidth: 160, objectFit: "contain", margin: "0 auto 6px", display: "block" }} />
-          )}
-          <div className="receipt-brand">{bizName}</div>
-          {receipt.biz_phone && (
-            <div className="receipt-muted" style={{ fontSize: 12 }}>Tel: {receipt.biz_phone}</div>
-          )}
-          {(receipt.branch_address || receipt.biz_address) && (
-            <div className="receipt-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>
-              {receipt.branch_address || receipt.biz_address}
-            </div>
-          )}
-          {receipt.branch_name && (
-            <div className="receipt-muted" style={{ fontSize: 12 }}>{receipt.branch_name} branch</div>
-          )}
-          <div className="receipt-sub">{isInvoice ? "INVOICE" : cn ? `CREDIT NOTE ${cn.number}` : (isPayment ? "Payment Receipt" : title)}</div>
-          <div className="receipt-date">{dateTimeStr(receipt.created_at)}</div>
-          <div className="receipt-ref">{isInvoice && invoiceNo ? invoiceNo : `Receipt #${receipt.receipt_number ?? receipt.id}`}</div>
-        </div>
+      <div className={paperClass(receipt)}>
+        <PrintHeader
+          doc={{ ...receipt, biz_name: bizName }}
+          title={isInvoice ? "INVOICE" : cn ? `CREDIT NOTE ${cn.number}` : (isPayment ? "Payment Receipt" : title)}
+          date={dateTimeStr(receipt.created_at)}
+          refText={isInvoice && invoiceNo ? invoiceNo : `Receipt #${receipt.receipt_number ?? receipt.id}`}
+        />
 
         {receipt.customer && (
           <div className="receipt-customer">
@@ -427,6 +415,7 @@ export default function Receipt() {
           {receipt.recorded_by && (
             <div className="receipt-muted">Served by: {receipt.recorded_by}</div>
           )}
+          <PrintBank doc={receipt} />
           <div className="receipt-muted" style={{ marginTop: 12 }}>
             {isInvoice ? invoiceFooter : receiptFooter}
           </div>

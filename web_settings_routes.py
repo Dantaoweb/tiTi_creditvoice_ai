@@ -167,6 +167,22 @@ def register_settings_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/settings/print-preview")
+    def web_print_preview(session: dict = Depends(require_web_auth)):
+        """The business's real header details for the Receipts & printables
+        preview (the page applies the choices as they change)."""
+        from invoices import _business_header
+        from printables import bank_accounts
+        db = SessionLocal()
+        try:
+            owner_phone = _session_owner_phone(db, session)
+            doc = _business_header(db, owner_phone, None, kind="receipt")
+            owner = db.query(User).filter(User.phone == owner_phone).first()
+            doc["all_bank_accounts"] = bank_accounts(owner) if owner else []
+            return doc
+        finally:
+            db.close()
+
     @app.get("/app/api/admin/camera-crashes")
     def web_camera_crashes(session: dict = Depends(require_web_auth)):
         """Which phones and browsers crash on opening the camera, for app admins."""

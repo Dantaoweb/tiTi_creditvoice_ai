@@ -41,6 +41,18 @@ BUSINESS_DEFAULTS = {
     "daily_summary": False,
     "daily_summary_time": "20:00",        # Lagos time, HH:MM
     "category_order": [],
+    # Receipts & printables (printables.py). Paper: the small thermal printer
+    # most shops use; everything else is how printables looked before.
+    "print_paper": "80mm",                # 80mm | 58mm | a4
+    "print_logo": "top",                  # top | left | right | none
+    "print_align": "center",              # center | left
+    "print_show_phone": True,
+    "print_show_address": True,
+    "print_show_email": True,
+    "print_bank_invoices": True,          # bank details on invoices & quotations
+    "print_bank_receipts": False,         # … and on receipts
+    "receipt_title": "",                  # "" = the business type's own
+    "receipt_footer": "",
 }
 # Kept on the same JSON but not a user choice
 _INTERNAL = ("daily_summary_last_sent",)
@@ -106,8 +118,17 @@ def business_setting(db, owner_phone, key):
 
 def _clean_business(k, v):
     if k in ("group_by_category", "group_on_pos", "allow_negative_stock", "keep_aside",
-             "show_part_delivery", "daily_summary"):
+             "show_part_delivery", "daily_summary", "print_show_phone", "print_show_address",
+             "print_show_email", "print_bank_invoices", "print_bank_receipts"):
         return bool(v)
+    choices = {"print_paper": ("80mm", "58mm", "a4"), "print_logo": ("top", "left", "right", "none"),
+               "print_align": ("center", "left")}
+    if k in choices:
+        if v not in choices[k]:
+            raise ValueError("Pick one of the choices shown.")
+        return v
+    if k in ("receipt_title", "receipt_footer"):
+        return re.sub(r"\s+", " ", str(v or "")).strip()[:40 if k == "receipt_title" else 160]
     if k == "category_source":
         if v not in ("suggest", "manual"):
             raise ValueError("Categories come from tiTi's suggestion or your own typing.")

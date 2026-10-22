@@ -1680,6 +1680,23 @@ tr.low-stock td { background: #fffbeb; }
   box-shadow: var(--shadow-md);
 }
 
+/* Paper sizes (Settings → Receipts & printables). Small thermal printer is
+   the default; A4 is a full page. The header's logo, alignment and lines are
+   set per business (components/PrintHeader.jsx). */
+.receipt-paper.paper-80mm { max-width: 340px; padding: 18px 16px; font-size: 13px; }
+.receipt-paper.paper-58mm { max-width: 250px; padding: 12px 10px; font-size: 12px; }
+.receipt-paper.paper-a4   { max-width: 794px; padding: 40px 48px; }
+.paper-80mm .receipt-brand { font-size: 17px; }
+.paper-58mm .receipt-brand { font-size: 15px; }
+.paper-58mm .receipt-table th, .paper-58mm .receipt-table td { padding: 5px 0 5px 6px; font-size: 11px; }
+.paper-80mm .receipt-table th, .paper-80mm .receipt-table td { padding: 6px 0 6px 8px; font-size: 12px; }
+.paper-58mm .receipt-table th:first-child, .paper-58mm .receipt-table td:first-child,
+.paper-80mm .receipt-table th:first-child, .paper-80mm .receipt-table td:first-child { padding-left: 0; }
+.receipt-header .receipt-muted { font-size: 12px; }
+.print-logo { max-height: 64px; max-width: 160px; object-fit: contain; }
+.paper-58mm .print-logo { max-height: 44px; max-width: 110px; }
+.print-bank { border-top: 1px dashed var(--line); margin-top: 8px; padding-top: 8px; font-size: 12.5px; }
+
 .receipt-header { text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px dashed var(--line); }
 .receipt-brand  { font-size: 20px; font-weight: 800; color: var(--ink); }
 .receipt-sub    { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -1729,6 +1746,10 @@ tr.low-stock td { background: #fffbeb; }
   .topbar, .sidebar, .sidebar-overlay, .bottom-tab-bar,
   .titi-fab, .titi-panel, .titi-overlay { display: none !important; }
   .receipt-paper { box-shadow: none; border: none; padding: 0; }
+  /* Thermal rolls print exactly the roll's width; A4 fills the page */
+  .receipt-paper.paper-80mm { width: 72mm; max-width: 72mm; }
+  .receipt-paper.paper-58mm { width: 48mm; max-width: 48mm; }
+  .receipt-paper.paper-a4   { width: 100%; max-width: none; }
   body { background: #fff; }
   .titi-fab, .titi-panel, .titi-overlay { display: none !important; }
 }

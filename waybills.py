@@ -534,7 +534,7 @@ def last_details(db, owner_phone, customer_id=None):
 def waybill_document(db, wb):
     """Everything the printed waybill shows — no prices."""
     from invoices import _business_header, format_invoice_number
-    doc = _business_header(db, wb.owner_phone, wb.branch_id)
+    doc = _business_header(db, wb.owner_phone, wb.branch_id, kind="waybill")
     cust = db.query(Customer).filter(Customer.id == wb.customer_id).first() if wb.customer_id else None
     creator = db.query(User).filter(User.id == wb.created_by_id).first() if wb.created_by_id else None
     lines = db.query(WaybillLine).filter(WaybillLine.waybill_id == wb.id).order_by(WaybillLine.id.asc()).all()

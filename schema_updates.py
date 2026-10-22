@@ -114,6 +114,8 @@ def ensure_schema_updates(engine):
         "display_prefs_json": "TEXT",
         "business_settings_json": "TEXT",
         "logo_data": "TEXT",
+        "business_email": "VARCHAR",
+        "bank_accounts_json": "TEXT",
     }
     with engine.begin() as connection:
         for column_name, column_type in user_updates.items():

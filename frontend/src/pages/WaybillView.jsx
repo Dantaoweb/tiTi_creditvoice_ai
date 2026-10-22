@@ -3,6 +3,8 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Printer, ArrowLeft, Share2, XCircle } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { dateTimeStr } from "../lib/format";
+import PrintHeader from "../components/PrintHeader";
+import { paperClass } from "../lib/print";
 
 const qtyLabel = (n, unit) => `${Number(n).toLocaleString()}${unit ? ` ${unit}` : ""}`;
 
@@ -89,23 +91,9 @@ export default function WaybillView() {
         <div className="no-print" style={{ textAlign: "center", margin: "0 0 8px", fontSize: 13, color: "#166534" }}>{shareMsg}</div>
       )}
 
-      <div className="receipt-paper">
-        <div className="receipt-header">
-          {doc.biz_logo && (
-            <img src={doc.biz_logo} alt="" style={{ maxHeight: 64, maxWidth: 160, objectFit: "contain", margin: "0 auto 6px", display: "block" }} />
-          )}
-          <div className="receipt-brand">{doc.biz_name}</div>
-          {doc.biz_phone && <div className="receipt-muted" style={{ fontSize: 12 }}>Tel: {doc.biz_phone}</div>}
-          {(doc.branch_address || doc.biz_address) && (
-            <div className="receipt-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>
-              {doc.branch_address || doc.biz_address}
-            </div>
-          )}
-          {doc.branch_name && <div className="receipt-muted" style={{ fontSize: 12 }}>{doc.branch_name} branch</div>}
-          <div className="receipt-sub">WAYBILL / LOADING ORDER</div>
-          <div className="receipt-date">{dateTimeStr(doc.created_at)}</div>
-          <div className="receipt-ref">{doc.number}{doc.ref ? ` · ${doc.ref}` : ""}</div>
-        </div>
+      <div className={paperClass(doc)}>
+        <PrintHeader doc={doc} title="WAYBILL / LOADING ORDER" date={dateTimeStr(doc.created_at)}
+          refText={`${doc.number}${doc.ref ? ` · ${doc.ref}` : ""}`} />
 
         {doc.cancelled_at && (
           <div style={{ textAlign: "center", color: "#b91c1c", fontWeight: 700, margin: "8px 0" }}>

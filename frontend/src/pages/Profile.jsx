@@ -11,6 +11,14 @@ export default function Profile() {
   const [name, setName] = useState(user?.name || "");
   const [label, setLabel] = useState(user?.business_type_label || "");
   const [address, setAddress] = useState(user?.address || "");
+  // Printed on invoices and quotations (and receipts, if switched on in Settings)
+  const [bizEmail, setBizEmail] = useState(user?.business_email || "");
+  const blankAcct = { bank: "", number: "", name: "" };
+  const [accounts, setAccounts] = useState(() => {
+    const a = (user?.bank_accounts || []).map(x => ({ ...blankAcct, ...x, name: x.name || "" }));
+    return a.length ? a : [{ ...blankAcct }];
+  });
+  const setAcct = (i, k, v) => setAccounts(list => list.map((a, j) => (j === i ? { ...a, [k]: v } : a)));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -25,6 +33,8 @@ export default function Profile() {
         name: name.trim(),
         business_type_label: isOwner ? label.trim() : undefined,
         address: isOwner ? address.trim() : undefined,
+        business_email: isOwner ? bizEmail.trim() : undefined,
+        bank_accounts: isOwner ? accounts : undefined,
       });
       if (refreshUser) await refreshUser();
       setMsg("Profile saved.");
@@ -56,6 +66,32 @@ export default function Profile() {
               <textarea value={address} onChange={e => setAddress(e.target.value)} rows={2}
                 placeholder="e.g. 12 Market Rd, Ikeja, Lagos" disabled={busy} style={{ resize: "vertical" }} />
               <span className="form-hint">Shown on receipts and invoices.</span>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Business email <span className="text-subtle">(optional)</span></label>
+              <input type="email" value={bizEmail} onChange={e => setBizEmail(e.target.value)}
+                placeholder="e.g. sales@adastores.com" disabled={busy} />
+              <span className="form-hint">Printed on receipts, invoices and quotations. Not your login.</span>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Bank account for payments <span className="text-subtle">(optional)</span></label>
+              {accounts.map((a, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <input value={a.bank} onChange={e => setAcct(i, "bank", e.target.value)} placeholder="Bank, e.g. GTBank" disabled={busy} />
+                  <input value={a.number} inputMode="numeric" onChange={e => setAcct(i, "number", e.target.value.replace(/\D/g, ""))}
+                    placeholder="Account number" maxLength={20} disabled={busy} />
+                  <input value={a.name} onChange={e => setAcct(i, "name", e.target.value)} placeholder="Account name"
+                    disabled={busy} style={{ gridColumn: "1 / -1" }} />
+                </div>
+              ))}
+              {accounts.length < 2 && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ justifySelf: "start" }}
+                  onClick={() => setAccounts(list => [...list, { ...blankAcct }])}>+ Add another account</button>
+              )}
+              <span className="form-hint">
+                Shown on invoices and quotations so customers know where to pay. Choose where else in Settings → Receipts &amp; printables.
+                Leave empty for none.
+              </span>
             </div>
             <LogoUploader />
           </>

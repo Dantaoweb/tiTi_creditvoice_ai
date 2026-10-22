@@ -354,6 +354,8 @@ def get_pos_receipt(db, tx_id, user=None):
         from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG, business_display_name
         from reports import get_balance
         cfg = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
+        from printables import print_profile, with_own_words
+        cfg = with_own_words(db, owner_user, cfg)
         bname = business_display_name(owner_user) if owner_user else None
         bal = get_balance(db, tx.customer_id) if tx.customer_id else 0
         return {
@@ -372,6 +374,8 @@ def get_pos_receipt(db, tx_id, user=None):
             "biz_name": bname,
             "biz_logo": getattr(owner_user, "logo_data", None) if owner_user else None,
             "biz_phone": biz_phone,
+            "biz_address": getattr(owner_user, "address", None) if owner_user else None,
+            **(print_profile(db, owner_user, "receipt") if owner_user else {}),
             "receipt_number": tx.receipt_number,
             "config": cfg,
             "items": [],
@@ -434,6 +438,9 @@ def get_pos_receipt(db, tx_id, user=None):
     # Business-specific receipt config
     from business_templates import receipt_config_for_user, DEFAULT_RECEIPT_CONFIG, inventory_fields_for_user, business_display_name
     config = receipt_config_for_user(user) if user else DEFAULT_RECEIPT_CONFIG
+    # The owner's own title / closing line, and how they like it printed
+    from printables import print_profile, with_own_words
+    config = with_own_words(db, owner_user, config)
     _field_labels = {f["key"]: f["label"] for f in inventory_fields_for_user(user)} if user else {}
 
     # Business name + address from the owner record (never the generic type label)
@@ -478,6 +485,7 @@ def get_pos_receipt(db, tx_id, user=None):
         "biz_logo": getattr(owner_user, "logo_data", None) if owner_user else None,
         "biz_phone": biz_phone,
         "biz_address": biz_address,
+        **(print_profile(db, owner_user, "receipt") if owner_user else {}),
         "branch_name": branch_name,
         "branch_address": branch_address,
         "receipt_number": tx.receipt_number,
@@ -632,6 +640,9 @@ def format_receipt_text(receipt):
     # customers and owners quote this back. Falls back to the id for old rows.
     _no = receipt.get("receipt_number")
     lines.append(f"Receipt #{_no}" if _no else f"Ref: TXN-{receipt.get('id')}")
+    if receipt.get("bank_accounts"):           # Settings: bank details on receipts
+        from printables import bank_lines_text
+        lines.extend(bank_lines_text(receipt["bank_accounts"]))
     if cfg.get("footer"):
         lines.append(cfg["footer"])
     return "\n".join(lines)
