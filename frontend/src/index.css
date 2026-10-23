@@ -1680,6 +1680,28 @@ tr.low-stock td { background: #fffbeb; }
   box-shadow: var(--shadow-md);
 }
 
+/* Stock count sheet: a full page on a computer; on a phone each product
+   stacks into a block with every value labelled, so nothing is cut off. */
+.receipt-paper.count-paper { max-width: none; padding: 24px; }
+@media (max-width: 640px) {
+  .receipt-paper.count-paper { padding: 14px 12px; }
+  .count-table thead { display: none; }
+  .count-table, .count-table tbody { display: block; width: 100%; }
+  .count-table tr {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+    padding: 10px 8px; border-bottom: 1px solid var(--line); border-radius: 8px;
+  }
+  .count-table td { display: block; padding: 0 !important; border: none; text-align: left; }
+  .count-table td.count-product { grid-column: 1 / -1; font-weight: 600; }
+  .count-table td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; color: var(--muted); letter-spacing: .3px;
+  }
+  .count-table td[data-label="Reason"] { grid-column: 1 / -1; }
+  .count-table td.count-empty { display: none; }
+  .count-table td select, .count-table td input { width: 100% !important; }
+}
+
 /* Paper sizes (Settings → Receipts & printables). Small thermal printer is
    the default; A4 is a full page. The header's logo, alignment and lines are
    set per business (components/PrintHeader.jsx). */

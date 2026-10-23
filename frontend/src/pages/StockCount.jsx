@@ -66,7 +66,7 @@ export default function StockCount() {
         )}
       </div>
 
-      <div className="card receipt-paper paper-a4" style={{ maxWidth: "none" }}>
+      <div className="card receipt-paper count-paper">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <div>
             <div className="receipt-brand">Stock count {doc.number}</div>
@@ -99,7 +99,8 @@ export default function StockCount() {
         <input className="no-print" placeholder="Find a product…" value={filter} onChange={e => setFilter(e.target.value)}
           style={{ width: "100%", margin: "8px 0" }} />
 
-        <table className="receipt-table" style={{ width: "100%" }}>
+        {/* On a phone each product stacks into a labelled block (count-table in index.css) */}
+        <table className="receipt-table count-table" style={{ width: "100%" }}>
           <thead>
             <tr>
               <th>Product</th>
@@ -113,21 +114,21 @@ export default function StockCount() {
           <tbody>
             {shown.map(l => (
               <tr key={l.id} style={!counting && differ(l) ? { background: l.difference < 0 ? "rgba(185,28,28,0.06)" : "rgba(22,101,52,0.06)" } : undefined}>
-                <td>{l.product}{l.unit ? <span className="td-muted"> ({l.unit})</span> : ""}
+                <td className="count-product">{l.product}{l.unit ? <span className="td-muted"> ({l.unit})</span> : ""}
                   {l.category && <div className="td-muted" style={{ fontSize: 11 }}>{l.category}</div>}</td>
-                {"expected" in l && <td className="receipt-right">{l.expected ?? "—"}</td>}
-                <td className="receipt-right">
+                {"expected" in l && <td className="receipt-right" data-label="App">{l.expected ?? "—"}</td>}
+                <td className="receipt-right" data-label="Counted">
                   {counting ? (
                     <input type="number" min={0} inputMode="decimal" value={counts[l.id] ?? ""} style={{ width: 80 }}
                       onChange={e => { setCounts(c => ({ ...c, [l.id]: e.target.value })); dirty.current[l.id] = true; }}
                       onBlur={saveNow} />
                   ) : (l.counted ?? <span className="td-muted">not counted</span>)}
                 </td>
-                {!counting && <td className="receipt-right" style={{ fontWeight: differ(l) ? 700 : 400 }}>
+                {!counting && <td className="receipt-right" data-label="Difference" style={{ fontWeight: differ(l) ? 700 : 400 }}>
                   {l.difference == null ? "—" : l.difference > 0 ? `+${l.difference}` : l.difference}</td>}
-                {!counting && doc.value_lost != null && <td className="receipt-right">
+                {!counting && doc.value_lost != null && <td className="receipt-right" data-label="Value (₦)">
                   {l.value ? (l.value < 0 ? `−${Math.abs(l.value).toLocaleString()}` : `+${l.value.toLocaleString()}`) : "—"}</td>}
-                {!counting && <td>
+                {!counting && <td data-label="Reason" className={differ(l) ? "" : "count-empty"}>
                   {differ(l) ? (review && doc.can_approve ? (
                     <select value={reasons[l.id] || ""} onChange={e => setReasons(r => ({ ...r, [l.id]: e.target.value }))}>
                       <option value="">Why?</option>
