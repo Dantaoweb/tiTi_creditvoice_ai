@@ -18,8 +18,17 @@ export default class ErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div style={{ padding: "2rem", textAlign: "center", fontFamily: "sans-serif" }}>
-          <h2>Something went wrong.</h2>
-          <p>Please refresh the page. If the problem continues, contact support.</p>
+          {typeof navigator !== "undefined" && !navigator.onLine ? (
+            <>
+              <h2>You're offline.</h2>
+              <p>This page needs internet the first time you open it. Connect, then tap Refresh.</p>
+            </>
+          ) : (
+            <>
+              <h2>Something went wrong.</h2>
+              <p>Please refresh the page. If the problem continues, contact support.</p>
+            </>
+          )}
           <button onClick={() => window.location.reload()} style={{ marginTop: "1rem", padding: "0.5rem 1.5rem" }}>
             Refresh
           </button>

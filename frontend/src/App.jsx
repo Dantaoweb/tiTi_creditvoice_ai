@@ -1,54 +1,56 @@
+import { Suspense } from "react";
 import { Navigate, Routes, Route, useLocation } from "react-router-dom";
+import lazyPage from "./lib/lazyPage";
 import { ToastProvider } from "./components/Toast";
 import { useAuth } from "./context/AuthContext";
 import Layout       from "./components/Layout";
-import JoinPartner  from "./pages/JoinPartner";
-import JoinThrift   from "./pages/JoinThrift";
-import Landing      from "./pages/Landing";
+const JoinPartner = lazyPage(() => import("./pages/JoinPartner"));
+const JoinThrift = lazyPage(() => import("./pages/JoinThrift"));
+const Landing = lazyPage(() => import("./pages/Landing"));
 import Login        from "./pages/Login";
 import Chat         from "./pages/Chat";
-import Dashboard    from "./pages/Dashboard";
-import Insights     from "./pages/Insights";
-import Poultry      from "./pages/Poultry";
-import School       from "./pages/School";
-import Customers    from "./pages/Customers";
-import Transactions from "./pages/Transactions";
-import Inventory    from "./pages/Inventory";
-import Suppliers    from "./pages/Suppliers";
-import Staff        from "./pages/Staff";
-import Partners     from "./pages/Partners";
-import Notes        from "./pages/Notes";
-import Admin        from "./pages/Admin";
-import Reminders    from "./pages/Reminders";
-import Automation   from "./pages/Automation"
-import Branches     from "./pages/Branches";
-import Capture      from "./pages/Capture";
-import POS          from "./pages/POS";
-import Receipt      from "./pages/Receipt";
-import SupplierReceipt from "./pages/SupplierReceipt";
-import Receipts     from "./pages/Receipts";
-import NewReceipt   from "./pages/NewReceipt";
-import Invoices     from "./pages/Invoices";
-import Expenses     from "./pages/Expenses";
-import InvoiceEditor from "./pages/InvoiceEditor";
-import InvoiceView  from "./pages/InvoiceView";
-import Deliveries   from "./pages/Deliveries";
-import WaybillView  from "./pages/WaybillView";
-import StockCounts  from "./pages/StockCounts";
-import PayPage      from "./pages/PayPage";
-import PaymentClaims from "./pages/PaymentClaims";
-import StockCount   from "./pages/StockCount";
-import Wallet       from "./pages/Wallet";
-import Thrift        from "./pages/Thrift";
-import FuelStation   from "./pages/FuelStation";
-import Opportunities from "./pages/Opportunities";
-import Scorecard from "./pages/Scorecard";
-import Terms        from "./pages/Terms";
-import Privacy      from "./pages/Privacy";
-import DataDeletion from "./pages/DataDeletion";
-import Upgrade      from "./pages/Upgrade";
-import Profile      from "./pages/Profile";
-import Settings     from "./pages/Settings";
+const Dashboard = lazyPage(() => import("./pages/Dashboard"));
+const Insights = lazyPage(() => import("./pages/Insights"));
+const Poultry = lazyPage(() => import("./pages/Poultry"));
+const School = lazyPage(() => import("./pages/School"));
+const Customers = lazyPage(() => import("./pages/Customers"));
+const Transactions = lazyPage(() => import("./pages/Transactions"));
+const Inventory = lazyPage(() => import("./pages/Inventory"));
+const Suppliers = lazyPage(() => import("./pages/Suppliers"));
+const Staff = lazyPage(() => import("./pages/Staff"));
+const Partners = lazyPage(() => import("./pages/Partners"));
+const Notes = lazyPage(() => import("./pages/Notes"));
+const Admin = lazyPage(() => import("./pages/Admin"));
+const Reminders = lazyPage(() => import("./pages/Reminders"));
+const Automation = lazyPage(() => import("./pages/Automation"));
+const Branches = lazyPage(() => import("./pages/Branches"));
+const Capture = lazyPage(() => import("./pages/Capture"));
+const POS = lazyPage(() => import("./pages/POS"));
+const Receipt = lazyPage(() => import("./pages/Receipt"));
+const SupplierReceipt = lazyPage(() => import("./pages/SupplierReceipt"));
+const Receipts = lazyPage(() => import("./pages/Receipts"));
+const NewReceipt = lazyPage(() => import("./pages/NewReceipt"));
+const Invoices = lazyPage(() => import("./pages/Invoices"));
+const Expenses = lazyPage(() => import("./pages/Expenses"));
+const InvoiceEditor = lazyPage(() => import("./pages/InvoiceEditor"));
+const InvoiceView = lazyPage(() => import("./pages/InvoiceView"));
+const Deliveries = lazyPage(() => import("./pages/Deliveries"));
+const WaybillView = lazyPage(() => import("./pages/WaybillView"));
+const StockCounts = lazyPage(() => import("./pages/StockCounts"));
+const PayPage = lazyPage(() => import("./pages/PayPage"));
+const PaymentClaims = lazyPage(() => import("./pages/PaymentClaims"));
+const StockCount = lazyPage(() => import("./pages/StockCount"));
+const Wallet = lazyPage(() => import("./pages/Wallet"));
+const Thrift = lazyPage(() => import("./pages/Thrift"));
+const FuelStation = lazyPage(() => import("./pages/FuelStation"));
+const Opportunities = lazyPage(() => import("./pages/Opportunities"));
+const Scorecard = lazyPage(() => import("./pages/Scorecard"));
+const Terms = lazyPage(() => import("./pages/Terms"));
+const Privacy = lazyPage(() => import("./pages/Privacy"));
+const DataDeletion = lazyPage(() => import("./pages/DataDeletion"));
+const Upgrade = lazyPage(() => import("./pages/Upgrade"));
+const Profile = lazyPage(() => import("./pages/Profile"));
+const Settings = lazyPage(() => import("./pages/Settings"));
 
 function RequireAuth({ children }) {
   const { isAuthed } = useAuth();
@@ -61,6 +63,9 @@ function RequireAuth({ children }) {
 export default function App() {
   return (
     <ToastProvider>
+      {/* Public pages load on demand too; pages inside the app wait inside
+          the menu frame (Layout) so the menu stays on screen. */}
+      <Suspense fallback={<div className="page-loading">Loading…</div>}>
       <Routes>
         {/* Public */}
         <Route index element={<Landing />} />
@@ -125,6 +130,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </ToastProvider>
   );
 }

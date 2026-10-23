@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
@@ -482,7 +482,10 @@ export default function Layout() {
               <button type="button" className="btn btn-ghost btn-xs" onClick={() => setCamNotice("")}>OK</button>
             </div>
           )}
-          <Outlet />
+          {/* Each page downloads the first time it's opened (lib/lazyPage.js) */}
+          <Suspense fallback={<div className="page-loading">Loading…</div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 
