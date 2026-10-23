@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#1a56db" />
   <title>CreditVoice — Offline</title>
+  <!--
+    Shown by the service worker when a page can't load because there's no
+    internet. The app itself isn't kept on the phone, so nothing here can open
+    another app page offline — the old "Go to Home" button just brought people
+    back to this page. Instead it retries the page they wanted, and reloads by
+    itself as soon as the connection is back.
+  -->
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -20,27 +27,11 @@
       text-align: center;
       gap: 16px;
     }
-    .icon {
-      font-size: 56px;
-      line-height: 1;
-      margin-bottom: 8px;
-    }
-    h1 {
-      font-size: 22px;
-      font-weight: 700;
-      color: #fff;
-    }
-    p {
-      font-size: 15px;
-      color: rgba(255,255,255,0.65);
-      max-width: 320px;
-      line-height: 1.55;
-    }
-    .tip {
-      font-size: 13px;
-      color: rgba(255,255,255,0.4);
-      margin-top: 8px;
-    }
+    .icon { font-size: 56px; line-height: 1; margin-bottom: 8px; }
+    h1 { font-size: 22px; font-weight: 700; color: #fff; }
+    p { font-size: 15px; color: rgba(255,255,255,0.7); max-width: 320px; line-height: 1.55; }
+    .tip { font-size: 13px; color: rgba(255,255,255,0.45); margin-top: 4px; }
+    .status { font-size: 14px; min-height: 20px; color: #fcd34d; }
     button {
       margin-top: 8px;
       background: #1a56db;
@@ -52,15 +43,54 @@
       font-weight: 600;
       cursor: pointer;
     }
+    button:disabled { opacity: 0.6; }
   </style>
 </head>
 <body>
   <div class="icon">📵</div>
   <h1>You're offline</h1>
-  <p>
-    No internet connection right now. Your last-visited pages and data are still available — tap a cached page to continue working.
-  </p>
-  <p class="tip">Sales you record while offline will sync automatically when you reconnect.</p>
-  <button onclick="window.location.href='/app/home'">Go to Home</button>
+  <p>No internet connection right now. Keep this page open — it will reload by itself when your connection is back.</p>
+  <p class="tip">If the app was already open when the connection dropped, sales you recorded are saved on this phone and will sync when you're back online.</p>
+  <button id="retry" type="button">Try again</button>
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <script>
+    var btn = document.getElementById("retry");
+    var status = document.getElementById("status");
+    var leaving = false;
+
+    // A phone can say it's "online" on Wi-Fi with no internet, so ask the
+    // server for a tiny file instead of trusting navigator.onLine alone.
+    function reachable() {
+      return fetch("/app/manifest.webmanifest?ping=" + Date.now(), { cache: "no-store" })
+        .then(function (r) { return r.ok; })
+        .catch(function () { return false; });
+    }
+
+    function goBack() {
+      if (leaving) return;
+      leaving = true;
+      status.style.color = "#86efac";
+      status.textContent = "You're back online — loading…";
+      // Reload the page they were trying to open (this offline page was shown
+      // in its place), not a different one.
+      window.location.reload();
+    }
+
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      status.textContent = "Checking your connection…";
+      reachable().then(function (ok) {
+        if (ok) return goBack();
+        btn.disabled = false;
+        status.textContent = "Still offline. Check your data or Wi-Fi, then try again.";
+      });
+    });
+
+    // Come back by itself: the moment the phone reports a connection, and every
+    // 10 seconds in case it doesn't.
+    window.addEventListener("online", function () { reachable().then(function (ok) { if (ok) goBack(); }); });
+    setInterval(function () { reachable().then(function (ok) { if (ok) goBack(); }); }, 10000);
+  </script>
 </body>
 </html>

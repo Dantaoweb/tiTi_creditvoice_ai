@@ -6,7 +6,7 @@
  * bundle — that avoids serving a stale/broken JS build after a deploy. App
  * assets always go straight to the network.
  */
-const CACHE = "cv-offline-v2";
+const CACHE = "cv-offline-v3";
 const OFFLINE_URL = "/app/offline.html";
 
 self.addEventListener("install", (event) => {

@@ -44,3 +44,14 @@ def test_index_links_manifest():
     r = client.get("/app")
     assert r.status_code == 200
     assert 'rel="manifest"' in r.text
+
+
+def test_offline_page_does_not_send_people_in_a_circle():
+    """Offline, any other app page just shows this page again — so its button
+    must retry the page they wanted (and it reloads by itself when back
+    online), never jump to another app page like /app/home."""
+    from pathlib import Path
+    html = (Path(__file__).parent / "frontend" / "public" / "offline.html").read_text(encoding="utf-8")
+    assert "/app/home" not in html and "Go to Home" not in html
+    assert "Try again" in html and "window.location.reload()" in html
+    assert 'addEventListener("online"' in html
