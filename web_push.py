@@ -19,6 +19,35 @@ def push_enabled() -> bool:
     return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
 
 
+def app_url(link):
+    """The page a tap opens: the notification's in-app link (e.g. /payment-claims)
+    under /app. Opening it still needs the person to be signed in — and every
+    page checks what they may see — so the link gives nothing away."""
+    if not link:
+        return "/app"
+    link = str(link)
+    if link.startswith("/app"):
+        return link
+    return "/app" + (link if link.startswith("/") else "/" + link)
+
+
+# Lock-screen text when the owner chose "hide amounts and names" (Settings).
+_PRIVATE_TITLES = {
+    "payment_claim": "You have a payment to confirm",
+    "stock_count": "Stock count update",
+    "expiry": "Expiry alert",
+    "low_stock": "Low stock alert",
+    "overdue_debt": "Debt reminder",
+    "waybill_cancelled": "A waybill was cancelled",
+    "credit_note": "A credit note was issued",
+    "void": "A transaction was voided",
+}
+
+
+def private_text(tag):
+    return _PRIVATE_TITLES.get(tag or "", "New alert in CreditVoice"), "Open the app to see the details."
+
+
 def send_web_push(owner_phone: str, title: str, body: str, url: str = "/app",
                   tag: str = "") -> None:
     """Fire-and-forget: push to every subscribed device of the business.
@@ -51,6 +80,13 @@ def _send_blocking(owner_phone, title, body, url, tag=""):
         ).all()
         if not subs:
             return
+        # Settings → Notifications: hide amounts and names on the lock screen
+        try:
+            from app_settings import business_setting
+            if business_setting(db, owner_phone, "push_hide_details"):
+                title, body = private_text(tag)
+        except Exception:
+            pass
         payload = json.dumps({"title": title, "body": body, "url": url,
                               "tag": tag or "cv-notify"})
         dead = []

@@ -322,8 +322,8 @@ def _add_notification(db, owner_phone, event_type, title, body, link=None):
         is_read=0, created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ))
     try:
-        from web_push import send_web_push
-        send_web_push(owner_phone, title, body, tag=event_type or "cv-notify")
+        from web_push import app_url, send_web_push
+        send_web_push(owner_phone, title, body, url=app_url(link), tag=event_type or "cv-notify")
     except Exception:
         pass
 

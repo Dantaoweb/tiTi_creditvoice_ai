@@ -6,7 +6,7 @@
  * bundle — that avoids serving a stale/broken JS build after a deploy. App
  * assets always go straight to the network.
  */
-const CACHE = "cv-offline-v1";
+const CACHE = "cv-offline-v2";
 const OFFLINE_URL = "/app/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -49,14 +49,18 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Tapping the notification focuses an open app window or opens one.
+// Tapping the notification opens the page it's about (e.g. Payments to
+// confirm) — in the app window that's already open, or a new one. The page
+// still needs the person to be signed in.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "/app";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const c of clients) {
-        if (c.url.includes("/app") && "focus" in c) return c.focus();
+        if (c.url.includes("/app") && "focus" in c) {
+          return c.focus().then((w) => (w && "navigate" in w ? w.navigate(url) : w)).catch(() => c.focus());
+        }
       }
       if (self.clients.openWindow) return self.clients.openWindow(url);
     })

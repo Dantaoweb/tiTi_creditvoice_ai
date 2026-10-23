@@ -43,6 +43,7 @@ BUSINESS_DEFAULTS = {
     "category_order": [],
     # Receipts & printables (printables.py). Paper: the small thermal printer
     # most shops use; everything else is how printables looked before.
+    "push_hide_details": False,           # phone notifications: hide amounts/names on the lock screen
     "count_blind": True,
     "expiry_warn_days": 30,               # warn this many days before goods expire                  # stock count: counters don't see the app's numbers
     "print_paper": "80mm",                # 80mm | 58mm | a4
@@ -121,7 +122,7 @@ def business_setting(db, owner_phone, key):
 def _clean_business(k, v):
     if k in ("group_by_category", "group_on_pos", "allow_negative_stock", "keep_aside",
              "show_part_delivery", "daily_summary", "print_show_phone", "print_show_address",
-             "print_show_email", "print_bank_invoices", "print_bank_receipts", "count_blind"):
+             "print_show_email", "print_bank_invoices", "print_bank_receipts", "count_blind", "push_hide_details"):
         return bool(v)
     choices = {"print_paper": ("80mm", "58mm", "a4"), "print_logo": ("top", "left", "right", "none"),
                "print_align": ("center", "left")}

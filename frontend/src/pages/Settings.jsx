@@ -307,11 +307,18 @@ function SummarySection({ business }) {
   return (
     <div className="card">
       <div className="card-header">
-        <span className="card-title">WhatsApp</span>
+        <span className="card-title">Notifications & WhatsApp</span>
         <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
       </div>
       <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
         {err && <div className="modal-error">{err}</div>}
+        <Row title="Phone notifications on the lock screen"
+          hint={business.push_hide_details
+            ? "Hidden: the lock screen only says e.g. \"You have a payment to confirm\". Names and amounts show once the app is opened."
+            : "Shown: alerts say who and how much, e.g. \"Ade says he paid ₦45,000\" — anyone who sees the phone can read it."}>
+          <Seg value={business.push_hide_details} onChange={v => save({ push_hide_details: v })}
+            options={[[false, "Show details"], [true, "Hide amounts & names"]]} />
+        </Row>
         <Row title="Daily summary" hint="tiTi sends the owner today's sales, payments and what's owed, every day.">
           <Seg value={business.daily_summary} onChange={v => save({ daily_summary: v })}
             options={[[false, "Off"], [true, "On"]]} />
