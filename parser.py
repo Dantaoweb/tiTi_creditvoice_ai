@@ -2914,7 +2914,18 @@ def _parse_message(text):
         "how do you help me", "what do you know", "what can i ask you",
         "what can i do here", "what can i say", "guide me",
         "titi guide me", "start guide", "how to start",
+        "tell me what you can", "tell me what you can do", "what can you do for me",
+        "what can i use you for", "what can i use titi for", "how can i use you", "how can i use titi",
+        "how should i use you", "what are you for", "what is titi for", "what do you do for me",
+        "how can you help me", "what can you help me with", "what can you help with",
+        "what are your features", "what are you able to do", "show me what you can do",
     ]:
+        return {"type": "WHAT_CAN_DO"}
+    # Other ways of asking the same ("tell me all you can do please")
+    if re.fullmatch(r"(?:please\s+)?(?:tell me|show me)\s+(?:what|all)\s+(?:you|titi)\s+(?:can|could)(?:\s+do)?"
+                    r"(?:\s+for me)?(?:\s+please)?", clean_text) or \
+            re.fullmatch(r"(?:what|how)\s+(?:can|could|should|do)\s+i\s+use\s+(?:you|titi|this app|this)(?:\s+for)?",
+                         clean_text):
         return {"type": "WHAT_CAN_DO"}
 
     # ── App navigation guide ─────────────────────────────────────────────────
@@ -2930,6 +2941,7 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "sell_out_of_stock":  ["out of stock", "stock out", "stock-out", "no stock", "zero stock", "stock is finished", "stock finished", "stock is finish", "stock has finished", "finished stock", "says out of stock", "saying stock out", "when stock is 0", "when stock is zero"],
             "quotation":          ["quotation", "a quote", "send quote", "give quote", "deposit before",
                                    "before work starts", "mobilization", "mobilisation", "balance on completion"],
             "logo":               ["logo"],

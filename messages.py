@@ -860,9 +860,16 @@ def build_what_can_do_message(user=None):
         stock_line  = "📦 *Stock/Inventory* — add products, update prices, track quantities"
         cust_line   = "👥 *Customers* — track who owes you and how much"
 
+    # Newer features, for businesses that sell goods or services
+    extra = "" if (is_thrift or is_school) else (
+        "🧾 *Invoices & quotations* — ask to be paid, with your bank details and a pay link\n"
+        "💳 *Pay links* — customers say \"I've paid\"; you confirm when the money is in\n"
+        "🚚 *Waybills & deliveries* — loading orders for drivers; goods still to deliver\n"
+        "📋 *Stock count & expiry* — count your shelves, see losses, get warned before goods expire\n"
+    )
     return (
         "Hello! I'm *tiTi*, your CreditVoice business assistant 🤖\n\n"
-        "Just send me a WhatsApp message in plain English — no special format needed.\n\n"
+        "Type to me here or on WhatsApp in plain English (or send a voice note) — no special format needed.\n\n"
         "*Here's what I can do for you:*\n\n"
         f"{sales_line}\n"
         f"{stock_line}\n"
@@ -873,7 +880,8 @@ def build_what_can_do_message(user=None):
         "🤝 *Partners & Investors* — add co-founders or investors with different access levels\n"
         "📝 *Notes* — record expenses, memos, and decisions\n"
         "⏰ *Reminders* — set payment reminders for customers\n"
-        "📤 *Export* — export your transactions, debtors, or stock to a spreadsheet\n\n"
+        "📤 *Export* — export your transactions, debtors, or stock to a spreadsheet\n"
+        f"{extra}\n"
         "*How to use me:*\n"
         "Just type naturally. For example:\n"
         "• _Ada bought 2 bags rice at 35000_\n"

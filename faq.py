@@ -203,6 +203,9 @@ def detect_faq(text):
     if any(k in q for k in ("expiry", "expiries", "expire", "expired", "expiring", "expiration", "batch number", "batch no", "nafdac number", "write off", "write-off", "sell first")) and "subscription" not in q and "plan" not in q \
             and "code" not in q:
         return "expiry"
+    if any(k in q for k in ("out of stock", "stock out", "stock-out", "no stock", "zero stock", "stock is finished", "stock finished", "stock is finish", "stock has finished", "finished stock", "says out of stock", "saying stock out", "when stock is 0", "when stock is zero")) and any(
+            k in q for k in ("sell", "sale", "how", "can i", "what do i", "customer")):
+        return "sell_out_of_stock"
     if any(k in q for k in ("stock count", "stocktake", "stock take", "stock-take", "count my stock",
                             "count stock", "count my shelves", "count my goods", "stock is wrong",
                             "stock not correct", "stock is not correct", "stock loss", "stock lost",
@@ -834,6 +837,18 @@ FAQ_ANSWERS = {
         "*5. Throw away expired goods* — Inventory → *Expiry* → *Write off expired*. They leave stock "
         "and show as a loss in Stock count → Last 30 days.\n\n"
         "On WhatsApp you can still set one date for a product from its stock menu (MM/YYYY)."
+    ),
+    "sell_out_of_stock": (
+        "📦 *Selling something that shows Out of stock*\n\n"
+        "*Best:* if the goods are really on your shelf, your stock record is behind — add the stock "
+        "first (*{record}* → Stock tab, or Inventory → the product → Adjust → add), then sell as usual.\n\n"
+        "*Selling it anyway* — Settings → Stock → *Allow selling more than you have in store*:\n"
+        "• *Yes* (the usual setting): on *{till}* you can still tap it (it says _Out of stock — can still sell_).\n"
+        "   – To a *named customer*: the sale is recorded, and what isn't in store is kept as *still to "
+        "deliver* for them — make a waybill from Deliveries when new stock arrives.\n"
+        "   – To a *walk-in*: it just sells; stock stays at 0.\n"
+        "• *No*: the till won't let you sell it until you add stock.\n\n"
+        "Ask me _how do I add stock_ or _what is a waybill_ for more."
     ),
     "stock_count": (
         "📋 *Stock count — when your stock in the app doesn't match the shelf*\n\n"

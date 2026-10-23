@@ -384,11 +384,16 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
         ) : (
           <div className="pos-pick-list">
             {pageItems.map(p => {
-              const oos = !p.is_service && p.quantity <= 0;
+              const outOfStock = !p.is_service && p.quantity <= 0;
+              // Settings → "Allow selling more than you have in store": Yes lets
+              // it be sold (owed to a named customer, or a plain walk-in sale);
+              // No keeps it locked until stock is added.
+              const oos = outOfStock && business.allow_negative_stock === false;
               const n = qtyFor(p);
               const stockLabel = p.is_service
                 ? "Service"
-                : oos ? "Out of stock"
+                : oos ? "Out of stock — add stock first"
+                : outOfStock ? "Out of stock — can still sell"
                 : p.unit ? qty(p.quantity, p.unit) : `${qty(p.quantity)} in stock`;
               return (
                 <div key={p.id} className={`pos-pick-row${n > 0 ? " pos-pick-row--active" : ""}`}
@@ -402,7 +407,7 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
                     <span className="pos-pick-name" style={n > 0 ? { color: "#2563eb" } : undefined}>{p.name}</span>
                     <span className="pos-pick-meta">
                       {nairaFull(p.selling_price)}<span className="pos-pick-dot">·</span>
-                      <span className={oos ? "pos-pick-oos" : ""}>{stockLabel}</span>
+                      <span className={outOfStock ? "pos-pick-oos" : ""}>{stockLabel}</span>
                     </span>
                   </div>
                   {/* Qty stepper sits BESIDE the product, always reachable */}

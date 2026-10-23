@@ -59,3 +59,28 @@ def test_answers_name_the_menu_item_the_business_sees(business_type, category, t
 def test_no_answer_says_pos():
     for key in FAQ_ANSWERS:
         assert "POS" not in get_faq_answer(key), key
+
+
+@pytest.mark.parametrize("text", [
+    "tell me what you can", "tell me what you can do", "what can i use you for", "how can i use you",
+    "how to use you", "what are you for", "how can you help me", "what can i use titi for",
+])
+def test_what_can_you_do_in_many_words(text):
+    assert (parse_message(text) or {}).get("type") == "WHAT_CAN_DO"
+
+
+def test_the_intro_works_on_web_and_lists_newer_features():
+    from messages import build_what_can_do_message
+    intro = build_what_can_do_message(User(phone="1", business_type="pharmacy", business_category="health"))
+    assert "Type to me here or on WhatsApp" in intro
+    assert "Waybills" in intro and "Pay links" in intro and "Stock count & expiry" in intro
+
+
+@pytest.mark.parametrize("text", [
+    "how to sell when stock is saying stock out", "can i sell when the product is out of stock?",
+    "how do I sell when stock is finished",
+])
+def test_selling_out_of_stock_gets_its_own_answer(text):
+    assert _topic(text) == "sell_out_of_stock"
+    a = build_app_guide_message("sell_out_of_stock", User(phone="1", business_type="pharmacy", business_category="health"))
+    assert "*Select product*" in a and "still to deliver" in a and "walk-in" in a and "{till}" not in a
