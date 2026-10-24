@@ -12,6 +12,7 @@ import DiscountInput from "../components/DiscountInput";
 import CameraScanner from "../components/CameraScanner";
 import { InsightNotes } from "../components/BarcodeInsight";
 import { discountAmount, NO_DISCOUNT } from "../lib/discount";
+import { vatFor, vatLabel } from "../lib/vat";
 
 // ── Product picker (paged list, qty stepper beside each row) ────────────────
 
@@ -601,7 +602,11 @@ export default function POS() {
 
   const subtotal = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
   const discount = discountAmount(subtotal, discountValue);   // off the whole sale
-  const total    = subtotal - discount;
+  // VAT only when the business switched it on (Settings → VAT): added on top,
+  // or already inside the prices. Same sum as the server (lib/vat.js).
+  const vat      = vatFor(cart.map(it => ({ total: it.qty * it.unit_price, exempt: !!it.vat_exempt })),
+                          discount, businessSettings);
+  const total    = vat.total;
   const prevDebt = (customer && customer.balance > 0) ? customer.balance : 0;
   const debtDue  = settleDebt ? prevDebt : 0;      // debt folded into this checkout
   const amountDue = total + debtDue;
@@ -680,6 +685,7 @@ export default function POS() {
         // Not kept aside for customers waiting: what this sale can take now
         free: Math.max(0, (p.quantity || 0) - (p.kept_aside || 0)),
         expired_qty: p.expired_qty || 0,             // some of it in stock has expired
+        vat_exempt: !!p.vat_exempt,                  // "No VAT" product
         is_service: p.is_service,
         retail_unit: p.retail_unit || null,
         retail_per_base: p.retail_per_base || null,
@@ -935,6 +941,12 @@ export default function POS() {
               <div className="pos-total-row pos-total-row--muted">
                 <span>Subtotal {nairaFull(subtotal)}</span>
                 <span>−{nairaFull(discount)}</span>
+              </div>
+            )}
+            {vat.amount > 0 && (
+              <div className="pos-total-row pos-total-row--muted">
+                <span>{vatLabel(vat.rate, vat.mode)}</span>
+                <span>{vat.mode === "inclusive" ? "" : "+"}{nairaFull(vat.amount)}</span>
               </div>
             )}
             <div className="pos-total-row">

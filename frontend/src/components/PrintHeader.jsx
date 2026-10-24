@@ -20,6 +20,7 @@ export default function PrintHeader({ doc, title, date, refText, children }) {
       {p.show_phone !== false && doc.biz_phone && <div className="receipt-muted">Tel: {doc.biz_phone}</div>}
       {p.show_address !== false && addr && <div className="receipt-muted" style={{ whiteSpace: "pre-line" }}>{addr}</div>}
       {p.show_email !== false && doc.biz_email && <div className="receipt-muted">{doc.biz_email}</div>}
+      {doc.vat_number && <div className="receipt-muted">VAT no: {doc.vat_number}</div>}
       {doc.branch_name && <div className="receipt-muted">{doc.branch_name} branch</div>}
     </div>
   );

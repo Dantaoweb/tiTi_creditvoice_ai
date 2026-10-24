@@ -238,6 +238,25 @@ def invoice_status(inv, now=None):
     return "draft"
 
 
+def _apply_vat(db, owner_phone, inv, lines, discount):
+    """Fix the invoice's VAT when it's written (vat.py): the business's
+    setting now; paying it later keeps this VAT even if Settings change."""
+    from vat import compute_vat, vat_settings
+    vat = vat_settings(db, owner_phone)
+    if not vat:
+        inv.vat_amount = inv.vat_rate = inv.vat_mode = None
+        return
+    from vat import item_exempt
+    rows = [(float(l["qty"]) * int(l["unit_price"]), item_exempt(db, owner_phone, {
+        "inventory_item_id": l.get("inventory_item_id"), "name": l.get("name"), "unit": l.get("unit")}))
+        for l in lines]
+    amount, total, _net = compute_vat(rows, discount, vat)
+    inv.vat_amount = amount or None
+    inv.vat_rate = vat["rate"] if amount else None
+    inv.vat_mode = vat["mode"] if amount else None
+    inv.total = total
+
+
 def apply_discount(lines_total, discount):
     """The invoice total after a discount off the whole invoice."""
     try:
@@ -352,6 +371,7 @@ def create_invoice(db, owner_phone, user_id, customer_id, items, *, due_date=Non
     db.add(inv)
     db.flush()
     _set_items(db, inv, lines)
+    _apply_vat(db, owner_phone, inv, lines, discount)
     db.commit()
     return inv
 
@@ -371,6 +391,7 @@ def update_invoice(db, inv, items, *, due_date=None, note=None, discount=0, depo
     _set_items(db, inv, lines)
     inv.total = total
     inv.discount = discount or None
+    _apply_vat(db, inv.owner_phone, inv, lines, discount)
     inv.due_date = due_date
     inv.note = (note or "").strip() or None
     if deposit_percent != "keep":
@@ -447,11 +468,15 @@ def pay_invoice(db, inv, user_id, amount):
     pay = amount
     if amount >= (inv.total or 0):
         pay = math.ceil(sum(float(l["qty"]) * int(l["unit_price"]) for l in lines) - (inv.discount or 0))
+        if inv.vat_mode == "add":
+            pay += int(inv.vat_amount or 0)
     result = save_pos_sale(
         db, inv.owner_phone, user_id, inv.customer_id, lines, pay,
         branch_id=inv.branch_id, due_date=inv.due_date,
         label=f"Invoice {format_invoice_number(inv.number)}",
         deduct_stock=False, commit=False, discount=inv.discount or 0,
+        # The VAT the invoice was written with, not whatever Settings say now
+        vat=({"rate": inv.vat_rate, "mode": inv.vat_mode} if inv.vat_amount else None),
     )
     inv.transaction_id = result["receipt_id"]
     inv.amount_paid = min(amount, inv.total or 0)
@@ -545,7 +570,12 @@ def invoice_document(db, inv):
         "status": status,
         "total": inv.total or 0,
         "discount": inv.discount or 0,
-        "subtotal": (inv.total or 0) + (inv.discount or 0),
+        "subtotal": (inv.total or 0) + (inv.discount or 0)
+                    - (int(inv.vat_amount or 0) if inv.vat_mode == "add" else 0),
+        # VAT (vat.py): added on top (in total) or included in the prices
+        "vat_amount": int(inv.vat_amount or 0),
+        "vat_rate": inv.vat_rate,
+        "vat_mode": inv.vat_mode,
         "amount_paid": inv.amount_paid or 0,
         "moved_to_debt": max(0, (inv.total or 0) - (inv.amount_paid or 0)) if status in ("part_paid", "deposit_paid") else 0,
         "other_debt": other_debt,
@@ -597,9 +627,17 @@ def format_invoice_doc_text(doc):
         lines.append((it.get("name") or "").title())
         lines.append(f"  x{qty} @ N{int(it['unit_price']):,} = N{int(it['total']):,}")
     lines.append("--------------------")
-    if doc.get("discount"):
+    _added_vat = doc.get("vat_amount") if doc.get("vat_mode") == "add" else 0
+    if doc.get("discount") or _added_vat:
         lines.append(f"Subtotal: N{doc['subtotal']:,}")
+    if doc.get("discount"):
         lines.append(f"Discount: -N{doc['discount']:,}")
+    if _added_vat:
+        lines.append(f"VAT {doc.get('vat_rate') or 0:g}%: N{_added_vat:,}")
+    elif doc.get("vat_amount"):
+        lines.append(f"(Prices include VAT {doc.get('vat_rate') or 0:g}%: N{doc['vat_amount']:,})")
+    if doc.get("vat_amount") and doc.get("vat_number"):
+        lines.append(f"VAT no: {doc['vat_number']}")
     if doc.get("is_quote"):
         lines.append(f"*Quoted total: N{doc['total']:,}*")
     elif doc.get("other_debt"):

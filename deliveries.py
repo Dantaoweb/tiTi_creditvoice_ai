@@ -285,6 +285,9 @@ def _line_value(tx, line, qty):
     if discount:
         lines_total = sum(int(l.total or 0) for l in tx.items_cache) or 1
         gross = gross * (1 - discount / lines_total)
+    # VAT added on top was paid too, so it comes back with the goods
+    if getattr(tx, "vat_mode", None) == "add" and tx.vat_rate and not getattr(line, "vat_exempt", False):
+        gross = gross * (1 + float(tx.vat_rate) / 100)
     return int(round(gross))
 
 

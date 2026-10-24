@@ -315,22 +315,34 @@ export default function Receipt() {
           </tbody>
           <tfoot>
             {/* A discount off the whole sale, so the lines add up to the total. */}
+            {(discount > 0 || (receipt.vat_amount > 0 && receipt.vat_mode === "add")) && (
+              <tr>
+                <td colSpan={3}>Subtotal</td>
+                <td className="receipt-right">{nairaFull(receipt.subtotal ?? receipt.total + discount)}</td>
+              </tr>
+            )}
             {discount > 0 && (
-              <>
-                <tr>
-                  <td colSpan={3}>Subtotal</td>
-                  <td className="receipt-right">{nairaFull(receipt.subtotal ?? receipt.total + discount)}</td>
-                </tr>
-                <tr>
-                  <td colSpan={3}>Discount</td>
-                  <td className="receipt-right">−{nairaFull(discount)}</td>
-                </tr>
-              </>
+              <tr>
+                <td colSpan={3}>Discount</td>
+                <td className="receipt-right">−{nairaFull(discount)}</td>
+              </tr>
+            )}
+            {receipt.vat_amount > 0 && receipt.vat_mode === "add" && (
+              <tr>
+                <td colSpan={3}>VAT {receipt.vat_rate}%</td>
+                <td className="receipt-right">{nairaFull(receipt.vat_amount)}</td>
+              </tr>
             )}
             <tr className="receipt-total-row">
               <td colSpan={3}>Total</td>
               <td className="receipt-right">{nairaFull(receipt.total)}</td>
             </tr>
+            {receipt.vat_amount > 0 && receipt.vat_mode === "inclusive" && (
+              <tr className="receipt-muted">
+                <td colSpan={3}>Includes VAT {receipt.vat_rate}%</td>
+                <td className="receipt-right">{nairaFull(receipt.vat_amount)}</td>
+              </tr>
+            )}
             {cn && (
               <tr style={{ fontWeight: 700 }}>
                 <td colSpan={3}>{cn.mode === "REFUND" ? "Refunded to customer" : "Taken off their balance"}</td>

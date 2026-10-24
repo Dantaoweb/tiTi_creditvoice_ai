@@ -187,6 +187,7 @@ def ensure_schema_updates(engine):
         "reorder_quantity": "INTEGER",
         "expiry_date": "TIMESTAMP",
         "batch_no": "VARCHAR",
+        "vat_exempt": "BOOLEAN",
         "retail_unit": "VARCHAR",
         "retail_per_base": "INTEGER",
         "retail_price": "INTEGER",
@@ -296,6 +297,9 @@ def ensure_schema_updates(engine):
         "invoiced_at": "TIMESTAMP",
         "invoice_sent_at": "TIMESTAMP",
         "discount_amount": "INTEGER",
+        "vat_amount": "INTEGER",
+        "vat_rate": "FLOAT",
+        "vat_mode": "VARCHAR",
     }
     with engine.begin() as connection:
         for column_name, column_type in transaction_updates.items():
@@ -997,6 +1001,7 @@ def ensure_schema_updates(engine):
             "cancelled_qty": "FLOAT",
             "returned_qty": "FLOAT",
             "held_qty": "FLOAT",
+            "vat_exempt": "BOOLEAN",
         }
         with engine.begin() as connection:
             for col, typ in tx_item_updates.items():
@@ -1009,7 +1014,8 @@ def ensure_schema_updates(engine):
     if "invoices" in inspector.get_table_names():
         invoice_columns = {col["name"] for col in inspector.get_columns("invoices")}
         with engine.begin() as connection:
-            for col, typ in {"is_quote": "BOOLEAN DEFAULT FALSE", "quote_number": "INTEGER",
+            for col, typ in {"vat_amount": "INTEGER", "vat_rate": "FLOAT", "vat_mode": "VARCHAR",
+                             "is_quote": "BOOLEAN DEFAULT FALSE", "quote_number": "INTEGER",
                              "accepted_at": "TIMESTAMP", "deposit_percent": "INTEGER"}.items():
                 if col not in invoice_columns:
                     connection.execute(text(f"ALTER TABLE invoices ADD COLUMN {col} {typ}"))

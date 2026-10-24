@@ -45,6 +45,11 @@ BUSINESS_DEFAULTS = {
     "category_order": [],
     # Receipts & printables (printables.py). Paper: the small thermal printer
     # most shops use; everything else is how printables looked before.
+    # VAT (vat.py): off unless the owner turns it on and chooses how prices work
+    "vat_enabled": False,
+    "vat_mode": "add",                    # add (on top of prices) | inclusive (prices include VAT)
+    "vat_rate": 7.5,
+    "vat_number": "",                     # TIN / VAT number, printed on documents
     "push_hide_details": False,           # phone notifications: hide amounts/names on the lock screen
     "count_blind": True,
     "expiry_warn_days": 30,               # warn this many days before goods expire                  # stock count: counters don't see the app's numbers
@@ -124,7 +129,8 @@ def business_setting(db, owner_phone, key):
 def _clean_business(k, v):
     if k in ("group_by_category", "group_on_pos", "allow_negative_stock", "keep_aside",
              "show_part_delivery", "daily_summary", "print_show_phone", "print_show_address",
-             "print_show_email", "print_bank_invoices", "print_bank_receipts", "count_blind", "push_hide_details"):
+             "print_show_email", "print_bank_invoices", "print_bank_receipts", "count_blind", "push_hide_details",
+             "vat_enabled"):
         return bool(v)
     choices = {"print_paper": ("80mm", "58mm", "a4"), "print_logo": ("top", "left", "right", "none"),
                "print_align": ("center", "left")}
@@ -148,6 +154,20 @@ def _clean_business(k, v):
         if n < 0:
             raise ValueError("The low-stock alert can't be negative.")
         return n
+    if k == "vat_mode":
+        if v not in ("add", "inclusive"):
+            raise ValueError("Choose: add VAT on top, or prices already include VAT.")
+        return v
+    if k == "vat_rate":
+        try:
+            r = round(float(v), 2)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("Enter the VAT rate as a number, e.g. 7.5.")
+        if not 0 < r <= 50:
+            raise ValueError("The VAT rate must be between 0 and 50%.")
+        return r
+    if k == "vat_number":
+        return re.sub(r"\s+", " ", str(v or "")).strip()[:40]
     if k == "expiry_warn_days":
         try:
             n = int(float(v))

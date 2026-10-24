@@ -242,6 +242,12 @@ class Transaction(Base):
     # amount = lines − discount_amount; receipts print it so they add up.
     discount_amount = Column(Integer, nullable=True)
 
+    # VAT on this sale (vat.py). With VAT added on top, amount includes it;
+    # with prices that include VAT, it's the VAT inside amount.
+    vat_amount = Column(Integer, nullable=True)
+    vat_rate = Column(Float, nullable=True)
+    vat_mode = Column(String, nullable=True)
+
     # Formal invoice: per-business sequential number (INV-0001), assigned the
     # first time an invoice document is issued for this sale. Null until then.
     invoice_number = Column(Integer, nullable=True)
@@ -294,6 +300,8 @@ class TransactionItem(Base):
 
     # The stock item sold, so what is still to deliver counts against it.
     inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+    # A "No VAT" product when it was sold (vat.py) — refunds give back its VAT share
+    vat_exempt = Column(Boolean, nullable=True)
 
     created_at = Column(
         DateTime,
@@ -537,6 +545,11 @@ class Invoice(Base):
     # Quotation first (jobs: contractors, artisans…): QT-0001, not owed, no
     # INV number until the customer accepts. Then a deposit before work
     # starts, the balance on completion (due on due_date).
+    # VAT on this invoice (vat.py), fixed when it was written: total includes it
+    # when added on top; with prices that include VAT it's the VAT inside.
+    vat_amount      = Column(Integer, nullable=True)
+    vat_rate        = Column(Float, nullable=True)
+    vat_mode        = Column(String, nullable=True)
     is_quote        = Column(Boolean, default=False)
     quote_number    = Column(Integer, nullable=True)
     accepted_at     = Column(DateTime, nullable=True)
@@ -770,6 +783,7 @@ class InventoryItem(Base):
     expiry_date = Column(DateTime, nullable=True)   # medicine / perishable expiry date
 
     batch_no = Column(String, nullable=True)        # batch / NAFDAC / lot number
+    vat_exempt = Column(Boolean, nullable=True)     # "No VAT" product (basic food, medicines…)
 
     # Per-business custom fields (e.g. car dealers: maker, model, year, colour,
     # chassis no, engine no). JSON keyed by the field definitions in

@@ -611,7 +611,9 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
 // ── Edit item modal ──────────────────────────────────────────────────────────
 function EditItemModal({ item, fields = [], onClose, onSaved, categories = [] }) {
   const isService = item.is_service;
+  const { business: bizSettings } = useSettings();       // VAT tick only when VAT is on
   const [form, setForm] = useState({
+    vat_exempt: !!item.vat_exempt,
     name: item.name,
     unit: item.unit || "",
     cost_price: item.cost_price || "",
@@ -646,6 +648,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [] })
         selling_price: form.selling_price !== "" ? parseAmt(form.selling_price) : 0,
         low_stock_alert: (!isService && form.low_stock_alert !== "") ? parseAmt(form.low_stock_alert) : null,
         is_available: form.is_available,
+        vat_exempt: form.vat_exempt,
         retail_unit: form.retail_unit.trim() || null,
         retail_per_base: form.retail_per_base !== "" ? parseAmt(form.retail_per_base) : null,
         retail_price: form.retail_price !== "" ? parseAmt(form.retail_price) : null,
@@ -773,6 +776,14 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [] })
           <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <input type="checkbox" id="is_avail" checked={form.is_available} onChange={e => set("is_available", e.target.checked)} />
             <label htmlFor="is_avail" className="form-label" style={{ margin: 0 }}>Active / Available</label>
+          </div>
+        )}
+        {bizSettings.vat_enabled && (
+          <div className="form-group" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" id="vat_exempt" checked={form.vat_exempt} onChange={e => set("vat_exempt", e.target.checked)} />
+            <label htmlFor="vat_exempt" className="form-label" style={{ margin: 0 }}>
+              No VAT on this {isService ? "service" : "product"} <span className="text-subtle">(e.g. basic food, medicines, school fees)</span>
+            </label>
           </div>
         )}
         {!isService && (

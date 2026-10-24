@@ -183,6 +183,36 @@ def register_settings_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/reports/vat")
+    def web_vat_report(session: dict = Depends(require_web_auth)):
+        """VAT collected this month and last (for filing) — owner and
+        authorised staff only, like profit."""
+        from datetime import datetime, timezone
+        from sqlalchemy import func as _f
+        from models import Transaction
+        from reports import get_owner_transaction_query
+        from web_common import _can_see_profit
+        db = SessionLocal()
+        try:
+            if not _can_see_profit(db, session):
+                raise HTTPException(status_code=403, detail="Only the owner or authorised staff see VAT totals.")
+            owner_phone = _session_owner_phone(db, session)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            this_m = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            last_m = (this_m.replace(year=this_m.year - 1, month=12) if this_m.month == 1
+                      else this_m.replace(month=this_m.month - 1))
+
+            def total(start, end):
+                q = (get_owner_transaction_query(db, owner_phone)
+                     .filter(Transaction.vat_amount.isnot(None), Transaction.created_at >= start))
+                if end is not None:
+                    q = q.filter(Transaction.created_at < end)
+                return int(q.with_entities(_f.coalesce(_f.sum(Transaction.vat_amount), 0)).scalar() or 0)
+            return {"this_month": total(this_m, None), "last_month": total(last_m, this_m),
+                    "month": this_m.strftime("%B %Y"), "last_month_name": last_m.strftime("%B %Y")}
+        finally:
+            db.close()
+
     @app.get("/app/api/admin/camera-crashes")
     def web_camera_crashes(session: dict = Depends(require_web_auth)):
         """Which phones and browsers crash on opening the camera, for app admins."""

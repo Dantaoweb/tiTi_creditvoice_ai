@@ -134,7 +134,7 @@ def resolve_sale_customer(db, owner_phone, customer_id, customer_name=None, cust
 def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
                   branch_id=None, due_date=None, customer_name=None, customer_phone=None,
                   service_date=None, deduct_stock=True, commit=True, label=None,
-                  discount=0):
+                  discount=0, vat="settings"):
     """
     Save a POS sale and deduct inventory.
 
@@ -187,7 +187,13 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         raise ValueError("Invalid discount.")
     if discount < 0 or discount > lines_total:
         raise ValueError("The discount must be between zero and the sale total.")
-    total = lines_total - discount
+    # VAT (vat.py) — only when the business switched it on. `vat` is
+    # "settings" (the business's choice), None (no VAT) or {"rate", "mode"}
+    # (an invoice being paid keeps the VAT it was written with).
+    from vat import compute_vat, lines_for, vat_settings
+    _vat = vat_settings(db, owner_phone) if vat == "settings" else vat
+    _vat_lines = lines_for(db, owner_phone, items) if _vat else []
+    vat_amount, total, _net = compute_vat(_vat_lines, discount, _vat) if _vat else (0, lines_total - discount, None)
     paid = min(int(payment_amount or 0), total)
 
     has_customer = bool(customer_id)
@@ -207,6 +213,9 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         service_date=service_date,
         receipt_number=next_receipt_number(db, owner_phone),
         discount_amount=discount or None,
+        vat_amount=vat_amount or None,
+        vat_rate=_vat["rate"] if (_vat and vat_amount) else None,
+        vat_mode=_vat["mode"] if (_vat and vat_amount) else None,
     )
     db.add(main_tx)
     db.flush()
@@ -222,6 +231,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
     keep_aside = business_setting(db, owner_phone, "keep_aside")
     used = {}          # per stock item: taken or kept aside by earlier lines of this sale
     to_deduct = []
+    _line_ix = []      # lines written so far (to pick each line's VAT exemption)
     for it in items:
         qty = int(it.get("qty", 1))
         up = int(it.get("unit_price", 0))
@@ -291,8 +301,10 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
             attributes_json=(getattr(_inv, "attributes_json", None) if _inv else None),
             delivered_qty=delivered,
             held_qty=held,
+            vat_exempt=(_vat_lines[len(_line_ix)][1] if _vat_lines else None),
             inventory_item_id=(_inv.id if _inv else None),
         ))
+        _line_ix.append(1)
         if delivered is None:
             to_deduct.append(it)
         elif delivered > 0:
@@ -331,6 +343,7 @@ def save_pos_sale(db, owner_phone, user_id, customer_id, items, payment_amount,
         "transaction_type": tx_type,
         "pay_tx_id": pay_tx_id,
         "discount": discount,
+        "vat_amount": vat_amount,
     }
 
 
@@ -494,6 +507,10 @@ def get_pos_receipt(db, tx_id, user=None):
         "config": config,
         "discount": int(tx.discount_amount or 0),
         "subtotal": int(sum((it.total or 0) for it in items)),
+        # VAT (vat.py): added on top (in total) or included in the prices
+        "vat_amount": int(tx.vat_amount or 0),
+        "vat_rate": tx.vat_rate,
+        "vat_mode": tx.vat_mode,
         "invoice_number": tx.invoice_number,
         "invoice_sent_at": tx.invoice_sent_at.isoformat() if tx.invoice_sent_at else None,
         "items": [
@@ -619,10 +636,19 @@ def format_receipt_text(receipt):
             lines.append(f"  Credit note {cn['number']}: N{int(cn['amount']):,} {what}")
         lines.append("--------------------")
         discount = int(receipt.get("discount") or 0)
+        vat_amount = int(receipt.get("vat_amount") or 0)
+        added_vat = vat_amount if receipt.get("vat_mode") == "add" else 0
+        if discount or added_vat:
+            lines.append(f"Subtotal: N{int(receipt.get('subtotal') or total + discount - added_vat):,}")
         if discount:
-            lines.append(f"Subtotal: N{int(receipt.get('subtotal') or total + discount):,}")
             lines.append(f"Discount: -N{discount:,}")
+        if added_vat:
+            lines.append(f"VAT {receipt.get('vat_rate') or 0:g}%: N{vat_amount:,}")
         lines.append(f"{cfg.get('amount_label', 'Total')}: N{total:,}")
+        if vat_amount and not added_vat:
+            lines.append(f"(incl. VAT {receipt.get('vat_rate') or 0:g}%: N{vat_amount:,})")
+        if vat_amount and receipt.get("vat_number"):
+            lines.append(f"VAT no: {receipt['vat_number']}")
         lines.append(f"Paid:  N{paid:,}")
         if bal > 0:
             lines.append(f"Balance this sale: N{bal:,}")

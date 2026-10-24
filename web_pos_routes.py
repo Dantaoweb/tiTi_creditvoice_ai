@@ -189,6 +189,7 @@ def register_pos_routes(app):
                         "quantity": item.quantity or 0,
                         "kept_aside": _kept.get(item.id) or 0,
                         "expired_qty": _exp.get(item.id) or 0,
+                        "vat_exempt": bool(item.vat_exempt),       # "No VAT" product
                         "selling_price": _money(item.selling_price),
                         "cost_price": _money(item.cost_price),
                         "is_service": item.quantity is None or item.category == "service",

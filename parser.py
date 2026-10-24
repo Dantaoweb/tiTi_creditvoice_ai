@@ -2941,6 +2941,7 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "vat":                ["vat", "value added tax", "tin number", "tax on my sales", "tax on invoice"],
             "sell_out_of_stock":  ["out of stock", "stock out", "stock-out", "no stock", "zero stock", "stock is finished", "stock finished", "stock is finish", "stock has finished", "finished stock", "says out of stock", "saying stock out", "when stock is 0", "when stock is zero"],
             "quotation":          ["quotation", "a quote", "send quote", "give quote", "deposit before",
                                    "before work starts", "mobilization", "mobilisation", "balance on completion"],

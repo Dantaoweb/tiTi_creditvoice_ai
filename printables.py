@@ -71,6 +71,8 @@ def print_profile(db, owner, kind):
                 (kind == "receipt" and settings.get("print_bank_receipts", False))
     return {
         "biz_email": getattr(owner, "business_email", None) if owner else None,
+        # TIN / VAT number — printed only when the business charges VAT
+        "vat_number": (settings.get("vat_number") or None) if settings.get("vat_enabled") else None,
         "bank_accounts": bank_accounts(owner) if (owner and show_bank) else [],
         "print": print_choices(settings),
     }

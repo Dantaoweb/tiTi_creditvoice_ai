@@ -103,6 +103,7 @@ class EditInventoryRequest(BaseModel):
     selling_price: Optional[int] = None
     low_stock_alert: Optional[int] = None
     is_available: Optional[bool] = None
+    vat_exempt: Optional[bool] = None          # "No VAT" product (vat.py)
     retail_unit: Optional[str] = Field(default=None, max_length=30)
     retail_per_base: Optional[int] = None
     retail_price: Optional[int] = None
@@ -300,6 +301,7 @@ def register_inventory_routes(app):
                         "cost_price": _money(item.cost_price),
                         "selling_price": _money(item.selling_price),
                         "low_stock_alert": item.low_stock_alert,
+                        "vat_exempt": bool(item.vat_exempt),
                         "is_available": bool(item.is_available),
                         "is_service": item.quantity is None or item.category == "service",
                         "retail_unit": item.retail_unit,
@@ -631,6 +633,8 @@ def register_inventory_routes(app):
                 item.low_stock_alert = payload.low_stock_alert
             if payload.is_available is not None:
                 item.is_available = payload.is_available
+            if payload.vat_exempt is not None:
+                item.vat_exempt = bool(payload.vat_exempt)
             if payload.retail_unit is not None:
                 item.retail_unit = payload.retail_unit.strip().lower() or None
             if payload.retail_per_base is not None:

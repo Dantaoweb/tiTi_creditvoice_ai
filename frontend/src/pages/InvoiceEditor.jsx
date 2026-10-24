@@ -7,6 +7,8 @@ import { nairaFull, fmtAmt, parseAmt } from "../lib/format";
 import DiscountInput from "../components/DiscountInput";
 import CameraScanner from "../components/CameraScanner";
 import { discountAmount, NO_DISCOUNT } from "../lib/discount";
+import { vatFor, vatLabel } from "../lib/vat";
+import { useSettings } from "../lib/settings";
 
 // Writing an invoice is asking to be paid — nothing is owed and nothing leaves
 // stock until the money or the goods actually move (see InvoiceView).
@@ -96,7 +98,7 @@ function ProductInput({ line, onChange }) {
             <button type="button" key={p.id} onMouseDown={e => e.preventDefault()}
               onClick={() => onChange({
                 name: p.name, inventory_item_id: p.id, unit: p.unit || "",
-                unit_price: fmtAmt(p.selling_price),
+                unit_price: fmtAmt(p.selling_price), vat_exempt: !!p.vat_exempt,
               })}>
               <strong>{p.name}</strong>
               <span className="td-muted">
@@ -135,7 +137,7 @@ export default function InvoiceEditor() {
         }
         return [...kept, {
           ...blankLine(), inventory_item_id: p.id, name: p.name, unit: p.unit || "",
-          unit_price: p.selling_price ? fmtAmt(p.selling_price) : "",
+          unit_price: p.selling_price ? fmtAmt(p.selling_price) : "", vat_exempt: !!p.vat_exempt,
         }];
       });
       return { label: `Added ${p.name}` };
@@ -179,7 +181,10 @@ export default function InvoiceEditor() {
   const filled = lines.filter(l => l.name.trim());
   const subtotal = filled.reduce((s, l) => s + lineTotal(l), 0);
   const discount = discountAmount(subtotal, discountValue);   // off the whole invoice
-  const total = subtotal - discount;
+  // VAT as the business set it (shown here; the server fixes it on saving)
+  const { business: bizSettings } = useSettings();
+  const vat = vatFor(filled.map(l => ({ total: lineTotal(l), exempt: !!l.vat_exempt })), discount, bizSettings);
+  const total = vat.total;
   const pct = Math.min(100, Math.max(0, parseInt(depositPct, 10) || 0));
   const depositAmt = pct ? Math.ceil(total * pct / 100) : 0;
 
@@ -331,6 +336,11 @@ export default function InvoiceEditor() {
             {discount > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted)" }}>
                 <span>Subtotal {nairaFull(subtotal)}</span><span>−{nairaFull(discount)}</span>
+              </div>
+            )}
+            {vat.amount > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--muted)" }}>
+                <span>{vatLabel(vat.rate, vat.mode)}</span><span>{vat.mode === "inclusive" ? "" : "+"}{nairaFull(vat.amount)}</span>
               </div>
             )}
           </div>

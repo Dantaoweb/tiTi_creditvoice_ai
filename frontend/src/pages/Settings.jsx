@@ -302,6 +302,65 @@ function CategoriesSection({ business }) {
   );
 }
 
+// VAT: off unless the business turns it on, then they choose how prices work
+function VatSection({ business }) {
+  const { save, msg, err } = useSaver(saveBusiness);
+  const [rate, setRate] = useState(business.vat_rate ?? 7.5);
+  const [number, setNumber] = useState(business.vat_number || "");
+  const [collected, setCollected] = useState(null);
+  useEffect(() => {
+    if (business.vat_enabled) apiFetch("reports/vat").then(setCollected).catch(() => setCollected(null));
+  }, [business.vat_enabled]);
+  const on = !!business.vat_enabled;
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">VAT</span>
+        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
+      </div>
+      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+        {err && <div className="modal-error">{err}</div>}
+        <Row title="I charge VAT"
+          hint={on ? "VAT shows on sales, receipts, invoices and quotations." : "Off: no VAT anywhere. Turn on only if your business is registered to charge VAT."}>
+          <Seg value={on} onChange={v => save({ vat_enabled: v })} options={[[false, "No"], [true, "Yes"]]} />
+        </Row>
+        {on && (
+          <>
+            <Row title="My prices"
+              hint={business.vat_mode === "inclusive"
+                ? `Already include VAT: a ₦10,750 price stays ₦10,750 — the receipt shows the VAT inside it (₦750).`
+                : `Are before VAT: a ₦10,000 price becomes ₦10,000 + VAT ${business.vat_rate}% = ₦${(10000 * (1 + business.vat_rate / 100)).toLocaleString()} at the till.`}>
+              <Seg value={business.vat_mode} onChange={v => save({ vat_mode: v })}
+                options={[["add", "Add VAT on top"], ["inclusive", "Already include VAT"]]} />
+            </Row>
+            <Row title="VAT rate" hint="Nigeria's VAT is 7.5%. Products marked “No VAT” (Inventory → edit) are left out.">
+              <div style={{ display: "flex", gap: 6 }}>
+                <input type="number" min={0.1} max={50} step="0.1" value={rate} onChange={e => setRate(e.target.value)} style={{ width: 80 }} />
+                <span style={{ alignSelf: "center", fontSize: 13 }}>%</span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => save({ vat_rate: Number(rate) })}>Save</button>
+              </div>
+            </Row>
+            <Row title="TIN / VAT number" hint="Printed on receipts, invoices and quotations.">
+              <div style={{ display: "flex", gap: 6 }}>
+                <input value={number} maxLength={40} onChange={e => setNumber(e.target.value)} placeholder="e.g. 12345678-0001" style={{ width: 170 }} />
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => save({ vat_number: number })}>Save</button>
+              </div>
+            </Row>
+            {collected && (
+              <Row title="VAT collected" hint="From sales and paid invoices — what you'll file.">
+                <div style={{ fontSize: 13, textAlign: "right" }}>
+                  <div>{collected.month}: <strong>{nairaFull(collected.this_month)}</strong></div>
+                  <div className="td-muted">{collected.last_month_name}: {nairaFull(collected.last_month)}</div>
+                </div>
+              </Row>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SummarySection({ business }) {
   const { save, msg, err } = useSaver(saveBusiness);
   const [time, setTime] = useState(business.daily_summary_time || "20:00");
@@ -450,6 +509,7 @@ export default function Settings() {
           <StockSection business={business} />
           <CategoriesSection business={business} />
           <SummarySection business={business} />
+          <VatSection business={business} />
           <PrintSection business={business} />
         </>
       ) : (

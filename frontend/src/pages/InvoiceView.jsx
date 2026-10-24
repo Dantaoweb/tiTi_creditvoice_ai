@@ -121,10 +121,11 @@ export default function InvoiceView() {
     L.push("--------------------");
     doc.items.forEach(it => L.push(`${it.name}${it.unit ? ` (${it.unit})` : ""}  x${qtyStr(it.qty)} = ${nairaFull(it.total)}`));
     L.push("--------------------");
-    if (doc.discount > 0) {
-      L.push(`Subtotal: ${nairaFull(doc.subtotal)}`);
-      L.push(`Discount: -${nairaFull(doc.discount)}`);
-    }
+    const addedVat = doc.vat_amount > 0 && doc.vat_mode === "add";
+    if (doc.discount > 0 || addedVat) L.push(`Subtotal: ${nairaFull(doc.subtotal)}`);
+    if (doc.discount > 0) L.push(`Discount: -${nairaFull(doc.discount)}`);
+    if (addedVat) L.push(`VAT ${doc.vat_rate}%: ${nairaFull(doc.vat_amount)}`);
+    else if (doc.vat_amount > 0) L.push(`(Prices include VAT ${doc.vat_rate}%: ${nairaFull(doc.vat_amount)})`);
     if (doc.other_debt > 0) {
       L.push(`This invoice: ${nairaFull(doc.total)}`);
       L.push(`Previous balance: ${nairaFull(doc.other_debt)}`);
@@ -330,22 +331,34 @@ export default function InvoiceView() {
             ))}
           </tbody>
           <tfoot>
+            {(doc.discount > 0 || (doc.vat_amount > 0 && doc.vat_mode === "add")) && (
+              <tr>
+                <td colSpan={3}>Subtotal</td>
+                <td className="receipt-right">{nairaFull(doc.subtotal)}</td>
+              </tr>
+            )}
             {doc.discount > 0 && (
-              <>
-                <tr>
-                  <td colSpan={3}>Subtotal</td>
-                  <td className="receipt-right">{nairaFull(doc.subtotal)}</td>
-                </tr>
-                <tr>
-                  <td colSpan={3}>Discount</td>
-                  <td className="receipt-right">−{nairaFull(doc.discount)}</td>
-                </tr>
-              </>
+              <tr>
+                <td colSpan={3}>Discount</td>
+                <td className="receipt-right">−{nairaFull(doc.discount)}</td>
+              </tr>
+            )}
+            {doc.vat_amount > 0 && doc.vat_mode === "add" && (
+              <tr>
+                <td colSpan={3}>VAT {doc.vat_rate}%</td>
+                <td className="receipt-right">{nairaFull(doc.vat_amount)}</td>
+              </tr>
             )}
             <tr className="receipt-total-row">
               <td colSpan={3}>{isQuote ? "Quoted total" : waiting ? "Amount due" : "Total"}</td>
               <td className="receipt-right">{nairaFull(doc.total)}</td>
             </tr>
+            {doc.vat_amount > 0 && doc.vat_mode === "inclusive" && (
+              <tr className="receipt-muted">
+                <td colSpan={3}>Includes VAT {doc.vat_rate}%</td>
+                <td className="receipt-right">{nairaFull(doc.vat_amount)}</td>
+              </tr>
+            )}
             {hasDeposit && (
               <>
                 <tr style={{ fontWeight: 700 }}>

@@ -206,6 +206,9 @@ def detect_faq(text):
     if any(k in q for k in ("out of stock", "stock out", "stock-out", "no stock", "zero stock", "stock is finished", "stock finished", "stock is finish", "stock has finished", "finished stock", "says out of stock", "saying stock out", "when stock is 0", "when stock is zero")) and any(
             k in q for k in ("sell", "sale", "how", "can i", "what do i", "customer")):
         return "sell_out_of_stock"
+    if re.search(r"\bvat\b|value added tax|\btin\b|tax on (my )?(sales|invoice|receipt)", q) \
+            and "filing" not in q:
+        return "vat"
     if any(k in q for k in ("stock count", "stocktake", "stock take", "stock-take", "count my stock",
                             "count stock", "count my shelves", "count my goods", "stock is wrong",
                             "stock not correct", "stock is not correct", "stock loss", "stock lost",
@@ -849,6 +852,19 @@ FAQ_ANSWERS = {
         "   – To a *walk-in*: it just sells; stock stays at 0.\n"
         "• *No* (the default): the till won't let you sell it until you add stock.\n\n"
         "Ask me _how do I add stock_ or _what is a waybill_ for more."
+    ),
+    "vat": (
+        "🧾 *VAT — only if you charge it*\n\n"
+        "VAT is *off* until you turn it on: Settings → *VAT* → *I charge VAT* → Yes. Then choose:\n"
+        "• *Add VAT on top* — your prices are before VAT: ₦10,000 + VAT 7.5% (₦750) = ₦10,750.\n"
+        "• *Already include VAT* — a ₦10,750 price stays ₦10,750; the receipt shows the VAT inside it.\n\n"
+        "Set the rate (7.5% in Nigeria) and your TIN / VAT number — it's printed on receipts, invoices "
+        "and quotations.\n\n"
+        "*Products with no VAT* (basic food, medicines, school fees…): Inventory → the product → edit → "
+        "tick *No VAT on this product*.\n\n"
+        "Sales on *{till}* and invoices then show Subtotal · VAT · Total, and Settings → VAT shows *VAT "
+        "collected* this month and last — what you'll file. An invoice keeps the VAT it was written "
+        "with, even if you change the setting later."
     ),
     "stock_count": (
         "📋 *Stock count — when your stock in the app doesn't match the shelf*\n\n"
