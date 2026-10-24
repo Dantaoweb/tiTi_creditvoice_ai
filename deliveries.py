@@ -325,6 +325,13 @@ def _issue_credit_note(db, owner_phone, user_id, picks, kind, mode, reason, rest
             message_id=f"credit-note-{uuid.uuid4()}",
             branch_id=tx.branch_id,
         )
+        # The VAT inside what's refunded / credited comes off "VAT collected"
+        if tx.vat_amount and tx.vat_rate:
+            _r = float(tx.vat_rate)
+            _vat_back = sum(v * _r / (100 + _r) for l, _q, v in values if not getattr(l, "vat_exempt", False))
+            if _vat_back:
+                credit_tx.vat_amount = -int(round(_vat_back))
+                credit_tx.vat_rate, credit_tx.vat_mode = tx.vat_rate, tx.vat_mode
         db.add(credit_tx)
         db.flush()
         for line, qty, value in values:

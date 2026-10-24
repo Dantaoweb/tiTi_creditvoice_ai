@@ -11,6 +11,8 @@ import MoneyInput from "../components/MoneyInput";
 import WaitingCustomersModal from "../components/WaitingCustomersModal";
 import { useToast } from "../components/Toast";
 import { getBizLabels } from "../lib/bizLabels";
+import { vatFor, vatLabel } from "../lib/vat";
+import { useSettings } from "../lib/settings";
 
 function fmtAmt(s) {
   const raw = String(s || "").replace(/[^0-9]/g, "");
@@ -253,6 +255,19 @@ function SaleForm({ ownerPhone, onSuccess }) {
 
   const prevDebt = (customer && customer.balance > 0) ? customer.balance : 0;
   const debtDue  = settleDebt ? prevDebt : 0;
+  // VAT, when the business switched it on — same sum as the server
+  const { business: bizSettings } = useSettings();
+  const vat = vatFor([{ total: parseAmt(amount) || 0, exempt: false }], 0, bizSettings);
+
+  // What was paid toward the sale (incl. VAT) and toward old debt. Typing the
+  // full price counts as paying the VAT on top too.
+  function split(totalBeforeVat) {
+    const grand = vatFor([{ total: totalBeforeVat, exempt: false }], 0, bizSettings).total;
+    const raw = parseAmt(paid) || 0;
+    if (!customer) return { paidNum: grand, debtPaid: 0 };
+    const paidNum = raw >= totalBeforeVat && raw < grand ? grand : Math.min(raw, grand);
+    return { paidNum, debtPaid: Math.min(Math.max(0, raw - grand), debtDue) };
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -271,9 +286,8 @@ function SaleForm({ ownerPhone, onSuccess }) {
     try {
       const qtyNum = Math.max(1, parseAmt(qty) || 1);
       const total  = parseAmt(amount);
-      const paidNum = customer ? Math.min(parseAmt(paid) || 0, total) : total;
       // Surplus beyond the sale clears the customer's prior debt (up to what's owed).
-      const debtPaid = customer ? Math.min(Math.max(0, (parseAmt(paid) || 0) - total), debtDue) : 0;
+      const { paidNum, debtPaid } = split(total);
       const body   = {
         owner_phone:    ownerPhone,
         customer_id:    customer?.id || null,
@@ -285,11 +299,11 @@ function SaleForm({ ownerPhone, onSuccess }) {
         branch_id:      branchId || null,
       };
       const result = await apiPost("pos/save", body);
-      const bal = total - paidNum;
+      const bal = Math.max(0, (result?.total ?? total) - paidNum);
       onSuccess(
         customer
-          ? `Sale of ${nairaFull(total)} to ${customer.name} — paid ${nairaFull(paidNum)}${bal > 0 ? `, balance ${nairaFull(bal)}` : " (fully paid)"}${debtPaid > 0 ? ` · cleared ${nairaFull(debtPaid)} old debt` : ""}.`
-          : `Cash sale of ${nairaFull(total)} recorded.`,
+          ? `Sale of ${nairaFull(result?.total ?? total)} to ${customer.name} — paid ${nairaFull(paidNum)}${bal > 0 ? `, balance ${nairaFull(bal)}` : " (fully paid)"}${debtPaid > 0 ? ` · cleared ${nairaFull(debtPaid)} old debt` : ""}.`
+          : `Cash sale of ${nairaFull(result?.total ?? total)} recorded.`,
         result?.receipt_id ? `/pos/receipt/${result.receipt_id}` : null,
       );
       setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null); setCustQuery("");
@@ -297,8 +311,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
       if (isNetworkError(e)) {
         const qtyNum2 = Math.max(1, parseAmt(qty) || 1);
         const total2  = parseAmt(amount);
-        const paidNum2 = customer ? Math.min(parseAmt(paid) || 0, total2) : total2;
-        const debtPaid2 = customer ? Math.min(Math.max(0, (parseAmt(paid) || 0) - total2), debtDue) : 0;
+        const { paidNum: paidNum2, debtPaid: debtPaid2 } = split(total2);
         enqueue("pos/save", {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
           customer_name: (customer && !customer.id) ? customer.name : null,
@@ -338,6 +351,13 @@ function SaleForm({ ownerPhone, onSuccess }) {
         <div className="form-group">
           <label className="form-label">Amount (₦) *</label>
           <input inputMode="numeric" value={amount} onChange={e => setAmount(fmtAmt(e.target.value))} placeholder="0" required />
+          {vat.amount > 0 && (
+            <span className="form-hint">
+              {vat.mode === "inclusive"
+                ? `Includes ${vatLabel(vat.rate)}: ${nairaFull(vat.amount)}`
+                : `+ ${vatLabel(vat.rate)} ${nairaFull(vat.amount)} = ${nairaFull(vat.total)}`}
+            </span>
+          )}
         </div>
       </div>
       <div className="form-group customer-highlight">

@@ -238,6 +238,8 @@ def _commit_entry(db, owner_phone, entry, parsed):
             created_at=entry.created_at,
             receipt_number=next_receipt_number(db, owner_phone),
         )
+        from vat import apply_to_sale            # VAT, when the business switched it on
+        apply_to_sale(db, owner_phone, tx)
         db.add(tx)
         db.flush()
         entry.status = "approved"
@@ -268,6 +270,8 @@ def _commit_entry(db, owner_phone, entry, parsed):
             created_at=entry.created_at,
             receipt_number=next_receipt_number(db, owner_phone),
         )
+        from vat import apply_to_sale
+        _vat_added = apply_to_sale(db, owner_phone, tx)
         db.add(tx)
         db.flush()
         # The COMBINED PAY is a companion to the BUY above (whose receipt already
@@ -276,7 +280,8 @@ def _commit_entry(db, owner_phone, entry, parsed):
             pay_tx = Transaction(
                 customer_id=customer.id,
                 type="PAY",
-                amount=parsed.get("paid_amount"),
+                amount=parsed.get("paid_amount") + (
+                    _vat_added if (parsed.get("paid_amount") or 0) >= (parsed.get("buy_amount") or parsed.get("total") or 0) else 0),
                 recorded_by_id=entry.recorded_by_id,
                 created_at=entry.created_at,
             )

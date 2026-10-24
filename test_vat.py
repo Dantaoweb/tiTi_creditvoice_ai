@@ -165,3 +165,34 @@ def test_titi_explains_vat(text):
 def test_vat_filing_service_is_not_the_vat_setting():
     from faq import detect_faq
     assert detect_faq("how much is vat filing?") != "vat"
+
+
+def test_sales_typed_to_titi_get_vat_too():
+    phone, cook, _tv, _r, _a = _shop()
+    _vat(cook, vat_enabled=True)
+    for q in ["Ade bought shoes 10000 paid 10000", "yes", "sold tissue 2000", "yes"]:   # rice here is "No VAT"
+        r = client.post("/app/api/chat/send", cookies=cook, json={"text": q}).json()
+    assert "incl. VAT N150" in r["reply"] and "N2,150" in r["reply"]
+    from models import Transaction
+    db = SessionLocal()
+    try:
+        rows = {(t.type, t.amount, t.vat_amount) for t in db.query(Transaction).join(
+            Customer, Transaction.customer_id == Customer.id, isouter=True).filter(
+            (Customer.owner_phone == phone) | (Transaction.customer_id.is_(None))).all()}
+        assert ("BUY", 10750, 750) in rows and ("PAY", 10750, None) in rows and ("SALE", 2150, 150) in rows
+        ade = db.query(Customer).filter(Customer.owner_phone == phone, Customer.name == "ade").first()
+        assert ade.balance == 0                    # "paid 10000" = paid in full, VAT included
+    finally:
+        db.close()
+
+
+def test_refund_reduces_vat_collected():
+    phone, cook, tv, _r, ade = _shop()
+    _vat(cook, vat_enabled=True)
+    r = _sell(phone, cook, [_tv(tv, 2)], 215000, cust=ade)
+    assert client.get("/app/api/reports/vat", cookies=cook).json()["this_month"] == 15000
+    lines = client.get(f"/app/api/sales/{r['receipt_id']}/returnable", cookies=cook).json()["lines"]
+    client.post(f"/app/api/sales/{r['receipt_id']}/return", cookies=cook, json={
+        "lines": [{"line_id": lines[0]["line_id"], "quantity": 1}], "mode": "REFUND",
+        "restock": "SELLABLE", "reason": "faulty"})
+    assert client.get("/app/api/reports/vat", cookies=cook).json()["this_month"] == 7500

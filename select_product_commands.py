@@ -763,6 +763,11 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             receipt_number=next_receipt_number(db, business_owner_phone),
             discount_amount=overall_discount or None,
         )
+        # VAT, when the business switched it on; a full payment covers it too
+        from vat import apply_to_sale
+        _vat_added = apply_to_sale(db, business_owner_phone, buy_tx, [(i["total"], i["product"]) for i in cart])
+        if _vat_added and paid >= total:
+            paid += _vat_added
         db.add(buy_tx)
         db.flush()
 

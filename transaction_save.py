@@ -23,6 +23,18 @@ from reports import get_balance
 from transaction_setup import update_parse_log_outcome
 
 
+def _vat_lines(pending, pending_items):
+    """[(amount, product)] of a sale, for VAT on "No VAT" products."""
+    rows = []
+    for it in pending_items or []:
+        get = it.get if isinstance(it, dict) else (lambda k, d=None, _o=it: getattr(_o, k, d))
+        amt = get("total") or ((get("quantity") or 0) * (get("unit_price") or 0))
+        rows.append((amt or 0, get("product")))
+    if rows and sum(a for a, _p in rows) > 0:
+        return rows
+    return [(pending.buy_amount or 0, pending.product)]
+
+
 def _get_default_branch_id(db, owner_phone):
     branch = db.query(Branch).filter(
         Branch.owner_phone == owner_phone,
@@ -259,6 +271,10 @@ def save_direct_sale(
             branch_id=_get_recording_branch_id(db, business_owner_phone, user),
             receipt_number=next_receipt_number(db, business_owner_phone),
         )
+        from vat import apply_to_sale            # VAT, when the business switched it on
+        if apply_to_sale(db, business_owner_phone, tx, _vat_lines(pending, pending_items)):
+            pending.buy_amount = tx.amount       # the reply shows the total with VAT
+            sale_saved_msg = pending_transaction_summary(pending) + f"\n(incl. VAT N{tx.vat_amount:,})"
         db.add(tx)
         db.flush()
         _add_price_deviation_note(
@@ -444,6 +460,10 @@ def save_customer_pending(
                 is_multi_item=(_pending_items_count > 1),
                 receipt_number=next_receipt_number(db, business_owner_phone),
             )
+            from vat import apply_to_sale
+            if apply_to_sale(db, business_owner_phone, tx, _vat_lines(pending, pending_items)):
+                pending.buy_amount = tx.amount   # the reply shows the total with VAT
+                saved_summary = pending_transaction_summary(pending, customer) + f"\n(incl. VAT N{tx.vat_amount:,})"
             db.add(tx)
             db.flush()
             _buy_tx_for_receipt = tx
@@ -500,6 +520,8 @@ def save_customer_pending(
                 branch_id=_default_branch_id,
                 receipt_number=next_receipt_number(db, business_owner_phone),
             )
+            from vat import apply_to_sale
+            _vat_added = apply_to_sale(db, business_owner_phone, buy_tx, _vat_lines(pending, pending_items))
             db.add(buy_tx)
             db.flush()
             _buy_tx_for_receipt = buy_tx
@@ -511,6 +533,12 @@ def save_customer_pending(
                 stock_updates, stock_missing, low_stock_alerts = apply_sale_inventory(
                     db, business_owner_phone, buy_tx.id, user.id, pending, pending_items, "CUSTOMER_SALE",
                 )
+            # Said they paid the full price: the VAT on top is paid too
+            if _vat_added:
+                if (pending.paid_amount or 0) >= (pending.buy_amount or 0):
+                    pending.paid_amount = (pending.paid_amount or 0) + _vat_added
+                pending.buy_amount = buy_tx.amount       # the reply shows the total with VAT
+                saved_summary = pending_transaction_summary(pending, customer) + f"\n(incl. VAT N{buy_tx.vat_amount:,})"
             pay_tx = Transaction(
                 customer_id=customer.id,
                 type="PAY",

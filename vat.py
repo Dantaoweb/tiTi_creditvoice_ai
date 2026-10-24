@@ -71,3 +71,26 @@ def lines_for(db, owner_phone, items):
 def vat_label(rate, mode):
     r = f"{rate:g}%"
     return f"VAT {r} (included)" if mode == "inclusive" else f"VAT {r}"
+
+
+def apply_to_sale(db, owner_phone, tx, lines=None):
+    """VAT on a sale recorded outside the till — WhatsApp, tiTi, Record via
+    chat, fast capture — when the business switched VAT on. Call before the
+    transaction is flushed. `lines` = [(amount, product_name)]; default the
+    transaction's own product. Returns the VAT added on top (0 when prices
+    include VAT or there's none), so a full payment can include it."""
+    vat = vat_settings(db, owner_phone)
+    amount = int(tx.amount or 0)
+    if not vat or amount <= 0:
+        return 0
+    lines = lines or [(amount, tx.product)]
+    gross = sum(a for a, _p in lines) or amount
+    rows = [(amount * (a / gross), item_exempt(db, owner_phone, {"name": p or ""})) for a, p in lines]
+    vat_amount, total, _net = compute_vat(rows, 0, vat)
+    if not vat_amount:
+        return 0
+    tx.vat_amount, tx.vat_rate, tx.vat_mode = vat_amount, vat["rate"], vat["mode"]
+    if vat["mode"] == "add":
+        tx.amount = amount + int(vat_amount)      # whole naira, like every other amount
+        return int(vat_amount)
+    return 0
