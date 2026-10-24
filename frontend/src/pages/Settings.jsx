@@ -110,7 +110,9 @@ function StockSection({ business }) {
           </div>
         </Row>
         <Row title="Allow selling more than you have in store"
-          hint="Yes: the sale goes through and what isn't in store is kept as still to deliver for the customer. No: a sale can't take more than what's in store. Only changes new sales.">
+          hint={business.allow_negative_stock
+            ? "On: a sale can go past what's in store — for a named customer the rest is kept as still to deliver; a walk-in sale just sells. Only changes new sales."
+            : "Off (the default): you can't sell more than you have — out-of-stock products can't be tapped at the till. Turn on only if you sell goods you'll deliver later."}>
           <Seg value={business.allow_negative_stock} onChange={v => save({ allow_negative_stock: v })}
             options={[[true, "Yes"], [false, "No"]]} />
         </Row>

@@ -68,7 +68,7 @@ def test_defaults_are_how_the_app_always_worked():
     s = client.get("/app/api/settings", cookies=cook).json()
     assert s["display"] == DISPLAY_DEFAULTS
     assert s["business"] == BUSINESS_DEFAULTS and s["can_edit_business"] is True
-    assert s["business"]["allow_negative_stock"] is True and s["business"]["group_by_category"] is False
+    assert s["business"]["allow_negative_stock"] is False and s["business"]["group_by_category"] is False
 
 
 def test_display_is_each_persons_own():

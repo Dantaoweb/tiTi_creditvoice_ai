@@ -52,6 +52,8 @@ def _shop(stock=40):
         db.close()
     cook = client.post("/app/api/auth/login", json={"phone": phone, "pin": "5678"}).cookies
     staff = client.post("/app/api/auth/login", json={"phone": staff_phone, "pin": "1234"}).cookies
+    # Selling more than is in store is off by default; these shops turn it on
+    client.put("/app/api/settings/business", cookies=cook, json={"values": {"allow_negative_stock": True}})
     return phone, cook, staff, *ids
 
 

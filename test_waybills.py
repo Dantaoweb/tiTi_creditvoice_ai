@@ -42,6 +42,10 @@ def db():
     s.add(Customer(owner_phone=OWNER, name="ade", customer_phone="2348031111111"))
     s.add(Customer(owner_phone=OWNER, name="bisi", customer_phone="2348031111112"))
     s.commit()
+    # These tests sell more than is in store, which is off by default — the
+    # owner switches it on (test_switched_off… and test_default… check off).
+    set_business_settings(s, OWNER, {"allow_negative_stock": True})
+    s.commit()
     yield s
     s.close()
 
@@ -336,3 +340,14 @@ def test_walk_in_selling_more_than_in_store_sells_as_before(db):
     stops at 0, the way it always worked."""
     _sell(db, 100, who=None)
     assert _cement(db).quantity == 0 and goods_to_deliver(db, OWNER) == []
+
+
+def test_by_default_you_cannot_sell_more_than_you_have(db):
+    set_business_settings(db, OWNER, {"allow_negative_stock": None})      # back to the default
+    from app_settings import BUSINESS_DEFAULTS
+    assert BUSINESS_DEFAULTS["allow_negative_stock"] is False
+    with pytest.raises(ValueError, match="Selling more than you have is switched off"):
+        _sell(db, 100, delivered=40)
+    with pytest.raises(ValueError, match="only 40 bag in stock"):
+        _sell(db, 41, who=None)                                          # walk-ins too
+    _sell(db, 40, who=None)                                              # what you have, fine

@@ -843,11 +843,11 @@ FAQ_ANSWERS = {
         "*Best:* if the goods are really on your shelf, your stock record is behind — add the stock "
         "first (*{record}* → Stock tab, or Inventory → the product → Adjust → add), then sell as usual.\n\n"
         "*Selling it anyway* — Settings → Stock → *Allow selling more than you have in store*:\n"
-        "• *Yes* (the usual setting): on *{till}* you can still tap it (it says _Out of stock — can still sell_).\n"
+        "• *Yes* (switch it on yourself): on *{till}* you can still tap it.\n"
         "   – To a *named customer*: the sale is recorded, and what isn't in store is kept as *still to "
         "deliver* for them — make a waybill from Deliveries when new stock arrives.\n"
         "   – To a *walk-in*: it just sells; stock stays at 0.\n"
-        "• *No*: the till won't let you sell it until you add stock.\n\n"
+        "• *No* (the default): the till won't let you sell it until you add stock.\n\n"
         "Ask me _how do I add stock_ or _what is a waybill_ for more."
     ),
     "stock_count": (

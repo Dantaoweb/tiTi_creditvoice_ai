@@ -388,12 +388,11 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
               // Settings → "Allow selling more than you have in store": Yes lets
               // it be sold (owed to a named customer, or a plain walk-in sale);
               // No keeps it locked until stock is added.
-              const oos = outOfStock && business.allow_negative_stock === false;
+              const oos = outOfStock && !business.allow_negative_stock;
               const n = qtyFor(p);
               const stockLabel = p.is_service
                 ? "Service"
-                : oos ? "Out of stock — add stock first"
-                : outOfStock ? "Out of stock — can still sell"
+                : outOfStock ? "Out of stock"
                 : p.unit ? qty(p.quantity, p.unit) : `${qty(p.quantity)} in stock`;
               return (
                 <div key={p.id} className={`pos-pick-row${n > 0 ? " pos-pick-row--active" : ""}`}
@@ -407,7 +406,13 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
                     <span className="pos-pick-name" style={n > 0 ? { color: "#2563eb" } : undefined}>{p.name}</span>
                     <span className="pos-pick-meta">
                       {nairaFull(p.selling_price)}<span className="pos-pick-dot">·</span>
-                      <span className={outOfStock ? "pos-pick-oos" : ""}>{stockLabel}</span>
+                      {/* Just "Out of stock" on the row; what it means shows on hover / long-press */}
+                      <span className={outOfStock ? "pos-pick-oos" : ""}
+                        title={!outOfStock ? undefined : oos
+                          ? "Add stock to sell it (or allow selling more than you have in Settings)."
+                          : "You can still sell it — Settings allow selling more than you have."}>
+                        {stockLabel}
+                      </span>
                     </span>
                   </div>
                   {/* Qty stepper sits BESIDE the product, always reachable */}

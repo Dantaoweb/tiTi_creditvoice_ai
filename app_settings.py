@@ -35,7 +35,9 @@ BUSINESS_DEFAULTS = {
     "group_on_pos": True,                 # when grouping: Inventory and POS (False = Inventory only)
     "category_source": "suggest",         # suggest | manual
     "default_low_stock": None,            # number for new products, or None
-    "allow_negative_stock": True,         # sell more than is in store; the rest is owed (with a customer)
+    # Sell more than is in store (the rest owed to a named customer). Off unless
+    # the owner turns it on: you can't sell what you don't have (user, 2026-10-24).
+    "allow_negative_stock": False,
     "keep_aside": True,                   # goods left behind at a sale stay kept for that customer
     "show_part_delivery": True,
     "daily_summary": False,
