@@ -39,6 +39,9 @@ const WaybillView = lazyPage(() => import("./pages/WaybillView"));
 const StockCounts = lazyPage(() => import("./pages/StockCounts"));
 const PayPage = lazyPage(() => import("./pages/PayPage"));
 const PaymentClaims = lazyPage(() => import("./pages/PaymentClaims"));
+const PurchaseOrders = lazyPage(() => import("./pages/PurchaseOrders"));
+const PurchaseOrderEditor = lazyPage(() => import("./pages/PurchaseOrderEditor"));
+const PurchaseOrderView = lazyPage(() => import("./pages/PurchaseOrderView"));
 const StockCount = lazyPage(() => import("./pages/StockCount"));
 const Wallet = lazyPage(() => import("./pages/Wallet"));
 const Thrift = lazyPage(() => import("./pages/Thrift"));
@@ -104,6 +107,10 @@ export default function App() {
           <Route path="waybills/:id" element={<WaybillView />}  />
           <Route path="stock-counts"     element={<StockCounts />} />
           <Route path="payment-claims"   element={<PaymentClaims />} />
+          <Route path="purchase-orders"          element={<PurchaseOrders />} />
+          <Route path="purchase-orders/new"      element={<PurchaseOrderEditor />} />
+          <Route path="purchase-orders/:id"      element={<PurchaseOrderView />} />
+          <Route path="purchase-orders/:id/edit" element={<PurchaseOrderEditor />} />
           <Route path="stock-counts/:id" element={<StockCount />}  />
           <Route path="customers"    element={<Customers />}    />
           <Route path="transactions" element={<Transactions />} />

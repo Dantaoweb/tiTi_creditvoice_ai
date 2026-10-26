@@ -79,6 +79,12 @@ NAV_GUIDE = {
         "what": "Jobs with a deliver/ready-by date, and goods customers bought that are still in your store "
                 "(Goods to deliver) — tap Waybill for each trip, Keep aside, or Cancel / refund for goods called off.",
     },
+    "/purchase-orders": {
+        "name": "Purchase orders",
+        "what": "Orders to your suppliers before goods come (PO-0001): send on WhatsApp or print; when goods "
+                "arrive tap Goods arrived — they go into stock and onto the supplier's account. Running low "
+                "lists products to reorder by supplier. Owner and authorised staff.",
+    },
     "/payment-claims": {
         "name": "Payments to confirm",
         "what": "Customers who say they've paid by transfer (from the pay link or by replying PAID on "

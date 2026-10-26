@@ -1370,6 +1370,11 @@ export default function Inventory() {
               title="Find products that look like the same thing entered twice">
               Check duplicates
             </button>
+            {canManageStock && (
+              <Link to="/purchase-orders" className="btn btn-ghost btn-sm" title="Order from your suppliers">
+                Order stock
+              </Link>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={() => setShowExpiry(true)} title="Expired and expiring goods">
               Expiry
             </button>

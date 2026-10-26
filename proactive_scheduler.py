@@ -107,7 +107,8 @@ def _check_low_stock(db):
         )
 
         try:
-            _notify(db, owner.phone, "low_stock", "⚠️ Low Stock Alert", body)
+            # Tapping it opens Purchase orders → "Running low", ready to reorder
+            _notify(db, owner.phone, "low_stock", "⚠️ Low Stock Alert", body, link="/purchase-orders")
             db.add(ProactiveLog(
                 owner_phone=owner.phone,
                 event_type="low_stock",

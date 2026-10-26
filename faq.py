@@ -209,6 +209,8 @@ def detect_faq(text):
     if re.search(r"\bvat\b|value added tax|\btin\b|tax on (my )?(sales|invoice|receipt)", q) \
             and "filing" not in q:
         return "vat"
+    if any(k in q for k in ("purchase order", "purchase orders", "order from supplier", "order from my supplier", "order goods from", "order stock", "reorder", "re-order", "place an order", "order more stock")):
+        return "purchase_order"
     if any(k in q for k in ("stock count", "stocktake", "stock take", "stock-take", "count my stock",
                             "count stock", "count my shelves", "count my goods", "stock is wrong",
                             "stock not correct", "stock is not correct", "stock loss", "stock lost",
@@ -865,6 +867,21 @@ FAQ_ANSWERS = {
         "Sales on *{till}* and invoices then show Subtotal · VAT · Total, and Settings → VAT shows *VAT "
         "collected* this month and last — what you'll file. An invoice keeps the VAT it was written "
         "with, even if you change the setting later."
+    ),
+    "purchase_order": (
+        "📦 *Purchase orders — order from your supplier before goods come*\n\n"
+        "*1. Write it* — web app → *Purchase orders* (or Suppliers → Purchase orders) → *New order*: "
+        "the supplier, the products, how many and the cost of each, and a deliver-by date. It gets a "
+        "number (PO-0001). *Running low* lists products to reorder by supplier — tap *Order from …* "
+        "and it's filled in.\n"
+        "*2. Send it* — *Send to supplier* sends it on WhatsApp, or *Download / Print*.\n"
+        "Nothing is owed and no stock moves yet.\n"
+        "*3. When goods arrive* — open the order → *Goods arrived*: enter how many of each came (and an "
+        "expiry date / batch if you like) and what you paid. They go into stock and onto the supplier's "
+        "account, owed or paid.\n"
+        "*4. Part deliveries* — what hasn't come shows as *still expected*. If the rest won't come, "
+        "*Close order* — what never arrived stays on record.\n\n"
+        "Owner and authorised staff only, like other stock changes."
     ),
     "stock_count": (
         "📋 *Stock count — when your stock in the app doesn't match the shelf*\n\n"

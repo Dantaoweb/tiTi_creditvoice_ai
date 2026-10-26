@@ -400,6 +400,42 @@ class PaymentClaim(Base):
     pay_tx_id       = Column(Integer, ForeignKey("transactions.id"), nullable=True)
 
 
+class PurchaseOrder(Base):
+    """An order sent to a supplier before the goods arrive (PO-0001). No money
+    and no stock move until goods are received against it; then each line
+    received becomes stock + a supplier purchase, like stock received
+    (purchase_orders.py)."""
+
+    __tablename__ = "purchase_orders"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone     = Column(String, index=True)
+    branch_id       = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    number          = Column(Integer)
+    supplier_id     = Column(Integer, ForeignKey("suppliers.id"), index=True)
+    status          = Column(String, default="draft")   # draft | sent | part_received | received | closed | cancelled
+    expected_date   = Column(DateTime, nullable=True)
+    note            = Column(String, nullable=True)
+    created_by_id   = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=utcnow)
+    sent_at         = Column(DateTime, nullable=True)
+    closed_at       = Column(DateTime, nullable=True)
+    close_reason    = Column(String, nullable=True)
+
+
+class PurchaseOrderLine(Base):
+    __tablename__ = "purchase_order_lines"
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    po_id             = Column(Integer, ForeignKey("purchase_orders.id"), index=True)
+    inventory_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+    product           = Column(String)
+    unit              = Column(String, nullable=True)
+    quantity          = Column(Integer)
+    unit_cost         = Column(Integer, nullable=True)
+    received_qty      = Column(Integer, default=0)
+
+
 class StockBatch(Base):
     """One delivery of a product: how many came in, and when they expire
     (if anyone said). What is still in the store is worked out oldest-sold-

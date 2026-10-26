@@ -2,7 +2,7 @@ import { Suspense, useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
-  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap, CheckCircle2,
+  Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap, CheckCircle2, ClipboardList,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
   MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, Settings as SettingsIcon,
 } from "lucide-react";
@@ -64,6 +64,8 @@ function buildNav(L, group) {
     { to: "/deliveries",   label: "Deliveries",       icon: PackageCheck },
     // Customers who say they've paid by transfer — owner / authorised staff confirm
     { to: "/payment-claims", label: "Payments to confirm", icon: CheckCircle2, fullAccessOnly: true },
+    // Orders to suppliers before goods come — the people who manage stock
+    { to: "/purchase-orders", label: "Purchase orders", icon: ClipboardList, fullAccessOnly: true },
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },

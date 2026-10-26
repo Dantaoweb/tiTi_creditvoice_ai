@@ -242,6 +242,10 @@ def register_web_routes(app):
     from web_expiry_routes import register_expiry_routes
     register_expiry_routes(app)
 
+    # ── Purchase orders (PO-0001) ─────────────────────────────────────────
+    from web_po_routes import register_po_routes
+    register_po_routes(app)
+
     # ── Inventory — split into web_inventory_routes ───────────────────────────
     from web_inventory_routes import register_inventory_routes
     register_inventory_routes(app)

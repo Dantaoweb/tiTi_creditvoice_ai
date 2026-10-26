@@ -116,7 +116,10 @@ function MySupplyChain() {
       <div className="card">
         <div className="card-header">
           <span className="card-title">Suppliers <span className="text-subtle text-sm">({suppliers.length})</span></span>
-          <button className="btn btn-secondary btn-sm" onClick={() => setAddOpen(true)}>+ Add supplier</button>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Link to="/purchase-orders" className="btn btn-ghost btn-sm">Purchase orders</Link>
+            <button className="btn btn-secondary btn-sm" onClick={() => setAddOpen(true)}>+ Add supplier</button>
+          </div>
         </div>
         <DataTable
           loading={loading}
