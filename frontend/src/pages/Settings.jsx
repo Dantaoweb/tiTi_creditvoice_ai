@@ -410,6 +410,32 @@ const LOGO_OUTCOME = {
   none: "No logo is printed (saves ink on thermal printers).",
 };
 
+// Appointments in the menu: "auto" (null) = service businesses only
+function AppointmentsSection({ business }) {
+  const { save, msg, err } = useSaver(saveBusiness);
+  const v = business.show_appointments ?? "auto";
+  const hints = {
+    auto: "Automatic: shown for service businesses (salon, barber, clinic, mechanic, tailor, professionals) and hidden for shops.",
+    true: "Shown: Appointments is in your menu. Book customers for a time; they get a WhatsApp reminder the evening before.",
+    false: "Hidden: Appointments is not in your menu. Bookings already made are kept.",
+  };
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">Appointments</span>
+        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
+      </div>
+      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+        {err && <div className="modal-error">{err}</div>}
+        <Row title="Show Appointments in the menu" hint={hints[String(v)]}>
+          <Seg value={v} onChange={x => save({ show_appointments: x === "auto" ? null : x })}
+            options={[["auto", "Automatic"], [true, "Show"], [false, "Hide"]]} />
+        </Row>
+      </div>
+    </div>
+  );
+}
+
 function PrintSection({ business }) {
   const { save, msg, err } = useSaver(saveBusiness);
   // The business's real name, logo, address, email and bank accounts
@@ -510,6 +536,7 @@ export default function Settings() {
           <CategoriesSection business={business} />
           <SummarySection business={business} />
           <VatSection business={business} />
+          <AppointmentsSection business={business} />
           <PrintSection business={business} />
         </>
       ) : (

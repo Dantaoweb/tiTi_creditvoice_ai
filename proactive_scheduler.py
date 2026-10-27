@@ -158,6 +158,55 @@ def _check_expiry(db):
             print(f"[proactive] expiry error for {phone}: {e}", flush=True)
 
 
+# ── Appointments: customer reminder the evening before; owner's day list ──────
+
+def _check_appointments(db):
+    """From 5pm the evening before, each booked customer gets a WhatsApp
+    reminder (once). From 7am, the owner gets today's list (once a day)."""
+    from appointments import day_list, due_reminders, lagos_now, reminder_text
+    from business_templates import business_display_name
+    from models import Appointment, Customer, ProactiveLog, User
+    from whatsapp_client import send_whatsapp_message
+    for a in due_reminders(db):
+        try:
+            cust = db.query(Customer).filter(Customer.id == a.customer_id).first()
+            owner = db.query(User).filter(User.phone == a.owner_phone).first()
+            if cust and cust.customer_phone:
+                send_whatsapp_message(cust.customer_phone,
+                                      reminder_text(business_display_name(owner) if owner else "us", a, cust))
+            a.reminded_at = _utcnow()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"[proactive] appointment reminder error {a.id}: {e}", flush=True)
+    now = lagos_now()
+    if now.hour < 7:
+        return
+    start = datetime(now.year, now.month, now.day)
+    owners = {p for p, in db.query(Appointment.owner_phone).filter(
+        Appointment.start_at >= start, Appointment.start_at < start + timedelta(days=1),
+        Appointment.status == "booked").distinct()}
+    for phone in owners:
+        try:
+            last = db.query(ProactiveLog).filter(ProactiveLog.owner_phone == phone,
+                                                 ProactiveLog.event_type == "appointments_today")                 .order_by(ProactiveLog.sent_at.desc()).first()
+            if last and (_utcnow() - last.sent_at).total_seconds() < 20 * 3600:
+                continue
+            rows = [r for r in day_list(db, phone, now.date()) if r["status"] == "booked"]
+            if not rows:
+                continue
+            lines = "\n".join(f"• {r['time']} {r['customer']['name'] if r['customer'] else ''}"
+                               f"{' — ' + ', '.join(s['name'] for s in r['services']) if r['services'] else ''}"
+                               f"{' (with ' + r['staff_name'] + ')' if r['staff_name'] else ''}" for r in rows[:15])
+            _notify(db, phone, "appointments_today", f"📅 {len(rows)} appointment(s) today", lines,
+                    link="/appointments")
+            db.add(ProactiveLog(owner_phone=phone, event_type="appointments_today", sent_at=_utcnow()))
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"[proactive] appointments today error for {phone}: {e}", flush=True)
+
+
 # ── Overdue debt check ──────────────────────────────────────────────────────────
 
 def _check_overdue_debt(db):
@@ -855,6 +904,7 @@ def _check_unanswered_supplier_requests(db):
 
 _CHECKS = (
     _check_low_stock,
+    _check_appointments,
     _check_expiry,
     _check_overdue_debt,
     _check_inactivity,

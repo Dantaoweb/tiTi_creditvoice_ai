@@ -73,6 +73,7 @@ export const BUSINESS_DEFAULTS = {
   group_by_category: false, group_on_pos: true, category_source: "suggest",
   default_low_stock: null, allow_negative_stock: true, show_part_delivery: true,
   daily_summary: false, daily_summary_time: "20:00", category_order: [],
+  show_appointments: null,
 };
 
 export function useSettings() {

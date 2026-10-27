@@ -400,6 +400,30 @@ class PaymentClaim(Base):
     pay_tx_id       = Column(Integer, ForeignKey("transactions.id"), nullable=True)
 
 
+class Appointment(Base):
+    """A booking with a time (appointments.py): who, what service, when, with
+    which staff. Times are Nigeria wall-clock time (Lagos), as people say them.
+    Done → it becomes an ordinary sale with a receipt."""
+
+    __tablename__ = "appointments"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone    = Column(String, index=True)
+    branch_id      = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    customer_id    = Column(Integer, ForeignKey("customers.id"), index=True)
+    start_at       = Column(DateTime, index=True)          # Lagos time
+    duration_min   = Column(Integer, default=30)
+    services_json  = Column(Text, nullable=True)           # [{inventory_item_id, name, price}]
+    staff_user_id  = Column(String, ForeignKey("users.id"), nullable=True)
+    staff_name     = Column(String, nullable=True)
+    note           = Column(String, nullable=True)
+    status         = Column(String, default="booked")      # booked | arrived | done | no_show | cancelled
+    created_by_id  = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at     = Column(DateTime, default=utcnow)
+    sale_tx_id     = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    reminded_at    = Column(DateTime, nullable=True)
+
+
 class PurchaseOrder(Base):
     """An order sent to a supplier before the goods arrive (PO-0001). No money
     and no stock move until goods are received against it; then each line

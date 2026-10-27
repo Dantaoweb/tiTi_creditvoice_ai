@@ -2941,6 +2941,7 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "appointment":        ['appointment', 'appointments', 'book a customer', 'book customers', 'book my customer', 'booking', 'bookings', 'schedule a customer', 'schedule customers'],
             "purchase_order":     ["purchase order", "purchase orders", "order from supplier", "order from my supplier", "order goods from", "order stock", "reorder", "re-order", "place an order", "order more stock"],
             "vat":                ["vat", "value added tax", "tin number", "tax on my sales", "tax on invoice"],
             "sell_out_of_stock":  ["out of stock", "stock out", "stock-out", "no stock", "zero stock", "stock is finished", "stock finished", "stock is finish", "stock has finished", "finished stock", "says out of stock", "saying stock out", "when stock is 0", "when stock is zero"],

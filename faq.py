@@ -209,6 +209,8 @@ def detect_faq(text):
     if re.search(r"\bvat\b|value added tax|\btin\b|tax on (my )?(sales|invoice|receipt)", q) \
             and "filing" not in q:
         return "vat"
+    if any(k in q for k in ("appointment", "appointments", "book a customer", "book customers", "book my customer", "booking", "bookings", "schedule a customer", "schedule customers")):
+        return "appointment"
     if any(k in q for k in ("purchase order", "purchase orders", "order from supplier", "order from my supplier", "order goods from", "order stock", "reorder", "re-order", "place an order", "order more stock")):
         return "purchase_order"
     if any(k in q for k in ("stock count", "stocktake", "stock take", "stock-take", "count my stock",
@@ -867,6 +869,19 @@ FAQ_ANSWERS = {
         "Sales on *{till}* and invoices then show Subtotal · VAT · Total, and Settings → VAT shows *VAT "
         "collected* this month and last — what you'll file. An invoice keeps the VAT it was written "
         "with, even if you change the setting later."
+    ),
+    "appointment": (
+        "📅 *Appointments — book customers for a time*\n\n"
+        "*1. Book* — web app → *Appointments* → *Book*: the customer, the service(s) from your price "
+        "list, the date and time, how long it takes, who will do it, and a note.\n"
+        "If the same staff already has someone at that time, tiTi warns you (it still saves).\n"
+        "*2. On the day* — the list shows today's bookings; ← → for other days. Tap *Arrived* when "
+        "they come, *Change* to move it, *No-show* or *Cancel*. No-shows are counted per customer.\n"
+        "*3. Done* — tap *Done*: check the services and price, enter what they paid. It's recorded as a "
+        "sale with a receipt sent on WhatsApp; anything unpaid becomes their debt.\n\n"
+        "*Reminders* — the customer gets a WhatsApp reminder the evening before, and you get the day's "
+        "list each morning.\n"
+        "Shown in the menu for service businesses. Anyone else: *Settings → Appointments → Show*."
     ),
     "purchase_order": (
         "📦 *Purchase orders — order from your supplier before goods come*\n\n"

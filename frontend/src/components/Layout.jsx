@@ -4,9 +4,9 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap, CheckCircle2, ClipboardList,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, Settings as SettingsIcon,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Settings as SettingsIcon,
 } from "lucide-react";
-import { applyDisplay, loadSettings } from "../lib/settings";
+import { applyDisplay, loadSettings, useSettings } from "../lib/settings";
 import { checkForCameraCrash, takeCrashNotice } from "../lib/cameraSafety";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -41,6 +41,9 @@ function navScore(entry) {
   return (entry.count || 0) * Math.pow(0.5, days / 14);
 }
 
+// Business groups that book customers for a time (appointments.py SERVICE_GROUPS)
+const SERVICE_GROUPS = ["service", "clinic", "professional"];
+
 function buildNav(L, group) {
   // Businesses that don't sell products (savings/ajo, dues collection) get the
   // product-centric items deprioritized off the primary tab bar — mirroring the
@@ -66,6 +69,8 @@ function buildNav(L, group) {
     { to: "/payment-claims", label: "Payments to confirm", icon: CheckCircle2, fullAccessOnly: true },
     // Orders to suppliers before goods come — the people who manage stock
     { to: "/purchase-orders", label: "Purchase orders", icon: ClipboardList, fullAccessOnly: true },
+    // Bookings with a time — service businesses, or anyone who switches it on in Settings
+    { to: "/appointments", label: "Appointments",    icon: CalendarClock, appointmentsOnly: true },
     { to: "/wallet",       label: "Wallet ✦",         icon: Wallet, badge: "soon" },
     { section: "More" },
     { to: "/transactions", label: "Transactions",     icon: ArrowLeftRight  },
@@ -180,10 +185,12 @@ export default function Layout() {
   const isFuel = user?.business_category === "energy_fuel" || FUEL_TYPES.includes(user?.business_type);
   const isPoultry = user?.business_type === "poultry_farm";
   const isSchool = user?.menu_group === "school";
+  const { business: biz } = useSettings();
+  const showAppointments = biz.show_appointments ?? SERVICE_GROUPS.includes(user?.label_group || user?.menu_group);
   const NAV = buildNav(L, user?.menu_group).filter(item =>
     (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel) && (!item.poultryOnly || isPoultry)
     && (!item.fullAccessOnly || (user?.full_access ?? !user?.parent_id))
-    && (!item.schoolOnly || isSchool));
+    && (!item.schoolOnly || isSchool) && (!item.appointmentsOnly || showAppointments));
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {
@@ -192,6 +199,7 @@ export default function Layout() {
     "/pos":          "Select product",
     "/receipts":     "Receipts",
     "/invoices":     "Invoices",
+    "/appointments": "Appointments",
     "/deliveries":   "Deliveries",
     "/inventory":    L.stock,
     "/customers":    L.navCustomers,

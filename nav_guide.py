@@ -85,6 +85,12 @@ NAV_GUIDE = {
                 "arrive tap Goods arrived — they go into stock and onto the supplier's account. Running low "
                 "lists products to reorder by supplier. Owner and authorised staff.",
     },
+    "/appointments": {
+        "name": "Appointments",
+        "what": "Book customers for a time (service, staff, how long). Arrived / No-show / Done — Done "
+                "records the sale and sends the receipt. Customers get a WhatsApp reminder the evening "
+                "before. Shown for service businesses; others switch it on in Settings.",
+    },
     "/payment-claims": {
         "name": "Payments to confirm",
         "what": "Customers who say they've paid by transfer (from the pay link or by replying PAID on "

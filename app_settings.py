@@ -50,6 +50,9 @@ BUSINESS_DEFAULTS = {
     "vat_mode": "add",                    # add (on top of prices) | inclusive (prices include VAT)
     "vat_rate": 7.5,
     "vat_number": "",                     # TIN / VAT number, printed on documents
+    # Appointments in the menu: None = for service businesses (salon, clinic,
+    # vet, mechanic, tailor, professionals); True / False = the owner's choice
+    "show_appointments": None,
     "push_hide_details": False,           # phone notifications: hide amounts/names on the lock screen
     "count_blind": True,
     "expiry_warn_days": 30,               # warn this many days before goods expire                  # stock count: counters don't see the app's numbers
@@ -154,6 +157,8 @@ def _clean_business(k, v):
         if n < 0:
             raise ValueError("The low-stock alert can't be negative.")
         return n
+    if k == "show_appointments":
+        return None if v is None else bool(v)
     if k == "vat_mode":
         if v not in ("add", "inclusive"):
             raise ValueError("Choose: add VAT on top, or prices already include VAT.")

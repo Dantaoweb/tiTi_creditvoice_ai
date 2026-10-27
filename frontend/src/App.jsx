@@ -40,6 +40,7 @@ const StockCounts = lazyPage(() => import("./pages/StockCounts"));
 const PayPage = lazyPage(() => import("./pages/PayPage"));
 const PaymentClaims = lazyPage(() => import("./pages/PaymentClaims"));
 const PurchaseOrders = lazyPage(() => import("./pages/PurchaseOrders"));
+const Appointments = lazyPage(() => import("./pages/Appointments"));
 const PurchaseOrderEditor = lazyPage(() => import("./pages/PurchaseOrderEditor"));
 const PurchaseOrderView = lazyPage(() => import("./pages/PurchaseOrderView"));
 const StockCount = lazyPage(() => import("./pages/StockCount"));
@@ -108,6 +109,7 @@ export default function App() {
           <Route path="stock-counts"     element={<StockCounts />} />
           <Route path="payment-claims"   element={<PaymentClaims />} />
           <Route path="purchase-orders"          element={<PurchaseOrders />} />
+          <Route path="appointments"             element={<Appointments />} />
           <Route path="purchase-orders/new"      element={<PurchaseOrderEditor />} />
           <Route path="purchase-orders/:id"      element={<PurchaseOrderView />} />
           <Route path="purchase-orders/:id/edit" element={<PurchaseOrderEditor />} />
