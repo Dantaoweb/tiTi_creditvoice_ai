@@ -75,6 +75,7 @@ export const BUSINESS_DEFAULTS = {
   daily_summary: false, daily_summary_time: "20:00", category_order: [],
   show_appointments: null, booking_link: false, booking_auto_confirm: false, booking_pick_staff: false,
   booking_slot_min: 30, booking_days_ahead: 14,
+  loyalty_mode: "off", loyalty_stamps_needed: 10, loyalty_points_percent: 1, loyalty_expiry_months: 0, loyalty_items: [],
   booking_hours: { mon: ["08:00", "18:00"], tue: ["08:00", "18:00"], wed: ["08:00", "18:00"], thu: ["08:00", "18:00"],
     fri: ["08:00", "18:00"], sat: ["08:00", "18:00"], sun: null },
 };

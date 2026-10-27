@@ -574,6 +574,24 @@ class CreditNote(Base):
     voided_at      = Column(DateTime, nullable=True)
 
 
+class LoyaltyEntry(Base):
+    """Loyalty (loyalty.py): what a customer earned on one sale, or used as a
+    reward on one sale. Earned rows are re-checked against the sale, so a void
+    or refund takes them back; a used row on a voided sale is given back."""
+
+    __tablename__ = "loyalty_entries"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone    = Column(String, index=True)
+    customer_id    = Column(Integer, ForeignKey("customers.id"), index=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), index=True)
+    kind           = Column(String)                    # earn | use
+    stamps         = Column(Integer, default=0)
+    points         = Column(Integer, default=0)        # naira value
+    created_at     = Column(DateTime, default=utcnow, index=True)   # when it was earned / used
+    cancelled_at   = Column(DateTime, nullable=True)   # sale voided / refunded away
+
+
 class RecurringInvoice(Base):
     """A repeat invoice (recurring_invoices.py): the same items billed to the
     same customer every week / month / 3 months / year. On each date a new,

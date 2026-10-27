@@ -62,6 +62,12 @@ BUSINESS_DEFAULTS = {
                       for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")},
     "booking_slot_min": 30,
     "booking_days_ahead": 14,
+    # Loyalty (loyalty.py): off unless the owner picks a stamp card or points
+    "loyalty_mode": "off",                # off | stamps | points
+    "loyalty_stamps_needed": 10,          # stamps for one free
+    "loyalty_points_percent": 1.0,        # ₦ back for every ₦100 spent
+    "loyalty_expiry_months": 0,           # 0 = rewards never expire
+    "loyalty_items": [],                  # product ids that count; empty = everything
     "push_hide_details": False,           # phone notifications: hide amounts/names on the lock screen
     "count_blind": True,
     "expiry_warn_days": 30,               # warn this many days before goods expire                  # stock count: counters don't see the app's numbers
@@ -77,7 +83,7 @@ BUSINESS_DEFAULTS = {
     "receipt_footer": "",
 }
 # Kept on the same JSON but not a user choice
-_INTERNAL = ("daily_summary_last_sent",)
+_INTERNAL = ("daily_summary_last_sent", "loyalty_since")
 
 LAGOS = timezone(timedelta(hours=1))      # West Africa Time, no daylight saving
 
@@ -184,6 +190,37 @@ def _clean_business(k, v):
                 raise ValueError("Closing time must be after opening time.")
             out[d] = [h[0], h[1]]
         return out
+    if k == "loyalty_mode":
+        if v not in ("off", "stamps", "points"):
+            raise ValueError("Pick off, stamp card or points.")
+        return v
+    if k in ("loyalty_stamps_needed", "loyalty_expiry_months"):
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            raise ValueError("Enter a number.")
+        lo, hi = (2, 50) if k == "loyalty_stamps_needed" else (0, 36)
+        if not lo <= n <= hi:
+            raise ValueError(f"Pick between {lo} and {hi}.")
+        return n
+    if k == "loyalty_points_percent":
+        try:
+            r = round(float(v), 2)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("Enter the points as a number, e.g. 1.")
+        if not 0.1 <= r <= 20:
+            raise ValueError("Pick between 0.1 and 20 naira back per ₦100.")
+        return r
+    if k == "loyalty_items":
+        if not isinstance(v, list):
+            raise ValueError("Invalid product list.")
+        out = []
+        for x in v[:200]:
+            try:
+                out.append(int(x))
+            except (TypeError, ValueError):
+                raise ValueError("Invalid product list.")
+        return sorted(set(out))
     if k == "booking_slot_min":
         if v not in (15, 20, 30, 45, 60, 90, 120):
             raise ValueError("Pick one of the choices shown.")
@@ -237,7 +274,12 @@ def set_business_settings(db, owner_phone, changes):
     for k, v in (changes or {}).items():
         if k not in BUSINESS_DEFAULTS:
             continue
-        data[k] = _clean_business(k, v)
+        cleaned = _clean_business(k, v)
+        # Loyalty starts counting from when it's switched on (or changed to
+        # the other kind) — sales before that earn nothing
+        if k == "loyalty_mode" and cleaned != "off" and cleaned != data.get("loyalty_mode", "off"):
+            data["loyalty_since"] = datetime.utcnow().isoformat()
+        data[k] = cleaned
     owner.business_settings_json = json.dumps(data)
     return get_business_settings(db, owner_phone)
 

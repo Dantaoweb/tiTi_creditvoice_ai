@@ -343,6 +343,15 @@ def _send_web_receipt(db, owner_phone, tx_id):
         phone = (receipt.get("customer") or {}).get("phone")
         if not phone:
             return
-        send_whatsapp_message(phone, format_receipt_text(receipt))
+        text = format_receipt_text(receipt)
+        try:
+            from loyalty import receipt_line
+            line = receipt_line(db, owner_phone, (receipt.get("customer") or {}).get("id"))
+            if line:
+                text = f"{text}\n\n{line}"
+                db.commit()
+        except Exception:
+            db.rollback()
+        send_whatsapp_message(phone, text)
     except Exception:
         import traceback; traceback.print_exc()

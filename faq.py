@@ -134,6 +134,11 @@ def detect_faq(text):
     where = _where_is(q)
     if where:
         return where
+    if any(k in q for k in ("loyalty", "loyal customer", "reward my customer", "reward customers", "reward loyal",
+                            "customer reward", "stamp card", "loyalty card", "customer points", "loyalty points",
+                            "use points", "use reward", "buy 10 get", "buy ten get", "best customers",
+                            "top customers", "cashback", "cash back for customers")):
+        return "loyalty"
     if re.search(r"\bdiscount", q):
         return "discount"
     if any(k in q for k in [
@@ -871,6 +876,19 @@ FAQ_ANSWERS = {
         "Sales on *{till}* and invoices then show Subtotal · VAT · Total, and Settings → VAT shows *VAT "
         "collected* this month and last — what you'll file. An invoice keeps the VAT it was written "
         "with, even if you change the setting later."
+    ),
+    "loyalty": (
+        "⭐ *Loyalty — reward customers who come back*\n\n"
+        "*1. Switch it on* — *Settings → Loyalty* and pick one: "
+        "*Stamp card* (buy 10, get the next one free — you choose the number) or *Points* (₦1 back for every ₦100 spent — you choose how much).\n"
+        "You can also choose which products count, and whether rewards expire.\n"
+        "*2. Sell as usual* — choose the customer's name when you sell. Every paid sale earns; a credit sale "
+        "earns once the debt is cleared. Customers see their stamps or points on their WhatsApp receipt.\n"
+        "*3. Use the reward* — at {till}, choose the customer: it shows their stamps or points. Tick "
+        "*Use reward* (the cheapest item that counts comes off) or *Use points* (they come off the total)."
+        "\n\n"
+        "A voided sale takes its reward back. Walk-in sales with no name earn nothing. "
+        "*Customers → Best* shows who spends most, and their rewards."
     ),
     "repeat_invoice": (
         "🔁 *Repeat invoices — bill the same customer again on a schedule*\n\n"

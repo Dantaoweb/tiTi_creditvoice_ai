@@ -471,6 +471,90 @@ function AppointmentsSection({ business }) {
   );
 }
 
+// Loyalty: off, stamp card or points — and the numbers behind it
+function LoyaltySection({ business }) {
+  const { save, msg, err } = useSaver(saveBusiness);
+  const mode = business.loyalty_mode || "off";
+  const [products, setProducts] = useState(null);
+  const [q, setQ] = useState("");
+  const chosen = business.loyalty_items || [];
+  useEffect(() => {
+    if (mode === "off") return undefined;
+    let live = true;
+    apiFetch("pos/products").then(d => { if (live) setProducts(d.products || []); }).catch(() => {});
+    return () => { live = false; };
+  }, [mode]);
+  const nameOf = id => products?.find(p => p.id === id)?.name || `Product #${id}`;
+  const matches = q.trim().length >= 2 && products
+    ? products.filter(p => !chosen.includes(p.id) && p.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6) : [];
+  const hints = {
+    off: "Off: no stamps or points.",
+    stamps: `Stamp card: every paid sale to a named customer is a stamp. At ${business.loyalty_stamps_needed} stamps the next one is free — tick "Use reward" at the till and the cheapest item that counts comes off.`,
+    points: `Points: customers get ₦${business.loyalty_points_percent} back for every ₦100 they spend. Tick "Use points" at the till to take them off.`,
+  };
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">Loyalty</span>
+        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
+      </div>
+      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+        {err && <div className="modal-error">{err}</div>}
+        <Row title="Reward customers who come back" hint={hints[mode]}>
+          <Seg value={mode} onChange={v => save({ loyalty_mode: v })}
+            options={[["off", "Off"], ["stamps", "Stamp card"], ["points", "Points"]]} />
+        </Row>
+        {mode !== "off" && (
+          <>
+            {mode === "stamps" ? (
+              <Row title="Stamps for a free one" hint={`Buy ${business.loyalty_stamps_needed}, get the next one free.`}>
+                <select value={business.loyalty_stamps_needed} onChange={e => save({ loyalty_stamps_needed: Number(e.target.value) })}>
+                  {[3, 4, 5, 6, 8, 10, 12, 15, 20].map(n => <option key={n} value={n}>{n} stamps</option>)}
+                </select>
+              </Row>
+            ) : (
+              <Row title="Points for every ₦100 spent" hint={`Spend ₦10,000 → ₦${Math.floor(100 * business.loyalty_points_percent).toLocaleString()} in points.`}>
+                <select value={business.loyalty_points_percent} onChange={e => save({ loyalty_points_percent: Number(e.target.value) })}>
+                  {[0.5, 1, 2, 3, 5].map(n => <option key={n} value={n}>₦{n} back</option>)}
+                </select>
+              </Row>
+            )}
+            <Row title="Rewards expire"
+              hint={business.loyalty_expiry_months ? `Unused ${mode === "stamps" ? "stamps" : "points"} are gone after ${business.loyalty_expiry_months} months.` : "Never: they keep them until they use them."}>
+              <select value={business.loyalty_expiry_months} onChange={e => save({ loyalty_expiry_months: Number(e.target.value) })}>
+                {[[0, "Never"], [3, "After 3 months"], [6, "After 6 months"], [12, "After 1 year"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </Row>
+            <Row title="Products that count"
+              hint={chosen.length ? "Only sales of these products earn (and only these can be the free one)." : "Everything you sell counts. Add products here to count only those."}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {chosen.map(id => (
+                    <span key={id} className="badge" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                      {nameOf(id)}
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0 }} aria-label="Remove"
+                        onClick={() => save({ loyalty_items: chosen.filter(x => x !== id) })}>×</button>
+                    </span>
+                  ))}
+                </div>
+                <input value={q} placeholder="Add a product…" onChange={e => setQ(e.target.value)} />
+                {matches.map(p => (
+                  <button key={p.id} type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: "flex-start" }}
+                    onClick={() => { setQ(""); save({ loyalty_items: [...chosen, p.id] }); }}>{p.name}</button>
+                ))}
+              </div>
+            </Row>
+            <div className="td-muted" style={{ fontSize: 12, padding: "6px 0 10px" }}>
+              Only sales to a named customer earn, and only once paid — a credit sale earns when the debt is cleared.
+              A voided sale takes its reward back. Customers see their stamps or points on their WhatsApp receipt.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Opening hours for the booking link — a day left unticked is closed
 const WEEK = [["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"]];
 function HoursRow({ hours, onSave }) {
@@ -600,6 +684,7 @@ export default function Settings() {
           <SummarySection business={business} />
           <VatSection business={business} />
           <AppointmentsSection business={business} />
+          <LoyaltySection business={business} />
           <PrintSection business={business} />
         </>
       ) : (

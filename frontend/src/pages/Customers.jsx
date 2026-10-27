@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText, ChevronRight, Truck } from "lucide-react";
+import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown, FileText, ChevronRight, Truck, Award } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
@@ -844,6 +844,55 @@ function DebtorsTab({ debtors, summary, footer, loading, onPay, onDetail, onSend
 // ── Main page ────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 50;
 
+// Who spends most (last 30 / 90 / 365 days), with their loyalty reward if on
+function BestCustomersModal({ onClose }) {
+  const [days, setDays] = useState(90);
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let live = true;
+    apiFetch("loyalty/best", { days }).then(d => { if (live) setData(d); }).catch(e => live && setErr(e.message));
+    return () => { live = false; };
+  }, [days]);
+  const reward = c => data.mode === "stamps"
+    ? (c.reward >= data.needed ? `🎁 ${c.reward} stamps — free one ready` : `${c.reward} of ${data.needed} stamps`)
+    : c.reward > 0 ? `${nairaFull(c.reward)} points` : "—";
+  return (
+    <Modal title="Best customers" onClose={onClose} wide>
+      <div className="modal-body">
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+        {[30, 90, 365].map(d => (
+          <button key={d} className={`btn btn-sm ${days === d ? "btn-primary" : "btn-ghost"}`} onClick={() => { setData(null); setDays(d); }}>
+            Last {d === 365 ? "year" : `${d} days`}
+          </button>
+        ))}
+      </div>
+      {err && <div className="modal-error">{err}</div>}
+      {!data ? <div className="td-muted">Loading…</div> : data.customers.length === 0 ? (
+        <div className="td-muted">No sales to named customers in this time.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="data-table" style={{ width: "100%" }}>
+            <thead><tr><th>#</th><th>Customer</th><th style={{ textAlign: "right" }}>Spent</th><th style={{ textAlign: "right" }}>Visits</th>{data.mode !== "off" && <th>Loyalty</th>}</tr></thead>
+            <tbody>
+              {data.customers.map((c, i) => (
+                <tr key={c.id}>
+                  <td>{i + 1}</td><td>{c.name}</td><td style={{ textAlign: "right" }}>{nairaFull(c.spent)}</td>
+                  <td style={{ textAlign: "right" }}>{c.visits}</td>{data.mode !== "off" && <td>{reward(c)}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {data && data.mode === "off" && (
+        <div className="td-muted" style={{ fontSize: 12, marginTop: 10 }}>Reward them: switch on a stamp card or points in Settings → Loyalty.</div>
+      )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function Customers() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
@@ -857,6 +906,7 @@ export default function Customers() {
   const [error, setError] = useState(null);
   const [isStale, setIsStale] = useState(false);
   const [search, setSearch] = useState("");
+  const [showBest, setShowBest] = useState(false);
   const [query, setQuery] = useState("");         // debounced search sent to the server
   const [sort, setSort] = useState(null);         // { col, dir } — null = newest first
   const [activeTab, setActiveTab] = useState("all");
@@ -973,6 +1023,9 @@ export default function Customers() {
                 onChange={e => setSearch(e.target.value)}
                 style={{ flex: 1, minWidth: 0 }}
               />
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowBest(true)} style={{ flexShrink: 0 }} title="Who spends most, and their loyalty rewards">
+                <Award size={14} /> Best
+              </button>
               <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)} style={{ flexShrink: 0 }}>
                 <Plus size={14} /> {L.addCustomer}
               </button>
@@ -1124,6 +1177,7 @@ export default function Customers() {
       {waybillFor && (
         <WaybillModal source={{ customer_id: waybillFor.id }} onClose={() => { setWaybillFor(null); load(rows.length); }} />
       )}
+      {showBest && <BestCustomersModal onClose={() => setShowBest(false)} />}
       {showAdd && (
         <AddCustomerModal
           ownerPhone={ownerPhone}

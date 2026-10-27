@@ -56,6 +56,7 @@ class PosSaveRequest(BaseModel):
     branch_id: Optional[int] = None
     due_date: Optional[datetime] = None
     service_date: Optional[datetime] = None   # promised delivery / ready-by date
+    loyalty_use: bool = False   # use the customer's loyalty reward (loyalty.py) — taken off as a discount
 
 
 class InvoiceCreateRequest(BaseModel):
@@ -309,6 +310,21 @@ def register_pos_routes(app):
                 ).first()
                 owed_before_sale = max(0, int((_c.balance if _c else 0) or 0))
 
+            # Loyalty reward: worked out here (never trusted from the phone)
+            discount = int(payload.discount or 0)
+            reward_units = None
+            if payload.loyalty_use:
+                from loyalty import LoyaltyError, config as loyalty_config, reward_for_cart
+                try:
+                    off, reward_units = reward_for_cart(db, owner_phone, payload.customer_id, items)
+                except LoyaltyError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+                lines_total = sum(int(round(float(i.get("qty") or 1) * int(i.get("unit_price") or 0))) for i in items)
+                off = max(0, min(off, lines_total - discount))
+                if loyalty_config(db, owner_phone)["mode"] == "points":
+                    reward_units = off
+                discount += off
+
             result = save_pos_sale(
                 db,
                 owner_phone,
@@ -321,8 +337,12 @@ def register_pos_routes(app):
                 customer_name=payload.customer_name,
                 customer_phone=payload.customer_phone,
                 service_date=payload.service_date,
-                discount=payload.discount,
+                discount=discount,
             )
+            if reward_units:
+                from loyalty import record_use
+                record_use(db, owner_phone, payload.customer_id, result.get("receipt_id"), reward_units)
+                db.commit()
             # Sold to a pupil: it is school fees too (their bill for this term)
             try:
                 import school_service as _school

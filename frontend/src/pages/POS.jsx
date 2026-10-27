@@ -567,6 +567,10 @@ export default function POS() {
   const [custQuery, setCustQuery] = useState("");   // typed-but-unselected search text
   const [payment, setPayment] = useState("");
   const [discountValue, setDiscountValue] = useState(NO_DISCOUNT);
+  // Loyalty (Settings → Loyalty): the chosen customer's stamps / points, and
+  // whether to use their reward on this sale
+  const [loyalty, setLoyalty] = useState(null);     // { cid, mode, stamps, needed, points, reward_ready }
+  const [useReward, setUseReward] = useState(false);
   const [settleDebt, setSettleDebt] = useState(true);   // fold prior debt into checkout
   const [dueDate, setDueDate] = useState("");
   const [serviceDate, setServiceDate] = useState("");
@@ -600,8 +604,26 @@ export default function POS() {
       .catch(() => {});
   }, [isOwner]);
 
+  useEffect(() => {
+    if (!customer?.id || (businessSettings.loyalty_mode || "off") === "off") return undefined;
+    let live = true;
+    apiFetch(`loyalty/customer/${customer.id}`).then(d => { if (live) setLoyalty({ ...d, cid: customer.id }); }).catch(() => {});
+    return () => { live = false; };
+  }, [customer?.id, businessSettings.loyalty_mode]);
+
   const subtotal = cart.reduce((s, it) => s + it.qty * it.unit_price, 0);
-  const discount = discountAmount(subtotal, discountValue);   // off the whole sale
+  const manualDiscount = discountAmount(subtotal, discountValue);
+  const custLoyalty = loyalty && customer?.id && loyalty.cid === customer.id && loyalty.mode !== "off" ? loyalty : null;
+  // The reward as the server will work it out: the cheapest item that counts
+  // is free (stamp card), or the points come off (points)
+  const loyaltyItems = businessSettings.loyalty_items || [];
+  const countedPrices = cart.filter(it => !loyaltyItems.length || loyaltyItems.includes(it.inventory_item_id))
+    .map(it => it.unit_price).filter(p => p > 0);
+  const rewardValue = custLoyalty?.mode === "stamps"
+    ? (countedPrices.length ? Math.min(...countedPrices) : 0)
+    : (custLoyalty?.points || 0);
+  const rewardOff = useReward && custLoyalty?.reward_ready ? Math.max(0, Math.min(subtotal - manualDiscount, rewardValue)) : 0;
+  const discount = manualDiscount + rewardOff;   // off the whole sale
   // VAT only when the business switched it on (Settings → VAT): added on top,
   // or already inside the prices. Same sum as the server (lib/vat.js).
   const vat      = vatFor(cart.map(it => ({ total: it.qty * it.unit_price, exempt: !!it.vat_exempt })),
@@ -762,7 +784,8 @@ export default function POS() {
       })),
       payment_amount: paid,
       debt_payment: debtPaid,
-      discount,
+      discount: manualDiscount,
+      loyalty_use: !!(useReward && custLoyalty?.reward_ready),
       branch_id: branchId,
       due_date: (customer && owed > 0 && dueDate) ? dueDate : null,
       service_date: serviceDate || null,
@@ -926,12 +949,25 @@ export default function POS() {
             <CustomerSearch
               ownerPhone={ownerPhone}
               customer={customer}
-              onSelect={c => { setCustomer(c); setSettleDebt(true); }}
-              onClear={() => setCustomer(null)}
+              onSelect={c => { setCustomer(c); setSettleDebt(true); setUseReward(false); }}
+              onClear={() => { setCustomer(null); setUseReward(false); }}
               onQueryChange={setCustQuery}
             />
             {!customer && (
               <span className="form-hint">Add a customer to track their debt — or leave blank for a walk-in / cash sale.</span>
+            )}
+            {custLoyalty && (
+              <div className="pos-loyalty" style={{ marginTop: 6, fontSize: 13, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span>{custLoyalty.mode === "stamps"
+                  ? (custLoyalty.reward_ready ? `🎁 ${customer.name} has a free one (${custLoyalty.stamps} stamps)` : `⭐ ${custLoyalty.stamps} of ${custLoyalty.needed} stamps`)
+                  : (custLoyalty.points > 0 ? `⭐ ${customer.name} has ${nairaFull(custLoyalty.points)} in points` : "⭐ No points yet")}</span>
+                {custLoyalty.reward_ready && cart.length > 0 && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                    <input type="checkbox" checked={useReward} onChange={e => setUseReward(e.target.checked)} />
+                    {custLoyalty.mode === "stamps" ? "Use reward" : "Use points"}
+                  </label>
+                )}
+              </div>
             )}
           </div>
 
@@ -939,7 +975,7 @@ export default function POS() {
             {subtotal > 0 && <DiscountInput value={discountValue} onChange={setDiscountValue} />}
             {discount > 0 && (
               <div className="pos-total-row pos-total-row--muted">
-                <span>Subtotal {nairaFull(subtotal)}</span>
+                <span>Subtotal {nairaFull(subtotal)}{rewardOff > 0 ? ` · loyalty reward ${nairaFull(rewardOff)}` : ""}</span>
                 <span>−{nairaFull(discount)}</span>
               </div>
             )}
