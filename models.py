@@ -574,6 +574,37 @@ class CreditNote(Base):
     voided_at      = Column(DateTime, nullable=True)
 
 
+class RecurringInvoice(Base):
+    """A repeat invoice (recurring_invoices.py): the same items billed to the
+    same customer every week / month / 3 months / year. On each date a new,
+    ordinary invoice is made — sent to the customer, or left for the owner to
+    check first."""
+
+    __tablename__ = "recurring_invoices"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone     = Column(String, index=True)
+    branch_id       = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    customer_id     = Column(Integer, ForeignKey("customers.id"), index=True)
+    items_json      = Column(Text)                       # [{inventory_item_id, name, qty, unit, unit_price}]
+    discount        = Column(Integer, nullable=True)
+    note            = Column(String, nullable=True)
+    deposit_percent = Column(Integer, nullable=True)
+    due_days        = Column(Integer, nullable=True)     # due this many days after each one is made
+    every           = Column(String, default="month")    # week | month | quarter | year
+    anchor_day      = Column(Integer, nullable=True)     # day of the month it falls on (clamped in short months)
+    next_date       = Column(DateTime, index=True)       # Lagos date (midnight) the next one is made
+    stop_after      = Column(Integer, nullable=True)     # this many more, then it ends
+    stop_on         = Column(DateTime, nullable=True)    # no more after this date
+    made_count      = Column(Integer, default=0)
+    auto_send       = Column(Boolean, default=True)      # send to the customer, or leave for the owner to check
+    status          = Column(String, default="active")   # active | paused | ended
+    source_invoice_id = Column(Integer, nullable=True)
+    last_invoice_id = Column(Integer, nullable=True)
+    created_by_id   = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=utcnow)
+
+
 class Invoice(Base):
     """A request to pay, written before any money or goods change hands.
 
@@ -619,6 +650,7 @@ class Invoice(Base):
     quote_number    = Column(Integer, nullable=True)
     accepted_at     = Column(DateTime, nullable=True)
     deposit_percent = Column(Integer, nullable=True)
+    recurring_id    = Column(Integer, ForeignKey("recurring_invoices.id"), nullable=True, index=True)  # made by a repeat
 
 
 class FakeReport(Base):

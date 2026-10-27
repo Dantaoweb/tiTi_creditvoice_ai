@@ -599,6 +599,9 @@ def invoice_document(db, inv):
     # Where the customer pays (needs a bank account on the Profile)
     from payment_links import invoice_pay_link
     doc["pay_link"] = invoice_pay_link(db, inv)
+    # Made by — or set to repeat as — a repeat invoice
+    from recurring_invoices import repeat_for_invoice
+    doc["repeat"] = repeat_for_invoice(db, inv)
     # Some of it gone out on waybills, not all yet
     from waybills import invoice_delivered_any
     doc["part_delivered"] = bool(not inv.delivered_at and invoice_delivered_any(db, inv))

@@ -1,22 +1,76 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, PackageCheck } from "lucide-react";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull, dateStr } from "../lib/format";
 import { InvoiceStatusBadge } from "./InvoiceView";
 import { useAuth } from "../context/AuthContext";
+import RepeatInvoiceModal from "../components/RepeatInvoiceModal";
+
+const REPEAT_STATUS = { active: ["Active", "#166534"], paused: ["Paused", "#b45309"], ended: ["Ended", "var(--text-muted)"] };
+
+// Invoices → Repeating: each repeat, when the next one is made, pause / change / stop
+function RepeatList({ repeats, reload, setErr }) {
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(null);
+  async function act(r, action) {
+    if (action === "stop" && !window.confirm(`Stop billing ${r.customer} ${r.every_label}? Invoices already made stay as they are.`)) return;
+    try { await apiPost(`recurring-invoices/${r.id}/status`, { action }); reload(); }
+    catch (e) { setErr(e.message); }
+  }
+  if (repeats.length === 0) {
+    return <div className="td-muted" style={{ padding: 16 }}>No repeat invoices. Open an invoice and tap "Make it repeat" to bill the same customer every week, month, 3 months or year.</div>;
+  }
+  return (
+    <div>
+      {repeats.map(r => {
+        const [label, color] = REPEAT_STATUS[r.status] || ["", ""];
+        return (
+          <div key={r.id} style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", opacity: r.status === "ended" ? 0.6 : 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0 }}>
+                <strong>{r.customer}</strong> · {nairaFull(r.total)} <span className="td-muted">{r.every_label}</span>
+                <div className="td-muted" style={{ fontSize: 12 }}>
+                  {r.items.map(i => i.name).join(", ")}
+                  {r.status === "active" && r.next_date ? ` · next ${dateStr(r.next_date)}` : ""}
+                  {` · ${r.made_count} made`}{r.stop_after ? ` of ${r.stop_after}` : ""}{r.stop_on ? ` · until ${dateStr(r.stop_on)}` : ""}
+                  {r.auto_send ? " · sent for you" : " · you check first"}
+                </div>
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color }}>{label}</span>
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+              {r.last_invoice && <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/invoices/${r.last_invoice.id}`)}>Last: {r.last_invoice.ref}</button>}
+              {r.status !== "ended" && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(r)}>Change</button>}
+              {r.status === "active" && <button className="btn btn-ghost btn-sm" onClick={() => act(r, "pause")}>Pause</button>}
+              {r.status === "paused" && <button className="btn btn-secondary btn-sm" onClick={() => act(r, "resume")}>Resume</button>}
+              {r.status !== "ended" && <button className="btn btn-ghost btn-sm" style={{ color: "#b91c1c" }} onClick={() => act(r, "stop")}>Stop</button>}
+            </div>
+          </div>
+        );
+      })}
+      {editing && <RepeatInvoiceModal repeat={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+    </div>
+  );
+}
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [summary, setSummary] = useState({ open: 0, overdue: 0, part_paid: 0, paid: 0, total_due: 0 });
-  const [filter, setFilter] = useState("");   // "", open, overdue, part_paid, paid, cancelled
+  const [params] = useSearchParams();
+  const [filter, setFilter] = useState(params.get("repeating") ? "repeating" : "");   // "", open, overdue, part_paid, paid, cancelled, repeating
+  const [repeats, setRepeats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const navigate = useNavigate();
   const { user } = useAuth();
   const canQuote = !!user?.can_quote;          // businesses that do jobs
 
+  function loadRepeats() { apiFetch("recurring-invoices").then(d => setRepeats(d.repeats || [])).catch(() => {}); }
+  useEffect(() => { loadRepeats(); }, []);
+
   useEffect(() => {
+    if (filter === "repeating") return;
     setLoading(true);
     apiFetch("invoices", filter ? { status: filter } : {})
       .then(d => { setInvoices(d.invoices || []); if (d.summary) setSummary(d.summary); })
@@ -33,6 +87,8 @@ export default function Invoices() {
     { key: "part_paid", label: `Part paid (${summary.part_paid})` },
     { key: "paid",      label: `Paid (${summary.paid})` },
     ...(summary.cancelled ? [{ key: "cancelled", label: `Cancelled (${summary.cancelled})` }] : []),
+    ...(repeats.length || filter === "repeating"
+      ? [{ key: "repeating", label: `Repeating (${repeats.filter(r => r.status !== "ended").length})` }] : []),
   ];
 
   const open = inv => navigate(inv.kind === "sale"
@@ -73,7 +129,9 @@ export default function Invoices() {
       </div>
 
       {err && <div className="pos-error" style={{ margin: 12 }}>{err}</div>}
-      {loading ? (
+      {filter === "repeating" ? (
+        <RepeatList repeats={repeats} reload={loadRepeats} setErr={setErr} />
+      ) : loading ? (
         <div className="td-muted" style={{ padding: 16 }}>Loading invoices…</div>
       ) : invoices.length === 0 ? (
         <div className="td-muted" style={{ padding: 16 }}>

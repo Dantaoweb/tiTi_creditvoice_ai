@@ -209,6 +209,8 @@ def detect_faq(text):
     if re.search(r"\bvat\b|value added tax|\btin\b|tax on (my )?(sales|invoice|receipt)", q) \
             and "filing" not in q:
         return "vat"
+    if any(k in q for k in ('repeat invoice', 'repeating invoice', 'recurring invoice', 'recurring bill', 'invoice every', 'bill every', 'bill monthly', 'monthly invoice', 'weekly invoice', 'same invoice every', 'bill a tenant', 'bill my tenant', 'bill my tenants', 'invoice automatically', 'automatic invoice', 'auto invoice', 'make it repeat')):
+        return "repeat_invoice"
     if any(k in q for k in ("appointment", "appointments", "book a customer", "book customers", "book my customer", "booking", "bookings", "schedule a customer", "schedule customers")):
         return "appointment"
     if any(k in q for k in ("purchase order", "purchase orders", "order from supplier", "order from my supplier", "order goods from", "order stock", "reorder", "re-order", "place an order", "order more stock")):
@@ -869,6 +871,20 @@ FAQ_ANSWERS = {
         "Sales on *{till}* and invoices then show Subtotal · VAT · Total, and Settings → VAT shows *VAT "
         "collected* this month and last — what you'll file. An invoice keeps the VAT it was written "
         "with, even if you change the setting later."
+    ),
+    "repeat_invoice": (
+        "🔁 *Repeat invoices — bill the same customer again on a schedule*\n\n"
+        "For rent, service charges, a weekly supply — anything you bill the same way again and again."
+        "\n\n"
+        "*1. Set it up* — open the invoice (Invoices → the invoice) → *Make it repeat*: how often (every week, "
+        "month, 3 months or year), the first date, and when to stop (never, after a number, or on a date).\n"
+        "*2. Choose how it goes out* — *Send it for me*: on each date a new invoice (new INV number, same items "
+        "and prices) goes to the customer's WhatsApp with the pay link, and you get a note. *Let me check first*: "
+        "it's made but not sent — you get a note to check it and tap *Send to customer*.\n"
+        "*3. Manage them* — Invoices → *Repeating*: see the next date and how many were made; *Change* (new "
+        "price, new date), *Pause*, *Resume* or *Stop*. Invoices already made stay as they are.\n\n"
+        "Each one is an ordinary invoice: nothing is owed until it's paid or delivered, same as always. "
+        "Schools don't need it — opening a term already bills every pupil."
     ),
     "appointment": (
         "📅 *Appointments — book customers for a time*\n\n"

@@ -2941,6 +2941,7 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "repeat_invoice":     ['repeat invoice', 'repeating invoice', 'recurring invoice', 'recurring bill', 'invoice every', 'bill every', 'bill monthly', 'monthly invoice', 'weekly invoice', 'same invoice every', 'bill a tenant', 'bill my tenant', 'bill my tenants', 'invoice automatically', 'automatic invoice', 'auto invoice', 'make it repeat'],
             "appointment":        ['appointment', 'appointments', 'book a customer', 'book customers', 'book my customer', 'booking', 'bookings', 'schedule a customer', 'schedule customers'],
             "purchase_order":     ["purchase order", "purchase orders", "order from supplier", "order from my supplier", "order goods from", "order stock", "reorder", "re-order", "place an order", "order more stock"],
             "vat":                ["vat", "value added tax", "tin number", "tax on my sales", "tax on invoice"],

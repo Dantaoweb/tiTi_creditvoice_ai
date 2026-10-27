@@ -1,0 +1,1 @@
+import{t as e}from"./vendor-Up4K-jHU.js";import{r as t}from"./index-DrDrj_Kb.js";var n=e();function r({value:e,onChange:r,...i}){return(0,n.jsx)(`input`,{type:`text`,inputMode:`decimal`,value:t(e),onChange:e=>r(t(e.target.value)),...i})}export{r as t};

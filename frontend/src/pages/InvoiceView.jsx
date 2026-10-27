@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Truck, Link2, Receipt as ReceiptIcon } from "lucide-react";
+import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Truck, Link2, Repeat, Receipt as ReceiptIcon } from "lucide-react";
 import WaybillModal from "../components/WaybillModal";
+import RepeatInvoiceModal from "../components/RepeatInvoiceModal";
+import { useAuth } from "../context/AuthContext";
 import WaybillList from "../components/WaybillList";
 import PrintHeader, { PrintBank } from "../components/PrintHeader";
 import { paperClass } from "../lib/print";
@@ -46,6 +48,8 @@ export default function InvoiceView() {
   const [amount, setAmount] = useState("");
   const [shareMsg, setShareMsg] = useState("");
   const [waybill, setWaybill] = useState(false);
+  const [repeating, setRepeating] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     apiFetch(`invoices/doc/${id}`).then(setDoc).catch(e => setErr(e.message));
@@ -186,6 +190,12 @@ export default function InvoiceView() {
             <Link2 size={15} /> Copy pay link
           </button>
         )}
+        {/* Bill the same again every week / month… — schools bill by term instead */}
+        {!cancelled && !isQuote && !doc.repeat && user?.menu_group !== "school" && (
+          <button className="btn btn-ghost" onClick={() => setRepeating(true)} title="Bill this customer the same again on a schedule">
+            <Repeat size={15} /> Make it repeat
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={() => window.print()}>
           <Printer size={15} /> Download / Print
         </button>
@@ -200,6 +210,13 @@ export default function InvoiceView() {
             : partDelivered ? <span className="invoice-flag"><PackageCheck size={13} /> Part delivered</span>
             : !cancelled && <span className="invoice-flag">Not delivered yet</span>}
           {doc.sent_at && <span className="td-muted" style={{ fontSize: 12 }}>Sent {dateStr(doc.sent_at)}</span>}
+          {doc.repeat && (
+            <button type="button" className="invoice-flag" style={{ cursor: "pointer", border: "none" }} onClick={() => navigate("/invoices?repeating=1")}
+              title="See it under Invoices → Repeating">
+              <Repeat size={13} /> {doc.repeat.made_by_repeat ? "Made by a repeat" : "Repeats"} {doc.repeat.every_label}
+              {doc.repeat.status === "active" && doc.repeat.next_date ? ` · next ${dateStr(doc.repeat.next_date)}` : doc.repeat.status === "paused" ? " · paused" : doc.repeat.status === "ended" ? " · ended" : ""}
+            </button>
+          )}
         </div>
 
         <p className="invoice-state__text">
@@ -413,6 +430,10 @@ export default function InvoiceView() {
       </div>
       {!isQuote && <WaybillList query={`invoice_id=${doc.id}`} />}
       {waybill && <WaybillModal source={{ invoice_id: doc.id }} onClose={() => setWaybill(false)} />}
+      {repeating && (
+        <RepeatInvoiceModal invoiceId={doc.id} invoiceDate={doc.created_at} onClose={() => setRepeating(false)}
+          onSaved={() => { setRepeating(false); apiFetch(`invoices/doc/${id}`).then(setDoc).catch(() => {}); }} />
+      )}
     </div>
   );
 }

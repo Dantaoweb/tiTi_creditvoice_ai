@@ -1016,7 +1016,8 @@ def ensure_schema_updates(engine):
         with engine.begin() as connection:
             for col, typ in {"vat_amount": "INTEGER", "vat_rate": "FLOAT", "vat_mode": "VARCHAR",
                              "is_quote": "BOOLEAN DEFAULT FALSE", "quote_number": "INTEGER",
-                             "accepted_at": "TIMESTAMP", "deposit_percent": "INTEGER"}.items():
+                             "accepted_at": "TIMESTAMP", "deposit_percent": "INTEGER",
+                             "recurring_id": "INTEGER"}.items():
                 if col not in invoice_columns:
                     connection.execute(text(f"ALTER TABLE invoices ADD COLUMN {col} {typ}"))
 

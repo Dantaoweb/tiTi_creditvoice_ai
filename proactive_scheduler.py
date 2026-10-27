@@ -902,9 +902,37 @@ def _check_unanswered_supplier_requests(db):
     check_unanswered_supplier_requests(db)
 
 
+def _check_repeat_invoices(db):
+    """Repeat invoices due today (Nigeria time): make each one, send it if the
+    owner chose "Send it for me", and tell the owner."""
+    from invoices import format_invoice_number
+    from models import Customer
+    from recurring_invoices import due_repeats, make_one
+    for r in due_repeats(db):
+        try:
+            inv, sent = make_one(db, r)
+            cust = db.query(Customer).filter(Customer.id == r.customer_id).first()
+            who = (cust.name or "").title() if cust else "a customer"
+            ref = format_invoice_number(inv.number)
+            if sent:
+                title, body = f"🔁 Repeat invoice sent: {ref} to {who}", f"₦{int(inv.total or 0):,} — sent on WhatsApp."
+            elif r.auto_send:
+                title, body = (f"🔁 Repeat invoice made: {ref} for {who}",
+                               f"₦{int(inv.total or 0):,} — couldn't send it on WhatsApp. Open it to share or print.")
+            else:
+                title, body = (f"🔁 Repeat invoice ready to send: {ref} for {who}",
+                               f"₦{int(inv.total or 0):,} — check it, then tap Send to customer.")
+            _notify(db, r.owner_phone, "repeat_invoice", title, body, send_whatsapp=False, link=f"/invoices/{inv.id}")
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"[proactive] repeat invoice error {r.id}: {e}", flush=True)
+
+
 _CHECKS = (
     _check_low_stock,
     _check_appointments,
+    _check_repeat_invoices,
     _check_expiry,
     _check_overdue_debt,
     _check_inactivity,
