@@ -38,6 +38,7 @@ const Deliveries = lazyPage(() => import("./pages/Deliveries"));
 const WaybillView = lazyPage(() => import("./pages/WaybillView"));
 const StockCounts = lazyPage(() => import("./pages/StockCounts"));
 const PayPage = lazyPage(() => import("./pages/PayPage"));
+const BookPage = lazyPage(() => import("./pages/BookPage"));
 const PaymentClaims = lazyPage(() => import("./pages/PaymentClaims"));
 const PurchaseOrders = lazyPage(() => import("./pages/PurchaseOrders"));
 const Appointments = lazyPage(() => import("./pages/Appointments"));
@@ -79,6 +80,8 @@ export default function App() {
         <Route path="data-deletion" element={<DataDeletion />} />
         {/* A customer's pay page — opened from WhatsApp, no login */}
         <Route path="pay/:token" element={<PayPage />} />
+        {/* A customer books an appointment — from the business's booking link, no login */}
+        <Route path="book/:token" element={<BookPage />} />
 
         {/* Authenticated — all inside sidebar Layout */}
         <Route

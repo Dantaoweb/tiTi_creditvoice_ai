@@ -1231,6 +1231,14 @@ def ensure_schema_updates(engine):
                     "ALTER TABLE campaign_views ADD COLUMN notified_at TIMESTAMP"
                 ))
 
+    # ── appointments: requests from the customer booking link ─────────────────
+    if "appointments" in inspector.get_table_names():
+        _ap_cols = {c["name"] for c in inspector.get_columns("appointments")}
+        for _col in ("booked_via", "request_name", "request_phone"):
+            if _col not in _ap_cols:
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE appointments ADD COLUMN {_col} VARCHAR"))
+
     # ── One-time grandfather: existing PRO subscribers → PREMIUM ─────────────
     # The plan ladder gained a 4th tier (Premium). Today's PRO capabilities
     # (unlimited branches/partners/investors) moved up to PREMIUM, and PRO

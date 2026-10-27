@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from app_settings import LAGOS
 from models import Appointment, Customer, User
 
-STATUS_LABELS = {"booked": "Booked", "arrived": "Arrived", "done": "Done",
+STATUS_LABELS = {"requested": "Asked to book", "declined": "Declined", "booked": "Booked", "arrived": "Arrived", "done": "Done",
                  "no_show": "No-show", "cancelled": "Cancelled"}
 SERVICE_GROUPS = ("service", "clinic", "professional")
 
@@ -116,6 +116,8 @@ def set_status(db, a, status):
         raise AppointmentError("Unknown status.")
     if a.status == "done":
         raise AppointmentError("This appointment is done — its sale is recorded.")
+    if a.status in ("requested", "declined") and status != "cancelled":
+        raise AppointmentError("Confirm or decline the booking request first.")
     a.status = status
     db.flush()
 
@@ -125,8 +127,10 @@ def complete(db, a, user_id, paid, services=None):
     from web_pos import save_pos_sale
     if a.status == "done":
         raise AppointmentError("Already done.")
-    if a.status == "cancelled":
+    if a.status in ("cancelled", "declined"):
         raise AppointmentError("This appointment was cancelled.")
+    if a.status == "requested":
+        raise AppointmentError("Confirm the booking request first.")
     svc = _services(db, a.owner_phone, services) if services is not None else json.loads(a.services_json or "[]")
     if not svc:
         raise AppointmentError("Add the service(s) done and their price.")
@@ -157,7 +161,9 @@ def row(db, a):
         "id": a.id, "date": a.start_at.date().isoformat(), "time": a.start_at.strftime("%H:%M"),
         "end": (a.start_at + timedelta(minutes=a.duration_min or 30)).strftime("%H:%M"),
         "duration_min": a.duration_min, "status": a.status, "status_label": STATUS_LABELS.get(a.status, a.status),
-        "customer": {"id": cust.id, "name": (cust.name or "").title(), "phone": cust.customer_phone} if cust else None,
+        "customer": ({"id": cust.id, "name": (cust.name or "").title(), "phone": cust.customer_phone} if cust
+                     else {"id": None, "name": a.request_name, "phone": a.request_phone} if a.request_name else None),
+        "booked_via": a.booked_via,
         "no_shows": no_shows(db, a.customer_id) if cust else 0,
         "services": svc, "total": sum(s["price"] for s in svc),
         "staff_user_id": a.staff_user_id, "staff_name": a.staff_name, "note": a.note,

@@ -417,11 +417,16 @@ class Appointment(Base):
     staff_user_id  = Column(String, ForeignKey("users.id"), nullable=True)
     staff_name     = Column(String, nullable=True)
     note           = Column(String, nullable=True)
-    status         = Column(String, default="booked")      # booked | arrived | done | no_show | cancelled
+    status         = Column(String, default="booked")      # requested | booked | arrived | done | no_show | cancelled | declined
     created_by_id  = Column(String, ForeignKey("users.id"), nullable=True)
     created_at     = Column(DateTime, default=utcnow)
     sale_tx_id     = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     reminded_at    = Column(DateTime, nullable=True)
+    # From the customer booking link (booking_link.py): who asked, until the
+    # owner confirms and it's tied to a customer record
+    booked_via     = Column(String, nullable=True)         # link | None (booked in the app)
+    request_name   = Column(String, nullable=True)
+    request_phone  = Column(String, nullable=True, index=True)
 
 
 class PurchaseOrder(Base):

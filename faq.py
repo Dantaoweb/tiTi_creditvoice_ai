@@ -881,6 +881,10 @@ FAQ_ANSWERS = {
         "sale with a receipt sent on WhatsApp; anything unpaid becomes their debt.\n\n"
         "*Reminders* — the customer gets a WhatsApp reminder the evening before, and you get the day's "
         "list each morning.\n"
+        "*Booking link* — customers can book themselves: *Settings → Appointments* → switch on "
+        "*Customers can book from a link* and set your opening hours. Then *Appointments → Booking link* "
+        "→ copy it or send on WhatsApp. They pick a service, a day and a free time; it waits under "
+        "*Asking to book* until you tap *Confirm* or *Decline* (or choose *Book straight away*).\n"
         "Shown in the menu for service businesses. Anyone else: *Settings → Appointments → Show*."
     ),
     "purchase_order": (

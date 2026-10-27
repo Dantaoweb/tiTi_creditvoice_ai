@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Link2 } from "lucide-react";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { nairaFull, fmtAmt, parseAmt } from "../lib/format";
 
-const TONE = { booked: "#1d4ed8", arrived: "#b45309", done: "#166534", no_show: "#b91c1c", cancelled: "var(--muted)" };
+const TONE = { requested: "#7c3aed", declined: "var(--muted)", booked: "#1d4ed8", arrived: "#b45309", done: "#166534", no_show: "#b91c1c", cancelled: "var(--muted)" };
 const shift = (iso, days) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
 const nice = iso => new Date(iso + "T12:00:00").toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "short" });
 
@@ -187,6 +187,78 @@ function DoneModal({ appt, onClose, onDone }) {
   );
 }
 
+// The customer booking link: copy / send it, or how to switch it on
+function LinkCard({ onClose }) {
+  const [info, setInfo] = useState(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { apiFetch("appointments/booking-link").then(setInfo).catch(() => setInfo({})); }, []);
+  async function copy() {
+    try { await navigator.clipboard.writeText(info.link); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch { /* they can select it */ }
+  }
+  const share = info?.link && `https://wa.me/?text=${encodeURIComponent(`Book your appointment with ${info.biz_name}: ${info.link}`)}`;
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span className="modal-title">Your booking link</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body" style={{ fontSize: 14, display: "grid", gap: 10 }}>
+          {!info ? "Loading…" : !info.on ? (
+            <>
+              <div>Customers can book themselves from a link you share — on WhatsApp status, Instagram, anywhere.</div>
+              <div>It's off. Switch it on in <strong>Settings → Appointments</strong>, set your opening hours, then come back here for the link.</div>
+            </>
+          ) : (
+            <>
+              <div>Share this link. Customers pick a service, a day and a free time; you'll see their request here to confirm.</div>
+              <input readOnly value={info.link} onFocus={e => e.target.select()} style={{ width: "100%" }} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button className="btn btn-secondary btn-sm" onClick={copy}>{copied ? "Copied ✓" : "Copy link"}</button>
+                <a className="btn btn-primary btn-sm" href={share} target="_blank" rel="noreferrer">Send on WhatsApp</a>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Booking requests from the link — confirm or decline (with a reason)
+function Requests({ list, onChanged, setErr }) {
+  async function act(a, what) {
+    let body = {};
+    if (what === "decline") {
+      const reason = window.prompt("Decline — tell them why? (optional, e.g. \"We're full that day, try Friday\")", "");
+      if (reason === null) return;
+      body = { reason };
+    }
+    try { await apiPost(`appointments/${a.id}/${what}`, body); onChanged(); }
+    catch (e) { setErr(e.message); }
+  }
+  return (
+    <div className="card" style={{ borderLeft: "4px solid #7c3aed" }}>
+      <div className="card-header"><span className="card-title">Asking to book ({list.length})</span></div>
+      {list.map(a => (
+        <div key={a.id} style={{ padding: "10px 16px", borderTop: "1px solid var(--border)" }}>
+          <strong>{nice(a.date)}, {a.time}</strong> · {a.customer?.name}
+          {a.customer?.phone && <span className="td-muted"> · {a.customer.phone}</span>}
+          <div className="td-muted" style={{ fontSize: 12 }}>
+            {a.services.map(s => s.name).join(", ")}{a.total ? ` · ${nairaFull(a.total)}` : ""}
+            {a.staff_name ? ` · with ${a.staff_name}` : ""}{a.note ? ` · ${a.note}` : ""}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => act(a, "confirm")}>Confirm</button>
+            <button className="btn btn-ghost btn-sm" style={{ color: "#b91c1c" }} onClick={() => act(a, "decline")}>Decline</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* The day's appointments: book, move, mark arrived / no-show, and Done
    (records the sale). Customers are reminded on WhatsApp the evening before. */
 export default function Appointments() {
@@ -196,6 +268,7 @@ export default function Appointments() {
   const [err, setErr] = useState("");
   const [booking, setBooking] = useState(null);     // {} new, or an appointment to change
   const [doing, setDoing] = useState(null);
+  const [showLink, setShowLink] = useState(false);
 
   function load(d) {
     apiFetch("appointments", d ? { day: d } : {}).then(r => { setData(r); setDay(r.day); }).catch(e => setErr(e.message));
@@ -214,7 +287,10 @@ export default function Appointments() {
       <div className="card">
         <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
           <span className="card-title">Appointments</span>
-          <button className="btn btn-primary btn-sm" onClick={() => setBooking({})}><Plus size={14} /> Book</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowLink(true)}><Link2 size={14} /> Booking link</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setBooking({})}><Plus size={14} /> Book</button>
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 12px" }}>
           <button className="btn btn-ghost btn-sm" onClick={() => load(shift(day, -1))} aria-label="Previous day"><ChevronLeft size={16} /></button>
@@ -228,11 +304,13 @@ export default function Appointments() {
         {err && <div className="modal-error" style={{ margin: 12 }}>{err}</div>}
       </div>
 
+      {data.requests?.length > 0 && <Requests list={data.requests} onChanged={() => load(day)} setErr={setErr} />}
+
       <div className="card">
         {data.appointments.length === 0 ? (
           <div className="td-muted" style={{ padding: 16 }}>No appointments {isToday ? "today" : "this day"}. Tap Book to add one.</div>
         ) : data.appointments.map(a => (
-          <div key={a.id} style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", opacity: ["cancelled"].includes(a.status) ? 0.55 : 1 }}>
+          <div key={a.id} style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", opacity: ["cancelled", "declined"].includes(a.status) ? 0.55 : 1 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>
                 <strong>{a.time}–{a.end}</strong> · {a.customer?.name}
@@ -266,6 +344,7 @@ export default function Appointments() {
         <BookModal day={day} staff={data.staff} appt={booking.id ? booking : null}
           onClose={() => setBooking(null)} onSaved={d => { setBooking(null); load(d); }} />
       )}
+      {showLink && <LinkCard onClose={() => setShowLink(false)} />}
       {doing && <DoneModal appt={doing} onClose={() => setDoing(null)} onDone={() => { setDoing(null); load(day); }} />}
     </div>
   );

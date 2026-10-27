@@ -73,7 +73,10 @@ export const BUSINESS_DEFAULTS = {
   group_by_category: false, group_on_pos: true, category_source: "suggest",
   default_low_stock: null, allow_negative_stock: true, show_part_delivery: true,
   daily_summary: false, daily_summary_time: "20:00", category_order: [],
-  show_appointments: null,
+  show_appointments: null, booking_link: false, booking_auto_confirm: false, booking_pick_staff: false,
+  booking_slot_min: 30, booking_days_ahead: 14,
+  booking_hours: { mon: ["08:00", "18:00"], tue: ["08:00", "18:00"], wed: ["08:00", "18:00"], thu: ["08:00", "18:00"],
+    fri: ["08:00", "18:00"], sat: ["08:00", "18:00"], sun: null },
 };
 
 export function useSettings() {

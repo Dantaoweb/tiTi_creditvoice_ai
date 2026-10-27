@@ -53,6 +53,15 @@ BUSINESS_DEFAULTS = {
     # Appointments in the menu: None = for service businesses (salon, clinic,
     # vet, mechanic, tailor, professionals); True / False = the owner's choice
     "show_appointments": None,
+    # Customer booking link (booking_link.py): off unless the owner turns it on;
+    # requests wait for the owner to confirm unless they choose otherwise
+    "booking_link": False,
+    "booking_auto_confirm": False,
+    "booking_pick_staff": False,
+    "booking_hours": {d: (["08:00", "18:00"] if d != "sun" else None)
+                      for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")},
+    "booking_slot_min": 30,
+    "booking_days_ahead": 14,
     "push_hide_details": False,           # phone notifications: hide amounts/names on the lock screen
     "count_blind": True,
     "expiry_warn_days": 30,               # warn this many days before goods expire                  # stock count: counters don't see the app's numbers
@@ -133,7 +142,7 @@ def _clean_business(k, v):
     if k in ("group_by_category", "group_on_pos", "allow_negative_stock", "keep_aside",
              "show_part_delivery", "daily_summary", "print_show_phone", "print_show_address",
              "print_show_email", "print_bank_invoices", "print_bank_receipts", "count_blind", "push_hide_details",
-             "vat_enabled"):
+             "vat_enabled", "booking_link", "booking_auto_confirm", "booking_pick_staff"):
         return bool(v)
     choices = {"print_paper": ("80mm", "58mm", "a4"), "print_logo": ("top", "left", "right", "none"),
                "print_align": ("center", "left")}
@@ -159,6 +168,34 @@ def _clean_business(k, v):
         return n
     if k == "show_appointments":
         return None if v is None else bool(v)
+    if k == "booking_hours":
+        if not isinstance(v, dict):
+            raise ValueError("Invalid opening hours.")
+        out = {}
+        for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun"):
+            h = v.get(d)
+            if not h:
+                out[d] = None
+                continue
+            if not (isinstance(h, list) and len(h) == 2
+                    and all(isinstance(t, str) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t) for t in h)):
+                raise ValueError("Pick opening times like 08:00.")
+            if h[0] >= h[1]:
+                raise ValueError("Closing time must be after opening time.")
+            out[d] = [h[0], h[1]]
+        return out
+    if k == "booking_slot_min":
+        if v not in (15, 20, 30, 45, 60, 90, 120):
+            raise ValueError("Pick one of the choices shown.")
+        return v
+    if k == "booking_days_ahead":
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            raise ValueError("Enter a number of days.")
+        if not 1 <= n <= 90:
+            raise ValueError("Pick between 1 and 90 days.")
+        return n
     if k == "vat_mode":
         if v not in ("add", "inclusive"):
             raise ValueError("Choose: add VAT on top, or prices already include VAT.")

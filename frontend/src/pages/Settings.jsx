@@ -431,8 +431,71 @@ function AppointmentsSection({ business }) {
           <Seg value={v} onChange={x => save({ show_appointments: x === "auto" ? null : x })}
             options={[["auto", "Automatic"], [true, "Show"], [false, "Hide"]]} />
         </Row>
+        <Row title="Customers can book from a link"
+          hint={business.booking_link
+            ? "On: share your link (Appointments → Booking link). Customers pick a service, a day and a free time."
+            : "Off: only you and your staff book appointments."}>
+          <Seg value={business.booking_link} onChange={x => save({ booking_link: x })}
+            options={[[true, "On"], [false, "Off"]]} />
+        </Row>
+        {business.booking_link && (
+          <>
+            <Row title="When a customer books from the link"
+              hint={business.booking_auto_confirm
+                ? "Booked straight away: the time is theirs and they get a WhatsApp at once. Faster, but anyone with the link can take a time."
+                : "You confirm each one: it waits in Appointments as \"Asking to book\". You tap Confirm or Decline and they hear back on WhatsApp."}>
+              <Seg value={business.booking_auto_confirm} onChange={x => save({ booking_auto_confirm: x })}
+                options={[[false, "I confirm"], [true, "Book straight away"]]} />
+            </Row>
+            <Row title="Customers choose who does it"
+              hint={business.booking_pick_staff ? "They see your staff names and can pick one (or anyone free)." : "They don't choose — you decide who does it."}>
+              <Seg value={business.booking_pick_staff} onChange={x => save({ booking_pick_staff: x })}
+                options={[[true, "Yes"], [false, "No"]]} />
+            </Row>
+            <Row title="Time for each booking"
+              hint={`Customers see free times every ${business.booking_slot_min} minutes, and each booking takes that long. You can change any booking afterwards.`}>
+              <select value={business.booking_slot_min} onChange={e => save({ booking_slot_min: Number(e.target.value) })}>
+                {[15, 20, 30, 45, 60, 90, 120].map(m => <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} hour${m > 60 ? "s" : ""}`}</option>)}
+              </select>
+            </Row>
+            <Row title="How far ahead customers can book" hint={`Up to ${business.booking_days_ahead} days from today.`}>
+              <select value={business.booking_days_ahead} onChange={e => save({ booking_days_ahead: Number(e.target.value) })}>
+                {[3, 7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} days</option>)}
+              </select>
+            </Row>
+            <HoursRow key={JSON.stringify(business.booking_hours)} hours={business.booking_hours} onSave={h => save({ booking_hours: h })} />
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+// Opening hours for the booking link — a day left unticked is closed
+const WEEK = [["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"]];
+function HoursRow({ hours, onSave }) {
+  const [h, setH] = useState(hours || {});
+  const set = (d, v) => setH({ ...h, [d]: v });
+  return (
+    <Row title="Opening hours" hint="Customers only see free times inside these hours. Untick a day you're closed.">
+      <div style={{ display: "grid", gap: 4 }}>
+        {WEEK.map(([d, label]) => (
+          <div key={d} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, flexWrap: "wrap" }}>
+            <label style={{ width: 110, display: "flex", gap: 6, alignItems: "center" }}>
+              <input type="checkbox" checked={!!h[d]} onChange={e => set(d, e.target.checked ? ["08:00", "18:00"] : null)} />{label}
+            </label>
+            {h[d] ? (
+              <>
+                <input type="time" value={h[d][0]} onChange={e => set(d, [e.target.value, h[d][1]])} />
+                <span>to</span>
+                <input type="time" value={h[d][1]} onChange={e => set(d, [h[d][0], e.target.value])} />
+              </>
+            ) : <span className="td-muted">Closed</span>}
+          </div>
+        ))}
+        <div><button type="button" className="btn btn-secondary btn-sm" onClick={() => onSave(h)}>Save hours</button></div>
+      </div>
+    </Row>
   );
 }
 

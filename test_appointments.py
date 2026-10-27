@@ -151,6 +151,7 @@ def test_bad_input_and_other_business():
 
 @pytest.mark.parametrize("text", [
     "how do I book an appointment?", "how can I book customers for a time", "how do appointments work",
+    "how can customers book online with a booking link",
 ])
 def test_titi_explains_appointments(text):
     from faq import detect_faq
@@ -160,3 +161,106 @@ def test_titi_explains_appointments(text):
     assert (p["topic"] if p.get("type") == "APP_GUIDE" else detect_faq(text)) == "appointment"
     a = build_app_guide_message("appointment")
     assert "Arrived" in a and "evening before" in a and "Settings" in a
+
+
+# ── The customer booking link ────────────────────────────────────────────────
+def _link(cook, phone, **settings):
+    from booking_link import make_token
+    from models import User
+    client.put("/app/api/settings/business", cookies=cook, json={"values": {"booking_link": True, **settings}})
+    db = SessionLocal()
+    try:
+        return make_token(db.query(User).filter(User.phone == phone).first())
+    finally:
+        db.close()
+
+
+def _next_open_day():
+    from appointments import lagos_now
+    d = lagos_now().date() + timedelta(days=2)
+    while d.weekday() == 6:                                   # closed on Sunday by default
+        d += timedelta(days=1)
+    return d.isoformat()
+
+
+def test_booking_link_request_confirm_and_decline():
+    phone, cook, cut, ada = _salon()
+    from booking_link import make_token
+    from models import User
+    db = SessionLocal()
+    tok = make_token(db.query(User).filter(User.phone == phone).first()); db.close()
+    assert client.get(f"/app/api/public/book/{tok}").status_code == 404     # off until switched on
+    tok = _link(cook, phone)
+    assert client.get("/app/api/public/book/b1-badsig").status_code == 404
+
+    pg = client.get(f"/app/api/public/book/{tok}").json()
+    assert pg["services"] == [{"id": cut, "name": "haircut", "price": 3000}] and pg["confirm"] is True
+    day = _next_open_day()
+    times = client.get(f"/app/api/public/book/{tok}/times?date={day}").json()["times"]
+    assert times[0] == "08:00" and times[-1] == "17:30"
+
+    r = client.post(f"/app/api/public/book/{tok}", json={
+        "date": day, "time": "10:00", "service_ids": [cut], "name": "kemi obi", "phone": "08031112222"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "requested"
+    # one person (the owner) does the work, so 10:00 is no longer free
+    assert "10:00" not in client.get(f"/app/api/public/book/{tok}/times?date={day}").json()["times"]
+    assert client.post(f"/app/api/public/book/{tok}", json={
+        "date": day, "time": "10:00", "service_ids": [cut], "name": "Bayo", "phone": "08034443333"}).status_code == 400
+
+    lst = client.get(f"/app/api/appointments?day={day}", cookies=cook).json()
+    req = lst["requests"][0]
+    assert req["customer"] == {"id": None, "name": "Kemi Obi", "phone": "2348031112222"} and req["status"] == "requested"
+    assert client.post(f"/app/api/appointments/{req['id']}/done", cookies=cook, json={"paid": 0}).status_code == 400
+    db = SessionLocal()
+    try:
+        n = db.query(AppNotification).filter(AppNotification.owner_phone == phone,
+                                             AppNotification.event_type == "booking_request").one()
+        assert "Kemi Obi" in n.title and n.link == "/appointments"
+    finally:
+        db.close()
+
+    ok = client.post(f"/app/api/appointments/{req['id']}/confirm", cookies=cook).json()
+    assert ok["status"] == "booked" and ok["customer"]["id"]
+    assert any(to == "2348031112222" and "you're booked" in m for to, m in sent)
+
+    r2 = client.post(f"/app/api/public/book/{tok}", json={
+        "date": day, "time": "11:00", "service_ids": [cut], "name": "Kemi Obi", "phone": "2348031112222"}).json()
+    req2 = client.get(f"/app/api/appointments?day={day}", cookies=cook).json()["requests"][0]
+    assert r2["status"] == "requested"
+    d = client.post(f"/app/api/appointments/{req2['id']}/decline", cookies=cook, json={"reason": "We're full."}).json()
+    assert d["status"] == "declined"
+    assert any("can't take your booking" in m and "We're full." in m for _to, m in sent)
+    # the second request reused Kemi's customer record on confirm? — declined, so no new customer
+    db = SessionLocal()
+    try:
+        assert db.query(Customer).filter(Customer.owner_phone == phone, Customer.name.ilike("kemi obi")).count() == 1
+    finally:
+        db.close()
+
+
+def test_booking_link_auto_confirm_staff_and_limits():
+    phone, cook, cut, ada = _salon()
+    tok = _link(cook, phone, booking_auto_confirm=True, booking_pick_staff=True, booking_slot_min=60,
+                booking_hours={"mon": ["09:00", "12:00"], "tue": ["09:00", "12:00"], "wed": ["09:00", "12:00"],
+                               "thu": ["09:00", "12:00"], "fri": ["09:00", "12:00"], "sat": ["09:00", "12:00"],
+                               "sun": None})
+    pg = client.get(f"/app/api/public/book/{tok}").json()
+    assert pg["confirm"] is False and len(pg["staff"]) == 1
+    day = _next_open_day()
+    assert client.get(f"/app/api/public/book/{tok}/times?date={day}").json()["times"] == ["09:00", "10:00", "11:00"]
+    r = client.post(f"/app/api/public/book/{tok}", json={
+        "date": day, "time": "09:00", "service_ids": [cut], "name": "Tola", "phone": "08035550000",
+        "staff_user_id": pg["staff"][0]["id"]}).json()
+    assert r["status"] == "booked"
+    assert any(to == "2348035550000" and "you're booked" in m for to, m in sent)
+    # junk guard: bad phone, no service, too far ahead
+    bad = {"date": day, "time": "10:00", "service_ids": [cut], "name": "X", "phone": "123"}
+    assert client.post(f"/app/api/public/book/{tok}", json=bad).status_code == 400
+    assert client.post(f"/app/api/public/book/{tok}", json={**bad, "name": "Yemi", "phone": "08030000001",
+                                                           "service_ids": []}).status_code == 400
+    far = (datetime.fromisoformat(day) + timedelta(days=60)).date().isoformat()
+    assert client.post(f"/app/api/public/book/{tok}", json={**bad, "name": "Yemi", "phone": "08030000001",
+                                                           "date": far}).status_code == 400
+    assert client.put("/app/api/settings/business", cookies=cook,
+                      json={"values": {"booking_hours": {"mon": ["18:00", "09:00"]}}}).status_code == 400
