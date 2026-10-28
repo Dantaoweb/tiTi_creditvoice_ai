@@ -241,3 +241,33 @@ def sync_business(db, owner_phone):
     for cid in ids:
         sync_customer(db, owner_phone, cid, cfg)
     db.commit()
+
+
+# ── tiTi chat & WhatsApp "select product" sales ───────────────────────────────
+USE_WORDS = ("use reward", "use points", "yes use reward", "yes use points", "yes reward", "yes points",
+             "reward", "use my reward", "use the reward", "use the points")
+
+
+def offer_line(db, owner_phone, customer_id, name):
+    """For a sale tiTi is about to save: tell the recorder the customer has a
+    reward they can use, or None."""
+    s = status(db, owner_phone, customer_id)
+    if not s.get("reward_ready"):
+        return None
+    who = (name or "They").title()
+    if s["mode"] == "stamps":
+        return f"🎁 {who} has a free one ({s['stamps']} stamps) — reply *USE REWARD* to take it off this sale."
+    return f"🎁 {who} has ₦{s['points']:,} in points — reply *USE POINTS* to take them off this sale."
+
+
+def take_off_sale(db, owner_phone, customer_id, tx, lines):
+    """Use the customer's reward on a sale being saved from chat: lowers
+    tx.amount (as a discount) and returns (naira off, units) — record_use once
+    the sale has its id."""
+    off, units = reward_for_cart(db, owner_phone, customer_id, lines)
+    off = max(0, min(off, int(tx.amount or 0)))
+    if config(db, owner_phone)["mode"] == "points":
+        units = off
+    tx.amount = int(tx.amount or 0) - off
+    tx.discount_amount = int(tx.discount_amount or 0) + off
+    return off, units

@@ -752,6 +752,14 @@ def _handle_transaction_confirm(
 ):
     normalized = text.lower().strip()
 
+    # "USE REWARD" / "USE POINTS": save it, taking the customer's loyalty reward off
+    from loyalty import USE_WORDS
+    if normalized in USE_WORDS and pending.action in ("BUY", "COMBINED"):
+        _pl = json.loads(pending.payload_json or "{}")
+        _pl["loyalty_use"] = True
+        pending.payload_json = json.dumps(_pl)
+        normalized = "yes"
+
     if normalized in ["yes", "1", "save"]:
         update_parse_log_outcome(db, phone, was_confirmed=True)
         pending_items = json.loads(pending.items_json or "[]")

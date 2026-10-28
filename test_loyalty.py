@@ -153,7 +153,8 @@ def test_titi_explains_loyalty(text):
     p = parse_message(text) or {}
     assert (p["topic"] if p.get("type") == "APP_GUIDE" else detect_faq(text)) == "loyalty"
     a = build_app_guide_message("loyalty")
-    assert "Settings → Loyalty" in a and "Use reward" in a and "{till}" not in a and "POS" not in a
+    assert "Settings → Loyalty" in a and "Use reward" in a and "USE REWARD" in a
+    assert "{till}" not in a and "{record}" not in a and "POS" not in a
 
 
 def test_discount_question_still_goes_to_discount():

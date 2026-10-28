@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 
 
@@ -132,6 +133,33 @@ def build_stock_save_message(stock_updates, stock_missing, db=None, owner_phone=
     return stock_msg
 
 
+def _loyalty_lines(db, owner_phone, pending, pending_items):
+    """The sale's lines for loyalty: price, quantity and (by name) the product."""
+    from sqlalchemy import func as _f
+    from models import InventoryItem
+    out = []
+    for it in pending_stock_items(pending, pending_items) or [{"product": None, "quantity": 1, "unit_price": pending.buy_amount}]:
+        get = it.get if isinstance(it, dict) else (lambda k, d=None, _o=it: getattr(_o, k, d))
+        item = None
+        if get("product"):
+            item = db.query(InventoryItem.id).filter(InventoryItem.owner_phone == owner_phone,
+                                                     _f.lower(InventoryItem.name) == str(get("product")).lower()).first()
+        out.append({"qty": get("quantity") or 1, "unit_price": get("unit_price") or 0,
+                    "inventory_item_id": item[0] if item else None})
+    return out
+
+
+def _use_loyalty(db, owner_phone, customer, tx, pending, pending_items):
+    """Take the customer's reward off this chat sale (they replied USE REWARD).
+    Returns (units, note) — the note explains it either way."""
+    from loyalty import LoyaltyError, take_off_sale
+    try:
+        off, units = take_off_sale(db, owner_phone, customer.id, tx, _loyalty_lines(db, owner_phone, pending, pending_items))
+    except LoyaltyError as e:
+        return None, f"\n(Loyalty reward not used: {e})"
+    return units, f"\n🎁 Loyalty reward: −N{off:,}"
+
+
 def _notify_customer_receipt(db, customer, tx, balance, user, business_owner_phone, send_message):
     """Send a simple receipt to the customer's WhatsApp after a BUY transaction."""
     if not customer or not customer.customer_phone:
@@ -145,6 +173,14 @@ def _notify_customer_receipt(db, customer, tx, balance, user, business_owner_pho
         cfg = receipt_config_for_user(owner) if owner else None
         business_name = business_display_name(owner or user)
         receipt = _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx, balance, cfg)
+        try:
+            from loyalty import receipt_line
+            _line = receipt_line(db, business_owner_phone, customer.id)
+            if _line:
+                receipt = f"{receipt}\n\n{_line}"
+            db.commit()
+        except Exception:
+            db.rollback()
         send_message(customer.customer_phone, receipt)
     except Exception:
         pass
@@ -437,6 +473,8 @@ def save_customer_pending(
     low_stock_alerts = []
     _buy_tx_for_receipt = None
     _pay_tx_for_receipt = None
+    _loyalty_use = bool(json.loads(pending.payload_json or "{}").get("loyalty_use"))
+    _loyalty_units, _loyalty_note = None, ""
 
     try:
         _default_branch_id = _get_recording_branch_id(db, business_owner_phone, user)
@@ -464,8 +502,16 @@ def save_customer_pending(
             if apply_to_sale(db, business_owner_phone, tx, _vat_lines(pending, pending_items)):
                 pending.buy_amount = tx.amount   # the reply shows the total with VAT
                 saved_summary = pending_transaction_summary(pending, customer) + f"\n(incl. VAT N{tx.vat_amount:,})"
+            if _loyalty_use:
+                _loyalty_units, _loyalty_note = _use_loyalty(db, business_owner_phone, customer, tx, pending, pending_items)
+                if _loyalty_units:
+                    pending.buy_amount = tx.amount
+                    saved_summary = pending_transaction_summary(pending, customer)
             db.add(tx)
             db.flush()
+            if _loyalty_units:
+                from loyalty import record_use
+                record_use(db, business_owner_phone, customer.id, tx.id, _loyalty_units)
             _buy_tx_for_receipt = tx
             _add_price_deviation_note(
                 db, business_owner_phone, tx.id,
@@ -522,8 +568,20 @@ def save_customer_pending(
             )
             from vat import apply_to_sale
             _vat_added = apply_to_sale(db, business_owner_phone, buy_tx, _vat_lines(pending, pending_items))
+            if _loyalty_use:
+                _before = buy_tx.amount
+                _loyalty_units, _loyalty_note = _use_loyalty(db, business_owner_phone, customer, buy_tx, pending, pending_items)
+                if _loyalty_units:
+                    # Paid it all: they pay the lower amount now
+                    if (pending.paid_amount or 0) >= _before - (_vat_added or 0):
+                        pending.paid_amount = buy_tx.amount - (_vat_added or 0)
+                    pending.buy_amount = buy_tx.amount - (_vat_added or 0)
+                    saved_summary = pending_transaction_summary(pending, customer)
             db.add(buy_tx)
             db.flush()
+            if _loyalty_units:
+                from loyalty import record_use
+                record_use(db, business_owner_phone, customer.id, buy_tx.id, _loyalty_units)
             _buy_tx_for_receipt = buy_tx
             _add_price_deviation_note(
                 db, business_owner_phone, buy_tx.id,
@@ -539,16 +597,17 @@ def save_customer_pending(
                     pending.paid_amount = (pending.paid_amount or 0) + _vat_added
                 pending.buy_amount = buy_tx.amount       # the reply shows the total with VAT
                 saved_summary = pending_transaction_summary(pending, customer) + f"\n(incl. VAT N{buy_tx.vat_amount:,})"
-            pay_tx = Transaction(
-                customer_id=customer.id,
-                type="PAY",
-                amount=pending.paid_amount,
-                recorded_by_id=user.id,
-                message_id=f"{message_id}_pay",
-                created_at=_utcnow(),
-                branch_id=_default_branch_id,
-            )
-            db.add(pay_tx)
+            if (pending.paid_amount or 0) > 0:          # a reward can make it all free: no ₦0 payment
+                pay_tx = Transaction(
+                    customer_id=customer.id,
+                    type="PAY",
+                    amount=pending.paid_amount,
+                    recorded_by_id=user.id,
+                    message_id=f"{message_id}_pay",
+                    created_at=_utcnow(),
+                    branch_id=_default_branch_id,
+                )
+                db.add(pay_tx)
 
         save_context(
             db, phone,
@@ -567,7 +626,7 @@ def save_customer_pending(
 
     # Post-commit reads and notifications
     balance = get_balance(db, customer.id, visible_recorded_by_id)
-    msg = f"{saved_summary}\n{balance_status_line(balance)}"
+    msg = f"{saved_summary}{_loyalty_note}\n{balance_status_line(balance)}"
     msg += build_stock_save_message(stock_updates, stock_missing, db, business_owner_phone)
     if customer.customer_phone and _buy_tx_for_receipt and _pending_action in ("BUY", "COMBINED"):
         msg += f"\n\nReceipt sent to {customer.name.title()}."

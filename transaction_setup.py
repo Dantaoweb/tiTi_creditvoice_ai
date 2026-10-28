@@ -594,7 +594,17 @@ def handle_transaction_setup(
             f"{cname} bought 10 bags rice for 5000"
         )
 
-    confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}{no_details_hint}"
+    loyalty_hint = ""
+    if parsed.get("action") in ("BUY", "COMBINED"):
+        try:
+            from loyalty import offer_line
+            _offer = offer_line(db, business_owner_phone, customer.id, customer.name)
+            if _offer:
+                loyalty_hint = f"\n\n{_offer}"
+            db.commit()
+        except Exception:
+            db.rollback()
+    confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}{no_details_hint}{loyalty_hint}"
     if parsed.get("artisan_note"):
         confirm_msg = (
             f"{confirm_msg}\n"

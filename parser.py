@@ -1984,7 +1984,8 @@ def _parse_message(text):
         clean_text,
         re.IGNORECASE,
     )
-    if _redeem_m:
+    # "use reward" / "use points" is loyalty (loyalty.py), not a plan code
+    if _redeem_m and _redeem_m.group("code").lower() not in ("reward", "rewards", "points", "point"):
         return {"type": "REDEEM_TOKEN", "code": _redeem_m.group("code").upper()}
 
     # ── Branch management ────────────────────────────────────────────────────────

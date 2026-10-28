@@ -257,7 +257,28 @@ function SaleForm({ ownerPhone, onSuccess }) {
   const debtDue  = settleDebt ? prevDebt : 0;
   // VAT, when the business switched it on — same sum as the server
   const { business: bizSettings } = useSettings();
-  const vat = vatFor([{ total: parseAmt(amount) || 0, exempt: false }], 0, bizSettings);
+
+  // Loyalty (Settings → Loyalty): the customer's stamps / points, and using
+  // their reward on this sale. A typed product can be the free one only when
+  // every product counts.
+  const [loyalty, setLoyalty] = useState(null);
+  const [useReward, setUseReward] = useState(false);
+  useEffect(() => {
+    if (!customer?.id || (bizSettings.loyalty_mode || "off") === "off") return undefined;
+    let live = true;
+    apiFetch(`loyalty/customer/${customer.id}`).then(d => { if (live) setLoyalty({ ...d, cid: customer.id }); }).catch(() => {});
+    return () => { live = false; };
+  }, [customer?.id, bizSettings.loyalty_mode]);
+  const custLoyalty = loyalty && customer?.id && loyalty.cid === customer.id && loyalty.mode !== "off" ? loyalty : null;
+  const canUseReward = !!custLoyalty?.reward_ready
+    && (custLoyalty.mode === "points" || !(bizSettings.loyalty_items || []).length);
+  const typedTotal = parseAmt(amount) || 0;
+  const rewardOff = useReward && canUseReward
+    ? Math.min(typedTotal, custLoyalty.mode === "stamps"
+        ? Math.round(typedTotal / Math.max(1, parseAmt(qty) || 1)) : custLoyalty.points)
+    : 0;
+
+  const vat = vatFor([{ total: typedTotal - rewardOff, exempt: false }], 0, bizSettings);
 
   // What was paid toward the sale (incl. VAT) and toward old debt. Typing the
   // full price counts as paying the VAT on top too.
@@ -287,7 +308,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
       const qtyNum = Math.max(1, parseAmt(qty) || 1);
       const total  = parseAmt(amount);
       // Surplus beyond the sale clears the customer's prior debt (up to what's owed).
-      const { paidNum, debtPaid } = split(total);
+      const { paidNum, debtPaid } = split(total - rewardOff);
       const body   = {
         owner_phone:    ownerPhone,
         customer_id:    customer?.id || null,
@@ -297,6 +318,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
         payment_amount: paidNum,
         debt_payment:   debtPaid,
         branch_id:      branchId || null,
+        loyalty_use:    rewardOff > 0,
       };
       const result = await apiPost("pos/save", body);
       const bal = Math.max(0, (result?.total ?? total) - paidNum);
@@ -311,7 +333,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
       if (isNetworkError(e)) {
         const qtyNum2 = Math.max(1, parseAmt(qty) || 1);
         const total2  = parseAmt(amount);
-        const { paidNum: paidNum2, debtPaid: debtPaid2 } = split(total2);
+        const { paidNum: paidNum2, debtPaid: debtPaid2 } = split(total2 - rewardOff);
         enqueue("pos/save", {
           owner_phone: ownerPhone, customer_id: customer?.id || null,
           customer_name: (customer && !customer.id) ? customer.name : null,
@@ -320,6 +342,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
           payment_amount: paidNum2,
           debt_payment: debtPaid2,
           branch_id: branchId || null,
+          loyalty_use: rewardOff > 0,
         }, `Sale ${nairaFull(total2)}${customer ? ` — ${customer.name}` : " (cash)"}`);
         onSuccess(`No internet — sale saved offline. Will sync automatically when you reconnect.`);
         setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null); setCustQuery("");
@@ -366,12 +389,26 @@ function SaleForm({ ownerPhone, onSuccess }) {
           ownerPhone={ownerPhone}
           placeholder={`Add a ${L.customerName.toLowerCase()}…`}
           allowNew
-          onSelect={c => { setCustomer(c); setSettleDebt(true); }}
+          onSelect={c => { setCustomer(c); setSettleDebt(true); setUseReward(false); }}
           value={customer}
           onQueryChange={setCustQuery}
         />
         {!customer && (
           <span className="form-hint">Add a {L.customerName.toLowerCase()} to track their debt — or leave blank for a cash sale.</span>
+        )}
+        {custLoyalty && (
+          <div style={{ marginTop: 6, fontSize: 13, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span>{custLoyalty.mode === "stamps"
+              ? (custLoyalty.reward_ready ? `🎁 ${customer.name} has a free one (${custLoyalty.stamps} stamps)` : `⭐ ${custLoyalty.stamps} of ${custLoyalty.needed} stamps`)
+              : (custLoyalty.points > 0 ? `⭐ ${customer.name} has ${nairaFull(custLoyalty.points)} in points` : "⭐ No points yet")}</span>
+            {canUseReward && typedTotal > 0 && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                <input type="checkbox" checked={useReward} onChange={e => setUseReward(e.target.checked)} style={{ width: "auto" }} />
+                {custLoyalty.mode === "stamps" ? "Use reward (one free)" : "Use points"}
+              </label>
+            )}
+            {rewardOff > 0 && <span className="td-muted">−{nairaFull(rewardOff)} → they pay {nairaFull(typedTotal - rewardOff)}</span>}
+          </div>
         )}
       </div>
       {customer && (
@@ -393,7 +430,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
       <div className={`qf-type-hint${customer && parseAmt(amount) > (parseAmt(paid) || 0) ? " owe-line--due" : customer && parseAmt(amount) > 0 ? " owe-line--paid" : ""}`}>
         {customer
           ? (() => {
-              const t = parseAmt(amount), p = Math.min(parseAmt(paid) || 0, t), b = t - p;
+              const t = typedTotal - rewardOff, p = Math.min(parseAmt(paid) || 0, t), b = t - p;
               const dPaid = Math.min(Math.max(0, (parseAmt(paid) || 0) - t), debtDue);
               const base = b > 0
                 ? `${p > 0 ? "Part-paid" : "Credit"} sale → ${customer.name} will owe ${nairaFull(b)}`

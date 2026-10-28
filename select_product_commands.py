@@ -592,16 +592,59 @@ def _handle_customer_name(db, phone, text, pending, business_owner_phone, send_m
     db.commit()
 
     total = pending.buy_amount
+    offer = ""
+    try:
+        from loyalty import offer_line
+        _o = offer_line(db, business_owner_phone, customer.id, name)
+        offer = f"\n\n{_o}" if _o else ""
+        db.commit()
+    except Exception:
+        db.rollback()
     send_message(
         phone,
         f"How much did {name.title()} pay?\n"
         f"Total debt: N{total:,}\n"
-        "Send 0 if nothing was paid."
+        f"Send 0 if nothing was paid.{offer}"
     )
     return {"status": "select_product_payment_asked"}
 
 
+def _use_reward(db, phone, pending, business_owner_phone, send_message):
+    """USE REWARD / USE POINTS while selecting products: the customer's loyalty
+    reward comes off the total (as discount); recorded when the sale saves."""
+    from sqlalchemy import func as _func
+    from loyalty import LoyaltyError, config, reward_for_cart
+    payload = _load_payload(pending)
+    name = (pending.customer_name or "").title()
+    if payload.get("loyalty_units"):
+        send_message(phone, f"The reward is already taken off. How much did {name} pay? Total: N{pending.buy_amount:,}")
+        return {"status": "select_product_reward_already"}
+    customer = db.query(Customer).filter(Customer.owner_phone == business_owner_phone,
+                                         _func.lower(Customer.name) == (pending.customer_name or "").lower()).first()
+    lines = [{"qty": i.get("quantity") or 1, "unit_price": i.get("unit_price") or 0, "inventory_item_id": i.get("inv_id")}
+             for i in _load_cart(pending)]
+    try:
+        off, units = reward_for_cart(db, business_owner_phone, customer.id if customer else None, lines)
+    except LoyaltyError as e:
+        send_message(phone, f"{e}\nHow much did {name} pay? Total: N{pending.buy_amount:,}")
+        return {"status": "select_product_reward_refused"}
+    off = max(0, min(off, int(pending.buy_amount or 0)))
+    if config(db, business_owner_phone)["mode"] == "points":
+        units = off
+    payload["overall_discount"] = int(payload.get("overall_discount", 0)) + off
+    payload["loyalty_units"] = units
+    _save_payload(pending, payload)
+    pending.buy_amount = int(pending.buy_amount or 0) - off
+    db.commit()
+    send_message(phone, f"🎁 Loyalty reward: −N{off:,}\n\nHow much did {name} pay?\nTotal: N{pending.buy_amount:,}\n"
+                        "Send 0 if nothing was paid.")
+    return {"status": "select_product_reward_used"}
+
+
 def _handle_payment(db, phone, text, pending, business_owner_phone, send_message):
+    from loyalty import USE_WORDS
+    if text.strip().lower() in USE_WORDS:
+        return _use_reward(db, phone, pending, business_owner_phone, send_message)
     text = text.strip().replace(",", "")
     _normalized_pay = text.lower()
     if _normalized_pay in ["paid all", "all", "full", "full payment", "paid full", "complete"]:
@@ -803,6 +846,10 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
                 note=sale_note,
             ))
 
+        if payload.get("loyalty_units"):
+            from loyalty import record_use
+            record_use(db, business_owner_phone, customer.id, buy_tx.id, payload["loyalty_units"])
+
         # Record individual items
         add_transaction_items(db, buy_tx.id, [
             {
@@ -876,6 +923,14 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
             receipt_no=getattr(buy_tx, "receipt_number", None),
             overall_discount=overall_discount,
         )
+        try:
+            from loyalty import receipt_line
+            _line = receipt_line(db, business_owner_phone, customer.id)
+            if _line:
+                customer_receipt = f"{customer_receipt}\n\n{_line}"
+            db.commit()
+        except Exception:
+            db.rollback()
         send_message(customer_phone, customer_receipt)
     else:
         send_message(
