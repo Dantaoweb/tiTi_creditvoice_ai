@@ -14,7 +14,7 @@ const FEATURES = [
 ];
 
 const TITI_INTRO =
-  "Hi! I'm tiTi 👋\n\nI help small businesses record sales, track customer debts, and manage stock — just by typing or speaking. Try me below.";
+  "Hi! I'm tiTi 👋\n\nI help businesses of every size — from one shop to many branches — record sales, track debts, manage stock and more, just by typing or speaking. Try me below.";
 
 const SpeechRecognition =
   typeof window !== "undefined"
@@ -127,7 +127,7 @@ export default function Landing() {
         <p className="landing-tagline">
           The AI business assistant that works for you.
           <br />
-          Record sales, track debts, and manage stock — in plain language.
+          Sales, debts, stock, invoices, staff and branches — in plain language.
         </p>
 
         <div className="landing-features">

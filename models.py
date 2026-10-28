@@ -574,6 +574,27 @@ class CreditNote(Base):
     voided_at      = Column(DateTime, nullable=True)
 
 
+class EnterpriseEnquiry(Base):
+    """A large business (mall, chain, distributor, lots of data) asking about
+    the Enterprise plan — "Let's talk" on the landing page or Upgrade page.
+    No price is set in the app: an admin calls them and agrees one."""
+
+    __tablename__ = "enterprise_enquiries"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    name        = Column(String)
+    business    = Column(String)
+    phone       = Column(String)
+    email       = Column(String, nullable=True)
+    branches    = Column(String, nullable=True)        # their words: "5", "12 stores"
+    message     = Column(Text, nullable=True)          # what they need
+    source      = Column(String, nullable=True)        # landing | upgrade
+    user_phone  = Column(String, nullable=True)        # signed in when they asked (Upgrade page)
+    status      = Column(String, default="NEW", index=True)   # NEW | CONTACTED | CLOSED
+    admin_note  = Column(String, nullable=True)
+    created_at  = Column(DateTime, default=utcnow, index=True)
+
+
 class LoyaltyEntry(Base):
     """Loyalty (loyalty.py): what a customer earned on one sale, or used as a
     reward on one sale. Earned rows are re-checked against the sale, so a void

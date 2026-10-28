@@ -35,7 +35,7 @@ SETTING_KEYS = {
     "whatsapp_live": "WhatsApp approved by Meta and working (yes/no)",
     "show_stats": "Show the live usage numbers on the homepage (yes/no)",
 }
-DEFAULT_FEATURED = 3
+DEFAULT_FEATURED = 12          # reviews are swipeable cards, so a dozen fit
 
 # Bumped whenever an admin saves a setting. The landing page caches its blocks
 # for a minute; this lets a change show up immediately instead.
@@ -288,7 +288,7 @@ def register_site_routes(app):
             user = db.query(User).filter(User.id == session["user_id"]).first()
             if not user or not is_app_admin(user.phone, db):
                 return {"reviews": 0, "suppliers": 0, "opportunities": 0, "finance": 0,
-                        "payments": 0, "fakes": 0, "total": 0}
+                        "payments": 0, "fakes": 0, "enquiries": 0, "total": 0}
             # Keyed by what is waiting; each admin tab shows its own count.
             counts = {
                 "reviews": pending_review_count(db),
@@ -298,6 +298,8 @@ def register_site_routes(app):
                 "finance": pending_finance_count(db),
                 "payments": pending_payments(db),
                 "fakes": pending_fake_reports(db),
+                # Large businesses asking about Enterprise, not yet called
+                "enquiries": __import__("web_enterprise_routes").pending_enquiries(db),
             }
             counts["total"] = sum(counts.values())
             return counts
@@ -542,6 +544,16 @@ def _pricing_html(whatsapp=False):
             f'<a class="btn{"" if price else " ghost"}" href="/app">{cta}</a>'
             f'</div>'
         )
+    cards.append(
+        '<div class="plan enterprise" id="enterprise">'
+        '<h3>Enterprise</h3>'
+        '<div class="price">Let&rsquo;s talk</div>'
+        '<div class="plan-note">For malls, supermarket chains, distributors and big data</div>'
+        '<ul><li>Everything in Premium</li><li>Setup and data import done with you</li>'
+        '<li>Staff training</li><li>Custom reports and higher limits</li><li>A person to call</li></ul>'
+        '<a class="btn ghost" href="#talk">Talk to us</a>'
+        '</div>'
+    )
     return (
         '<div class="pricing-wrap">'
         '<input type="checkbox" id="yearly-toggle" class="pricing-toggle" />'
@@ -551,6 +563,29 @@ def _pricing_html(whatsapp=False):
         '<span class="opt y">Yearly <b>save 2 months</b></span>'
         '</label>'
         f'<div class="plans">{"".join(cards)}</div>'
+        f'{_enterprise_form_html()}'
+        '</div>'
+    )
+
+
+def _enterprise_form_html():
+    """"Talk to us" for Enterprise. Sent by the page's script; without it the
+    email link still reaches us."""
+    return (
+        '<div class="talk" id="talk">'
+        '<h3>Running a large business? Let&rsquo;s talk.</h3>'
+        '<p class="sub">Tell us a little about it and we&rsquo;ll call you to plan the setup and agree a price. '
+        'Or email <a href="mailto:support@creditvoiceai.com?subject=Enterprise">support@creditvoiceai.com</a>.</p>'
+        '<form class="talk-form" data-enquiry>'
+        '<input name="name" placeholder="Your name" maxlength="100" required />'
+        '<input name="business" placeholder="Business name" maxlength="120" required />'
+        '<input name="phone" placeholder="Phone number" maxlength="30" inputmode="tel" required />'
+        '<input name="email" placeholder="Email (optional)" maxlength="120" type="email" />'
+        '<input name="branches" placeholder="How many branches or stores?" maxlength="60" />'
+        '<textarea name="message" placeholder="What do you need? (optional)" maxlength="1000" rows="3"></textarea>'
+        '<button class="btn" type="submit">Send — we&rsquo;ll call you</button>'
+        '<p class="talk-msg" role="status"></p>'
+        '</form>'
         '</div>'
     )
 
@@ -752,7 +787,11 @@ def _reviews_html(db):
             f'<div class="where">{_esc(where)}</div>'
             f'{contact_html}</div>'
         )
-    return f'<div class="quotes">{"".join(cards)}</div>'
+    arrows = ('<div class="quote-nav"><button type="button" class="qn" data-dir="-1" aria-label="Previous reviews">&#8249;</button>'
+              '<button type="button" class="qn" data-dir="1" aria-label="More reviews">&#8250;</button></div>'
+              if len(cards) > 1 else "")
+    hint = '<p class="swipe-hint">Swipe to see more &rarr;</p>' if len(cards) > 1 else ""
+    return f'<div class="quotes-wrap">{arrows}<div class="quotes" tabindex="0">{"".join(cards)}</div>{hint}</div>'
 
 
 def landing_fragments():

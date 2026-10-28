@@ -143,7 +143,7 @@ def test_a_failed_count_does_not_break_the_page(monkeypatch):
     monkeypatch.setattr(site, "_stats", boom)
     body = _landing()
     assert 'class="stat-n"' not in body
-    assert "Know" in body and "<h1" in body
+    assert "whole business" in body and "<h1" in body
 
 
 def test_admin_can_hide_the_band():

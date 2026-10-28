@@ -3180,6 +3180,65 @@ function CampaignsTab() {
 // Suspected fake products reported by shops. Confirming one warns every other
 // shop stocking that barcode or buying from that supplier, and flags the
 // barcode at every till — so it is a decision, made once, with the reach shown.
+// Large businesses asking about Enterprise ("Let's talk"): call them, agree a
+// price, then put them on Premium. Mark each one Contacted / Closed.
+function EnquiriesTab() {
+  const [data, setData] = useState(null);
+  const [filter, setFilter] = useState("NEW");
+  const [err, setErr] = useState("");
+
+  function load(s = filter) {
+    apiFetch("admin/enquiries", { status: s }).then(setData).catch(e => setErr(e.message));
+  }
+  useEffect(() => { load(filter); }, [filter]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function mark(e, status) {
+    const note = window.prompt(`Mark as ${status.toLowerCase()} — a note for later? (optional)`, e.admin_note || "");
+    if (note === null) return;
+    try { await apiPatch(`admin/enquiries/${e.id}`, { status, admin_note: note }); load(); announcePendingChanged(); }
+    catch (x) { setErr(x.message); }
+  }
+
+  const counts = data?.counts || {};
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <p className="text-subtle text-sm" style={{ margin: 0 }}>
+        Large businesses (malls, chains, distributors) asking about Enterprise from the homepage or the Upgrade page.
+        Call them, agree a price, then put them on Premium.
+      </p>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {["NEW", "CONTACTED", "CLOSED"].map(s => (
+          <button key={s} className={`btn btn-sm btn-pill ${filter === s ? "btn-primary" : "btn-ghost"}`} onClick={() => setFilter(s)}>
+            {s.charAt(0) + s.slice(1).toLowerCase()} ({counts[s] ?? 0})
+          </button>
+        ))}
+      </div>
+      {err && <div style={{ color: "var(--rose)" }}>{err}</div>}
+      {!data ? <p className="td-muted">Loading…</p> : data.enquiries.length === 0 ? (
+        <p className="td-muted">Nothing here.</p>
+      ) : data.enquiries.map(e => (
+        <div key={e.id} className="card" style={{ padding: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <strong>{e.business}</strong>
+            <span className="td-muted" style={{ fontSize: 12 }}>{new Date(e.created_at).toLocaleString("en-NG")} · from {e.source}</span>
+          </div>
+          <div style={{ fontSize: 14, marginTop: 4 }}>
+            {e.name} · <a href={`tel:${e.phone}`}>{e.phone}</a>{e.email ? <> · <a href={`mailto:${e.email}`}>{e.email}</a></> : null}
+            {e.branches ? ` · ${e.branches} branches` : ""}
+          </div>
+          {e.message && <div style={{ fontSize: 14, marginTop: 6, whiteSpace: "pre-wrap" }}>{e.message}</div>}
+          {e.admin_note && <div className="td-muted" style={{ fontSize: 12, marginTop: 6 }}>Note: {e.admin_note}</div>}
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            {e.status !== "CONTACTED" && <button className="btn btn-sm btn-secondary" onClick={() => mark(e, "CONTACTED")}>Contacted</button>}
+            {e.status !== "CLOSED" && <button className="btn btn-sm btn-ghost" onClick={() => mark(e, "CLOSED")}>Close</button>}
+            {e.status !== "NEW" && <button className="btn btn-sm btn-ghost" onClick={() => mark(e, "NEW")}>Back to new</button>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FakeReportsTab() {
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState("PENDING");
@@ -3261,7 +3320,7 @@ function FakeReportsTab() {
 }
 
 // Admin tabs that hold a queue, and the pending-counts key for each.
-const TAB_PENDING = { Fakes: "fakes", Payments: "payments", Suppliers: "suppliers", Opportunities: "opportunities", Finance: "finance", Site: "reviews" };
+const TAB_PENDING = { Enquiries: "enquiries", Fakes: "fakes", Payments: "payments", Suppliers: "suppliers", Opportunities: "opportunities", Finance: "finance", Site: "reviews" };
 
 // Something waiting for an admin was decided: the menu badge and the tab
 // counts listen for this and ask again.
@@ -3269,7 +3328,7 @@ function announcePendingChanged() {
   window.dispatchEvent(new Event("cv-admin-pending"));
 }
 
-const TABS = ["Overview", "Users", "Payments", "Suppliers", "Fakes", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Referrals", "Notify", "Failed Messages"];
+const TABS = ["Overview", "Users", "Payments", "Enquiries", "Suppliers", "Fakes", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -3421,6 +3480,7 @@ export default function Admin() {
 
       {tab === "Users"          && <UsersTab />}
       {tab === "Payments"       && <PaymentsTab />}
+      {tab === "Enquiries"      && <EnquiriesTab />}
       {tab === "Suppliers"      && <SuppliersTab />}
       {tab === "Fakes"          && <FakeReportsTab />}
       {tab === "Opportunities"  && <OpportunitiesTab />}

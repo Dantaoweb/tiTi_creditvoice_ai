@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>CreditVoiceai — Know who owes you, what you sold, what's left in stock</title>
-  <meta name="description" content="CreditVoiceai is a business assistant (tiTi) for shops, traders and artisans: record sales by chat or voice, track who owes you, manage stock, send receipts — and build a business record that opens doors to financing." />
+  <title>CreditVoiceai — Run your whole business by just telling tiTi</title>
+  <meta name="description" content="CreditVoiceai is a business assistant (tiTi) for businesses of every size — from a market stall to a supermarket chain: sales, debts, stock, invoices, staff and branches, by chat or voice — and a business record that opens doors to financing." />
   <link rel="canonical" href="https://creditvoiceai.com/" />
   <meta name="robots" content="index, follow" />
   <meta name="theme-color" content="#0c1f4a" />
@@ -13,8 +13,8 @@
   <!-- Open Graph (WhatsApp / Facebook / LinkedIn link previews) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CreditVoiceai" />
-  <meta property="og:title" content="CreditVoiceai — Run your business records from your phone" />
-  <meta property="og:description" content="Record sales by chat or voice, track who owes you, manage stock and send receipts. Free to start, no download." />
+  <meta property="og:title" content="CreditVoiceai — Run your whole business by just telling tiTi" />
+  <meta property="og:description" content="Sales, debts, stock, invoices, staff and branches — for one shop or many. Free to start, no download." />
   <meta property="og:url" content="https://creditvoiceai.com/" />
   <meta property="og:image" content="https://creditvoiceai.com/app/og-image.png" />
   <meta property="og:image:width" content="1200" />
@@ -22,8 +22,8 @@
   <meta property="og:locale" content="en_NG" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="CreditVoiceai — Run your business records from your phone" />
-  <meta name="twitter:description" content="Record sales by chat or voice, track who owes you, manage stock and send receipts. Free to start, no download." />
+  <meta name="twitter:title" content="CreditVoiceai — Run your whole business by just telling tiTi" />
+  <meta name="twitter:description" content="Sales, debts, stock, invoices, staff and branches — for one shop or many. Free to start, no download." />
   <meta name="twitter:image" content="https://creditvoiceai.com/app/og-image.png" />
 
   <link rel="icon" type="image/png" href="/app/favicon.png" />
@@ -55,7 +55,7 @@
           {
             "@type": "Question",
             "name": "What is CreditVoiceai?",
-            "acceptedAnswer": { "@type": "Answer", "text": "CreditVoiceai is a financial assistant called tiTi that helps small businesses record sales, track who owes them, manage stock and send receipts — and builds a business record that can open doors to financing." }
+            "acceptedAnswer": { "@type": "Answer", "text": "CreditVoiceai is a business assistant called tiTi for businesses of every size — from a single shop to a chain with many branches. It records sales, tracks who owes you, manages stock, writes invoices and quotations, runs staff and branches, and builds a business record that can open doors to financing." }
           },
           {
             "@type": "Question",
@@ -66,6 +66,11 @@
             "@type": "Question",
             "name": "Is CreditVoiceai free?",
             "acceptedAnswer": { "@type": "Answer", "text": "Yes, there is a free Basic plan. Paid plans add unlimited records, staff accounts, branches and more." }
+          },
+          {
+            "@type": "Question",
+            "name": "We are a large business. Can we use CreditVoiceai?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Malls, supermarket chains, distributors and businesses with large stock lists use the Enterprise plan: setup and data import done with you, staff training, custom reports and higher limits. The price is agreed with you — contact support@creditvoiceai.com." }
           },
           {
             "@type": "Question",
@@ -348,8 +353,45 @@
     .plan li:before{content:"✓";position:absolute;left:0;color:#16a34a;font-weight:800}
     .plan .btn{margin-top:auto}
 
-    /* reviews */
-    .quotes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+    /* who it's for */
+    .kind-ico{font-size:26px;line-height:1;margin-bottom:10px}
+    .kind ul{list-style:none;padding:0;margin:8px 0 0;color:var(--muted);font-size:14px}
+    .kind li{padding:3px 0 3px 18px;position:relative}
+    .kind li:before{content:"✓";position:absolute;left:0;color:#16a34a;font-weight:800}
+
+    /* grows with you */
+    .growth{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+    .g-step{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+    .g-step.big{border-color:var(--brand);box-shadow:var(--shadow)}
+    .g-step p{margin:6px 0 0;color:var(--muted);font-size:14px}
+    .g-n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;
+         background:var(--yellow);font-weight:800;font-size:13px;margin-right:8px}
+
+    /* enterprise + talk to us */
+    .plan.enterprise{border-style:dashed;border-color:var(--brand)}
+    .plan.enterprise .price{font-size:26px}
+    .plan-note{color:var(--muted);font-size:13px;margin-top:4px}
+    .talk{margin-top:26px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;max-width:640px}
+    .talk h3{margin:0 0 4px}
+    .talk-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .talk-form textarea,.talk-form button,.talk-form .talk-msg{grid-column:1/-1}
+    .talk-form input,.talk-form textarea{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;width:100%;box-sizing:border-box}
+    .talk-msg{margin:0;font-size:14px;min-height:1em}
+    .talk-msg.ok{color:#166534;font-weight:700}
+    .talk-msg.err{color:#b91c1c}
+    @media (max-width:560px){ .talk-form{grid-template-columns:1fr} }
+
+    /* reviews — one row of cards, swiped sideways */
+    .quotes-wrap{position:relative}
+    .quotes{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;
+            -webkit-overflow-scrolling:touch;padding:4px 2px 14px;scrollbar-width:thin;outline:none}
+    .quotes .quote{flex:0 0 min(320px,85%);scroll-snap-align:start}
+    .quote-nav{display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px}
+    .qn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:#fff;
+        font-size:22px;line-height:1;cursor:pointer;color:var(--brand)}
+    .qn:hover{border-color:var(--brand)}
+    .swipe-hint{display:none;color:var(--muted);font-size:13px;margin:4px 0 0}
+    @media (hover:none){ .quote-nav{display:none} .swipe-hint{display:block} }
     .quote{background:#fff;border:1px solid var(--line);border-left:3px solid var(--yellow);
            border-radius:var(--radius);padding:22px;box-shadow:0 1px 2px rgba(12,31,74,.04);
            transition:transform .16s ease, box-shadow .16s ease;-webkit-tap-highlight-color:transparent}
@@ -434,6 +476,7 @@
   <div class="wrap">
     <a class="brand" href="/"><img src="/app/logo.png" alt="CreditVoiceai logo" width="34" height="34" /> CreditVoiceai</a>
     <nav>
+      <a class="hide-sm" href="#for-you">Who it's for</a>
       <a class="hide-sm" href="#features">Features</a>
       <a class="hide-sm" href="#financing">Financing</a>
       <a class="hide-sm" href="#pricing">Pricing</a>
@@ -446,11 +489,11 @@
 <div class="hero">
   <div class="wrap">
     <div>
-      <span class="tag">● Financial assistance to SMEs</span>
-      <h1>Know <span class="hl">who owes you</span>, what you sold, and what's left in stock</h1>
+      <span class="tag">● From one shop to many branches</span>
+      <h1>Run your <span class="hl">whole business</span> by just telling tiTi</h1>
       <p class="lead">
-        Tell tiTi what happened — by chat or voice note — and your books keep themselves.
-        Sales, debtors, stock and receipts, without a notebook and without a download.
+        Sales, who owes you, stock, invoices, staff and branches — for a market stall, a supermarket
+        or a business with many stores. Type it or say it, and your books keep themselves.
       </p>
       <div class="cta">
         <a class="btn" href="/app">Start free</a>
@@ -502,8 +545,8 @@
 <section id="features">
   <div class="wrap">
     <p class="eyebrow">What you get</p>
-    <h2>Everything your shop needs, in one place</h2>
-    <p class="sub">Built for shops, traders, artisans and service businesses — not for accountants.</p>
+    <h2>Everything your business needs, in one place</h2>
+    <p class="sub">For traders and artisans, shops and supermarkets, distributors and businesses with many branches — not for accountants.</p>
     <div class="grid">
       <div class="card" tabindex="0" data-reveal>
         <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 10v4M18 10v4"/></svg></div>
@@ -539,6 +582,61 @@
   </div>
 </section>
 
+
+<section class="alt" id="for-you">
+  <div class="wrap">
+    <p class="eyebrow">Who it's for</p>
+    <h2>Built for your kind of business</h2>
+    <p class="sub">tiTi knows how your trade works — the words, the units, what you sell and how you get paid.</p>
+    <div class="grid kinds">
+      <div class="card kind" data-reveal>
+        <div class="kind-ico">🛒</div>
+        <h3>Shops &amp; supermarkets</h3>
+        <ul><li>Till with barcode scanner</li><li>Stock counts and expiry dates</li><li>Purchase orders to suppliers</li><li>Loyalty stamps and points</li></ul>
+      </div>
+      <div class="card kind" data-reveal>
+        <div class="kind-ico">🧱</div>
+        <h3>Wholesale &amp; building materials</h3>
+        <ul><li>Invoices, quotations and deposits</li><li>Waybills and part delivery</li><li>VAT when you need it</li><li>Pay links for customers</li></ul>
+      </div>
+      <div class="card kind" data-reveal>
+        <div class="kind-ico">✂️</div>
+        <h3>Salons, clinics &amp; services</h3>
+        <ul><li>Appointments and a booking link</li><li>Reminders the evening before</li><li>Price list of your services</li><li>Repeat invoices for monthly clients</li></ul>
+      </div>
+      <div class="card kind" data-reveal>
+        <div class="kind-ico">🎓</div>
+        <h3>Schools</h3>
+        <ul><li>Fees billed by term</li><li>Books and uniforms as items</li><li>Who has paid, who hasn't</li><li>Receipts for every parent</li></ul>
+      </div>
+      <div class="card kind" data-reveal>
+        <div class="kind-ico">🐔</div>
+        <h3>Farms &amp; poultry</h3>
+        <ul><li>Eggs collected, feed used</li><li>Sales by crate or bag</li><li>Vet and supply costs</li><li>Profit you can see</li></ul>
+      </div>
+      <div class="card kind" data-reveal>
+        <div class="kind-ico">⛽</div>
+        <h3>Filling stations</h3>
+        <ul><li>Pump and tank readings</li><li>Litres sold per shift</li><li>Staff on each pump</li><li>Daily totals</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="grow">
+  <div class="wrap">
+    <p class="eyebrow">Grows with you</p>
+    <h2>Start small. Keep going.</h2>
+    <p class="sub">The same app from your first sale to your tenth branch — switch things on when you need them.</p>
+    <div class="growth">
+      <div class="g-step" data-reveal><span class="g-n">1</span><strong>One shop</strong><p>Record sales and debts for free.</p></div>
+      <div class="g-step" data-reveal><span class="g-n">2</span><strong>Add staff</strong><p>Each with their own login and what they're allowed to see.</p></div>
+      <div class="g-step" data-reveal><span class="g-n">3</span><strong>Add branches</strong><p>Stock and sales per branch, totals for you.</p></div>
+      <div class="g-step big" data-reveal><span class="g-n">4</span><strong>Go Enterprise</strong><p>Malls, chains and big data — <a href="#talk">let's talk</a>.</p></div>
+    </div>
+  </div>
+</section>
+
 <section class="alt">
   <div class="wrap">
     <p class="eyebrow">How it works</p>
@@ -562,7 +660,7 @@
   <div class="wrap">
     <p class="eyebrow">Pricing</p>
     <h2>Start free. Pay when it pays you.</h2>
-    <p class="sub">Every plan keeps your records safe. Pay yearly and get two months free.</p>
+    <p class="sub">Every plan keeps your records safe. Pay yearly and get two months free. A large business? Enterprise is priced with you.</p>
     <!--PRICING-->
   </div>
 </section>
@@ -580,10 +678,11 @@
   <div class="wrap">
     <p class="eyebrow">Questions</p>
     <h2>Frequently asked</h2>
-    <details open><summary>What is CreditVoiceai?</summary><p>A financial assistant called tiTi that helps small and medium businesses record sales, track who owes them, manage stock and send receipts — with a dashboard for reports that becomes a credit scorecard over time.</p></details>
+    <details open><summary>What is CreditVoiceai?</summary><p>A business assistant called tiTi for businesses of every size — from a single shop to a chain with many branches. It records sales, tracks who owes you, manages stock, writes invoices and quotations, and runs staff and branches — with reports that become a credit scorecard over time.</p></details>
     <details><summary>Do I need to download an app?</summary><p><!--WA_FAQ--></p></details>
     <details><summary>Is it free?</summary><p>Yes — the Basic plan is free. Paid plans add unlimited records, staff accounts, branches and more.</p></details>
     <details><summary>What can tiTi do?</summary><p>Record cash and credit sales, track debtors and send reminders, manage inventory with low-stock alerts, generate receipts and invoices, show reports and profit, and support staff, branches and partners.</p></details>
+    <details><summary>We are a large business. Can we use it?</summary><p>Yes. Malls, supermarket chains, distributors and businesses with large stock lists use the <a href="#enterprise">Enterprise</a> plan — setup and data import done with you, staff training, custom reports and higher limits. <a href="#talk">Tell us about your business</a> and we'll call you to agree a price.</p></details>
     <details><summary>Is my business data safe?</summary><p>Your records are yours. We follow the Nigeria Data Protection Act, and nothing is shared with a financing partner unless you choose to apply and agree to share it.</p></details>
   </div>
 </section>
@@ -606,7 +705,7 @@
     <div class="fcols">
       <div>
         <h4>CreditVoiceai</h4>
-        <p style="margin:0;color:#9db0d4">Record sales, track credit, manage stock — and build a business record that opens doors.</p>
+        <p style="margin:0;color:#9db0d4">Run your whole business — from one shop to many branches — and build a business record that opens doors.</p>
         <!--SOCIAL-->
       </div>
       <div>
@@ -692,6 +791,48 @@
       })(started);
     });
   }
+})();
+</script>
+<script>
+/* Reviews: the arrows move one card; fingers just swipe. "Talk to us": sends
+   the enquiry without leaving the page (the email link works without this). */
+(function () {
+  [].forEach.call(document.querySelectorAll(".quotes-wrap"), function (wrap) {
+    var row = wrap.querySelector(".quotes");
+    [].forEach.call(wrap.querySelectorAll(".qn"), function (b) {
+      b.addEventListener("click", function () {
+        var card = row.querySelector(".quote");
+        var step = card ? card.getBoundingClientRect().width + 16 : 300;
+        row.scrollBy({ left: step * parseInt(b.getAttribute("data-dir"), 10), behavior: "smooth" });
+      });
+    });
+  });
+  var form = document.querySelector("[data-enquiry]");
+  if (!form) return;
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var msg = form.querySelector(".talk-msg"), btn = form.querySelector("button");
+    var data = { source: "landing" };
+    [].forEach.call(form.elements, function (el) { if (el.name) data[el.name] = el.value; });
+    btn.disabled = true; msg.className = "talk-msg"; msg.textContent = "Sending…";
+    fetch("/app/api/public/enterprise-enquiry", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+    }).then(function (r) {
+      return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+    }).then(function (res) {
+      if (res.ok) {
+        form.reset();
+        msg.className = "talk-msg ok";
+        msg.textContent = "Thank you — we'll call you soon.";
+      } else {
+        msg.className = "talk-msg err";
+        msg.textContent = (res.j && res.j.detail) || "Something went wrong — please email us.";
+      }
+    }).catch(function () {
+      msg.className = "talk-msg err";
+      msg.textContent = "No connection — please email support@creditvoiceai.com.";
+    }).then(function () { btn.disabled = false; });
+  });
 })();
 </script>
 

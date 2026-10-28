@@ -253,6 +253,8 @@ def register_web_routes(app):
     register_recurring_routes(app)
     from web_loyalty_routes import register_loyalty_routes
     register_loyalty_routes(app)
+    from web_enterprise_routes import register_enterprise_routes
+    register_enterprise_routes(app)
 
     # ── Inventory — split into web_inventory_routes ───────────────────────────
     from web_inventory_routes import register_inventory_routes

@@ -184,6 +184,58 @@ function Cell({ val }) {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+// Enterprise: malls, chains, distributors, big data — no price here; we call them
+function EnterpriseCard({ user }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: user?.name || "", business: "", phone: user?.phone || "",
+    email: user?.email || "", branches: "", message: "" });
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  async function send() {
+    setBusy(true); setErr("");
+    try { await apiPost("public/enterprise-enquiry", { ...f, source: "upgrade" }); setDone(true); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="card" style={{ marginTop: 18, border: "1px dashed #1a56db", padding: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Building2 size={18} color="#1a56db" /><strong style={{ fontSize: 17 }}>Enterprise</strong>
+            <span className="td-muted" style={{ fontSize: 13 }}>· Let's talk</span>
+          </div>
+          <div className="td-muted" style={{ fontSize: 13, marginTop: 4 }}>
+            For malls, supermarket chains, distributors and businesses with lots of data: everything in Premium,
+            setup and data import done with you, staff training, custom reports and higher limits. Priced with you.
+          </div>
+        </div>
+        {!open && !done && <button className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>Talk to us</button>}
+      </div>
+      {done ? (
+        <div style={{ marginTop: 12, color: "#166534", fontWeight: 700 }}>Thank you — we'll call you soon.</div>
+      ) : open && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginTop: 12 }}>
+          <input value={f.name} maxLength={100} placeholder="Your name" onChange={e => set("name", e.target.value)} />
+          <input value={f.business} maxLength={120} placeholder="Business name" onChange={e => set("business", e.target.value)} />
+          <input value={f.phone} maxLength={30} inputMode="tel" placeholder="Phone number" onChange={e => set("phone", e.target.value)} />
+          <input value={f.email} maxLength={120} type="email" placeholder="Email (optional)" onChange={e => set("email", e.target.value)} />
+          <input value={f.branches} maxLength={60} placeholder="How many branches or stores?" onChange={e => set("branches", e.target.value)} />
+          <textarea value={f.message} maxLength={1000} rows={2} placeholder="What do you need? (optional)"
+            onChange={e => set("message", e.target.value)} style={{ gridColumn: "1 / -1" }} />
+          {err && <div className="modal-error" style={{ gridColumn: "1 / -1" }}>{err}</div>}
+          <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+            <button className="btn btn-primary btn-sm" onClick={send} disabled={busy}>{busy ? "Sending…" : "Send — we'll call you"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Upgrade() {
   const { user, refreshUser } = useAuth();
   const [status, setStatus] = useState(null);
@@ -371,6 +423,8 @@ export default function Upgrade() {
               );
             })}
           </div>
+
+          <EnterpriseCard user={user} />
 
           {/* Feature comparison table */}
           <div className="upgrade-table-wrap">
