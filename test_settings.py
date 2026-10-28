@@ -208,3 +208,31 @@ def test_photo_is_a_scan_mode_choice():
     u = U()
     set_display(u, {"scan_mode": "photo"})
     assert get_display(u)["scan_mode"] == "photo"
+
+
+def test_categories_set_up_ahead_and_only_from_the_list():
+    phone, cook, rice, _coke = _shop()
+    r = client.post("/app/api/categories/add", cookies=cook, json={"names": ["Provisions, Toiletries", "drinks"]})
+    assert r.status_code == 200 and r.json()["added"] == 2
+    cats = {c["name"]: c["count"] for c in r.json()["categories"]}
+    assert cats["provisions"] == 0 and cats["toiletries"] == 0 and cats["drinks"] == 1
+    # An empty one can go; one with products can't
+    assert client.post("/app/api/categories/delete", cookies=cook, json={"name": "drinks"}).status_code == 400
+    r = client.post("/app/api/categories/delete", cookies=cook, json={"name": "toiletries"})
+    assert "toiletries" not in {c["name"] for c in r.json()["categories"]}
+
+    # Only from the list: authorised staff pick; the owner may still add a new one
+    client.put("/app/api/settings/business", cookies=cook, json={"values": {"category_only_list": True}})
+    sade = _staff(phone, authorised=True)
+    assert client.put(f"/app/api/inventory/{rice}", cookies=sade, json={"category": "Grains"}).status_code == 400
+    assert client.put(f"/app/api/inventory/{rice}", cookies=sade, json={"category": "Provisions"}).status_code == 200
+    assert client.put(f"/app/api/inventory/{rice}", cookies=cook, json={"category": "Grains"}).status_code == 200
+    names = {c["name"] for c in client.get("/app/api/categories", cookies=cook).json()["categories"]}
+    assert {"grains", "provisions"} <= names                    # a new one joins the list
+    # Renaming keeps the list in step
+    client.post("/app/api/categories/rename", cookies=cook, json={"old": "provisions", "new": "Foodstuff"})
+    s = client.get("/app/api/settings", cookies=cook).json()["business"]
+    assert "foodstuff" in s["category_list"] and "provisions" not in s["category_list"]
+    # Staff without authority can't set up categories
+    assert client.post("/app/api/categories/add", cookies=_staff(phone, authorised=False),
+                       json={"names": ["x"]}).status_code == 403

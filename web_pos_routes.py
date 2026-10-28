@@ -537,10 +537,10 @@ def register_pos_routes(app):
             _require_items_in_branch(db, owner_phone, items, eff_branch)
             from invoices import create_invoice, invoice_document
             if payload.is_quote:
-                from business_templates import does_jobs
-                if not does_jobs(db.query(User).filter(User.id == session["user_id"]).first(), db):
+                from business_templates import can_quote
+                if not can_quote(db.query(User).filter(User.id == session["user_id"]).first(), db):
                     raise HTTPException(status_code=403,
-                                        detail="Quotations are for businesses that do jobs.")
+                                        detail="Quotations are off for this business — switch them on in Settings → Invoices.")
             inv = _invoice_action(lambda: create_invoice(
                 db, owner_phone, session["user_id"], payload.customer_id, items,
                 due_date=payload.due_date, note=payload.note, branch_id=eff_branch,

@@ -20,15 +20,32 @@ import { LimitBar } from "../components/UpgradeGate";
 import { usePlan } from "../lib/usePlan";
 import { useSettings } from "../lib/settings";
 
-/* A product's category: pick one already used or type a new one. */
-function CategoryField({ value, onChange, options = [], hint }) {
+/* A product's category: pick one from the business's list (Settings →
+   Manage categories), or — unless the owner keeps it to the list — a new one. */
+function CategoryField({ value, onChange, options = [], hint, allowNew = true }) {
+  const known = options.some(c => c.toLowerCase() === (value || "").trim().toLowerCase());
+  const [typing, setTyping] = useState(false);
+  const showInput = allowNew && (typing || options.length === 0 || (value && !known));
   return (
     <div className="form-group">
       <label className="form-label">Category</label>
-      <input list="cv-inv-cats" value={value} onChange={e => onChange(e.target.value)}
-        placeholder="e.g. Drinks, Provisions" />
-      <datalist id="cv-inv-cats">{options.map(c => <option key={c} value={c} />)}</datalist>
+      {showInput ? (
+        <div style={{ display: "flex", gap: 6 }}>
+          <input value={value} onChange={e => onChange(e.target.value)} placeholder="e.g. Drinks, Provisions" style={{ flex: 1 }} autoFocus={typing} />
+          {options.length > 0 && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setTyping(false); onChange(""); }}>List</button>
+          )}
+        </div>
+      ) : (
+        <select value={known ? options.find(c => c.toLowerCase() === value.trim().toLowerCase()) : ""}
+          onChange={e => (e.target.value === "__new" ? (setTyping(true), onChange("")) : onChange(e.target.value))}>
+          <option value="">— No category —</option>
+          {options.map(c => <option key={c} value={c}>{c}</option>)}
+          {allowNew && <option value="__new">+ New category…</option>}
+        </select>
+      )}
       {hint && <span className="form-hint">{hint}</span>}
+      {!allowNew && <span className="form-hint">Need another category? Ask the owner to add it in Settings.</span>}
     </div>
   );
 }
@@ -345,7 +362,7 @@ function SimilarWarning({ found, onUse }) {
   );
 }
 
-function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved, onUseExisting, categories = [], suggestCategory = false }) {
+function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved, onUseExisting, categories = [], suggestCategory = false, allowNewCategory = true }) {
   const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
   const [form, setForm] = useState({
     name: "", unit: "", quantity: "",
@@ -381,11 +398,15 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
     if (!suggestCategory || catTouched || name.length < 3) return;
     const t = setTimeout(() => {
       apiFetch("categories/suggest", { name })
-        .then(d => { if (d.category) setForm(p => ({ ...p, category: d.category.replace(/\b\w/g, c => c.toUpperCase()) })); })
+        .then(d => {
+          const sug = d.category ? d.category.replace(/\b\w/g, c => c.toUpperCase()) : null;
+          const listed = sug && categories.find(c => c.toLowerCase() === sug.toLowerCase());
+          if (sug && (allowNewCategory || listed)) setForm(p => ({ ...p, category: listed || sug }));
+        })
         .catch(() => {});
     }, 400);
     return () => clearTimeout(t);
-  }, [form.name, suggestCategory, catTouched]);
+  }, [form.name, suggestCategory, catTouched, categories, allowNewCategory]);
 
   const isService = itemType === "service";
   // Opening stock from a supplier is a delivery: what it cost and what's owed.
@@ -464,7 +485,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
         <SimilarWarning found={similar} onUse={name => { onClose(); onUseExisting?.(name); }} />
 
         {!isService && (
-          <CategoryField value={form.category} options={categories}
+          <CategoryField value={form.category} options={categories} allowNew={allowNewCategory}
             onChange={v => { setCatTouched(true); set("category", v); }}
             hint={suggestCategory && form.category && !catTouched ? "Suggested by tiTi — change it if it's wrong." : null} />
         )}
@@ -609,7 +630,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
 }
 
 // ── Edit item modal ──────────────────────────────────────────────────────────
-function EditItemModal({ item, fields = [], onClose, onSaved, categories = [] }) {
+function EditItemModal({ item, fields = [], onClose, onSaved, categories = [], allowNewCategory = true }) {
   const isService = item.is_service;
   const { business: bizSettings } = useSettings();       // VAT tick only when VAT is on
   const [form, setForm] = useState({
@@ -679,7 +700,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [] })
           </div>
         </div>
         {!isService && (
-          <CategoryField value={form.category} options={categories} onChange={v => set("category", v)} />
+          <CategoryField value={form.category} options={categories} allowNew={allowNewCategory} onChange={v => set("category", v)} />
         )}
         {!isService && fields.length > 0 && (
           <div className="form-row" style={{ flexWrap: "wrap" }}>
@@ -1440,7 +1461,7 @@ export default function Inventory() {
             <button type="button" className={`cat-chip${!cat ? " on" : ""}`} onClick={() => setCat(null)}>
               All
             </button>
-            {cats.map(c => (
+            {cats.filter(c => c.count > 0).map(c => (   /* empty ones are only on the pick list */
               <button key={c.name || "__none__"} type="button"
                 className={`cat-chip${cat === (c.name || "__none__") ? " on" : ""}`}
                 title={c.value ? `${nairaFull(c.value)} in stock` : undefined}
@@ -1600,6 +1621,7 @@ export default function Inventory() {
           onSaved={() => load(rows.length + 1)}
           onUseExisting={name => setSearch(name)}
           categories={catNames}
+          allowNewCategory={!business.category_only_list || !user?.parent_id}
           suggestCategory={business.category_source === "suggest"}
         />
       )}
@@ -1608,6 +1630,7 @@ export default function Inventory() {
         <EditItemModal
           item={editItem}
           categories={catNames}
+          allowNewCategory={!business.category_only_list || !user?.parent_id}
           fields={fields}
           onClose={() => setEditItem(null)}
           onSaved={reload}

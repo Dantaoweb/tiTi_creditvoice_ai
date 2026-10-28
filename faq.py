@@ -751,8 +751,9 @@ FAQ_ANSWERS = {
         "(This is on the web app dashboard, not a WhatsApp command yet.)"
     ),
     "quotation": (
-        "Quotations are for businesses that do jobs (contractors, artisans, tailors, mechanics, "
-        "printers, consultants). Web app → *Invoices* → *New quotation*.\n\n"
+        "Quotations are on for businesses that do jobs (contractors, artisans, tailors, mechanics, "
+        "printers, consultants) — any other business can switch them on in *Settings → Invoices → "
+        "Quotations → Show*. Web app → *Invoices* → *New quotation*.\n\n"
         "1. Add the job's items and prices, and who it's for.\n"
         "2. *Deposit before work starts* — e.g. 60%. The quotation shows the deposit and the "
         "*balance on completion*.\n"
@@ -784,8 +785,11 @@ FAQ_ANSWERS = {
         "• *Low-stock alert for new products*\n"
         "• *Allow selling below zero stock* — Yes or No\n"
         "• *Show \"Not all goods delivered now\" when selling*\n\n"
-        "*Manage categories* — rename, reorder, put many products into a category at once, or "
-        "let tiTi suggest categories for products that have none.\n\n"
+        "*Manage categories* — add your categories ahead (e.g. Drinks, Provisions, Toiletries — "
+        "they show on Add product before any product is in them), rename, reorder, delete an empty one, "
+        "put many products into a category at once, or let tiTi suggest categories for products that have none. "
+        "*Only categories from my list* — staff pick from your list; only you make new ones.\n\n"
+        "*Invoices → Quotations* — Automatic (businesses that do jobs), Show (any business) or Hide.\n\n"
         "*WhatsApp* — a *daily summary* of the day's sales at the time you pick."
     ),
     "already_in_stock": (

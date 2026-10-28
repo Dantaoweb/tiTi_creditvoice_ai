@@ -427,7 +427,7 @@ def register_auth_routes(app):
                 "parent_id": user.parent_id,
                 # Owner or branch admin — may manage stock, branches, etc.
                 "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
-            "can_quote": __import__("business_templates").does_jobs(user, db),
+            "can_quote": __import__("business_templates").can_quote(user, db),
             }
         finally:
             db.close()

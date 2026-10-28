@@ -43,6 +43,12 @@ BUSINESS_DEFAULTS = {
     "daily_summary": False,
     "daily_summary_time": "20:00",        # Lagos time, HH:MM
     "category_order": [],
+    # Categories set up ahead (Settings → Manage categories), even with no
+    # products yet; new ones used on a product join the list
+    "category_list": [],
+    "category_only_list": False,          # staff pick from the list; only the owner adds new ones
+    # Quotations: None = businesses that do jobs (as before); True / False = the owner's choice
+    "quotes": None,
     # Receipts & printables (printables.py). Paper: the small thermal printer
     # most shops use; everything else is how printables looked before.
     # VAT (vat.py): off unless the owner turns it on and chooses how prices work
@@ -172,8 +178,19 @@ def _clean_business(k, v):
         if n < 0:
             raise ValueError("The low-stock alert can't be negative.")
         return n
-    if k == "show_appointments":
+    if k in ("show_appointments", "quotes"):
         return None if v is None else bool(v)
+    if k == "category_only_list":
+        return bool(v)
+    if k == "category_list":
+        if not isinstance(v, list):
+            raise ValueError("Invalid category list.")
+        out = []
+        for x in v[:300]:
+            c = clean_category(str(x))
+            if c and c not in out:
+                out.append(c)
+        return out
     if k == "booking_hours":
         if not isinstance(v, dict):
             raise ValueError("Invalid opening hours.")
@@ -294,6 +311,48 @@ def clean_category(name):
     if name == SERVICE_CATEGORY:
         raise ValueError("'Service' is kept for services — pick another name.")
     return name or None
+
+
+def categories_known(db, owner_phone):
+    """The business's categories: the list set up in Settings plus any in use."""
+    from models import InventoryItem
+    used = {c for c, in db.query(InventoryItem.category).filter(
+        InventoryItem.owner_phone == owner_phone, InventoryItem.category.isnot(None)).distinct() if c}
+    return set(get_business_settings(db, owner_phone).get("category_list") or []) | used - {SERVICE_CATEGORY}
+
+
+def check_category(db, owner_phone, name, can_add):
+    """A product's category, cleaned. With "only categories from my list" on,
+    someone who can't change settings must pick one that exists. A new one
+    joins the list."""
+    cat = clean_category(name)
+    if not cat:
+        return None
+    known = categories_known(db, owner_phone)
+    if cat not in known:
+        if business_setting(db, owner_phone, "category_only_list") and not can_add:
+            raise ValueError("Pick a category from the list — the owner adds new ones in Settings.")
+        add_categories(db, owner_phone, [cat])
+    return cat
+
+
+def add_categories(db, owner_phone, names):
+    """Put categories on the business's list (and at the end of the order)."""
+    s = get_business_settings(db, owner_phone)
+    lst, order = list(s.get("category_list") or []), list(s.get("category_order") or [])
+    known = categories_known(db, owner_phone)
+    added = []
+    for n in names:
+        c = clean_category(n)
+        if c and c not in lst:
+            lst.append(c)
+            if c not in known:
+                added.append(c)                  # new to the business (not just to the list)
+        if c and c not in order:
+            order.append(c)
+    if lst != (s.get("category_list") or []) or order != (s.get("category_order") or []):
+        set_business_settings(db, owner_phone, {"category_list": lst, "category_order": order})
+    return added
 
 
 def suggest_category(db, owner_phone, product_name):

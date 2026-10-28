@@ -3,6 +3,7 @@ import { ArrowUp, ArrowDown, Pencil, Check, X } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import { saveBusiness, saveDisplay, useSettings } from "../lib/settings";
+import { useAuth } from "../context/AuthContext";
 import PrintHeader, { PrintBank } from "../components/PrintHeader";
 import { paperClass } from "../lib/print";
 
@@ -154,6 +155,7 @@ function CategoriesSection({ business }) {
   const [picked, setPicked] = useState(new Set());
   const [suggest, setSuggest] = useState(null);
   const [msg, setMsg] = useState("");
+  const [adding, setAdding] = useState("");
 
   const load = () => apiFetch("categories").then(d => setCats(d.categories || [])).catch(e => setErr(e.message));
   useEffect(() => { load(); }, []);
@@ -176,6 +178,19 @@ function CategoriesSection({ business }) {
     if (j < 0 || j >= order.length) return;
     [order[i], order[j]] = [order[j], order[i]];
     try { await saveBusiness({ category_order: order }); load(); } catch (e) { setErr(e.message); }
+  }
+  async function addCats() {
+    try {
+      const r = await apiPost("categories/add", { names: [adding] });
+      setCats(r.categories); setAdding(""); note(r.added ? `${r.added} categor${r.added > 1 ? "ies" : "y"} added.` : "Already on your list.");
+    } catch (e) { setErr(e.message); }
+  }
+  async function remove(name) {
+    try { const r = await apiPost("categories/delete", { name }); setCats(r.categories); note("Category removed."); }
+    catch (e) { setErr(e.message); }
+  }
+  async function onlyList(v) {
+    try { await saveBusiness({ category_only_list: v }); } catch (e) { setErr(e.message); }
   }
   async function rename(old) {
     try {
@@ -214,7 +229,7 @@ function CategoriesSection({ business }) {
       <div className="card-body">
         {err && <div className="modal-error" onClick={() => setErr("")}>{err}</div>}
         {!cats && <p className="td-muted">Loading…</p>}
-        {cats && named.length === 0 && <p className="td-muted">No categories yet — put products into one below.</p>}
+        {cats && named.length === 0 && <p className="td-muted">No categories yet — add some below, then pick them when you add a product.</p>}
         {named.map((c, i) => (
           <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
@@ -236,10 +251,27 @@ function CategoriesSection({ business }) {
                 <button type="button" className="btn btn-ghost btn-xs" onClick={() => { setEditing(c.name); setNewName(c.label); }}>
                   <Pencil size={12} /> Rename
                 </button>
+                {c.count === 0 && (
+                  <button type="button" className="btn btn-ghost btn-xs" style={{ color: "#b91c1c" }} aria-label="Delete"
+                    onClick={() => remove(c.name)}><X size={12} /></button>
+                )}
               </>
             )}
           </div>
         ))}
+        <div style={{ display: "flex", gap: 6, padding: "10px 0 4px" }}>
+          <input value={adding} onChange={e => setAdding(e.target.value)} placeholder="Add categories, e.g. Drinks, Provisions, Toiletries"
+            onKeyDown={e => { if (e.key === "Enter" && adding.trim()) { e.preventDefault(); addCats(); } }} style={{ flex: 1, minWidth: 0 }} />
+          <button type="button" className="btn btn-secondary btn-sm" onClick={addCats} disabled={!adding.trim()}>+ Add</button>
+        </div>
+        <span className="form-hint">Separate several with commas. They show on Add product even before any product is in them.</span>
+        <Row title="Only categories from my list"
+          hint={business.category_only_list
+            ? "On: staff pick a category from this list when they add a product. Only you can make a new one there."
+            : "Off: anyone adding a product can pick from the list or type a new category (it joins the list)."}>
+          <Seg value={!!business.category_only_list} onChange={onlyList} options={[[true, "On"], [false, "Off"]]} />
+        </Row>
+
         {uncategorised && (
           <div className="td-muted" style={{ fontSize: 13, padding: "8px 0" }}>
             {uncategorised.count} product{uncategorised.count !== 1 ? "s have" : " has"} no category yet.{" "}
@@ -409,6 +441,33 @@ const LOGO_OUTCOME = {
   right: "Logo sits on the right, your name and details beside it.",
   none: "No logo is printed (saves ink on thermal printers).",
 };
+
+// Quotations: "auto" (null) = businesses that do jobs; Show / Hide = the owner's choice
+function InvoicesSection({ business }) {
+  const { save, msg, err } = useSaver(saveBusiness);
+  const { refreshUser } = useAuth();
+  const v = business.quotes ?? "auto";
+  const hints = {
+    auto: "Automatic: businesses that do jobs (tailor, mechanic, builder, printer…) can write quotations; shops can't.",
+    true: "Shown: Invoices has \"New quotation\" — a price for the customer to agree to (with a deposit if you like) before it becomes an invoice.",
+    false: "Hidden: no quotations, only invoices. Quotations already written are kept.",
+  };
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">Invoices</span>
+        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
+      </div>
+      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+        {err && <div className="modal-error">{err}</div>}
+        <Row title="Quotations" hint={hints[String(v)]}>
+          <Seg value={v} onChange={async x => { await save({ quotes: x === "auto" ? null : x }); refreshUser?.(); }}
+            options={[["auto", "Automatic"], [true, "Show"], [false, "Hide"]]} />
+        </Row>
+      </div>
+    </div>
+  );
+}
 
 // Appointments in the menu: "auto" (null) = service businesses only
 function AppointmentsSection({ business }) {
@@ -683,6 +742,7 @@ export default function Settings() {
           <CategoriesSection business={business} />
           <SummarySection business={business} />
           <VatSection business={business} />
+          <InvoicesSection business={business} />
           <AppointmentsSection business={business} />
           <LoyaltySection business={business} />
           <PrintSection business={business} />

@@ -560,7 +560,7 @@ def _build_auth_response(user: User, db=None) -> dict:
             "newsletter_consent": bool(user.newsletter_consent),
             "parent_id": user.parent_id,
             "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
-            "can_quote": __import__("business_templates").does_jobs(user, db),
+            "can_quote": __import__("business_templates").can_quote(user, db),
             "address": user.address,
             "subscription_plan": plan,
             "subscription_expires_at": expires_at.isoformat() if expires_at else None,

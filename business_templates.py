@@ -3797,6 +3797,26 @@ def does_jobs(user, db=None):
         return False
 
 
+def can_quote(user, db=None):
+    """Whether this business writes quotations: the owner's choice in Settings
+    (Show / Hide), else — Automatic — businesses that do jobs."""
+    if user is None:
+        return False
+    if db is not None:
+        try:
+            from app_settings import business_setting
+            from models import User as _U
+            owner = user
+            if getattr(user, "parent_id", None):
+                owner = db.query(_U).filter(_U.id == user.parent_id).first() or user
+            choice = business_setting(db, owner.phone, "quotes")
+            if choice is not None:
+                return bool(choice)
+        except Exception:
+            pass
+    return does_jobs(user, db)
+
+
 # Keys that have a SERVICE_PRICE_CATALOG entry
 SERVICE_CATALOG_KEYS = set(SERVICE_PRICE_CATALOG.keys())
 

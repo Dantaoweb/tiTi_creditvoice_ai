@@ -113,3 +113,17 @@ def test_the_logo_prints_on_receipts_and_invoices():
 
     client.delete("/app/api/auth/profile/logo", cookies=cook)
     assert client.get("/app/api/auth/profile/logo", cookies=cook).json()["logo"] is None
+
+
+def test_quotations_are_the_owners_choice_in_settings():
+    _phone, cook, cid = _business("provision_store")
+    assert client.get("/app/api/auth/me", cookies=cook).json()["can_quote"] is False
+    client.put("/app/api/settings/business", cookies=cook, json={"values": {"quotes": True}})
+    assert client.get("/app/api/auth/me", cookies=cook).json()["can_quote"] is True
+    assert _quote(cook, cid).status_code == 200                       # a shop quoting a bulk order
+    _p2, cook2, cid2 = _business("building_contractor")
+    client.put("/app/api/settings/business", cookies=cook2, json={"values": {"quotes": False}})
+    assert client.get("/app/api/auth/me", cookies=cook2).json()["can_quote"] is False
+    assert _quote(cook2, cid2).status_code == 403
+    client.put("/app/api/settings/business", cookies=cook2, json={"values": {"quotes": None}})   # Automatic
+    assert client.get("/app/api/auth/me", cookies=cook2).json()["can_quote"] is True

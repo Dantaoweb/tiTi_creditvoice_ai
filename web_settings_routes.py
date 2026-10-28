@@ -32,6 +32,14 @@ class RenameCategoryRequest(BaseModel):
     new: str = Field(max_length=60)
 
 
+class AddCategoriesRequest(BaseModel):
+    names: list[str] = Field(max_length=100)           # "Drinks, Provisions" split on the phone or here
+
+
+class DeleteCategoryRequest(BaseModel):
+    name: str = Field(max_length=60)
+
+
 class AssignCategoryRequest(BaseModel):
     item_ids: list[int] = Field(max_length=1000)
     category: Optional[str] = Field(default=None, max_length=60)   # None / "" = uncategorised
@@ -68,7 +76,10 @@ def _categories(db, owner_phone, branch_id=None):
     if branch_id is not None:
         q = q.filter(InventoryItem.branch_id == branch_id)
     rows = q.group_by(InventoryItem.category).all()
-    order = get_business_settings(db, owner_phone)["category_order"]
+    settings = get_business_settings(db, owner_phone)
+    order = settings["category_order"]
+    used = {cat for cat, _c, _v in rows}
+    rows = list(rows) + [(c, 0, 0) for c in settings.get("category_list") or [] if c not in used]
     out, none_row = [], None
     for cat, count, value in rows:
         entry = {"name": cat, "label": (cat or "Uncategorised").title(), "count": int(count),
@@ -273,11 +284,56 @@ def register_settings_routes(app):
             n = (db.query(InventoryItem)
                  .filter(InventoryItem.owner_phone == owner_phone, InventoryItem.category == old)
                  .update({InventoryItem.category: new}, synchronize_session=False))
-            order = get_business_settings(db, owner_phone)["category_order"]
-            order = [new if c == old else c for c in order]
-            set_business_settings(db, owner_phone, {"category_order": list(dict.fromkeys(order))})
+            current = get_business_settings(db, owner_phone)
+            order = [new if c == old else c for c in current["category_order"]]
+            listed = [new if c == old else c for c in current.get("category_list") or []]
+            set_business_settings(db, owner_phone, {"category_order": list(dict.fromkeys(order)),
+                                                    "category_list": list(dict.fromkeys(listed))})
             db.commit()
             return {"renamed": n, "categories": _categories(db, owner_phone)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/categories/add")
+    def web_add_categories(payload: AddCategoriesRequest, session: dict = Depends(require_web_auth)):
+        """Set up categories before there are products in them."""
+        import re as _re
+        from app_settings import add_categories
+        db = SessionLocal()
+        try:
+            _require_business_editor(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            names = [n for raw in payload.names for n in _re.split(r"[,\n]", raw or "") if n.strip()]
+            if not names:
+                raise HTTPException(status_code=400, detail="Type a category name.")
+            try:
+                added = add_categories(db, owner_phone, names)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            db.commit()
+            return {"added": len(added), "categories": _categories(db, owner_phone)}
+        finally:
+            db.close()
+
+    @app.post("/app/api/categories/delete")
+    def web_delete_category(payload: DeleteCategoryRequest, session: dict = Depends(require_web_auth)):
+        """Take an empty category off the list (one with products: move them first)."""
+        from app_settings import get_business_settings, set_business_settings
+        db = SessionLocal()
+        try:
+            _require_business_editor(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            name = (payload.name or "").strip().lower()
+            if db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone,
+                                              InventoryItem.category == name).first():
+                raise HTTPException(status_code=400,
+                                    detail="Products are still in this category — move them to another first.")
+            current = get_business_settings(db, owner_phone)
+            set_business_settings(db, owner_phone, {
+                "category_list": [c for c in current.get("category_list") or [] if c != name],
+                "category_order": [c for c in current["category_order"] if c != name]})
+            db.commit()
+            return {"categories": _categories(db, owner_phone)}
         finally:
             db.close()
 

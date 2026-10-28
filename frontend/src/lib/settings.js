@@ -73,6 +73,7 @@ export const BUSINESS_DEFAULTS = {
   group_by_category: false, group_on_pos: true, category_source: "suggest",
   default_low_stock: null, allow_negative_stock: true, show_part_delivery: true,
   daily_summary: false, daily_summary_time: "20:00", category_order: [],
+  category_list: [], category_only_list: false, quotes: null,
   show_appointments: null, booking_link: false, booking_auto_confirm: false, booking_pick_staff: false,
   booking_slot_min: 30, booking_days_ahead: 14,
   loyalty_mode: "off", loyalty_stamps_needed: 10, loyalty_points_percent: 1, loyalty_expiry_months: 0, loyalty_items: [],

@@ -147,6 +147,13 @@ class BulkAddInventoryRequest(BaseModel):
     items: list[BulkCatalogItem] = Field(default_factory=list, max_length=100)  # priced/service items
 
 
+def _can_add_category(db, session):
+    """Who may make up a new category while adding a product when the owner
+    chose "only categories from my list": the owner. Staff pick from the list."""
+    u = _session_user(db, session)
+    return bool(u and u.parent_id is None)
+
+
 def register_inventory_routes(app):
 
     @app.get("/app/api/inventory/fields")
@@ -377,9 +384,10 @@ def register_inventory_routes(app):
             # A category typed, or (when the business chose it) tiTi's
             # suggestion; and the default low-stock alert for new products.
             if payload.category and not payload.is_service:
-                from app_settings import clean_category
+                from app_settings import check_category
                 try:
-                    item.category = clean_category(payload.category)
+                    item.category = check_category(db, owner_phone, payload.category,
+                                                   _can_add_category(db, session))
                 except ValueError as exc:
                     raise HTTPException(status_code=400, detail=str(exc))
             from app_settings import apply_new_item_defaults
@@ -606,9 +614,10 @@ def register_inventory_routes(app):
             if payload.usual_supplier is not None:
                 item.usual_supplier = payload.usual_supplier.strip() or None
             if payload.category is not None and item.category != "service":
-                from app_settings import clean_category
+                from app_settings import check_category
                 try:
-                    item.category = clean_category(payload.category)
+                    item.category = check_category(db, owner_phone, payload.category,
+                                                   _can_add_category(db, session))
                 except ValueError as exc:
                     raise HTTPException(status_code=400, detail=str(exc))
             if payload.cost_price is not None:
