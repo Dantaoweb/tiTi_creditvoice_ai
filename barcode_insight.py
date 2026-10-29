@@ -149,6 +149,11 @@ def insight(db, owner_phone, code, product_name=None):
     """Everything the till or the stock form shows about a code."""
     code = barcodes.clean(code)
     valid = check_digit_ok(code)
+    if barcodes.is_instore(code):
+        # The shop's own code (starts with 2): other shops may use the same
+        # number for something else, so there is nothing to compare it with.
+        return {"code": code, "valid": valid, "suggestion": None, "warnings": [], "unknown": False,
+                "instore": True}
     suggestion = _crowd_name(db, code, owner_phone)
     looked_up = False
     if not suggestion:

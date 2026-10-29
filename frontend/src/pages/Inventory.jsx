@@ -19,6 +19,24 @@ import StaleDataBanner from "../components/StaleDataBanner";
 import { LimitBar } from "../components/UpgradeGate";
 import { usePlan } from "../lib/usePlan";
 import { useSettings } from "../lib/settings";
+import GiveBarcodes from "../components/GiveBarcodes";
+
+/* No barcode on the goods? The app makes the shop's own (starts with 2). */
+function MakeBarcodeButton({ onCode }) {
+  const [busy, setBusy] = useState(false);
+  async function make() {
+    setBusy(true);
+    try { onCode((await apiFetch("barcodes/new")).code); }
+    catch { /* the field stays empty; they can try again */ }
+    finally { setBusy(false); }
+  }
+  return (
+    <button type="button" className="btn btn-ghost btn-sm" onClick={make} disabled={busy}
+      title="For goods with no barcode: the app makes one for your shop">
+      {busy ? "…" : "Make one"}
+    </button>
+  );
+}
 
 /* A product's category: pick one from the business's list (Settings →
    Manage categories), or — unless the owner keeps it to the list — a new one. */
@@ -562,6 +580,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
                 style={{ flex: 1 }}
               />
               <BarcodeCameraButton onCode={code => set("barcode", code)} />
+              {!form.barcode.trim() && <MakeBarcodeButton onCode={code => set("barcode", code)} />}
             </div>
             <BarcodeInsight code={form.barcode} name={form.name}
               onUseName={form.name.trim() ? undefined : n => set("name", n)} />
@@ -767,6 +786,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [], a
                 style={{ flex: 1 }}
               />
               <BarcodeCameraButton onCode={code => set("barcode", code)} />
+              {!form.barcode.trim() && <MakeBarcodeButton onCode={code => set("barcode", code)} />}
             </div>
             <BarcodeInsight code={form.barcode} name={form.name}
               onUseName={form.name.trim() ? undefined : n => set("name", n)} />
@@ -1288,6 +1308,7 @@ export default function Inventory() {
   const [closeMatches, setCloseMatches] = useState([]);   // spelling-forgiving matches for the search
   const [showDupes, setShowDupes] = useState(false);
   // Expired / expiring goods — also opened from the daily expiry alert (?expiry=1)
+  const [showBarcodes, setShowBarcodes] = useState(false);
   const [showExpiry, setShowExpiry] = useState(() => new URLSearchParams(window.location.search).has("expiry"));
   const [fields, setFields] = useState([]);   // per-business custom stock fields
 
@@ -1395,6 +1416,11 @@ export default function Inventory() {
               <Link to="/purchase-orders" className="btn btn-ghost btn-sm" title="Order from your suppliers">
                 Order stock
               </Link>
+            )}
+            {canManageStock && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowBarcodes(true)} title="Give products with no barcode their own">
+                Barcodes
+              </button>
             )}
             <button className="btn btn-ghost btn-sm" onClick={() => setShowExpiry(true)} title="Expired and expiring goods">
               Expiry
@@ -1645,6 +1671,7 @@ export default function Inventory() {
         />
       )}
 
+      {showBarcodes && <GiveBarcodes onClose={() => setShowBarcodes(false)} onChanged={() => load()} />}
       {showExpiry && <ExpiryModal canManage={canManageStock} onClose={() => { setShowExpiry(false); load(); }} />}
       {showDupes && (
         <DuplicatesModal onClose={() => setShowDupes(false)}

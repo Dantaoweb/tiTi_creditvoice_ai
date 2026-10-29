@@ -112,3 +112,46 @@ def attach(db, owner_phone, item_id, code):
     item.barcode = code
     db.commit()
     return item
+
+
+# ── The shop's own barcodes ───────────────────────────────────────────────────
+# For goods with no barcode (home-made, repacked, loose): an EAN-13 every
+# scanner reads, starting with 2 — the range GS1 keeps for in-store use, so it
+# can never be a manufacturer's code. Unique within the business only: another
+# shop may make the same number for something else, which is why these are
+# left out of the "what other shops call it" and fake-report checks.
+
+def ean13_check(body12):
+    total = sum(int(d) * (3 if i % 2 == 0 else 1) for i, d in enumerate(reversed(body12)))
+    return str((10 - total % 10) % 10)
+
+
+def is_instore(code):
+    code = clean(code)
+    return len(code) == 13 and code.isdigit() and code[0] == "2"
+
+
+def make_instore(db, owner_phone):
+    """A new in-store code no product of this business has."""
+    import secrets
+    for _ in range(50):
+        body = "2" + "".join(secrets.choice("0123456789") for _ in range(11))
+        code = body + ean13_check(body)
+        if not db.query(InventoryItem.id).filter(InventoryItem.owner_phone == owner_phone,
+                                                 InventoryItem.barcode == code).first():
+            return code
+    raise ValueError("Couldn't make a new barcode — try again.")
+
+
+def give_barcodes(db, owner_phone, item_ids):
+    """Give each listed product (that has none) its own in-store code."""
+    items = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone,
+                                           InventoryItem.id.in_(list(item_ids))).all()
+    done = {}
+    for item in items:
+        if (item.barcode or "").strip() or (item.category or "") == "service":
+            continue
+        item.barcode = make_instore(db, owner_phone)
+        db.flush()
+        done[item.id] = item.barcode
+    return done

@@ -243,3 +243,45 @@ def test_the_two_forms_count_as_one_code_for_clashes(shop):
         "owner_phone": shop["phone"], "name": "Pringles Sour Cream", "unit": "can",
         "quantity": 1, "selling_price": 900, "barcode": "0038000138416"})
     assert r.status_code == 400
+
+
+# ── The shop's own barcodes ──────────────────────────────────────────────────
+
+def test_shop_makes_its_own_barcodes_and_the_till_finds_them(shop):
+    import barcodes
+    from barcode_insight import check_digit_ok
+    code = client.get("/app/api/barcodes/new", cookies=shop["cookies"]).json()["code"]
+    assert len(code) == 13 and code[0] == "2" and check_digit_ok(code) and barcodes.is_instore(code)
+    loose = _add(shop, "Zobo drink")
+    rice = _add(shop, "Rice cup")
+    missing = {i["name"].lower() for i in client.get("/app/api/barcodes/missing", cookies=shop["cookies"]).json()["items"]}
+    assert {"zobo drink", "rice cup"} <= missing
+    r = client.post("/app/api/barcodes/give", cookies=shop["cookies"], json={"item_ids": [loose]}).json()
+    assert r["given"] == 1
+    made = r["codes"][str(loose)]
+    assert barcodes.is_instore(made) and check_digit_ok(made)
+    scanned = _scan(shop, made)                                    # the till reads it like any barcode
+    assert scanned["found"] is True and scanned["product"]["name"] == "zobo drink"
+    # Giving again does nothing to a product that already has one
+    assert client.post("/app/api/barcodes/give", cookies=shop["cookies"], json={"item_ids": [loose]}).json()["given"] == 0
+    names = [i["id"] for i in client.get("/app/api/barcodes/missing", cookies=shop["cookies"]).json()["items"]]
+    assert loose not in names and rice in names
+
+
+def test_in_store_codes_are_not_compared_with_other_shops(shop):
+    code = client.get("/app/api/barcodes/new", cookies=shop["cookies"]).json()["code"]
+    ins = client.get("/app/api/barcodes/insight", cookies=shop["cookies"], params={"code": code, "name": "zobo"}).json()
+    assert ins["instore"] is True and ins["warnings"] == [] and ins["suggestion"] is None
+
+
+def test_only_stock_managers_make_barcodes(shop):
+    from database import SessionLocal
+    from models import User
+    phone = f"23480901499{next(_seq)}"
+    db = SessionLocal()
+    owner = db.query(User).filter_by(phone=shop["phone"]).one()
+    db.add(User(phone=phone, name="Sade", role="delegate", parent_id=owner.id, can_view_all_transactions=False,
+                subscription_status="ACTIVE", recovery_pin_hash=web_auth._hash_pin("1234")))
+    db.commit(); db.close()
+    staff = client.post("/app/api/auth/login", json={"phone": phone, "pin": "1234"}).cookies
+    assert client.get("/app/api/barcodes/new", cookies=staff).status_code == 403
