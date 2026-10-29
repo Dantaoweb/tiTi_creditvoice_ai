@@ -67,6 +67,15 @@ def _where_is(q):
     return None
 
 
+# "make my own barcode", "generate barcode", "my product has no barcode"…
+_MAKE_BARCODE = re.compile(
+    r"\b(?:make|generate|create|produce|get|give)\b[\w\s']{0,25}?\bbar\s?codes?\b"
+    r"|\b(?:no|without|doesn'?t have a?|don'?t have a?|has no|have no)\s+(?:a\s+)?bar\s?codes?\b"
+    r"|\bown\s+bar\s?codes?\b"
+    r"|\bbar\s?codes?\s+for\s+(?:my\s+)?(?:products?|goods|items?)\b"
+)
+
+
 def detect_faq(text):
     q = text.lower().strip()
 
@@ -141,6 +150,8 @@ def detect_faq(text):
         return "loyalty"
     if re.search(r"\bdiscount", q):
         return "discount"
+    if _MAKE_BARCODE.search(q):
+        return "make_barcode"
     if any(k in q for k in [
         "barcode", "bar code", "scanner", "scan product", "scan item", "scan with",
         "scan the", "camera scan", "use my camera", "use the camera", "phone camera",
@@ -1188,6 +1199,19 @@ FAQ_ANSWERS = {
         "CreditVoice also warns you when a barcode doesn't add up or is known as a "
         "different product. A barcode can't prove a packet is genuine, so also check "
         "the NAFDAC number, the seal and the price, and buy from trusted suppliers."
+    ),
+    "make_barcode": (
+        "🏷️ *Make your own barcode — for products that have none*\n\n"
+        "For goods with no barcode on them: home-made (zobo, cakes, soap), repacked into small bags, "
+        "or your own brand. If the packet already has a barcode, just scan it instead.\n\n"
+        "*One product:* Add stock → Add product (or the product → *Edit*) → next to *Barcode* tap "
+        "*No barcode? Make one* → Save.\n"
+        "*Many at once:* Inventory → *Barcodes* → every product without a barcode is listed and ticked; "
+        "untick goods you sell loose by weight → *Make barcodes*.\n\n"
+        "Your till, phone camera and barcode scanner read them like any barcode. They start with 2 — "
+        "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
+        "They work in your shop and branches only. To sell your product to supermarkets or other "
+        "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
     ),
     "barcode_scan": (
         "Scanning barcodes — your phone camera works as the scanner:\n\n"

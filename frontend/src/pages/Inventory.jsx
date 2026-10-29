@@ -32,8 +32,8 @@ function MakeBarcodeButton({ onCode }) {
   }
   return (
     <button type="button" className="btn btn-ghost btn-sm" onClick={make} disabled={busy}
-      title="For goods with no barcode: the app makes one for your shop">
-      {busy ? "…" : "Make one"}
+      title="This product has no barcode on it? The app makes one for your shop">
+      {busy ? "…" : "No barcode? Make one"}
     </button>
   );
 }
@@ -585,8 +585,9 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
             <BarcodeInsight code={form.barcode} name={form.name}
               onUseName={form.name.trim() ? undefined : n => set("name", n)} />
             <span className="form-hint">
-              Tap Scan to use the phone camera, or click here with a barcode scanner. Goods sold
-              loose have no barcode; leave it empty and sell by name as usual.
+              Has a barcode on the packet? Tap Scan, or click here with a barcode scanner.
+              No barcode (home-made, repacked)? Tap <b>No barcode? Make one</b> and the app gives it its own.
+              Goods sold loose can stay without one.
             </span>
           </div>
         )}
@@ -791,8 +792,8 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [], a
             <BarcodeInsight code={form.barcode} name={form.name}
               onUseName={form.name.trim() ? undefined : n => set("name", n)} />
             <span className="form-hint">
-              Tap Scan to use the phone camera, or click here with a barcode scanner. Clear it to
-              remove the barcode. Goods sold loose don't need one.
+              Has a barcode on the packet? Tap Scan, or click here with a barcode scanner.
+              No barcode? Tap <b>No barcode? Make one</b>. Clear it to remove the barcode.
             </span>
           </div>
         )}

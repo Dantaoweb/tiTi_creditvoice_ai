@@ -3029,9 +3029,17 @@ def _parse_message(text):
         # "bought 100 bags but only 60 delivered" — said with numbers
         if re.search(r"\bonly\s+\d+\s+(?:\w+\s+)?(?:was\s+|were\s+|got\s+|have\s+been\s+)?delivered\b", clean_text):
             return {"type": "APP_GUIDE", "topic": "part_delivery"}
+        from faq import _MAKE_BARCODE          # making a barcode, before "barcode" = scanning
+        if _MAKE_BARCODE.search(clean_text):
+            return {"type": "APP_GUIDE", "topic": "make_barcode"}
         for _topic, _keywords in _guide_topics.items():
             if any(_kw in clean_text for _kw in _keywords):
                 return {"type": "APP_GUIDE", "topic": _topic}
+
+    # "make my own barcode" / "generate barcode" / "my product has no barcode"
+    from faq import _MAKE_BARCODE
+    if len(clean_text.split()) <= 12 and _MAKE_BARCODE.search(clean_text):
+        return {"type": "APP_GUIDE", "topic": "make_barcode"}
 
     # A feature named on its own ("invoice") — they want to know how to use it.
     if re.match(r"^(?:(?:send|create|make|new|raise|issue|my)\s+(?:an?\s+)?)?invoices?$", clean_text):

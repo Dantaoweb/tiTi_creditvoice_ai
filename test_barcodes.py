@@ -285,3 +285,28 @@ def test_only_stock_managers_make_barcodes(shop):
     db.commit(); db.close()
     staff = client.post("/app/api/auth/login", json={"phone": phone, "pin": "1234"}).cookies
     assert client.get("/app/api/barcodes/new", cookies=staff).status_code == 403
+
+
+@pytest.mark.parametrize("text", [
+    "make my own barcode", "generate barcode", "create barcode", "my product has no barcode",
+    "how do i make barcode", "i want to generate barcode for my goods", "barcode for my product",
+])
+def test_titi_explains_making_a_barcode(text):
+    from faq import detect_faq
+    from messages import build_app_guide_message
+    from parser import parse_message
+    p = parse_message(text) or {}
+    assert (p.get("topic") if p.get("type") == "APP_GUIDE" else detect_faq(text)) == "make_barcode"
+    a = build_app_guide_message("make_barcode")
+    assert "No barcode? Make one" in a and "Inventory" in a and "GS1" in a
+
+
+@pytest.mark.parametrize("text", ["how do i scan barcode", "how to use barcode scanner"])
+def test_scanning_questions_still_get_the_scanning_answer(text):
+    from parser import parse_message
+    assert (parse_message(text) or {}).get("topic") == "barcode_scan"
+
+
+def test_a_sale_mentioning_a_barcode_scanner_is_still_a_sale():
+    from parser import parse_message
+    assert (parse_message("sold 2 barcode scanner to ade 5000") or {}).get("type") == "TRANSACTION"
