@@ -13,7 +13,7 @@ from customer_commands import handle_customer_command
 from guided_service_commands import start_guided_service_setup
 from inventory_suppliers import (
     save_product_alias, set_product_category, set_reorder_quantity,
-    update_cost_price, delete_stock_item,
+    update_cost_price,
 )
 from messages import (
     build_plan_message,
@@ -92,19 +92,43 @@ def handle_parsed_command(
         return {"status": "set_cost_price_saved"}
 
     if parsed["type"] == "DELETE_STOCK_ITEM":
-        product = parsed["product"]
-        count = delete_stock_item(db, business_owner_phone, product)
-        if not count:
+        # Removing a product: owner / authorised staff, one exact product, with
+        # a reason; its stock is accounted for and it's hidden, not erased.
+        import re as _re
+        from inventory_suppliers import find_matching_inventory_item
+        from stock_removal import RemovalError, label, reason_from_words, remove_product
+        from supplier_commands import _can_modify_stock
+        if not _can_modify_stock(user):
+            send_whatsapp_message(phone, "You do not have permission to remove products.\nContact the business owner.")
+            return {"status": "remove_product_permission_denied"}
+        text = parsed["product"]
+        why_m = _re.search(r"\((.+?)\)", text)
+        product = (text[:why_m.start()] if why_m else text).strip()
+        if not why_m:
             send_whatsapp_message(
                 phone,
-                f"No stock item found matching *{product.title()}*."
+                "Say why the product is being removed, in brackets:\n"
+                f"remove item {product or 'rice'} (damaged)\n\n"
+                "Any stock it still has is taken out with that reason, and the product is hidden. "
+                "Its past sales and receipts are kept."
             )
+            return {"status": "remove_product_no_reason"}
+        item = find_matching_inventory_item(db, business_owner_phone, product)
+        if not item:
+            send_whatsapp_message(phone, f"No product called *{product.title()}*. Send *stock* to see the exact names.")
             return {"status": "delete_stock_item_not_found"}
+        reason, note = reason_from_words(why_m.group(1))
+        try:
+            left = remove_product(db, item, reason, note, user.id)
+        except RemovalError as e:
+            send_whatsapp_message(phone, str(e))
+            return {"status": "remove_product_invalid"}
         db.commit()
         send_whatsapp_message(
             phone,
-            f"Deleted {count} stock item(s) matching *{product.title()}*.\n\n"
-            "Send *stock* to see your updated inventory."
+            f"Removed *{item.name.title()}* — {label(reason)}."
+            f"{f' {left:g} in stock was taken out and recorded.' if left else ''}\n\n"
+            "Its past sales and receipts are kept. Send *stock* to see your inventory."
         )
         return {"status": "delete_stock_item_done"}
 

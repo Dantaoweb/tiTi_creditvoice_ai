@@ -13,6 +13,7 @@ export default function Profile() {
   const [address, setAddress] = useState(user?.address || "");
   // Printed on invoices and quotations (and receipts, if switched on in Settings)
   const [bizEmail, setBizEmail] = useState(user?.business_email || "");
+  const [receiptPhones, setReceiptPhones] = useState(user?.receipt_phones || "");
   const blankAcct = { bank: "", number: "", name: "" };
   const [accounts, setAccounts] = useState(() => {
     const a = (user?.bank_accounts || []).map(x => ({ ...blankAcct, ...x, name: x.name || "" }));
@@ -34,6 +35,7 @@ export default function Profile() {
         business_type_label: isOwner ? label.trim() : undefined,
         address: isOwner ? address.trim() : undefined,
         business_email: isOwner ? bizEmail.trim() : undefined,
+        receipt_phones: isOwner ? receiptPhones.trim() : undefined,
         bank_accounts: isOwner ? accounts : undefined,
       });
       if (refreshUser) await refreshUser();
@@ -66,6 +68,12 @@ export default function Profile() {
               <textarea value={address} onChange={e => setAddress(e.target.value)} rows={2}
                 placeholder="e.g. 12 Market Rd, Ikeja, Lagos" disabled={busy} style={{ resize: "vertical" }} />
               <span className="form-hint">Shown on receipts and invoices.</span>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Phone on receipts <span className="text-subtle">(optional)</span></label>
+              <input value={receiptPhones} maxLength={80} inputMode="tel" onChange={e => setReceiptPhones(e.target.value)}
+                placeholder={`e.g. 0803 111 2222 / 0905 333 4444 — empty shows ${user?.phone || "your login phone"}`} disabled={busy} />
+              <span className="form-hint">Up to two numbers, separated by /. Shown on receipts, invoices, quotations and waybills. Your login phone doesn't change.</span>
             </div>
             <div className="form-group">
               <label className="form-label">Business email <span className="text-subtle">(optional)</span></label>

@@ -20,6 +20,7 @@ import { LimitBar } from "../components/UpgradeGate";
 import { usePlan } from "../lib/usePlan";
 import { useSettings } from "../lib/settings";
 import GiveBarcodes from "../components/GiveBarcodes";
+import { ReasonPicker, RemoveProductModal, RemovedStockModal } from "../components/StockRemoval";
 
 /* No barcode on the goods? The app makes the shop's own (starts with 2). */
 function MakeBarcodeButton({ onCode }) {
@@ -887,6 +888,8 @@ function AdjustModal({ item, onClose, onSaved }) {
   const [expiry, setExpiry] = useState("");       // this delivery's expiry
   const [batchNo, setBatchNo] = useState("");
   const [note, setNote] = useState("");
+  const [removing, setRemoving] = useState(false);    // "Remove Stock" tapped: ask why
+  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   // After adding stock: customers still waiting for this product. Nothing is
@@ -922,8 +925,13 @@ function AdjustModal({ item, onClose, onSaved }) {
         setSaving(false);
         return;
       } else {
+        // Every removal is accounted for: a reason first
+        if (!removing) { setRemoving(true); setSaving(false); return; }
+        if (!reason) { setErr("Pick why the stock is being removed."); setSaving(false); return; }
+        if (reason === "other" && !note.trim()) { setErr("Say what happened."); setSaving(false); return; }
         await apiPost(`inventory/${item.id}/adjust`, {
           qty_delta: -qty,
+          reason,
           note: note.trim() || null,
         });
       }
@@ -978,20 +986,26 @@ function AdjustModal({ item, onClose, onSaved }) {
             <input value={batchNo} maxLength={60} onChange={e => setBatchNo(e.target.value)} />
           </div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Note (optional)</label>
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. New delivery, damage, etc." />
-        </div>
+        {removing ? (
+          <ReasonPicker reason={reason} onReason={setReason} note={note} onNote={setNote} />
+        ) : (
+          <div className="form-group">
+            <label className="form-label">Note (optional)</label>
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. New delivery" />
+          </div>
+        )}
         <ErrorNote msg={err} />
       </div>
       <div className="modal-footer">
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn btn-secondary" onClick={() => save("out")} disabled={saving}>
-          <MinusCircle size={14} /> Remove Stock
+          <MinusCircle size={14} /> {removing ? "Confirm removal" : "Remove Stock"}
         </button>
-        <button className="btn btn-primary" onClick={() => save("in")} disabled={saving}>
-          <PlusCircle size={14} /> Add Stock
-        </button>
+        {!removing && (
+          <button className="btn btn-primary" onClick={() => save("in")} disabled={saving}>
+            <PlusCircle size={14} /> Add Stock
+          </button>
+        )}
       </div>
     </Modal>
   );
@@ -1080,7 +1094,7 @@ function ReportFakeForm({ item, onDone, onCancel }) {
   );
 }
 
-function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust }) {
+function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust, onRemove }) {
   const [movs, setMovs] = useState(null);
   const [changes, setChanges] = useState(null);
   const [err, setErr] = useState("");
@@ -1148,6 +1162,8 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust })
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => onAdjust(item)}>Adjust stock</button>
             )}
             <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onEdit(item)}>Edit details</button>
+            <button className="btn btn-ghost" style={{ color: "#b91c1c" }} onClick={() => onRemove(item)}
+              title="No longer sold: take it off, with a reason">Remove product</button>
           </div>
         )}
 
@@ -1310,6 +1326,8 @@ export default function Inventory() {
   const [showDupes, setShowDupes] = useState(false);
   // Expired / expiring goods — also opened from the daily expiry alert (?expiry=1)
   const [showBarcodes, setShowBarcodes] = useState(false);
+  const [removeItem, setRemoveItem] = useState(null);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [showExpiry, setShowExpiry] = useState(() => new URLSearchParams(window.location.search).has("expiry"));
   const [fields, setFields] = useState([]);   // per-business custom stock fields
 
@@ -1421,6 +1439,11 @@ export default function Inventory() {
             {canManageStock && (
               <button className="btn btn-ghost btn-sm" onClick={() => setShowBarcodes(true)} title="Give products with no barcode their own">
                 Barcodes
+              </button>
+            )}
+            {canManageStock && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowRemoved(true)} title="Stock that left without being sold, and why">
+                Removed stock
               </button>
             )}
             <button className="btn btn-ghost btn-sm" onClick={() => setShowExpiry(true)} title="Expired and expiring goods">
@@ -1686,8 +1709,14 @@ export default function Inventory() {
           onClose={() => setDetailItem(null)}
           onEdit={it => { setDetailItem(null); setEditItem(it); }}
           onAdjust={it => { setDetailItem(null); setAdjustItem(it); }}
+          onRemove={it => { setDetailItem(null); setRemoveItem(it); }}
         />
       )}
+      {removeItem && (
+        <RemoveProductModal item={removeItem} onClose={() => setRemoveItem(null)}
+          onRemoved={() => { setRemoveItem(null); load(); }} />
+      )}
+      {showRemoved && <RemovedStockModal onClose={() => setShowRemoved(false)} />}
     </>
   );
 }

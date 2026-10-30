@@ -193,6 +193,13 @@ def save_product_alias(db, owner_phone, alias, canonical):
 
 
 def find_matching_inventory_item(db, owner_phone, product, unit=None):
+    """The product this name means — never one the business removed
+    (stock_removal): a name used again after removal is a new product."""
+    item = _find_matching_any(db, owner_phone, product, unit)
+    return None if item is not None and getattr(item, "removed_at", None) else item
+
+
+def _find_matching_any(db, owner_phone, product, unit=None):
     raw_name = clean_product_name(product)
     product, unit = normalize_item(product, unit)
 

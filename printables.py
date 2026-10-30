@@ -46,6 +46,32 @@ def clean_bank_accounts(rows):
     return out
 
 
+def clean_receipt_phones(text):
+    """Up to two numbers for receipts, e.g. "0803 111 2222 / 0905 333 4444"."""
+    import re as _re
+    parts = [p.strip() for p in _re.split(r"[/,;]|\bor\b", text or "") if p.strip()]
+    if len(parts) > 2:
+        raise ValueError("Up to two phone numbers.")
+    for p in parts:
+        digits = _re.sub(r"\D", "", p)
+        if not 7 <= len(digits) <= 15 or not _re.fullmatch(r"\+?[\d\s\-()]+", p):
+            raise ValueError(f"“{p}” doesn't look like a phone number.")
+    return " / ".join(parts)[:80] or None
+
+
+def receipt_phone(db, owner, branch_id=None):
+    """The phone a receipt shows: the branch's own, else the business's chosen
+    numbers (Profile), else the login phone — as it always was."""
+    if branch_id:
+        from models import Branch
+        br = db.query(Branch).filter(Branch.id == branch_id).first()
+        if br and (br.phone or "").strip():
+            return br.phone.strip()
+    if owner is None:
+        return None
+    return (getattr(owner, "receipt_phones", None) or "").strip() or owner.phone
+
+
 def clean_business_email(email):
     email = (email or "").strip()[:200]
     if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):

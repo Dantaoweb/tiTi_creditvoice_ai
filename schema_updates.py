@@ -1232,6 +1232,19 @@ def ensure_schema_updates(engine):
                     "ALTER TABLE campaign_views ADD COLUMN notified_at TIMESTAMP"
                 ))
 
+    # ── stock removed with a reason; products removed; receipt phones ─────────
+    _tables = inspector.get_table_names()
+    for _table, _cols in (("inventory_movements", {"reason": "VARCHAR"}),
+                          ("inventory_items", {"removed_at": "TIMESTAMP", "removed_reason": "VARCHAR"}),
+                          ("branches", {"phone": "VARCHAR"}),
+                          ("users", {"receipt_phones": "VARCHAR"})):
+        if _table in _tables:
+            _have = {c["name"] for c in inspector.get_columns(_table)}
+            for _col, _typ in _cols.items():
+                if _col not in _have:
+                    with engine.begin() as connection:
+                        connection.execute(text(f"ALTER TABLE {_table} ADD COLUMN {_col} {_typ}"))
+
     # ── appointments: requests from the customer booking link ─────────────────
     if "appointments" in inspector.get_table_names():
         _ap_cols = {c["name"] for c in inspector.get_columns("appointments")}

@@ -12,10 +12,12 @@ export default function Branches() {
   const [loading, setLoading]   = useState(true);
   const [name, setName]         = useState("");
   const [addr, setAddr]         = useState("");
+  const [phone, setPhone] = useState("");          // on this branch's receipts
   const [saving, setSaving]     = useState(false);
   const [editId, setEditId]     = useState(null);
   const [editName, setEditName] = useState("");
   const [editAddr, setEditAddr] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const toast = useToast();
 
   if (!canUseBranches) {
@@ -55,8 +57,8 @@ export default function Branches() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await apiPost("branches", { name: name.trim(), address: addr.trim() || null });
-      setName(""); setAddr("");
+      await apiPost("branches", { name: name.trim(), address: addr.trim() || null, phone: phone.trim() || null });
+      setName(""); setAddr(""); setPhone("");
       await load();
       toast("Branch added.", "success");
     } catch (e) {
@@ -66,12 +68,12 @@ export default function Branches() {
     }
   }
 
-  function startEdit(b) { setEditId(b.id); setEditName(b.name); setEditAddr(b.address || ""); }
+  function startEdit(b) { setEditId(b.id); setEditName(b.name); setEditAddr(b.address || ""); setEditPhone(b.phone || ""); }
 
   async function handleUpdate(id) {
     if (!editName.trim()) return;
     try {
-      await apiPut(`branches/${id}`, { name: editName.trim(), address: editAddr.trim() || null });
+      await apiPut(`branches/${id}`, { name: editName.trim(), address: editAddr.trim() || null, phone: editPhone.trim() });
       setEditId(null);
       await load();
       toast("Branch updated.", "success");
@@ -131,6 +133,14 @@ export default function Branches() {
             placeholder="Branch address (optional) — shown on receipts"
             maxLength={300}
           />
+          <input
+            className="branches-add-input"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            placeholder="Branch phone (optional) — on its receipts"
+            maxLength={40}
+            inputMode="tel"
+          />
           <button className="btn btn-primary" type="submit" disabled={saving || !name.trim()}>
             <Plus size={14} />
             {saving ? "Adding…" : "Add Branch"}
@@ -153,6 +163,8 @@ export default function Branches() {
                       placeholder="Name" style={{ flex: "1 1 120px" }} />
                     <input value={editAddr} onChange={e => setEditAddr(e.target.value)} maxLength={300}
                       placeholder="Address" style={{ flex: "2 1 180px" }} />
+                    <input value={editPhone} onChange={e => setEditPhone(e.target.value)} maxLength={40} inputMode="tel"
+                      placeholder="Phone on its receipts" style={{ flex: "1 1 140px" }} />
                     <button className="btn btn-primary btn-sm" onClick={() => handleUpdate(b.id)}>Save</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>Cancel</button>
                   </div>
@@ -161,6 +173,7 @@ export default function Branches() {
                     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                       <span className="branch-item-name">{b.name}</span>
                       {b.address && <span className="td-muted" style={{ fontSize: 12 }}>{b.address}</span>}
+                      {b.phone && <span className="td-muted" style={{ fontSize: 12 }}>Tel: {b.phone}</span>}
                     </div>
                     {b.is_default && (
                       <span className="branch-default-chip"><Star size={11} /> Default</span>

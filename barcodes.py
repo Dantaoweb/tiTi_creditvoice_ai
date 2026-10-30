@@ -64,6 +64,7 @@ def find(db, owner_phone, code, branch_id=None):
     query = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
         InventoryItem.barcode.in_(forms(code)),
+        InventoryItem.removed_at.is_(None),
     )
     if branch_id is not None:
         # A branch sells its own stock; the same code in another branch is that
@@ -83,6 +84,7 @@ def assert_free(db, owner_phone, code, item_id=None):
     clash = db.query(InventoryItem).filter(
         InventoryItem.owner_phone == owner_phone,
         InventoryItem.barcode.in_(forms(code)),
+        InventoryItem.removed_at.is_(None),
     )
     if item_id is not None:
         clash = clash.filter(InventoryItem.id != item_id)

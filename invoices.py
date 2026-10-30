@@ -524,7 +524,7 @@ def _business_header(db, owner_phone, branch_id, kind="invoice"):
     out = {
         "biz_name": business_display_name(owner) if owner else None,
         "biz_logo": getattr(owner, "logo_data", None) if owner else None,
-        "biz_phone": owner_phone,
+        "biz_phone": __import__("printables").receipt_phone(db, owner, None) if owner else owner_phone,
         "biz_address": getattr(owner, "address", None) if owner else None,
         "branch_name": None,
         "branch_address": None,
@@ -539,6 +539,8 @@ def _business_header(db, owner_phone, branch_id, kind="invoice"):
         if br:
             out["branch_name"] = br.name
             out["branch_address"] = br.address
+            if (br.phone or "").strip():
+                out["biz_phone"] = br.phone.strip()       # the branch's own number
     return out
 
 

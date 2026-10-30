@@ -173,6 +173,16 @@ def build_owner_receipt(business_name, customer_name, cart, total, paid, balance
     return "\n".join(lines)
 
 
+def _receipt_tel(db, business_owner_phone):
+    """The phone on the customer's receipt: the business's chosen number (Profile)."""
+    try:
+        from printables import receipt_phone
+        owner = db.query(User).filter(User.phone == business_owner_phone).first()
+        return receipt_phone(db, owner) or business_owner_phone
+    except Exception:
+        return business_owner_phone
+
+
 def build_customer_receipt(
     business_name, customer_name, cart, total, paid,
     balance, due_date_str, tx_id, config=None, show_discount=False,
@@ -919,7 +929,7 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
         customer_receipt = build_customer_receipt(
             business_name, customer_name, cart, total, paid, balance,
             due_date_str, buy_tx.id, receipt_cfg, show_discount=show_discount,
-            business_phone=business_owner_phone,
+            business_phone=_receipt_tel(db, business_owner_phone),
             receipt_no=getattr(buy_tx, "receipt_number", None),
             overall_discount=overall_discount,
         )

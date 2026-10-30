@@ -22,8 +22,16 @@ def _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx
     date_str = tx.created_at.strftime("%d/%m/%Y  %H:%M") if tx.created_at else now.strftime("%d/%m/%Y  %H:%M")
 
     lines = [business_name.upper()]
-    if business_owner_phone:
-        lines.append(f"Tel: {business_owner_phone}")
+    tel = business_owner_phone
+    try:                                   # the business's chosen receipt phone (printables)
+        from models import User as _U
+        from printables import receipt_phone
+        _owner = db.query(_U).filter(_U.phone == business_owner_phone).first()
+        tel = receipt_phone(db, _owner, getattr(tx, "branch_id", None)) or business_owner_phone
+    except Exception:
+        pass
+    if tel:
+        lines.append(f"Tel: {tel}")
     lines += [
         date_str,
         "--------------------",

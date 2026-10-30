@@ -688,6 +688,9 @@ def detect_faq(text):
     if any(k in q for k in ["debt", "credit"]) and any(k in q for k in ["how", "record", "add"]):
         return "record_sale"
 
+    # ── Removing stock / products (stock_removal.py) ────────────────────────────
+    if any(k in q for k in ('remove stock', 'removed stock', 'remove product', 'remove a product', 'delete a product', 'delete my product', 'remove item', 'remove an item', 'delete product', 'delete item', 'delete stock', 'damaged goods', 'damaged stock', 'stolen goods', 'goods stolen', 'write off', 'written off', 'spoilt goods', 'spoiled goods', 'missing stock', 'stock loss', 'lost stock')):
+        return "remove_stock"
     # ── Add stock / set prices ────────────────────────────────────────────────
     if any(k in q for k in [
         "add stock", "set price", "add product", "add item", "new product",
@@ -1212,6 +1215,20 @@ FAQ_ANSWERS = {
         "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
         "They work in your shop and branches only. To sell your product to supermarkets or other "
         "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
+    ),
+    "remove_stock": (
+        "🗑️ *Removing stock — every loss is recorded with its reason*\n\n"
+        "*Some of the stock* (damaged, expired, stolen, used in the business, given free, returned to the "
+        "supplier, a counting correction): Inventory → the product → *Adjust stock* → enter how many → "
+        "*Remove Stock* → pick the reason (and a note) → *Confirm removal*.\n"
+        "On WhatsApp: *remove stock 5 bags rice (damaged)* — the reason goes in brackets.\n\n"
+        "*The whole product* (you no longer sell it): Inventory → the product → *Remove product* → pick the "
+        "reason. Any stock it still has is taken out with that reason, and the product is hidden — its past "
+        "sales and receipts are kept.\n"
+        "On WhatsApp: *remove item rice (expired)*.\n\n"
+        "*See your losses:* Inventory → *Removed stock* — every removal, expired write-off and stock-count "
+        "shortage, with its value at cost price, who did it and why, totals per reason, and a download.\n\n"
+        "Only the owner and staff allowed to manage stock can remove stock or products."
     ),
     "barcode_scan": (
         "Scanning barcodes — your phone camera works as the scanner:\n\n"

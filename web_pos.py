@@ -360,7 +360,8 @@ def get_pos_receipt(db, tx_id, user=None):
     owner_user = user
     if user and getattr(user, "parent_id", None):
         owner_user = db.query(User).filter(User.id == user.parent_id).first() or user
-    biz_phone = getattr(owner_user, "phone", None) if owner_user else None
+    from printables import receipt_phone
+    biz_phone = receipt_phone(db, owner_user, getattr(tx, "branch_id", None)) if owner_user else None
 
     # Payment receipt (standalone PAY transaction) — amount paid + current balance
     if tx.type == "PAY":

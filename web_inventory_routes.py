@@ -117,6 +117,12 @@ class EditInventoryRequest(BaseModel):
 class AdjustStockRequest(BaseModel):
     qty_delta: int
     note: Optional[str] = Field(default=None, max_length=500)
+    reason: Optional[str] = Field(default=None, max_length=20)   # removing: stock_removal.REASONS
+
+
+class RemoveProductRequest(BaseModel):
+    reason: str = Field(max_length=20)
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class StockReceivedRequest(BaseModel):
@@ -174,6 +180,7 @@ def register_inventory_routes(app):
         they can still sell/manage."""
         owner_phone = _session_owner_phone(db, session)
         query = _owner_filter(db.query(InventoryItem), InventoryItem, owner_phone)
+        query = query.filter(InventoryItem.removed_at.is_(None))     # removed products (stock_removal)
         eff_branch, _rec = _scoped_read(db, session)
         if eff_branch is not None:
             query = query.filter(InventoryItem.branch_id == eff_branch)
@@ -694,18 +701,27 @@ def register_inventory_routes(app):
             if not item:
                 raise HTTPException(status_code=404, detail="Item not found.")
             delta = payload.qty_delta
-            item.quantity = (item.quantity or 0) + delta
-            item.updated_at = utcnow()
-            db.add(InventoryMovement(
-                owner_phone=item.owner_phone,
-                item_id=item.id,
-                movement_type="IN" if delta > 0 else "OUT",
-                quantity=abs(delta),
-                source_type="WEB_ADJUST",
-                source_id=None,
-                recorded_by_id=session["user_id"],
-                note=payload.note or ("Stock added" if delta > 0 else "Stock removed"),
-            ))
+            if delta < 0:
+                # Every loss is accounted for: a reason, what it was worth, who
+                from stock_removal import RemovalError, label, record_removal
+                try:
+                    mv = record_removal(db, item, -delta, payload.reason, payload.note, session["user_id"])
+                except RemovalError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+                payload.note = f"{label(mv.reason)}{' — ' + payload.note.strip() if (payload.note or '').strip() else ''}"
+            else:
+                item.quantity = (item.quantity or 0) + delta
+                item.updated_at = utcnow()
+                db.add(InventoryMovement(
+                    owner_phone=item.owner_phone,
+                    item_id=item.id,
+                    movement_type="IN",
+                    quantity=abs(delta),
+                    source_type="WEB_ADJUST",
+                    source_id=None,
+                    recorded_by_id=session["user_id"],
+                    note=payload.note or "Stock added",
+                ))
             # Keep the reason visible in the Notes menu, not just the movement log.
             _save_stock_note(
                 db, owner_phone, session["user_id"], "stock",
@@ -718,6 +734,49 @@ def register_inventory_routes(app):
         except Exception:
             import traceback; traceback.print_exc()
             raise HTTPException(status_code=400, detail="Could not adjust stock. Please try again.")
+        finally:
+            db.close()
+
+    @app.post("/app/api/inventory/{item_id}/remove")
+    def web_remove_product(item_id: int, payload: RemoveProductRequest, session: dict = Depends(require_web_auth)):
+        """Remove a product from the business, with a reason. Its stock goes out
+        with that reason first; the product is hidden, not erased."""
+        from stock_removal import RemovalError, label, remove_product
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            owner_phone = _session_owner_phone(db, session)
+            item = db.query(InventoryItem).filter(InventoryItem.id == item_id,
+                                                  InventoryItem.owner_phone == owner_phone).first()
+            if not item:
+                raise HTTPException(status_code=404, detail="Item not found.")
+            try:
+                left = remove_product(db, item, payload.reason, payload.note, session["user_id"])
+            except RemovalError as e:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=str(e))
+            _save_stock_note(db, owner_phone, session["user_id"], "stock",
+                             f"Product removed — {label(payload.reason)}"
+                             f"{' — ' + payload.note.strip() if (payload.note or '').strip() else ''}"
+                             f"{f' ({left:g} in stock taken out)' if left else ''}", item.name.title())
+            db.commit()
+            return {"id": item.id, "removed": True, "stock_taken_out": left}
+        finally:
+            db.close()
+
+    @app.get("/app/api/inventory/removed")
+    def web_removed_stock(days: int = Query(default=30, ge=1, le=366),
+                          reason: Optional[str] = Query(default=None, max_length=20),
+                          staff: Optional[str] = Query(default=None, max_length=64),
+                          session: dict = Depends(require_web_auth)):
+        """The "Removed stock" report: every loss, its reason and value."""
+        from stock_removal import removed_report
+        db = SessionLocal()
+        try:
+            _require_stock_manager(db, session)
+            branch, _rec = _scoped_read(db, session)
+            return removed_report(db, _session_owner_phone(db, session), days=days, reason=reason or None,
+                                  user_id=staff or None, branch_id=branch)
         finally:
             db.close()
 

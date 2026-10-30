@@ -275,6 +275,7 @@ def list_pos(db, owner_phone, branch_id=None):
 def reorder_suggestions(db, owner_phone, branch_id=None):
     """Low-stock products grouped by their usual supplier — to start an order."""
     q = db.query(InventoryItem).filter(InventoryItem.owner_phone == owner_phone,
+                                       InventoryItem.removed_at.is_(None),
                                        InventoryItem.low_stock_alert.isnot(None),
                                        InventoryItem.quantity.isnot(None),
                                        InventoryItem.quantity <= InventoryItem.low_stock_alert)

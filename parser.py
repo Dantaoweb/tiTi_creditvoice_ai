@@ -2942,6 +2942,7 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "remove_stock":       ['remove stock', 'removed stock', 'remove product', 'remove a product', 'delete a product', 'delete my product', 'remove item', 'remove an item', 'delete product', 'delete item', 'delete stock', 'damaged goods', 'damaged stock', 'stolen goods', 'goods stolen', 'write off', 'written off', 'spoilt goods', 'spoiled goods', 'missing stock', 'stock loss', 'lost stock'],
             "loyalty":            ['loyalty', 'loyal customer', 'reward my customer', 'reward customers', 'reward loyal', 'customer reward', 'stamp card', 'loyalty card', 'customer points', 'loyalty points', 'use points', 'use reward', 'buy 10 get', 'buy ten get', 'best customers', 'top customers', 'cashback', 'cash back for customers'],
             "repeat_invoice":     ['repeat invoice', 'repeating invoice', 'recurring invoice', 'recurring bill', 'invoice every', 'bill every', 'bill monthly', 'monthly invoice', 'weekly invoice', 'same invoice every', 'bill a tenant', 'bill my tenant', 'bill my tenants', 'invoice automatically', 'automatic invoice', 'auto invoice', 'make it repeat'],
             "appointment":        ['appointment', 'appointments', 'book a customer', 'book customers', 'book my customer', 'booking', 'bookings', 'schedule a customer', 'schedule customers'],

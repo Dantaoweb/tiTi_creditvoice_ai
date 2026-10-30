@@ -61,6 +61,8 @@ class ProfileUpdateRequest(BaseModel):
     address: Optional[str] = Field(default=None, max_length=300)
     # Printed on invoices / quotations (and receipts, if switched on)
     business_email: Optional[str] = Field(default=None, max_length=200)
+    # Phone(s) on receipts, invoices… — not the login; empty = the login phone
+    receipt_phones: Optional[str] = Field(default=None, max_length=80)
     bank_accounts: Optional[list] = Field(default=None, max_length=5)
 
 
@@ -252,10 +254,12 @@ def register_auth_routes(app):
                     user.business_type_label = payload.business_type_label.strip() or None
                 if payload.address is not None:
                     user.address = payload.address.strip() or None
-                from printables import bank_accounts, clean_bank_accounts, clean_business_email
+                from printables import bank_accounts, clean_bank_accounts, clean_business_email, clean_receipt_phones
                 try:
                     if payload.business_email is not None:
                         user.business_email = clean_business_email(payload.business_email)
+                    if payload.receipt_phones is not None:
+                        user.receipt_phones = clean_receipt_phones(payload.receipt_phones)
                     if payload.bank_accounts is not None:
                         import json as _json
                         user.bank_accounts_json = _json.dumps(clean_bank_accounts(payload.bank_accounts))
@@ -270,6 +274,8 @@ def register_auth_routes(app):
                 "business_type_label": user.business_type_label,
                 "address": user.address,
                 "business_email": user.business_email,
+                "receipt_phones": getattr(user, "receipt_phones", None),
+                "receipt_phones": user.receipt_phones,
                 "bank_accounts": bank_accounts(user),
             }
         finally:
@@ -417,6 +423,7 @@ def register_auth_routes(app):
                 "business_type_label": user.business_type_label,
                 "address": user.address,
                 "business_email": user.business_email,
+                "receipt_phones": getattr(user, "receipt_phones", None),
                 "bank_accounts": printables.bank_accounts(user),
                 "menu_group": menu_group_for_user(user),
             "label_group": label_group_for_user(user),

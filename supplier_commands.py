@@ -280,14 +280,18 @@ def handle_supplier_command(
             send_message(phone, "Not understood. Try:\nremove stock 5 bags rice (spoilage)")
             return {"status": "stock_remove_invalid"}
 
-        item = manual_stock_remove(
-            db, business_owner_phone,
-            item_data["product"], item_data["quantity"], item_data["unit"],
-            user.id, note,
-        )
+        from inventory_suppliers import find_matching_inventory_item
+        from stock_removal import RemovalError, reason_from_words, record_removal
+        item = find_matching_inventory_item(db, business_owner_phone, item_data["product"], item_data["unit"])
         if not item:
             send_message(phone, f"Stock item not found: {item_data['product'].title()}")
             return {"status": "stock_remove_not_found"}
+        reason, why = reason_from_words(note)
+        try:
+            record_removal(db, item, item_data["quantity"], reason, why, user.id, source_type="MANUAL")
+        except RemovalError as e:
+            send_message(phone, str(e))
+            return {"status": "stock_remove_invalid"}
 
         db.commit()
         unit_label = f" {item.unit}" if item.unit else ""

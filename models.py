@@ -103,6 +103,7 @@ class User(Base):
     # For printables (Profile): the business's contact email — not the login
     # email — and up to 2 bank accounts [{bank, number, name}] (printables.py)
     business_email = Column(String, nullable=True)
+    receipt_phones = Column(String, nullable=True)   # e.g. 0803 111 2222 / 0905 333 4444; empty = login phone
     bank_accounts_json = Column(Text, nullable=True)
 
     subscription_plan = Column(String, default="BASIC")
@@ -165,6 +166,7 @@ class Branch(Base):
 
     # Branch location — shown on receipts/invoices for sales in this branch.
     address = Column(String, nullable=True)
+    phone = Column(String, nullable=True)            # on this branch's receipts (else the business's)
 
     is_default = Column(Boolean, default=False)
 
@@ -909,6 +911,10 @@ class InventoryItem(Base):
     delivery_options = Column(String, nullable=True)
 
     is_available = Column(Boolean, default=True)
+    # Removed from the business (stock_removal.remove_product): hidden from lists
+    # and selling, kept so past sales and receipts stay correct
+    removed_at = Column(DateTime, nullable=True)
+    removed_reason = Column(String, nullable=True)
 
     low_stock_alert = Column(Integer, nullable=True)
 
@@ -952,6 +958,8 @@ class InventoryMovement(Base):
     source_id = Column(Integer, nullable=True)
 
     note = Column(String, nullable=True)
+    # Why stock was taken out by hand (stock_removal.REASONS): damaged, expired…
+    reason = Column(String, nullable=True)
 
     recorded_by_id = Column(String, ForeignKey("users.id"), nullable=True)
 

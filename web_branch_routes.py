@@ -19,6 +19,16 @@ from web_common import _iso, _session_user
 class CreateBranchRequest(BaseModel):
     name: str = Field(max_length=60)
     address: Optional[str] = Field(default=None, max_length=300)
+    phone: Optional[str] = Field(default=None, max_length=40)     # on this branch's receipts
+
+
+def _clean_phone(text):
+    """A branch's phone for its receipts: one or two numbers, or none."""
+    from printables import clean_receipt_phones
+    try:
+        return clean_receipt_phones(text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def register_branch_routes(app):
@@ -35,7 +45,7 @@ def register_branch_routes(app):
             rows = db.query(Branch).filter(Branch.owner_phone == owner_phone).order_by(Branch.created_at).all()
             return {
                 "branches": [
-                    {"id": b.id, "name": b.name, "address": b.address,
+                    {"id": b.id, "name": b.name, "address": b.address, "phone": b.phone,
                      "is_default": bool(b.is_default), "created_at": _iso(b.created_at)}
                     for b in rows
                 ]
@@ -79,10 +89,11 @@ def register_branch_routes(app):
                 raise HTTPException(status_code=400, detail="A branch with that name already exists.")
             is_first = db.query(Branch).filter(Branch.owner_phone == owner_phone).count() == 0
             branch = Branch(owner_phone=owner_phone, name=name,
-                            address=(payload.address or "").strip() or None, is_default=is_first)
+                            address=(payload.address or "").strip() or None,
+                            phone=_clean_phone(payload.phone), is_default=is_first)
             db.add(branch)
             db.commit()
-            return {"id": branch.id, "name": branch.name, "address": branch.address,
+            return {"id": branch.id, "name": branch.name, "address": branch.address, "phone": branch.phone,
                     "is_default": bool(branch.is_default)}
         finally:
             db.close()
@@ -169,8 +180,10 @@ def register_branch_routes(app):
             if payload.name and payload.name.strip():
                 branch.name = payload.name.strip()
             branch.address = (payload.address or "").strip() or None
+            if payload.phone is not None:
+                branch.phone = _clean_phone(payload.phone)
             db.commit()
-            return {"id": branch.id, "name": branch.name, "address": branch.address,
+            return {"id": branch.id, "name": branch.name, "address": branch.address, "phone": branch.phone,
                     "is_default": bool(branch.is_default)}
         finally:
             db.close()
