@@ -49,7 +49,7 @@ def _salon():
         db.close()
 
 
-def _book(cook, ada, cut, time="10:30", day="2026-11-03", staff="Musa"):
+def _book(cook, ada, cut, time="10:30", day="2054-11-03", staff="Musa"):
     return client.post("/app/api/appointments", cookies=cook, json={
         "date": day, "time": time, "duration_min": 45, "customer_id": ada,
         "services": [{"inventory_item_id": cut}], "staff_name": staff, "note": "Low cut"})
@@ -67,7 +67,7 @@ def test_book_list_clash_and_done():
     assert clash["clashes"] == [{"time": "10:30", "customer": "Ada"}]
     assert _book(cook, ada, cut, time="11:00", staff="Tunde").json()["clashes"] == []
 
-    day = client.get("/app/api/appointments?day=2026-11-03", cookies=cook).json()
+    day = client.get("/app/api/appointments?day=2054-11-03", cookies=cook).json()
     assert [x["time"] for x in day["appointments"]] == ["10:30", "11:00", "11:00"]
 
     client.post(f"/app/api/appointments/{a['id']}/status", cookies=cook, json={"status": "arrived"})
@@ -86,7 +86,7 @@ def test_no_shows_are_counted_and_moving_resets_the_reminder():
     _p, cook, cut, ada = _salon()
     a = _book(cook, ada, cut).json()
     client.post(f"/app/api/appointments/{a['id']}/status", cookies=cook, json={"status": "no_show"})
-    b = _book(cook, ada, cut, day="2026-11-04").json()
+    b = _book(cook, ada, cut, day="2054-11-04").json()
     assert b["no_shows"] == 1
     db = SessionLocal()
     try:
@@ -94,9 +94,9 @@ def test_no_shows_are_counted_and_moving_resets_the_reminder():
     finally:
         db.close()
     moved = client.put(f"/app/api/appointments/{b['id']}", cookies=cook, json={
-        "date": "2026-11-05", "time": "09:00", "duration_min": 30, "customer_id": ada,
+        "date": "2054-11-05", "time": "09:00", "duration_min": 30, "customer_id": ada,
         "services": [{"inventory_item_id": cut}]}).json()
-    assert moved["date"] == "2026-11-05" and moved["reminded"] is False
+    assert moved["date"] == "2054-11-05" and moved["reminded"] is False
 
 
 def test_reminders_evening_before_and_owner_morning_list():
@@ -143,7 +143,7 @@ def test_bad_input_and_other_business():
     _p, cook, cut, ada = _salon()
     _p2, cook2, _c2, _a2 = _salon()
     assert client.post("/app/api/appointments", cookies=cook, json={
-        "date": "2026-11-03", "time": "25:99", "customer_id": ada}).status_code == 400
+        "date": "2054-11-03", "time": "25:99", "customer_id": ada}).status_code == 400
     a = _book(cook, ada, cut).json()
     assert client.post(f"/app/api/appointments/{a['id']}/status", cookies=cook2,
                        json={"status": "arrived"}).status_code == 404
