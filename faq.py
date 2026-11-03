@@ -778,7 +778,10 @@ FAQ_ANSWERS = {
         "Nothing is owed while it's a quotation. When the customer agrees, tap *Customer accepted* — "
         "it becomes an invoice (INV number) with no retyping.\n"
         "Then *Record deposit / payment* → *Deposit*: it shows *Deposit paid — work can start*, and the "
-        "balance goes on their debts, due on the completion date, with reminders like any debt."
+        "balance goes on their debts, due on the completion date, with reminders like any debt.\n\n"
+        "*Track it:* every quotation shows its progress — *Quotation → Accepted → Paid → Delivered → "
+        "Completed* — with the QT, INV and receipt numbers and dates. When the balance is collected "
+        "from Debts it turns *Paid*; paid in full and delivered (or nothing to deliver) is *Completed*."
     ),
     "logo": (
         "To put your logo on receipts, invoices and quotations: web app → *My Profile* → "
@@ -1518,8 +1521,12 @@ FAQ_ANSWERS = {
         "receipt. If they pay part, the rest becomes their debt; enter 0 to put "
         "it all on credit\n"
         "- *Cancel* an invoice nothing has happened to yet\n\n"
-        "The Invoices page shows each one as Waiting, Overdue, Part paid, Paid or "
-        "Cancelled, and how much is awaiting payment."
+        "The Invoices page shows each one as Waiting, Overdue, Part paid, Paid, "
+        "Completed or Cancelled, and how much is awaiting payment.\n\n"
+        "Each invoice shows its progress: *Invoice → Paid → Delivered → Completed* "
+        "(starting from *Quotation* if it began as one), with the receipt number. "
+        "*Completed* means paid in full — at once, or the rest later from Debts — "
+        "and delivered, or nothing to deliver."
     ),
     "branch_location": (
         "Branches let you run several locations, each with its own staff and its "

@@ -491,18 +491,24 @@ def register_pos_routes(app):
 
             # "Open" is everything still waiting for money that isn't late yet.
             open_states = ("draft", "sent", "open")
-            summary = {"open": 0, "overdue": 0, "part_paid": 0, "paid": 0, "cancelled": 0,
+
+            # Which tab a row sits in. Paid in full (the rest collected later
+            # from Debts too) is Paid; paid and delivered is Completed.
+            def _tab(r):
+                if r.get("stage") in ("completed", "paid"):
+                    return r["stage"]
+                return "open" if r["status"] in open_states else r["status"]
+
+            summary = {"open": 0, "overdue": 0, "part_paid": 0, "paid": 0, "completed": 0, "cancelled": 0,
                        "quote": 0, "deposit_paid": 0, "total_due": 0}
             for r in rows:
-                key = "open" if r["status"] in open_states else r["status"]
+                key = _tab(r)
                 summary[key] = summary.get(key, 0) + 1
                 summary["total_due"] += r["outstanding"]
 
             want = (status or "").lower()
-            if want == "open":
-                rows = [r for r in rows if r["status"] in open_states]
-            elif want in ("overdue", "part_paid", "paid", "cancelled", "quote", "deposit_paid"):
-                rows = [r for r in rows if r["status"] == want]
+            if want in ("open", "overdue", "part_paid", "paid", "completed", "cancelled", "quote", "deposit_paid"):
+                rows = [r for r in rows if _tab(r) == want]
             return {"invoices": rows, "summary": summary}
         finally:
             db.close()

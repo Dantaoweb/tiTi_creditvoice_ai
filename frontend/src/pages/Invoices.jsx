@@ -58,7 +58,7 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [summary, setSummary] = useState({ open: 0, overdue: 0, part_paid: 0, paid: 0, total_due: 0 });
   const [params] = useSearchParams();
-  const [filter, setFilter] = useState(params.get("repeating") ? "repeating" : "");   // "", open, overdue, part_paid, paid, cancelled, repeating
+  const [filter, setFilter] = useState(params.get("repeating") ? "repeating" : "");   // "", open, overdue, part_paid, paid, completed, cancelled, repeating
   const [repeats, setRepeats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -86,6 +86,7 @@ export default function Invoices() {
     ...(summary.deposit_paid ? [{ key: "deposit_paid", label: `Deposit paid (${summary.deposit_paid})` }] : []),
     { key: "part_paid", label: `Part paid (${summary.part_paid})` },
     { key: "paid",      label: `Paid (${summary.paid})` },
+    { key: "completed", label: `Completed (${summary.completed || 0})` },
     ...(summary.cancelled ? [{ key: "cancelled", label: `Cancelled (${summary.cancelled})` }] : []),
     ...(repeats.length || filter === "repeating"
       ? [{ key: "repeating", label: `Repeating (${repeats.filter(r => r.status !== "ended").length})` }] : []),
@@ -166,7 +167,7 @@ export default function Invoices() {
                   {inv.kind === "invoice" && inv.delivered && (
                     <PackageCheck size={14} color="#166534" aria-label="Delivered" />
                   )}
-                  <InvoiceStatusBadge status={inv.status} />
+                  <InvoiceStatusBadge status={inv.stage === "completed" || inv.stage === "paid" ? inv.stage : inv.status} />
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: inv.outstanding > 0 ? "#b45309" : "var(--text-muted)" }}>
                   {inv.outstanding > 0 ? `${nairaFull(inv.outstanding)} due` : nairaFull(inv.total)}

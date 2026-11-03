@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, Send, Share2, Pencil, PackageCheck, Banknote, Ban, Truck, Link2, Repeat, Receipt as ReceiptIcon } from "lucide-react";
 import WaybillModal from "../components/WaybillModal";
 import RepeatInvoiceModal from "../components/RepeatInvoiceModal";
+import InvoiceProgress from "../components/InvoiceProgress";
 import { useAuth } from "../context/AuthContext";
 import WaybillList from "../components/WaybillList";
 import PrintHeader, { PrintBank } from "../components/PrintHeader";
@@ -22,6 +23,8 @@ const STATUS = {
   quote:        { label: "Quotation",    bg: "rgba(124,58,237,0.12)", fg: "#6d28d9" },
   deposit_paid: { label: "Deposit paid", bg: "rgba(13,148,136,0.14)", fg: "#0f766e" },
   paid:      { label: "Paid",      bg: "rgba(22,163,74,0.12)",   fg: "#166534" },
+  // Paid in full and everything delivered (or nothing to deliver)
+  completed: { label: "Completed", bg: "#166534",                fg: "#ffffff" },
   cancelled: { label: "Cancelled", bg: "rgba(100,116,139,0.14)", fg: "#475569" },
 };
 
@@ -66,6 +69,8 @@ export default function InvoiceView() {
   const cancelled = doc.status === "cancelled";
   const delivered = !!doc.delivered_at;
   const partDelivered = !!doc.part_delivered;       // some went out on waybills
+  // Paid in full — maybe the rest later from Debts — and done when delivered too
+  const paidOff   = doc.stage === "paid" || doc.stage === "completed";
   const phone     = doc.customer?.phone;
   const custName  = doc.customer?.name || "the customer";
   const addr      = doc.branch_address || doc.biz_address;
@@ -204,7 +209,7 @@ export default function InvoiceView() {
       {/* Where it stands, and what can happen next. */}
       <div className="invoice-state no-print">
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <InvoiceStatusBadge status={doc.status} />
+          <InvoiceStatusBadge status={paidOff ? doc.stage : doc.status} />
           {delivered
             ? <span className="invoice-flag invoice-flag--done"><PackageCheck size={13} /> Delivered {dateStr(doc.delivered_at)}</span>
             : partDelivered ? <span className="invoice-flag"><PackageCheck size={13} /> Part delivered</span>
@@ -231,8 +236,11 @@ export default function InvoiceView() {
           {doc.status === "part_paid" && (doc.amount_paid > 0
             ? `${nairaFull(doc.amount_paid)} paid on ${dateStr(doc.paid_at)}. The other ${nairaFull(doc.moved_to_debt)} is now ${custName}'s debt — collect it from Debts.`
             : `Taken on credit on ${dateStr(doc.paid_at)}: the full ${nairaFull(doc.moved_to_debt)} is now ${custName}'s debt.`)}
-          {(doc.status === "paid" || someOwed) && !delivered && " Mark it delivered when the goods go out."}
+          {someOwed && paidOff && " The rest has since been paid from Debts — paid in full."}
+          {(doc.status === "paid" || someOwed) && !delivered && doc.stage !== "completed" && " Mark it delivered when the goods go out."}
+          {doc.stage === "completed" && ` Completed: paid in full${delivered ? " and delivered" : ""}.`}
         </p>
+        <InvoiceProgress steps={doc.steps} />
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {isQuote && (

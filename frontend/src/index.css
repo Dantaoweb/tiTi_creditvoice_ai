@@ -4233,6 +4233,43 @@ tr.has-balance td:nth-child(3) { font-weight: 700; }
   color: var(--text-muted);
 }
 .invoice-flag--done { color: #166534; }
+/* Quotation → Accepted → Paid → Delivered → Completed (InvoiceProgress) */
+.inv-steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 4px;
+}
+.inv-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 6px;
+  align-items: center;
+  flex: 1 1 88px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 3px solid var(--line);
+  font-size: 12px;
+}
+.inv-step--done { border-top-color: #16a34a; }
+.inv-step--now  { border-top-color: var(--brand); }
+.inv-step__dot {
+  grid-row: span 3;
+  align-self: start;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  background: var(--line-2); color: var(--muted);
+}
+.inv-step--done .inv-step__dot { background: #16a34a; color: #fff; }
+.inv-step--now .inv-step__dot  { background: var(--brand); color: #fff; }
+.inv-step__label { font-weight: 700; color: var(--ink); }
+.inv-step--todo .inv-step__label { color: var(--muted); font-weight: 600; }
+.inv-step__ref, .inv-step__date { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.inv-step__ref { color: var(--brand); }
 .invoice-pay {
   margin-top: 12px;
   padding-top: 12px;

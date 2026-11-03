@@ -426,7 +426,8 @@ def test_list_status_and_what_is_awaiting_payment():
 
     data = client.get("/app/api/invoices", cookies=cookies).json()
     s = data["summary"]
-    assert (s["open"], s["overdue"], s["paid"]) == (1, 1, 1)
+    # A repair has nothing to deliver: paid in full is Completed
+    assert (s["open"], s["overdue"], s["paid"], s["completed"]) == (1, 1, 0, 1)
     assert s["total_due"] == 2000
     assert [r["invoice_number"] for r in data["invoices"]] == [3, 2, 1]
 

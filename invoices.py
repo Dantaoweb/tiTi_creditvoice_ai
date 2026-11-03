@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func
 
-from models import Customer, Invoice, InvoiceItem, Transaction
+from models import Customer, InventoryItem, Invoice, InvoiceItem, Transaction
 
 
 def _utcnow():
@@ -111,6 +111,32 @@ def _invoice_status(outstanding, due_date, now):
     return "open"
 
 
+def _fifo_outstanding(db, customer_id, cache=None):
+    """{credit sale (BUY) id: still owed on it}. The app keeps one running
+    balance per customer, so payments are applied to their credit sales
+    oldest-first. `cache` (a dict) saves working it out twice per customer."""
+    if cache is not None and customer_id in cache:
+        return cache[customer_id]
+    buys = (
+        db.query(Transaction)
+        .filter(Transaction.customer_id == customer_id, Transaction.type == "BUY",
+                Transaction.is_voided.isnot(True))
+        .order_by(Transaction.created_at.asc(), Transaction.id.asc())
+        .all()
+    )
+    pool = int(db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.customer_id == customer_id, Transaction.type == "PAY",
+        Transaction.is_voided.isnot(True)).scalar() or 0)
+    out = {}
+    for b in buys:
+        applied = min(pool, b.amount or 0)
+        out[b.id] = (b.amount or 0) - applied
+        pool -= applied
+    if cache is not None:
+        cache[customer_id] = out
+    return out
+
+
 def list_business_invoices(db, owner_phone, status_filter=None):
     """Return this business's issued invoices (newest first) with a derived
     per-invoice outstanding and status.
@@ -137,40 +163,10 @@ def list_business_invoices(db, owner_phone, status_filter=None):
         return []
 
     # Per-customer FIFO payment pool, computed once per customer.
-    outstanding_by_tx = {}
-    seen_customers = {}
-    for tx, customer in invoiced:
-        cid = customer.id
-        if cid not in seen_customers:
-            seen_customers[cid] = True
-            buys = (
-                db.query(Transaction)
-                .filter(
-                    Transaction.customer_id == cid,
-                    Transaction.type == "BUY",
-                    Transaction.is_voided.isnot(True),
-                )
-                .order_by(Transaction.created_at.asc(), Transaction.id.asc())
-                .all()
-            )
-            pay_total = (
-                db.query(func.coalesce(func.sum(Transaction.amount), 0))
-                .filter(
-                    Transaction.customer_id == cid,
-                    Transaction.type == "PAY",
-                    Transaction.is_voided.isnot(True),
-                )
-                .scalar()
-            ) or 0
-            pool = int(pay_total)
-            for b in buys:
-                applied = min(pool, b.amount or 0)
-                outstanding_by_tx[b.id] = (b.amount or 0) - applied
-                pool -= applied
-
+    cache = {}
     rows = []
     for tx, customer in invoiced:
-        outstanding = outstanding_by_tx.get(tx.id, tx.amount or 0)
+        outstanding = _fifo_outstanding(db, customer.id, cache).get(tx.id, tx.amount or 0)
         status = _invoice_status(outstanding, tx.due_date, now)
         if status_filter and status != status_filter:
             continue
@@ -186,6 +182,8 @@ def list_business_invoices(db, owner_phone, status_filter=None):
             "issued_at": (tx.invoiced_at or tx.created_at).isoformat() if (tx.invoiced_at or tx.created_at) else None,
             "sent_at": tx.invoice_sent_at.isoformat() if tx.invoice_sent_at else None,
             "status": status,
+            # A number put on a sale: the goods went with the sale, so paid is done
+            "stage": "completed" if status == "paid" else "invoice",
         })
 
     rows.sort(key=lambda r: (r["invoice_number"] or 0), reverse=True)
@@ -236,6 +234,88 @@ def invoice_status(inv, now=None):
     if inv.sent_at:
         return "sent"
     return "draft"
+
+
+def invoice_paid_off(db, inv, cache=None):
+    """Has the customer paid all of it — at once, or the rest later from Debts?"""
+    if not inv.transaction_id or inv.cancelled_at:
+        return False
+    if (inv.amount_paid or 0) >= (inv.total or 0):
+        return True
+    tx = db.query(Transaction).filter(Transaction.id == inv.transaction_id).first()
+    if not tx or tx.is_voided:
+        return False
+    if tx.type != "BUY":                       # recorded as a cash sale: nothing owed
+        return True
+    return _fifo_outstanding(db, tx.customer_id, cache).get(tx.id, tx.amount or 0) <= 0
+
+
+def invoice_has_goods(db, inv):
+    """Anything on it that leaves the store? A job or service only invoice has
+    nothing to deliver."""
+    from models import InvoiceItem
+    ids = [r.inventory_item_id for r in db.query(InvoiceItem.inventory_item_id).filter(
+        InvoiceItem.invoice_id == inv.id).all() if r.inventory_item_id]
+    if not ids:
+        return False
+    return db.query(InventoryItem.id).filter(
+        InventoryItem.id.in_(ids), InventoryItem.quantity.isnot(None),
+        func.coalesce(InventoryItem.category, "") != "service").first() is not None
+
+
+def invoice_stage(db, inv, cache=None):
+    """quote / invoice / part_paid / paid / completed / cancelled.
+    Completed = paid in full AND everything delivered (or nothing to deliver)."""
+    if inv.cancelled_at:
+        return "cancelled"
+    if inv.is_quote:
+        return "quote"
+    if not inv.transaction_id:
+        return "invoice"
+    if not invoice_paid_off(db, inv, cache):
+        return "part_paid"
+    return "completed" if (inv.delivered_at or not invoice_has_goods(db, inv)) else "paid"
+
+
+def invoice_progress(db, inv, cache=None):
+    """Where the job is: Quotation → Accepted (invoice) → Paid (receipt) →
+    Delivered → Completed. Returns (stage, steps) for the status row."""
+    stage = invoice_stage(db, inv, cache)
+    if stage == "cancelled":
+        return stage, []
+    paid_off = stage in ("paid", "completed")
+    goods = invoice_has_goods(db, inv)
+
+    receipt_no = None
+    if inv.transaction_id:
+        receipt_no = db.query(Transaction.receipt_number).filter(Transaction.id == inv.transaction_id).scalar()
+    iso = lambda d: d.isoformat() if d else None   # noqa: E731
+    steps = []
+    if inv.quote_number:
+        steps.append({"key": "quote", "label": "Quotation", "ref": format_quote_number(inv.quote_number),
+                      "date": iso(inv.created_at), "done": True})
+    steps.append({"key": "invoice", "label": "Accepted" if inv.quote_number else "Invoice",
+                  "ref": format_invoice_number(inv.number) if inv.number and not inv.is_quote else None,
+                  "date": iso(inv.accepted_at or (None if inv.quote_number else inv.created_at)),
+                  "done": not inv.is_quote})
+    steps.append({"key": "paid", "label": "Paid" if paid_off or not inv.transaction_id else "Part paid",
+                  "ref": (f"Receipt #{receipt_no}" if receipt_no else None) if inv.transaction_id else None,
+                  "receipt_id": inv.transaction_id,
+                  "date": iso(inv.paid_at) if inv.transaction_id else None,
+                  "done": paid_off, "partial": bool(inv.transaction_id) and not paid_off})
+    if goods:
+        from waybills import invoice_delivered_any
+        steps.append({"key": "delivered", "label": "Delivered", "ref": None, "date": iso(inv.delivered_at),
+                      "done": bool(inv.delivered_at),
+                      "partial": not inv.delivered_at and invoice_delivered_any(db, inv)})
+    done_at = None
+    if stage == "completed":
+        dates = [d for d in (inv.paid_at if (inv.amount_paid or 0) >= (inv.total or 0) else None,
+                             inv.delivered_at) if d]
+        done_at = iso(max(dates)) if dates else None
+    steps.append({"key": "completed", "label": "Completed", "ref": None, "date": done_at,
+                  "done": stage == "completed"})
+    return stage, steps
 
 
 def _apply_vat(db, owner_phone, inv, lines, discount):
@@ -607,6 +687,8 @@ def invoice_document(db, inv):
     # Some of it gone out on waybills, not all yet
     from waybills import invoice_delivered_any
     doc["part_delivered"] = bool(not inv.delivered_at and invoice_delivered_any(db, inv))
+    # Quotation → Accepted → Paid → Delivered → Completed
+    doc["stage"], doc["steps"] = invoice_progress(db, inv)
     return doc
 
 
@@ -683,9 +765,11 @@ def list_new_invoices(db, owner_phone, branch_id=None, created_by_id=None):
     if created_by_id is not None:
         q = q.filter(Invoice.created_by_id == created_by_id)
     now = _utcnow()
+    cache = {}
     rows = []
     for inv, customer in q.all():
         status = invoice_status(inv, now)
+        stage = invoice_stage(db, inv, cache)
         rows.append({
             "kind": "invoice",
             "id": inv.id,
@@ -702,5 +786,6 @@ def list_new_invoices(db, owner_phone, branch_id=None, created_by_id=None):
             "sent_at": inv.sent_at.isoformat() if inv.sent_at else None,
             "delivered": bool(inv.delivered_at),
             "status": status,
+            "stage": stage,
         })
     return rows
