@@ -694,6 +694,28 @@ class Invoice(Base):
     recurring_id    = Column(Integer, ForeignKey("recurring_invoices.id"), nullable=True, index=True)  # made by a repeat
 
 
+class HeldSale(Base):
+    """A till cart put on hold while its customer gets ready, so the cashier
+    can serve the next one (pos_held.py). Not a sale: no stock moves, no debt,
+    no receipt until it is opened again and saved."""
+
+    __tablename__ = "held_sales"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone    = Column(String, index=True)
+    branch_id      = Column(Integer, ForeignKey("branches.id"), nullable=True)
+    created_by_id  = Column(String, ForeignKey("users.id"), nullable=True)
+    customer_id    = Column(Integer, ForeignKey("customers.id"), nullable=True)
+    customer_name  = Column(String, nullable=True)     # a new customer not saved yet
+    customer_phone = Column(String, nullable=True)
+    label          = Column(String, nullable=True)     # "man in blue cap"
+    cart_json      = Column(Text)                       # the till's lines + discount
+    item_count     = Column(Integer, default=0)
+    total          = Column(Integer, default=0)
+    created_at     = Column(DateTime, default=utcnow)
+    updated_at     = Column(DateTime, default=utcnow)
+
+
 class FakeReport(Base):
     """A shop's report of a product it suspects is fake. An admin confirms or
     dismisses it; a confirmed one warns other shops (fake_reports.py)."""

@@ -57,6 +57,7 @@ class PosSaveRequest(BaseModel):
     due_date: Optional[datetime] = None
     service_date: Optional[datetime] = None   # promised delivery / ready-by date
     loyalty_use: bool = False   # use the customer's loyalty reward (loyalty.py) — taken off as a discount
+    held_id: Optional[int] = None   # a held cart (pos_held.py) being saved — removed once it's a sale
 
 
 class InvoiceCreateRequest(BaseModel):
@@ -379,6 +380,15 @@ def register_pos_routes(app):
                             receipt_number=next_receipt_number(db, owner_phone),
                         ))
                         db.commit()
+
+            # A held cart that is now a sale: no longer waiting
+            if payload.held_id:
+                import pos_held
+                from models import HeldSale
+                _eb, _rec = _scoped_read(db, session)
+                mine = pos_held.visible(db, _session_user(db, session), owner_phone, _eb, _rec)
+                if mine.filter(HeldSale.id == payload.held_id).first():
+                    pos_held.release(db, owner_phone, payload.held_id)
 
             # Send the customer their receipt on WhatsApp (like the WhatsApp flow)
             _send_web_receipt(db, owner_phone, result.get("receipt_id"))

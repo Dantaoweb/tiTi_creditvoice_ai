@@ -4,7 +4,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, User, X, Camera } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiPost } from "../lib/api";
+import { apiFetch, apiPost, apiDelete } from "../lib/api";
+import HeldSales from "../components/HeldSales";
 import { nairaFull, nairaInWords, qty } from "../lib/format";
 import { enqueue, isNetworkError } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
@@ -581,6 +582,12 @@ export default function POS() {
   const { business: businessSettings } = useSettings();
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
+  // Held sales: a customer not ready yet — hold their cart, serve the next one
+  const [held, setHeld] = useState([]);
+  const [heldId, setHeldId] = useState(null);      // the held cart open in the till now
+  const [showHeld, setShowHeld] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const [heldNote, setHeldNote] = useState("");
   const creditRef = useRef(null);
   const creditVisible = useRef(false);
 
@@ -603,6 +610,14 @@ export default function POS() {
       })
       .catch(() => {});
   }, [isOwner]);
+
+  function loadHeld() {
+    return apiFetch("pos/held", branchId ? { branch_id: branchId } : {})
+      .then(d => { setHeld(d.held || []); return d.held || []; })
+      .catch(() => []);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHeld(); }, [branchId]);
 
   useEffect(() => {
     if (!customer?.id || (businessSettings.loyalty_mode || "off") === "off") return undefined;
@@ -747,6 +762,65 @@ export default function POS() {
     setCart(prev => prev.filter((_, i) => i !== idx));
   }
 
+  // Empty the till for the next customer
+  function clearTill() {
+    setCart([]); setCustomer(null); setCustQuery(""); setPayment(""); setDueDate(""); setServiceDate("");
+    setPartDelivery(false); setDiscountValue(NO_DISCOUNT); setUseReward(false); setHeldId(null); setSaveErr("");
+  }
+
+  // Put this cart aside (no stock moves, no receipt) and start a fresh one.
+  // Holding an open held cart again saves the changes to it.
+  async function holdCart() {
+    if (cart.length === 0) { setSaveErr("Add at least one item before holding the sale."); return false; }
+    setHolding(true); setSaveErr("");
+    try {
+      await apiPost("pos/held", {
+        id: heldId,
+        items: cart,
+        discount: discountValue,
+        customer_id: customer?.id || null,
+        customer_name: (customer && !customer.id) ? customer.name : null,
+        customer_phone: (customer && !customer.id) ? (customer.phone?.trim() || null) : null,
+        total,
+        branch_id: branchId,
+      });
+      const who = customer?.name || "the customer";
+      clearTill();
+      setHeldNote(`Sale held for ${who}. Open it from "Held" when they're ready.`);
+      await loadHeld();
+      return true;
+    } catch (e) {
+      setSaveErr(isNetworkError(e) ? "No internet — can't hold the sale right now." : e.message);
+      return false;
+    } finally {
+      setHolding(false);
+    }
+  }
+
+  // Bring a held cart back into the till. Whatever is in the till now is held
+  // first, so nothing is lost.
+  async function openHeld(h) {
+    if (cart.length > 0 && !(await holdCart())) return;
+    setCart(h.items.map(it => ({ ...it })));
+    setCustomer(h.customer);
+    setDiscountValue(h.discount || NO_DISCOUNT);
+    setPayment(""); setUseReward(false); setSettleDebt(true);
+    setHeldId(h.id); setShowHeld(false); setSaveErr("");
+    setHeldNote(h.short.length
+      ? h.short.map(s => s.removed ? `${s.name} is no longer sold.` : `Only ${s.free} ${s.name} can be sold now.`).join(" ")
+      : "");
+  }
+
+  async function deleteHeld(h) {
+    if (!window.confirm(`Delete the held sale for ${h.customer?.name || "this customer"}? Nothing was sold, so stock doesn't change.`)) return;
+    try {
+      await apiDelete(`pos/held/${h.id}`);
+      if (h.id === heldId) clearTill();
+      const left = await loadHeld();
+      if (!left.length) setShowHeld(false);
+    } catch (e) { setSaveErr(e.message); }
+  }
+
   async function handleSave() {
     if (cart.length === 0)               { setSaveErr("Add at least one item to the order."); return; }
     if (cart.some(it => !it.name.trim())) { setSaveErr("All items need a name."); return; }
@@ -789,6 +863,7 @@ export default function POS() {
       branch_id: branchId,
       due_date: (customer && owed > 0 && dueDate) ? dueDate : null,
       service_date: serviceDate || null,
+      held_id: heldId,
     };
     try {
       const result = await apiPost("pos/save", payload);
@@ -800,6 +875,7 @@ export default function POS() {
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
         setPartDelivery(false);
         setDiscountValue(NO_DISCOUNT);
+        setHeldId(null);
         setSaving(false);
         navigate("/capture", {
           state: { offlineMsg: "No internet — POS sale saved offline. It will sync when you reconnect." },
@@ -849,7 +925,33 @@ export default function POS() {
             <ShoppingCart size={16} />
             <span>Order</span>
             <span className="pos-cart-count">{cart.length} item{cart.length !== 1 ? "s" : ""}</span>
+            <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              {held.length > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowHeld(true)}
+                  title="Sales put aside for customers who weren't ready">Held ({held.length})</button>
+              )}
+              {cart.length > 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={holdCart} disabled={holding || saving}
+                  title="Customer not ready? Put this sale aside and serve the next one">
+                  {holding ? "Holding…" : "Hold"}
+                </button>
+              )}
+            </span>
           </div>
+          {heldId && (
+            <div className="form-hint" style={{ padding: "6px 16px 0" }}>
+              Held sale — change anything, then <strong>Save Sale</strong>, or <strong>Hold</strong> it again.
+            </div>
+          )}
+          {heldNote && (
+            <div className="pos-credit-warn" style={{ margin: "6px 16px 0", display: "flex", gap: 8, justifyContent: "space-between" }}>
+              <span>{heldNote}</span>
+              <button className="pos-remove" onClick={() => setHeldNote("")} aria-label="Dismiss"><X size={13} /></button>
+            </div>
+          )}
+          {showHeld && (
+            <HeldSales held={held} currentId={heldId} onOpen={openHeld} onDelete={deleteHeld} onClose={() => setShowHeld(false)} />
+          )}
 
           {cart.length === 0 ? (
             <div className="pos-empty">Tap a product on the left to add it here.</div>

@@ -115,6 +115,9 @@ def detect_faq(text):
     if not _is_question(text):
         return None
 
+    # ── Holding a sale at the till (pos_held.py) ─────────────────────────────────
+    if any(k in q for k in ('hold sale', 'hold a sale', 'hold the sale', 'hold this sale', 'held sale', 'hold order', 'hold the order', 'park sale', 'park a sale', 'draft sale', 'save as draft', 'sale draft', 'customer not ready', 'customer is not ready', 'serve another customer', 'serve the next customer', 'pause sale', 'pause a sale')):
+        return "hold_sale"
     # ── Newer features — before "receipt", which takes any mention of it ─────
     if any(k in q for k in [
         "fake", "counterfeit", "original", "genuine", "authentic",
@@ -1215,6 +1218,18 @@ FAQ_ANSWERS = {
         "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
         "They work in your shop and branches only. To sell your product to supermarkets or other "
         "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
+    ),
+    "hold_sale": (
+        "⏸️ *Hold a sale — serve the next customer*\n\n"
+        "Customer not ready (gone to the ATM, still choosing)? On *{till}*, tap *Hold*. "
+        "The cart is put aside and the till is empty for the next customer. Hold as many as you need.\n\n"
+        "*Carry on later:* tap *Held* → *Open*. Change anything — items, quantities, prices, the customer — "
+        "then *Save Sale* for the receipt, or *Hold* it again.\n"
+        "If something is in the till when you open a held sale, it is held first, so nothing is lost.\n\n"
+        "Holding is not a sale: no stock moves, no debt, no receipt until you save it. If stock ran low "
+        "while it waited, the held sale tells you.\n"
+        "*Customer left?* Tap *Delete* on the held sale.\n\n"
+        "Each cashier sees the sales they held; the owner sees everyone's, and a branch manager their branch's."
     ),
     "remove_stock": (
         "🗑️ *Removing stock — every loss is recorded with its reason*\n\n"
