@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap, CheckCircle2, ClipboardList,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Settings as SettingsIcon,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Globe, Settings as SettingsIcon,
 } from "lucide-react";
 import { applyDisplay, loadSettings, useSettings } from "../lib/settings";
 import { checkForCameraCrash, takeCrashNotice } from "../lib/cameraSafety";
@@ -78,6 +78,8 @@ function buildNav(L, group) {
     { to: "/expenses",     label: "Expenses",         icon: Coins, fullAccessOnly: true },
     { to: "/fuel",         label: "Fuel Station",     icon: Fuel, fuelOnly: true },
     { to: "/suppliers",    label: "Suppliers",        icon: Truck           },
+    // Its own public page (bought once; an admin switches it on) and the quotation requests from it
+    { to: "/business-page", label: "Business page",   icon: Globe, fullAccessOnly: true },
     { to: "/staff",        label: "Staff",            icon: UserCheck       },
     { to: "/partners",     label: "Partners",         icon: Handshake       },
     { to: "/notes",        label: "Notes",            icon: FileText        },
@@ -210,6 +212,7 @@ export default function Layout() {
     "/school":       "School fees",
     "/transactions": "Transactions",
     "/suppliers":    "Suppliers",
+    "/business-page": "Business page",
     "/staff":        "Staff",
     "/partners":     "Partners & Investors",
     "/notes":        "Business Notes",

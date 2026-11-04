@@ -121,6 +121,12 @@ NAV_GUIDE = {
         "where": "Under More",
         "what": "Who you buy from and what you owe them — and the Verified Supplier directory: find suppliers, connect with them, or apply to be listed (Pro).",
     },
+    "/business-page": {
+        "name": "Business page",
+        "where": "Under More (owner and staff allowed to see all records)",
+        "what": "Your own public page at creditvoiceai.com/b/your-name (a one-time payment; CreditVoice switches it on): "
+                "pick the products and what it says, turn it on, share the link — and turn visitors' quotation requests into quotations.",
+    },
     "/staff": {
         "name": "Staff",
         "where": "Under More",

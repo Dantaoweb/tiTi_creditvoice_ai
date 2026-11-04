@@ -104,6 +104,10 @@ class User(Base):
     # email — and up to 2 bank accounts [{bank, number, name}] (printables.py)
     business_email = Column(String, nullable=True)
     receipt_phones = Column(String, nullable=True)   # e.g. 0803 111 2222 / 0905 333 4444; empty = login phone
+    # Business page (business_page.py): an admin switches it on after the
+    # one-time payment; the owner then turns it on in the app.
+    page_enabled = Column(Boolean, default=False)
+    page_slug = Column(String, nullable=True, unique=True, index=True)   # creditvoiceai.com/b/<slug>
     bank_accounts_json = Column(Text, nullable=True)
 
     subscription_plan = Column(String, default="BASIC")
@@ -714,6 +718,23 @@ class HeldSale(Base):
     total          = Column(Integer, default=0)
     created_at     = Column(DateTime, default=utcnow)
     updated_at     = Column(DateTime, default=utcnow)
+
+
+class PageEnquiry(Base):
+    """"Ask for a quotation" from a business's public page (business_page.py).
+    The owner turns it into a quotation, or closes it."""
+
+    __tablename__ = "page_enquiries"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone  = Column(String, index=True)
+    name         = Column(String)
+    phone        = Column(String)
+    message      = Column(Text, nullable=True)
+    items_json   = Column(Text, nullable=True)       # [{"id": item id, "name": ..., "qty": n}]
+    status       = Column(String, default="new")     # new | quoted | closed
+    invoice_id   = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    created_at   = Column(DateTime, default=utcnow)
 
 
 class FakeReport(Base):

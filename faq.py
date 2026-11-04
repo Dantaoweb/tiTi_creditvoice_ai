@@ -115,6 +115,9 @@ def detect_faq(text):
     if not _is_question(text):
         return None
 
+    # ── Business page (business_page.py) ─────────────────────────────────────────
+    if any(k in q for k in ('business page', 'shop page', 'store page', 'my own page', 'own website', 'my website', 'business website', 'website for my business', 'web page for my business', 'online shop', 'online store', 'show my products online', 'quotation request', 'page enquiry')):
+        return "business_page"
     # ── Holding a sale at the till (pos_held.py) ─────────────────────────────────
     if any(k in q for k in ('hold sale', 'hold a sale', 'hold the sale', 'hold this sale', 'held sale', 'hold order', 'hold the order', 'park sale', 'park a sale', 'draft sale', 'save as draft', 'sale draft', 'customer not ready', 'customer is not ready', 'serve another customer', 'serve the next customer', 'pause sale', 'pause a sale')):
         return "hold_sale"
@@ -1221,6 +1224,19 @@ FAQ_ANSWERS = {
         "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
         "They work in your shop and branches only. To sell your product to supermarkets or other "
         "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
+    ),
+    "business_page": (
+        "🌐 *Your business page*\n\n"
+        "A page of your own at *creditvoiceai.com/b/your-business-name*: customers can find it on Google, "
+        "and you share the link on WhatsApp, flyers and your signboard. It shows your name, logo, address "
+        "and branches, opening hours, the products you pick (with prices, or \"Ask for price\"), and buttons "
+        "to call or chat with you on WhatsApp. Stock counts and cost prices are never shown.\n\n"
+        "*Getting it:* it's a one-time payment — contact CreditVoice and we switch it on for you.\n\n"
+        "*Then:* Menu → More → *Business page* → write a few lines about your business and your hours, "
+        "tick the products to show → *Save* → *Turn page on*. Copy the link or *Share on WhatsApp*.\n\n"
+        "*Quotation requests:* visitors enter quantities and *Ask for a quotation*. You get a notification; "
+        "on the Business page tap *Make quotation* and it's ready, for that customer at today's prices.\n\n"
+        "Only the owner changes the page; the owner and staff allowed to see all records see the requests."
     ),
     "hold_sale": (
         "⏸️ *Hold a sale — serve the next customer*\n\n"

@@ -74,6 +74,13 @@ BUSINESS_DEFAULTS = {
     "loyalty_points_percent": 1.0,        # ₦ back for every ₦100 spent
     "loyalty_expiry_months": 0,           # 0 = rewards never expire
     "loyalty_items": [],                  # product ids that count; empty = everything
+    # Business page (business_page.py): only once an admin has switched it on
+    # for the business; then off until the owner turns it on
+    "page_on": False,
+    "page_about": "",                     # a few lines about the business
+    "page_hours": "",                     # e.g. Mon–Sat 8am–6pm
+    "page_show_prices": True,
+    "page_items": [],                     # product ids shown; empty = none
     "push_hide_details": False,           # phone notifications: hide amounts/names on the lock screen
     "count_blind": True,
     "expiry_warn_days": 30,               # warn this many days before goods expire                  # stock count: counters don't see the app's numbers
@@ -154,8 +161,12 @@ def _clean_business(k, v):
     if k in ("group_by_category", "group_on_pos", "allow_negative_stock", "keep_aside",
              "show_part_delivery", "daily_summary", "print_show_phone", "print_show_address",
              "print_show_email", "print_bank_invoices", "print_bank_receipts", "count_blind", "push_hide_details",
-             "vat_enabled", "booking_link", "booking_auto_confirm", "booking_pick_staff"):
+             "vat_enabled", "booking_link", "booking_auto_confirm", "booking_pick_staff",
+             "page_on", "page_show_prices"):
         return bool(v)
+    if k in ("page_about", "page_hours"):
+        text = "\n".join(" ".join(line.split()) for line in str(v or "").splitlines())
+        return re.sub(r"\n{3,}", "\n\n", text).strip()[:600 if k == "page_about" else 120]
     choices = {"print_paper": ("80mm", "58mm", "a4"), "print_logo": ("top", "left", "right", "none"),
                "print_align": ("center", "left")}
     if k in choices:
@@ -228,7 +239,7 @@ def _clean_business(k, v):
         if not 0.1 <= r <= 20:
             raise ValueError("Pick between 0.1 and 20 naira back per ₦100.")
         return r
-    if k == "loyalty_items":
+    if k in ("loyalty_items", "page_items"):
         if not isinstance(v, list):
             raise ValueError("Invalid product list.")
         out = []

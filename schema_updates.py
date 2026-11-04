@@ -1237,7 +1237,8 @@ def ensure_schema_updates(engine):
     for _table, _cols in (("inventory_movements", {"reason": "VARCHAR"}),
                           ("inventory_items", {"removed_at": "TIMESTAMP", "removed_reason": "VARCHAR"}),
                           ("branches", {"phone": "VARCHAR"}),
-                          ("users", {"receipt_phones": "VARCHAR"})):
+                          ("users", {"receipt_phones": "VARCHAR", "page_enabled": "BOOLEAN DEFAULT FALSE",
+                                     "page_slug": "VARCHAR"})):
         if _table in _tables:
             _have = {c["name"] for c in inspector.get_columns(_table)}
             for _col, _typ in _cols.items():

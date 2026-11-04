@@ -261,6 +261,26 @@ function UsersTab() {
     finally { setBusyId(null); }
   }
 
+  // Business page: switched on here once the one-time payment is made
+  async function toggleBusinessPage(u) {
+    let body;
+    if (u.page_enabled) {
+      if (!window.confirm(`Switch off ${u.name || u.phone}'s business page (creditvoiceai.com/b/${u.page_slug})?`)) return;
+      body = { enabled: false };
+    } else {
+      const slug = window.prompt(`Business page for ${u.name || u.phone} — paid?\n\nPage address: creditvoiceai.com/b/…\nLeave empty to make one from the business name.`, u.page_slug || "");
+      if (slug === null) return;
+      body = { enabled: true, slug: slug.trim() || null };
+    }
+    setBusyId(u.id);
+    try {
+      const r = await apiPost(`admin/business-page/${u.id}`, body);
+      if (r.page_enabled) alert(`Business page on: ${r.page_url}\nThe owner has been told; they choose what it shows and turn it on.`);
+      load();
+    } catch (e) { alert(e.message || "Could not change the business page."); }
+    finally { setBusyId(null); }
+  }
+
   function handleSearch(e) {
     e.preventDefault();
     setPage(1);
@@ -372,6 +392,14 @@ function UsersTab() {
                       {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
                     </td>
                     <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
+                      {!u.deleted_at && (
+                        <button
+                          className="btn btn-sm" disabled={busyId === u.id}
+                          onClick={() => toggleBusinessPage(u)}
+                          title={u.page_enabled ? `creditvoiceai.com/b/${u.page_slug} — click to switch off` : "Switch on their business page (one-time payment)"}
+                          style={{ padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, border: "1px solid var(--border)", background: "transparent", color: u.page_enabled ? "#0f766e" : "var(--text-muted)", marginRight: 6 }}
+                        >{u.page_enabled ? "Page: on" : "Page"}</button>
+                      )}
                       {u.deleted_at ? (
                         <button
                           className="btn btn-sm" disabled={busyId === u.id}

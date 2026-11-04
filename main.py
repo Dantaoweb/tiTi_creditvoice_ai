@@ -281,6 +281,20 @@ def sitemap_xml():
         (f"{_SITE_URL}/app/privacy", None, "0.3"),
         (f"{_SITE_URL}/app/data-deletion", None, "0.2"),
     ]
+    # Businesses' own pages (business_page.py) that are switched on
+    try:
+        import business_page
+        from database import SessionLocal
+        from models import User
+        _db = SessionLocal()
+        try:
+            for _o in _db.query(User).filter(User.page_enabled.is_(True), User.page_slug.isnot(None)).all():
+                if business_page.is_live(_db, _o):
+                    pages.append((business_page.page_url(_o), None, "0.5"))
+        finally:
+            _db.close()
+    except Exception:
+        pass
     rows = ""
     for loc, lastmod, prio in pages:
         rows += f"  <url><loc>{loc}</loc>"

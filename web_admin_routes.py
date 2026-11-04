@@ -430,6 +430,8 @@ def register_admin_routes(app):
                         "subscription_status": u.subscription_status,
                         "created_at": u.created_at.isoformat() if u.created_at else None,
                         "deleted_at": u.deleted_at.isoformat() if u.deleted_at else None,
+                        "page_enabled": bool(getattr(u, "page_enabled", False)),
+                        "page_slug": getattr(u, "page_slug", None),
                         "transactions_total": tx_total.get(u.phone, 0),
                         "transactions_30d": tx_30d.get(u.phone, 0),
                         "last_active": last_seen[u.phone].isoformat() if u.phone in last_seen else None,
