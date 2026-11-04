@@ -124,8 +124,11 @@ def detect_faq(text):
     # ── Business page (business_page.py) ─────────────────────────────────────────
     if any(k in q for k in ('business page', 'shop page', 'store page', 'my own page', 'own website', 'my website', 'business website', 'website for my business', 'web page for my business', 'online shop', 'online store', 'show my products online', 'quotation request', 'page enquiry')):
         return "business_page"
+    # ── Phone number printed on receipts (printables.receipt_phone) ──────────────
+    if any(k in q for k in ('phone number on my receipt', 'phone number on receipt', 'phone on receipt', 'phone on my receipt', 'number on my receipt', 'number on receipt', 'receipt phone', 'phone number on invoice', 'number on invoice', 'change the number on', 'change my number on', 'two numbers on', 'second number on', 'branch phone')):
+        return "receipt_phone"
     # ── Holding a sale at the till (pos_held.py) ─────────────────────────────────
-    if any(k in q for k in ('hold sale', 'hold a sale', 'hold the sale', 'hold this sale', 'held sale', 'hold order', 'hold the order', 'park sale', 'park a sale', 'draft sale', 'save as draft', 'sale draft', 'customer not ready', 'customer is not ready', 'serve another customer', 'serve the next customer', 'pause sale', 'pause a sale')):
+    if any(k in q for k in ('hold sale', 'sale as draft', 'sale as a draft', 'sales as draft', 'save sale for later', 'keep the sale for later', 'keep a sale for later', 'drafts at the till', 'draft at the till', 'hold a sale', 'hold the sale', 'hold this sale', 'held sale', 'hold order', 'hold the order', 'park sale', 'park a sale', 'draft sale', 'save as draft', 'sale draft', 'customer not ready', 'customer is not ready', 'serve another customer', 'serve the next customer', 'pause sale', 'pause a sale')):
         return "hold_sale"
     # ── Newer features — before "receipt", which takes any mention of it ─────
     if any(k in q for k in [
@@ -1278,6 +1281,15 @@ FAQ_ANSWERS = {
         "*Quotation requests:* visitors enter quantities and *Ask for a quotation*. You get a notification; "
         "on the Business page tap *Make quotation* and it's ready, for that customer at today's prices.\n\n"
         "Only the owner changes the page; the owner and staff allowed to see all records see the requests."
+    ),
+    "receipt_phone": (
+        "📞 *The phone number on your receipts*\n\n"
+        "Receipts, invoices, quotations and waybills show your login phone unless you choose others — "
+        "your login doesn't change.\n\n"
+        "*Owner:* web app → *My Profile* → *Phone on receipts* → up to two numbers, separated by / "
+        "(e.g. 0803 111 2222 / 0905 333 4444) → *Save*. Empty = your login phone.\n\n"
+        "*Each branch its own number:* Menu → *Branches* → *Edit* the branch → *Phone* — that branch's "
+        "receipts show it instead."
     ),
     "hold_sale": (
         "⏸️ *Hold a sale — serve the next customer*\n\n"

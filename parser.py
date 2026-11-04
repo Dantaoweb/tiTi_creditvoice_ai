@@ -1777,6 +1777,10 @@ _DESCRIBED_NOT_NAMED = re.compile(
 )
 # "my customer Ade paid 5000" names Ade
 _CUSTOMER_PREFIX = re.compile(r"^(?:my\s+)?(?:customer|client)\s+(?=[a-z])")
+# A real question about using the app: "sales rep brought back unsold bread, what do I do?"
+# read like "<customer> brought <items>" — a job for a customer called "Sales Rep".
+_HELP_QUESTION = re.compile(r"\b(how (do|can|should|to|will)|what (do|should|can) (i|we) do|where (is|do|can|are)"
+                            r"|can (i|we)|should (i|we))\b")
 
 
 def _not_a_real_transaction(parsed, text):
@@ -1896,6 +1900,12 @@ def parse_message(text):
     "can i"). A due date said in words ("due friday", "pay by next week") is
     read too — it used to be dropped silently, so no reminder ever came."""
     parsed = _parse_message(text)
+    if (parsed and parsed.get("type") == "SERVICE_JOB" and "?" in (text or "")
+            and _HELP_QUESTION.search(text.lower())):
+        from faq import detect_faq
+        _topic = detect_faq(text)
+        if _topic:
+            return {"type": "APP_GUIDE", "topic": _topic}
     if parsed is None and text:
         # Last resort, so it never shadows a command: "Kemi audit 150000"
         parsed = extract_job_shorthand(text.lower().replace(",", "").strip(), require_paid=False)
@@ -2944,8 +2954,9 @@ def _parse_message(text):
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
             "distributors":       ['my distributor', 'our distributor', 'van sale', 'van sales', 'van seller', 'sales rep', 'hawker', 'hawkers', 'seller took', 'sellers took', 'unsold bread', 'returned bread', 'bread returned', 'brought back unsold', 'settle seller', 'settle my seller', 'settle distributor', 'goods out with', 'sell on commission', 'commission seller'],
             "production":         ['recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how many did we make', 'how many did i make', 'flour used', 'wastage', 'waste report', 'rejects', 'regrind', 'reject rate', 'scrap', 'how much to make', 'what i made', 'what we made', 'manufactur'],
+            "receipt_phone":      ['phone number on my receipt', 'phone number on receipt', 'phone on receipt', 'phone on my receipt', 'number on my receipt', 'number on receipt', 'receipt phone', 'phone number on invoice', 'number on invoice', 'change the number on', 'change my number on', 'two numbers on', 'second number on', 'branch phone'],
             "business_page":      ['business page', 'shop page', 'store page', 'my own page', 'own website', 'my website', 'business website', 'website for my business', 'web page for my business', 'online shop', 'online store', 'show my products online', 'quotation request', 'page enquiry'],
-            "hold_sale":          ['hold sale', 'hold a sale', 'hold the sale', 'hold this sale', 'held sale', 'hold order', 'hold the order', 'park sale', 'park a sale', 'draft sale', 'save as draft', 'sale draft', 'customer not ready', 'customer is not ready', 'serve another customer', 'serve the next customer', 'pause sale', 'pause a sale'],
+            "hold_sale":          ['hold sale', 'sale as draft', 'sale as a draft', 'sales as draft', 'save sale for later', 'keep the sale for later', 'keep a sale for later', 'drafts at the till', 'draft at the till', 'hold a sale', 'hold the sale', 'hold this sale', 'held sale', 'hold order', 'hold the order', 'park sale', 'park a sale', 'draft sale', 'save as draft', 'sale draft', 'customer not ready', 'customer is not ready', 'serve another customer', 'serve the next customer', 'pause sale', 'pause a sale'],
             "remove_stock":       ['remove stock', 'removed stock', 'remove product', 'remove a product', 'delete a product', 'delete my product', 'remove item', 'remove an item', 'delete product', 'delete item', 'delete stock', 'damaged goods', 'damaged stock', 'stolen goods', 'goods stolen', 'write off', 'written off', 'spoilt goods', 'spoiled goods', 'missing stock', 'stock loss', 'lost stock'],
             "loyalty":            ['loyalty', 'loyal customer', 'reward my customer', 'reward customers', 'reward loyal', 'customer reward', 'stamp card', 'loyalty card', 'customer points', 'loyalty points', 'use points', 'use reward', 'buy 10 get', 'buy ten get', 'best customers', 'top customers', 'cashback', 'cash back for customers'],
             "repeat_invoice":     ['repeat invoice', 'repeating invoice', 'recurring invoice', 'recurring bill', 'invoice every', 'bill every', 'bill monthly', 'monthly invoice', 'weekly invoice', 'same invoice every', 'bill a tenant', 'bill my tenant', 'bill my tenants', 'invoice automatically', 'automatic invoice', 'auto invoice', 'make it repeat'],
