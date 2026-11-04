@@ -17,13 +17,14 @@ export default function Production() {
   return (
     <div style={{ display: "grid", gap: 14, maxWidth: 820 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {[["make", "Record production"], ["recipes", "Recipes"], ["report", "Report"], ["history", "History"]].map(([k, l]) => (
+        {[["make", "Record production"], ["recipes", "Recipes"], ["distributors", "Distributors"], ["report", "Report"], ["history", "History"]].map(([k, l]) => (
           <button key={k} className={`btn btn-sm ${tab === k ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
       {err && <div className="pos-error">{err}</div>}
       {tab === "make" && <MakeTab items={items} onDone={loadItems} goRecipes={() => setTab("recipes")} />}
       {tab === "recipes" && <RecipesTab items={items} onChange={loadItems} />}
+      {tab === "distributors" && <DistributorsTab items={items} onChange={loadItems} />}
       {tab === "report" && <ReportTab />}
       {tab === "history" && <HistoryTab onChange={loadItems} />}
     </div>
@@ -286,6 +287,267 @@ function RecipeModal({ product, items, onClose, onSaved }) {
   );
 }
 
+/* ── Distributors / van sales ─────────────────────────────────────────────── */
+const sellerPrice = i => i?.wholesale_price || i?.selling_price || 0;
+
+function SellerPicker({ value, onChange }) {
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState([]);
+  const [newPhone, setNewPhone] = useState("");
+  useEffect(() => {
+    if (value || q.trim().length < 2) return undefined;
+    let live = true;
+    const t = setTimeout(() => apiFetch("customers", { q: q.trim() })
+      .then(d => { if (live) setFound((d.customers || []).slice(0, 6)); }).catch(() => {}), 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [q, value]);
+  if (value) {
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <strong>{value.name}</strong>{value.phone && <span className="td-muted">{value.phone}</span>}
+        <button className="btn btn-ghost btn-sm" onClick={() => { onChange(null); setQ(""); setFound([]); }}>Change</button>
+      </div>
+    );
+  }
+  const typed = q.trim();
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Seller's name (search your customers)" />
+      {typed.length >= 2 && found.map(c => (
+        <button key={c.id} className="btn btn-ghost btn-sm" style={{ justifyContent: "flex-start" }}
+          onClick={() => onChange({ id: c.id, name: c.name, phone: c.phone })}>
+          {c.name}{c.balance > 0 ? ` · owes ${nairaFull(c.balance)}` : ""}
+        </button>
+      ))}
+      {typed.length >= 2 && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone (optional)" inputMode="tel" style={{ flex: "1 1 140px" }} />
+          <button className="btn btn-secondary btn-sm" onClick={() => onChange({ id: null, name: typed, phone: newPhone.trim() })}>
+            Add “{typed}” as a new seller</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DistributorsTab({ items, onChange }) {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState(null);
+  const [seller, setSeller] = useState(null);
+  const [lines, setLines] = useState([{ item_id: null, qty: "", unit_price: "" }]);
+  const [settling, setSettling] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const byId = useMemo(() => Object.fromEntries(items.map(i => [i.id, i])), [items]);
+  function load(d = days) { apiFetch("distributors", { days: d }).then(setData).catch(e => setErr(e.message)); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(days); }, [days]);
+
+  const setLine = (ix, patch) => setLines(lines.map((l, i) => i === ix ? { ...l, ...patch } : l));
+  const outValue = lines.reduce((s, l) => s + (Number(l.qty) || 0) * (l.unit_price === "" ? sellerPrice(byId[l.item_id]) : Number(l.unit_price) || 0), 0);
+
+  async function sendOut() {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      const r = await apiPost("distributors/send-out", {
+        customer_id: seller?.id || null, customer_name: seller && !seller.id ? seller.name : null,
+        customer_phone: seller && !seller.id ? (seller.phone || null) : null,
+        lines: lines.filter(l => l.item_id && Number(l.qty) > 0).map(l => ({
+          item_id: l.item_id, qty: Number(l.qty), unit_price: l.unit_price === "" ? null : Number(l.unit_price) })) });
+      setMsg(`Sent out with ${r.seller?.name}: ${nairaFull(r.out_value)} of goods at their price.`);
+      setSeller(null); setLines([{ item_id: null, qty: "", unit_price: "" }]);
+      load(); onChange();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div className="card" style={{ padding: 16, display: "grid", gap: 10 }}>
+        <h3 style={{ margin: 0 }}>Send goods out with a seller</h3>
+        <span className="form-hint">The goods leave stock now. When the seller comes back, settle: what's unsold comes back, and they pay for what they sold — the rest is their debt.</span>
+        <SellerPicker value={seller} onChange={setSeller} />
+        {lines.map((l, ix) => (
+          <div key={ix} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ flex: "2 1 180px", minWidth: 0 }}>
+              <ItemSelect items={items} value={l.item_id} onChange={id => setLine(ix, { item_id: id, unit_price: "" })} placeholder="— Product —" />
+            </div>
+            <input type="number" min="0" step="1" value={l.qty} onChange={e => setLine(ix, { qty: e.target.value })}
+              placeholder={byId[l.item_id]?.quantity != null ? `of ${qtyStr(byId[l.item_id].quantity)}` : "How many"} style={{ flex: "1 1 80px" }} />
+            <input type="number" min="0" step="1" value={l.unit_price} onChange={e => setLine(ix, { unit_price: e.target.value })}
+              placeholder={l.item_id ? `₦${sellerPrice(byId[l.item_id]).toLocaleString()} each` : "Their price"} style={{ flex: "1 1 110px" }}
+              title="The seller's price: a lower price for them, or retail less their commission" />
+            {lines.length > 1 && <button className="pos-remove" onClick={() => setLines(lines.filter((_, i) => i !== ix))} aria-label="Remove"><Trash2 size={13} /></button>}
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setLines([...lines, { item_id: null, qty: "", unit_price: "" }])}><Plus size={13} /> Add product</button>
+          <span className="form-hint">Their price: your wholesale price unless you type another (retail less their commission comes to the same).</span>
+        </div>
+        {outValue > 0 && <div>Goods worth <strong>{nairaFull(outValue)}</strong> at their price</div>}
+        {err && <div className="pos-error">{err}</div>}
+        {msg && <div className="pos-change">{msg}</div>}
+        <div><button className="btn btn-primary" disabled={busy || !seller || !lines.some(l => l.item_id && Number(l.qty) > 0)} onClick={sendOut}>
+          {busy ? "Sending…" : "Send out"}</button></div>
+      </div>
+
+      {!data ? <div className="td-muted">Loading…</div> : (
+        <>
+          <div className="card" style={{ padding: 16, display: "grid", gap: 8 }}>
+            <h3 style={{ margin: 0 }}>Out with sellers now ({data.out.length})</h3>
+            {data.out.length === 0 && <div className="td-muted">Nobody has goods out.</div>}
+            {data.out.map(r => (
+              <div key={r.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 8, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong>{r.seller?.name}</strong> <span className="td-muted" style={{ fontSize: 12 }}>since {dateTimeStr(r.created_at)}</span>
+                  <div className="td-muted" style={{ fontSize: 13 }}>{r.lines.map(l => `${l.out} ${l.name} @ ${nairaFull(l.unit_price)}`).join(", ")} · {nairaFull(r.out_value)}</div>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => setSettling(r)}>Settle</button>
+              </div>
+            ))}
+          </div>
+
+          <div className="card" style={{ padding: 16, display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <h3 style={{ margin: 0 }}>Sellers</h3>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[[7, "7 days"], [30, "30 days"], [90, "3 months"]].map(([d, l]) => (
+                  <button key={d} className={`btn btn-sm ${days === d ? "btn-primary" : "btn-ghost"}`} onClick={() => { setData(null); setDays(d); }}>{l}</button>
+                ))}
+              </div>
+            </div>
+            {data.sellers.length === 0 ? <div className="td-muted">No settled runs in this time.</div> : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="data-table" style={{ width: "100%" }}>
+                  <thead><tr><th>Seller</th><th style={{ textAlign: "right" }}>Took</th><th style={{ textAlign: "right" }}>Back</th>
+                    <th style={{ textAlign: "right" }}>Spoilt</th><th style={{ textAlign: "right" }}>Sold</th><th style={{ textAlign: "right" }}>Paid</th><th style={{ textAlign: "right" }}>Owes now</th></tr></thead>
+                  <tbody>
+                    {data.sellers.map(s => (
+                      <tr key={s.seller.id}>
+                        <td>{s.seller.name}<div className="td-muted" style={{ fontSize: 12 }}>{s.runs} run{s.runs === 1 ? "" : "s"}</div></td>
+                        <td style={{ textAlign: "right" }}>{qtyStr(s.taken)}</td>
+                        <td style={{ textAlign: "right" }}>{qtyStr(s.back)}</td>
+                        <td style={{ textAlign: "right", color: s.spoilt ? "#b91c1c" : undefined }}>{qtyStr(s.spoilt)}</td>
+                        <td style={{ textAlign: "right" }}>{qtyStr(s.sold)}{s.sold_pct != null && <div className="td-muted" style={{ fontSize: 12 }}>{s.sold_pct}% · {nairaFull(s.sold_value)}</div>}</td>
+                        <td style={{ textAlign: "right" }}>{nairaFull(s.paid)}</td>
+                        <td style={{ textAlign: "right", color: s.seller.owes ? "#b45309" : undefined, fontWeight: 600 }}>{nairaFull(s.seller.owes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {settling && <SettleModal run={settling} onClose={() => setSettling(null)}
+        onDone={() => { setSettling(null); load(); onChange(); }} />}
+    </div>
+  );
+}
+
+function SettleModal({ run, onClose, onDone }) {
+  const [ret, setRet] = useState(() => Object.fromEntries(run.lines.map(l => [l.id, { back: "", spoilt: "" }])));
+  const [reason, setReason] = useState("expired");
+  const [paid, setPaid] = useState("");
+  const [due, setDue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(null);
+  const sold = l => l.out - (Number(ret[l.id].back) || 0) - (Number(ret[l.id].spoilt) || 0);
+  const value = run.lines.reduce((s, l) => s + Math.max(0, sold(l)) * l.unit_price, 0);
+  const paidNum = paid === "" ? value : Number(paid) || 0;
+
+  async function save() {
+    setBusy(true); setErr("");
+    try {
+      const r = await apiPost(`distributors/runs/${run.id}/settle`, {
+        returns: Object.fromEntries(Object.entries(ret).map(([k, v]) => [k, { back: Number(v.back) || 0, spoilt: Number(v.spoilt) || 0 }])),
+        paid: paidNum, due_date: paidNum < value && due ? due : null, spoilt_reason: reason });
+      setDone(r);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && (done ? onDone() : onClose())}>
+      <div className="modal modal-wide">
+        <div className="modal-header">
+          <span className="modal-title">Settle: {run.seller?.name}</span>
+          <button className="modal-close" onClick={done ? onDone : onClose}>×</button>
+        </div>
+        {done ? (
+          <>
+            <div className="modal-body" style={{ display: "grid", gap: 8 }}>
+              <div className="pos-change">Settled. Sold {nairaFull(done.sold_value)}, paid {nairaFull(done.paid)}.</div>
+              {done.owed_now > 0 && <div>{done.seller?.name} owes {nairaFull(done.owed_now)} for this run — it's on their debts with reminders.</div>}
+            </div>
+            <div className="modal-footer">
+              {done.receipt_id && <a className="btn btn-secondary" href={`/app/pos/receipt/${done.receipt_id}`}>Receipt</a>}
+              <button className="btn btn-primary" onClick={onDone}>Done</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="modal-body" style={{ display: "grid", gap: 10 }}>
+              <div style={{ overflowX: "auto" }}>
+                <table className="data-table" style={{ width: "100%" }}>
+                  <thead><tr><th>Product</th><th style={{ textAlign: "right" }}>Took</th><th style={{ textAlign: "right" }}>Back, good</th>
+                    <th style={{ textAlign: "right" }}>Back, spoilt</th><th style={{ textAlign: "right" }}>Sold</th></tr></thead>
+                  <tbody>
+                    {run.lines.map(l => (
+                      <tr key={l.id}>
+                        <td>{l.name}<div className="td-muted" style={{ fontSize: 12 }}>@ {nairaFull(l.unit_price)}</div></td>
+                        <td style={{ textAlign: "right" }}>{l.out}</td>
+                        <td style={{ textAlign: "right" }}><input type="number" min="0" step="1" value={ret[l.id].back} placeholder="0" style={{ width: 70, textAlign: "right" }}
+                          onChange={e => setRet({ ...ret, [l.id]: { ...ret[l.id], back: e.target.value } })} /></td>
+                        <td style={{ textAlign: "right" }}><input type="number" min="0" step="1" value={ret[l.id].spoilt} placeholder="0" style={{ width: 70, textAlign: "right" }}
+                          onChange={e => setRet({ ...ret, [l.id]: { ...ret[l.id], spoilt: e.target.value } })} /></td>
+                        <td style={{ textAlign: "right", fontWeight: 600, color: sold(l) < 0 ? "#b91c1c" : undefined }}>{sold(l)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {run.lines.some(l => Number(ret[l.id].spoilt) > 0) && (
+                <div className="form-group">
+                  <label className="form-label">Why can't the spoilt ones be sold?</label>
+                  <select value={reason} onChange={e => setReason(e.target.value)}>
+                    <option value="expired">Stale / expired</option>
+                    <option value="damaged">Damaged</option>
+                    <option value="stolen">Missing</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              )}
+              <div>Sold: <strong>{nairaFull(value)}</strong></div>
+              <div className="form-group">
+                <label className="form-label">Paid now ₦</label>
+                <input type="number" min="0" step="1" value={paid} onChange={e => setPaid(e.target.value)} placeholder={String(value)} />
+              </div>
+              {paidNum < value && (
+                <>
+                  <div className="pos-credit-warn">{nairaFull(value - paidNum)} goes on {run.seller?.name}'s debts.</div>
+                  <div className="form-group">
+                    <label className="form-label">Pay by <span className="text-subtle">(optional, for reminders)</span></label>
+                    <input type="date" value={due} onChange={e => setDue(e.target.value)} />
+                  </div>
+                </>
+              )}
+              {err && <div className="modal-error">{err}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={busy || run.lines.some(l => sold(l) < 0)}>{busy ? "Saving…" : "Settle"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Report: made / sold / removed, and the materials check ─────────────── */
 function ReportTab() {
   const [days, setDays] = useState(7);
@@ -312,7 +574,7 @@ function ReportTab() {
         <>
           <div className="card" style={{ padding: 16, display: "grid", gap: 8 }}>
             <h3 style={{ margin: 0 }}>Made, sold and removed</h3>
-            <span className="form-hint">Sold and removed count everything in the period, including from stock made before it.</span>
+            <span className="form-hint">Sold and removed count everything in the period, including from stock made before it. Sold includes what sellers sold, once settled.</span>
             <div style={{ overflowX: "auto" }}>
               <table className="data-table" style={{ width: "100%" }}>
                 <thead><tr><th>Product</th><th style={{ textAlign: "right" }}>Made</th><th style={{ textAlign: "right" }}>Sold</th>
@@ -327,7 +589,7 @@ function ReportTab() {
                         {qtyStr(p.removed)}{p.removed > 0 && <div className="td-muted" style={{ fontSize: 12 }}>
                           {p.removed_pct}% · {p.removed_why.map(w => w.label.toLowerCase()).join(", ")}{p.removed_value ? ` · ${nairaFull(p.removed_value)}` : ""}</div>}
                       </td>
-                      <td style={{ textAlign: "right" }}>{p.in_stock == null ? "—" : qtyStr(p.in_stock)}</td>
+                      <td style={{ textAlign: "right" }}>{p.in_stock == null ? "—" : qtyStr(p.in_stock)}{p.with_sellers > 0 && <div className="td-muted" style={{ fontSize: 12 }}>+{qtyStr(p.with_sellers)} with sellers</div>}</td>
                     </tr>
                   ))}
                 </tbody>

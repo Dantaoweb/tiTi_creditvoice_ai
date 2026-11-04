@@ -115,6 +115,9 @@ def detect_faq(text):
     if not _is_question(text):
         return None
 
+    # ── Distributors / van sales (distributors.py) ───────────────────────────────
+    if any(k in q for k in ('my distributor', 'our distributor', 'van sale', 'van sales', 'van seller', 'sales rep', 'hawker', 'hawkers', 'seller took', 'sellers took', 'unsold bread', 'returned bread', 'bread returned', 'brought back unsold', 'settle seller', 'settle my seller', 'settle distributor', 'goods out with', 'sell on commission', 'commission seller')):
+        return "distributors"
     # ── Production: recipes and what was made (production.py) ────────────────────
     if any(k in q for k in ('recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how many did we make', 'how many did i make', 'flour used', 'wastage', 'waste report', 'how much to make', 'what i made', 'what we made', 'manufactur')):
         return "production"
@@ -1227,6 +1230,19 @@ FAQ_ANSWERS = {
         "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
         "They work in your shop and branches only. To sell your product to supermarkets or other "
         "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
+    ),
+    "distributors": (
+        "🚚 *Distributors and van sales*\n\n"
+        "Menu → *Production* → *Distributors*.\n\n"
+        "*Morning — Send out:* pick the seller (a customer, or type a new name), the products and how many. "
+        "Their price is your wholesale price unless you type another — a lower price for them, or retail less "
+        "their commission; it comes to the same. The goods leave stock now.\n\n"
+        "*Evening — Settle:* enter what came back good (it goes back into stock) and what came back spoilt "
+        "(removed with the reason, e.g. stale). The rest was sold: enter what they paid. It becomes a sale with "
+        "a receipt, and anything not paid goes on the seller's debts with reminders.\n\n"
+        "Sending more the same day adds to what they have out. *Sellers* shows, for 7, 30 or 90 days, what "
+        "each took, brought back, sold, paid and owes now.\n\n"
+        "Only the owner and staff allowed to manage stock can send goods out or settle."
     ),
     "production": (
         "🏭 *Production — for businesses that make what they sell*\n\n"

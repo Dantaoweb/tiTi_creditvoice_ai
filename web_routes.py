@@ -263,6 +263,8 @@ def register_web_routes(app):
     register_business_page_routes(app)
     from web_production_routes import register_production_routes
     register_production_routes(app)
+    from web_distributor_routes import register_distributor_routes
+    register_distributor_routes(app)
 
     # ── Inventory — split into web_inventory_routes ───────────────────────────
     from web_inventory_routes import register_inventory_routes

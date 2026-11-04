@@ -770,6 +770,40 @@ class ProductionRun(Base):
     undone_at     = Column(DateTime, nullable=True)  # a mistake, put back
 
 
+class VanRun(Base):
+    """Goods a distributor / van seller takes out to sell (distributors.py).
+    Stock leaves when they go out; the sale is recorded when they come back and
+    settle — for what was really sold — and what isn't paid is their debt."""
+
+    __tablename__ = "van_runs"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone   = Column(String, index=True)
+    branch_id     = Column(Integer, ForeignKey("branches.id"), nullable=True)
+    customer_id   = Column(Integer, ForeignKey("customers.id"), index=True)   # the distributor
+    status        = Column(String, default="out")                            # out | settled
+    note          = Column(String, nullable=True)
+    created_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at    = Column(DateTime, default=utcnow)
+    settled_at    = Column(DateTime, nullable=True)
+    settled_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    sale_tx_id    = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    sold_value    = Column(Integer, nullable=True)
+    paid          = Column(Integer, nullable=True)
+
+
+class VanRunLine(Base):
+    __tablename__ = "van_run_lines"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    run_id     = Column(Integer, ForeignKey("van_runs.id"), index=True)
+    item_id    = Column(Integer, ForeignKey("inventory_items.id"))
+    qty_out    = Column(Float, default=0)
+    qty_back   = Column(Float, default=0)         # returned, good to sell again
+    qty_spoilt = Column(Float, default=0)         # returned but can't be sold (stale, damaged)
+    unit_price = Column(Integer, default=0)       # the distributor's price
+
+
 class PageEnquiry(Base):
     """"Ask for a quotation" from a business's public page (business_page.py).
     The owner turns it into a quotation, or closes it."""

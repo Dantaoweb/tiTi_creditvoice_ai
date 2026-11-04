@@ -343,6 +343,11 @@ def report(db, owner_phone, days=30, branch_id=None):
         sold[iid] = sold.get(iid, 0.0) + float(qty or 0)
     for iid, _r, _s, qty, _v in moved(list(made), "IN", ("VOID_REVERSAL",)):
         sold[iid] = sold.get(iid, 0.0) - float(qty or 0)
+    # Sold through distributors (settled in the period), and out with them now
+    from distributors import van_sold_and_out
+    van_sold, with_sellers = van_sold_and_out(db, owner_phone, made, since, branch_id)
+    for iid, n in van_sold.items():
+        sold[iid] = sold.get(iid, 0.0) + n
     lost, lost_value, lost_why = {}, {}, {}
     for iid, reason, src, qty, val in moved(list(ids), "OUT", _SOURCES):
         why = reason or _SOURCES.get(src) or "unspecified"
@@ -368,6 +373,7 @@ def report(db, owner_phone, days=30, branch_id=None):
             "removed_pct": round(100 * w / m, 1) if m else None,
             "sold_pct": round(100 * s / m, 1) if m else None,
             "in_stock": _num(items[iid].quantity) if iid in items and items[iid].quantity is not None else None,
+            "with_sellers": with_sellers.get(iid, 0),
             "cost_per_unit": round(cost[iid] / m, 2) if m and cost.get(iid) else None,
         })
     products.sort(key=lambda p: p["product"])

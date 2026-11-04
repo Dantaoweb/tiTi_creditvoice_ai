@@ -65,6 +65,7 @@ def register_production_routes(app):
             with_recipe = {r.product_id for r in db.query(Recipe.product_id).filter(Recipe.owner_phone == owner_phone)}
             return {"items": [{"id": i.id, "name": (i.name or "").title(), "unit": i.unit, "category": i.category,
                                "quantity": i.quantity, "cost_price": i.cost_price, "selling_price": i.selling_price,
+                               "wholesale_price": i.wholesale_price,
                                "has_recipe": i.id in with_recipe}
                               for i in q.order_by(InventoryItem.name).limit(5000).all()]}
         finally:
