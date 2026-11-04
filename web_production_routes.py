@@ -36,6 +36,9 @@ class RunIn(BaseModel):
     note: Optional[str] = Field(default=None, max_length=300)
     expiry_date: Optional[str] = None                                     # YYYY-MM-DD
     allow_short: bool = False
+    rejects: Optional[float] = None              # bad ones made too
+    regrind_item_id: Optional[int] = None        # what the rejects are turned back into
+    regrind_qty: Optional[float] = None
 
 
 def register_production_routes(app):
@@ -112,7 +115,8 @@ def register_production_routes(app):
         try:
             _u, owner_phone, branch = _ctx(db, session)
             return _err(lambda: pr.plan(db, owner_phone, payload.product_id, payload.made_qty, payload.batches,
-                                        _lines(payload), payload.extra_cost, branch))
+                                        _lines(payload), payload.extra_cost, branch, payload.rejects,
+                                        payload.regrind_item_id, payload.regrind_qty))
         finally:
             db.close()
 
@@ -130,7 +134,9 @@ def register_production_routes(app):
             run = _err(lambda: pr.record_run(db, owner_phone, user.id, payload.product_id, payload.made_qty,
                                              batches=payload.batches, lines=_lines(payload),
                                              extra_cost=payload.extra_cost, note=payload.note,
-                                             expiry_date=expiry, allow_short=payload.allow_short, branch_id=branch))
+                                             expiry_date=expiry, allow_short=payload.allow_short, branch_id=branch,
+                                             rejects=payload.rejects, regrind_item_id=payload.regrind_item_id,
+                                             regrind_qty=payload.regrind_qty))
             return pr.run_dict(db, run)
         finally:
             db.close()

@@ -119,7 +119,7 @@ def detect_faq(text):
     if any(k in q for k in ('my distributor', 'our distributor', 'van sale', 'van sales', 'van seller', 'sales rep', 'hawker', 'hawkers', 'seller took', 'sellers took', 'unsold bread', 'returned bread', 'bread returned', 'brought back unsold', 'settle seller', 'settle my seller', 'settle distributor', 'goods out with', 'sell on commission', 'commission seller')):
         return "distributors"
     # ── Production: recipes and what was made (production.py) ────────────────────
-    if any(k in q for k in ('recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how many did we make', 'how many did i make', 'flour used', 'wastage', 'waste report', 'how much to make', 'what i made', 'what we made', 'manufactur')):
+    if any(k in q for k in ('recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how many did we make', 'how many did i make', 'flour used', 'wastage', 'waste report', 'rejects', 'regrind', 'reject rate', 'scrap', 'how much to make', 'what i made', 'what we made', 'manufactur')):
         return "production"
     # ── Business page (business_page.py) ─────────────────────────────────────────
     if any(k in q for k in ('business page', 'shop page', 'store page', 'my own page', 'own website', 'my website', 'business website', 'website for my business', 'web page for my business', 'online shop', 'online store', 'show my products online', 'quotation request', 'page enquiry')):
@@ -1255,6 +1255,10 @@ FAQ_ANSWERS = {
         "sugar and yeast come out by the recipe. Change an amount if you used more or less. Add a best-before "
         "date if it spoils.\n\n"
         "The product's cost price becomes what it really costs to make, so your profit on every sale is right.\n"
+        "*Rejects* — bad ones made in the run (burnt bread, a cracked pipe): enter how many. They used "
+        "materials too, so the recipe counts them and their cost falls on the good ones. If they're turned "
+        "back into something you reuse (regrind, crumbs), pick it and how much — it goes into stock and "
+        "comes off the cost. The Report shows the reject % per product.\n"
         "Not enough flour in stock? Record the purchase first, or tick *Record anyway*.\n"
         "*Report* — for today, 7 days or a month: how many you made, sold and removed (stale, spoilt), and "
         "for each material what production used against what your recipes say. More flour than the recipe "

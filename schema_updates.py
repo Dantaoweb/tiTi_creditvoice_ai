@@ -1239,7 +1239,9 @@ def ensure_schema_updates(engine):
                           ("branches", {"phone": "VARCHAR"}),
                           ("users", {"receipt_phones": "VARCHAR", "page_enabled": "BOOLEAN DEFAULT FALSE",
                                      "page_slug": "VARCHAR"}),
-                          ("production_runs", {"expected_json": "TEXT"})):
+                          ("production_runs", {"expected_json": "TEXT", "rejects_qty": "FLOAT",
+                                               "regrind_item_id": "INTEGER", "regrind_qty": "FLOAT",
+                                               "regrind_value": "INTEGER"})):
         if _table in _tables:
             _have = {c["name"] for c in inspector.get_columns(_table)}
             for _col, _typ in _cols.items():

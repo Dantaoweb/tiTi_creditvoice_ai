@@ -121,14 +121,33 @@ def delete_recipe(db, owner_phone, product_id):
 
 # ── A production run ────────────────────────────────────────────────────────
 
-def plan(db, owner_phone, product_id, made_qty, batches=None, lines=None, extra_cost=None, branch_id=None):
-    """What making `made_qty` uses and costs. `lines` (what was actually used)
-    overrides the recipe; without either, there's nothing to take out."""
+def plan(db, owner_phone, product_id, made_qty, batches=None, lines=None, extra_cost=None, branch_id=None,
+         rejects=None, regrind_item_id=None, regrind_qty=None):
+    """What making `made_qty` good ones uses and costs. `lines` (what was
+    actually used) overrides the recipe; without either, there's nothing to take
+    out. `rejects`: bad ones made too — they used materials, so the recipe
+    counts them, and their cost falls on the good ones. What the rejects are
+    turned back into (regrind, crumbs…) goes into stock and comes off the cost."""
     product = _item(db, owner_phone, product_id, branch_id)
-    made = _qty(made_qty, "number made")
+    made = _qty(made_qty, "number of good ones made")
+    try:
+        rej = float(rejects or 0)
+    except (TypeError, ValueError):
+        raise ProductionError("Enter the rejects as a number.")
+    if rej < 0:
+        raise ProductionError("Rejects can't be negative.")
+    produced = made + rej
+    regrind = None
+    if regrind_item_id:
+        rg = _item(db, owner_phone, int(regrind_item_id), branch_id)
+        if rg.id == product.id:
+            raise ProductionError(f"Rejects can't be turned back into {product.name.title()} itself.")
+        rq = _qty(regrind_qty, f"amount of {rg.name} recovered")
+        regrind = {"item_id": rg.id, "name": (rg.name or "").title(), "unit": rg.unit, "qty": round(rq, 3),
+                   "value": round(rq * float(rg.cost_price or 0))}
     r = get_recipe(db, owner_phone, product.id)
     if batches in (None, ""):
-        batches = (made / r.yield_qty) if (r and r.yield_qty) else None
+        batches = (produced / r.yield_qty) if (r and r.yield_qty) else None
     else:
         batches = _qty(batches, "number of batches")
     if lines is None:
@@ -165,7 +184,7 @@ def plan(db, owner_phone, product_id, made_qty, batches=None, lines=None, extra_
     # so the materials check stays right if the recipe changes later
     expected = []
     if r and r.yield_qty:
-        factor = made / r.yield_qty
+        factor = produced / r.yield_qty
         expected = [{"item_id": rl.item_id, "qty": round(rl.qty * factor, 3)}
                     for rl in db.query(RecipeLine).filter(RecipeLine.recipe_id == r.id).all()]
     return {
@@ -173,15 +192,20 @@ def plan(db, owner_phone, product_id, made_qty, batches=None, lines=None, extra_
         "product_id": product.id, "product": (product.name or "").title(), "unit": product.unit,
         "made_qty": _num(made), "batches": round(batches, 3) if batches else None,
         "has_recipe": bool(r), "lines": out, "materials_cost": round(materials), "extra_cost": extra,
-        "total_cost": total, "cost_per_unit": round(total / made, 2) if made else None,
+        "total_cost": total,
+        "rejects": _num(rej), "reject_pct": round(100 * rej / produced, 1) if rej else 0, "regrind": regrind,
+        # The good ones carry the whole cost, less what the rejects are worth turned back into material
+        "cost_per_unit": round(max(0, total - (regrind["value"] if regrind else 0)) / made, 2) if made else None,
         "no_cost_price": [l["name"] for l in out if not l["unit_cost"]],
         "short": [l for l in out if l["short"]],
     }
 
 
 def record_run(db, owner_phone, user_id, product_id, made_qty, *, batches=None, lines=None, extra_cost=None,
-               note=None, expiry_date=None, allow_short=False, branch_id=None):
-    p = plan(db, owner_phone, product_id, made_qty, batches, lines, extra_cost, branch_id)
+               note=None, expiry_date=None, allow_short=False, branch_id=None,
+               rejects=None, regrind_item_id=None, regrind_qty=None):
+    p = plan(db, owner_phone, product_id, made_qty, batches, lines, extra_cost, branch_id,
+             rejects, regrind_item_id, regrind_qty)
     if p["short"] and not allow_short:
         raise ProductionError("Not enough in stock: " + ", ".join(
             f"{l['name']} (need {_num(l['qty'])}, have {l['in_stock']})" for l in p["short"])
@@ -197,6 +221,10 @@ def record_run(db, owner_phone, user_id, product_id, made_qty, *, batches=None, 
                         made_qty=made, materials_cost=p["materials_cost"], extra_cost=p["extra_cost"],
                         cost_per_unit=p["cost_per_unit"], lines_json=json.dumps(p["lines"]),
                         expected_json=json.dumps(p["expected"]),
+                        rejects_qty=float(p["rejects"]) or None,
+                        regrind_item_id=p["regrind"]["item_id"] if p["regrind"] else None,
+                        regrind_qty=p["regrind"]["qty"] if p["regrind"] else None,
+                        regrind_value=p["regrind"]["value"] if p["regrind"] else None,
                         note=(note or "").strip()[:300] or None, created_by_id=user_id, created_at=now)
     db.add(run)
     db.flush()
@@ -224,6 +252,18 @@ def record_run(db, owner_phone, user_id, product_id, made_qty, *, batches=None, 
                              note=f"Made — batch {run.id}"))
     db.add(StockBatch(owner_phone=owner_phone, item_id=product.id, quantity=made, expiry_date=expiry_date,
                       batch_no=f"P{run.id}", source_type="PRODUCTION"))
+    # The rejects turned back into material (regrind) go into stock
+    rg = p["regrind"]
+    if rg:
+        mat = db.query(InventoryItem).filter(InventoryItem.id == rg["item_id"]).first()
+        mat.quantity = float(mat.quantity or 0) + rg["qty"]
+        mat.updated_at = now
+        db.add(InventoryMovement(owner_phone=owner_phone, item_id=mat.id, movement_type="IN", quantity=rg["qty"],
+                                 unit_price=mat.cost_price, source_type="PRODUCTION_REGRIND", source_id=run.id,
+                                 recorded_by_id=user_id,
+                                 note=f"From {_num(p['rejects'])} rejects of {product.name} — batch {run.id}"))
+        db.add(StockBatch(owner_phone=owner_phone, item_id=mat.id, quantity=rg["qty"],
+                          batch_no=f"R{run.id}", source_type="PRODUCTION_REGRIND"))
     db.commit()
     return run
 
@@ -240,7 +280,19 @@ def undo_run(db, owner_phone, run_id, user_id):
     if not product or float(product.quantity or 0) < float(run.made_qty or 0):
         raise ProductionError("Some of what was made has been sold or used, so it can't be undone. "
                               "Remove the mistake from stock with a reason instead.")
+    regrind = db.query(InventoryItem).filter(InventoryItem.id == run.regrind_item_id).first() \
+        if run.regrind_item_id else None
+    if regrind and float(regrind.quantity or 0) < float(run.regrind_qty or 0):
+        raise ProductionError(f"The {regrind.name} from this run's rejects has been used, so it can't be undone. "
+                              "Remove the mistake from stock with a reason instead.")
     now = utcnow()
+    if regrind:
+        regrind.quantity = float(regrind.quantity or 0) - float(run.regrind_qty or 0)
+        db.add(InventoryMovement(owner_phone=owner_phone, item_id=regrind.id, movement_type="OUT",
+                                 quantity=run.regrind_qty, unit_price=regrind.cost_price,
+                                 source_type="PRODUCTION_UNDO", source_id=run.id, recorded_by_id=user_id,
+                                 note=f"Batch {run.id} undone"))
+        db.query(StockBatch).filter(StockBatch.item_id == regrind.id, StockBatch.batch_no == f"R{run.id}").delete()
     product.quantity = float(product.quantity or 0) - float(run.made_qty)
     db.add(InventoryMovement(owner_phone=owner_phone, item_id=product.id, movement_type="OUT", quantity=run.made_qty,
                              unit_price=product.cost_price, source_type="PRODUCTION_UNDO", source_id=run.id,
@@ -276,7 +328,19 @@ def run_dict(db, run, names=None):
         "cost_per_unit": run.cost_per_unit, "lines": json.loads(run.lines_json or "[]"), "note": run.note,
         "by": by, "created_at": run.created_at.isoformat() if run.created_at else None,
         "undone": bool(run.undone_at),
+        "rejects": _num(run.rejects_qty or 0),
+        "reject_pct": round(100 * float(run.rejects_qty) / (float(run.made_qty) + float(run.rejects_qty)), 1)
+        if run.rejects_qty else 0,
+        "regrind": _regrind_dict(db, run),
     }
+
+
+def _regrind_dict(db, run):
+    if not run.regrind_item_id:
+        return None
+    it = db.query(InventoryItem).filter(InventoryItem.id == run.regrind_item_id).first()
+    return {"item_id": run.regrind_item_id, "name": (it.name or "").title() if it else "?",
+            "unit": it.unit if it else None, "qty": _num(run.regrind_qty or 0), "value": run.regrind_value or 0}
 
 
 def list_runs(db, owner_phone, days=30, branch_id=None):
@@ -290,10 +354,14 @@ def list_runs(db, owner_phone, days=30, branch_id=None):
     for r in runs:
         if r["undone"]:
             continue
-        t = totals.setdefault(r["product_id"], {"product": r["product"], "unit": r["unit"], "made": 0, "cost": 0})
+        t = totals.setdefault(r["product_id"], {"product": r["product"], "unit": r["unit"], "made": 0, "cost": 0,
+                                                "rejects": 0})
         t["made"] += float(r["made_qty"])
+        t["rejects"] += float(r["rejects"])
         t["cost"] += r["total_cost"]
     for t in totals.values():
+        t["reject_pct"] = round(100 * t["rejects"] / (float(t["made"]) + t["rejects"]), 1) if t["rejects"] else 0
+        t["rejects"] = _num(t["rejects"])
         t["made"] = _num(t["made"])
         t["cost_per_unit"] = round(t["cost"] / float(t["made"]), 2) if float(t["made"]) else None
     return {"runs": runs, "totals": sorted(totals.values(), key=lambda t: t["product"])}
@@ -317,15 +385,21 @@ def report(db, owner_phone, days=30, branch_id=None):
     runs = q.all()
     made, cost = {}, {}
     used, expected = {}, {}
+    rejects, recovered, recovered_value = {}, {}, {}
     for r in runs:
         made[r.product_id] = made.get(r.product_id, 0.0) + float(r.made_qty or 0)
-        cost[r.product_id] = cost.get(r.product_id, 0) + (r.materials_cost or 0) + (r.extra_cost or 0)
+        rejects[r.product_id] = rejects.get(r.product_id, 0.0) + float(r.rejects_qty or 0)
+        if r.regrind_item_id:
+            recovered[r.regrind_item_id] = recovered.get(r.regrind_item_id, 0.0) + float(r.regrind_qty or 0)
+            recovered_value[r.product_id] = recovered_value.get(r.product_id, 0) + (r.regrind_value or 0)
+        cost[r.product_id] = cost.get(r.product_id, 0) + (r.materials_cost or 0) + (r.extra_cost or 0) \
+            - (r.regrind_value or 0)
         for l in json.loads(r.lines_json or "[]"):
             used[l["item_id"]] = used.get(l["item_id"], 0.0) + float(l["qty"])
         for e in json.loads(r.expected_json or "[]"):
             expected[e["item_id"]] = expected.get(e["item_id"], 0.0) + float(e["qty"])
 
-    ids = set(made) | set(used) | set(expected)
+    ids = set(made) | set(used) | set(expected) | set(recovered)
     items = {i.id: i for i in db.query(InventoryItem).filter(InventoryItem.id.in_(ids or [0])).all()}
 
     def moved(item_ids, kind, sources):
@@ -374,14 +448,14 @@ def report(db, owner_phone, days=30, branch_id=None):
             "sold_pct": round(100 * s / m, 1) if m else None,
             "in_stock": _num(items[iid].quantity) if iid in items and items[iid].quantity is not None else None,
             "with_sellers": with_sellers.get(iid, 0),
+            "rejects": _num(rejects.get(iid, 0.0)),
+            "reject_pct": round(100 * rejects[iid] / (m + rejects[iid]), 1) if rejects.get(iid) else 0,
             "cost_per_unit": round(cost[iid] / m, 2) if m and cost.get(iid) else None,
         })
     products.sort(key=lambda p: p["product"])
 
     materials = []
-    for iid in sorted(set(used) | set(expected), key=lambda i: name(i)[0]):
-        if iid in made and iid not in used and iid not in expected:
-            continue
+    for iid in sorted(set(used) | set(expected) | set(recovered), key=lambda i: name(i)[0]):
         n, unit = name(iid)
         u, e = used.get(iid, 0.0), expected.get(iid, 0.0)
         diff = round(u - e, 3)
@@ -393,5 +467,6 @@ def report(db, owner_phone, days=30, branch_id=None):
             "difference_value": round(diff * unit_cost) if e else None,
             "removed": _num(lost.get(iid, 0.0)),
             "removed_value": round(lost_value.get(iid, 0)),
+            "recovered": _num(recovered.get(iid, 0.0)),        # turned back from rejects (regrind)
         })
     return {"days": days, "runs": len(runs), "products": products, "materials": materials}

@@ -54,6 +54,10 @@ function MakeTab({ items, onDone, goRecipes }) {
   const [expiry, setExpiry] = useState("");
   const [note, setNote] = useState("");
   const [anyway, setAnyway] = useState(false);
+  // Bad ones made too, and what they're turned back into (regrind, crumbs…)
+  const [rejects, setRejects] = useState("");
+  const [regrindId, setRegrindId] = useState(null);
+  const [regrindQty, setRegrindQty] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
@@ -66,11 +70,18 @@ function MakeTab({ items, onDone, goRecipes }) {
     clearTimeout(timer.current);
     if (!productId || !(Number(made) > 0)) return undefined;
     timer.current = setTimeout(() => {
-      apiPost("production/plan", { product_id: productId, made_qty: Number(made), lines, extra_cost: extra })
+      apiPost("production/plan", { product_id: productId, made_qty: Number(made), lines, extra_cost: extra, ...rejectBody() })
         .then(p => { setPlan(p); setErr(""); }).catch(e => setErr(e.message));
     }, 300);
     return () => clearTimeout(timer.current);
-  }, [productId, made, lines, extra]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId, made, lines, extra, rejects, regrindId, regrindQty]);
+
+  function rejectBody() {
+    return { rejects: Number(rejects) || 0,
+      regrind_item_id: regrindId && Number(regrindQty) > 0 ? regrindId : null,
+      regrind_qty: regrindId && Number(regrindQty) > 0 ? Number(regrindQty) : null };
+  }
 
   function pick(id) { setProductId(id); setLines(null); setExtra(null); setAnyway(false); setDone(""); }
   function editLine(itemId, qty) {
@@ -82,9 +93,10 @@ function MakeTab({ items, onDone, goRecipes }) {
     setBusy(true); setErr("");
     try {
       const r = await apiPost("production/runs", { product_id: productId, made_qty: Number(made), lines, extra_cost: extra,
-        expiry_date: expiry || null, note: note.trim() || null, allow_short: anyway });
-      setDone(`Recorded: ${qtyStr(r.made_qty)} ${r.product} in stock${r.cost_per_unit ? `, ${nairaFull(Math.round(r.cost_per_unit))} each to make` : ""}.`);
+        expiry_date: expiry || null, note: note.trim() || null, allow_short: anyway, ...rejectBody() });
+      setDone(`Recorded: ${qtyStr(r.made_qty)} ${r.product} in stock${r.cost_per_unit ? `, ${nairaFull(Math.round(r.cost_per_unit))} each to make` : ""}${r.rejects ? ` · ${qtyStr(r.rejects)} rejects (${r.reject_pct}%)` : ""}${r.regrind ? ` → ${qtyStr(r.regrind.qty)} ${r.regrind.unit || ""} ${r.regrind.name}` : ""}.`);
       setMade(""); setLines(null); setExtra(null); setExpiry(""); setNote(""); setAnyway(false); setPlan(null);
+      setRejects(""); setRegrindId(null); setRegrindQty("");
       onDone();
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
@@ -101,10 +113,34 @@ function MakeTab({ items, onDone, goRecipes }) {
           <ItemSelect items={items} value={productId} onChange={pick} placeholder="— Pick a product —" />
         </div>
         <div className="form-group">
-          <label className="form-label">How many{product?.unit ? ` (${product.unit})` : ""}?</label>
+          <label className="form-label">How many good ones{product?.unit ? ` (${product.unit})` : ""}?</label>
           <input type="number" min="0" step="any" inputMode="decimal" value={made} onChange={e => { setMade(e.target.value); setLines(null); }} placeholder="e.g. 160" />
         </div>
       </div>
+
+      {productId && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "end" }}>
+          <div className="form-group">
+            <label className="form-label">Rejects <span className="text-subtle">(bad ones, optional)</span></label>
+            <input type="number" min="0" step="any" inputMode="decimal" value={rejects} onChange={e => { setRejects(e.target.value); setLines(null); }} placeholder="0" />
+          </div>
+          {Number(rejects) > 0 && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Turned back into <span className="text-subtle">(optional)</span></label>
+                <ItemSelect items={items} exclude={productId} value={regrindId} onChange={setRegrindId} placeholder="— Nothing / thrown away —" />
+              </div>
+              {regrindId && (
+                <div className="form-group">
+                  <label className="form-label">How much{items.find(i => i.id === regrindId)?.unit ? ` (${items.find(i => i.id === regrindId).unit})` : ""}?</label>
+                  <input type="number" min="0" step="any" inputMode="decimal" value={regrindQty} onChange={e => setRegrindQty(e.target.value)} placeholder="e.g. 60" />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {Number(rejects) > 0 && <span className="form-hint">Rejects used materials too, so the recipe counts them, and their cost falls on the good ones. What they're turned back into (regrind, crumbs…) goes into stock and comes off the cost.</span>}
 
       {product && !product.has_recipe && (
         <div className="pos-credit-warn">
@@ -148,6 +184,8 @@ function MakeTab({ items, onDone, goRecipes }) {
           </div>
           <div className="card" style={{ padding: "10px 12px", display: "flex", gap: 16, flexWrap: "wrap", alignItems: "baseline" }}>
             <span>Total cost <strong>{nairaFull(plan.total_cost)}</strong></span>
+            {plan.rejects > 0 && <span>Rejects <strong>{qtyStr(plan.rejects)}</strong> ({plan.reject_pct}%)</span>}
+            {plan.regrind && <span>{plan.regrind.name} back: <strong>{qtyStr(plan.regrind.qty)} {plan.regrind.unit || ""}</strong>{plan.regrind.value ? ` (−${nairaFull(plan.regrind.value)})` : ""}</span>}
             {plan.cost_per_unit != null && plan.total_cost > 0 && (
               <span>Each {product?.unit || "one"} costs <strong>{nairaFull(Math.round(plan.cost_per_unit))}</strong> to make
                 {product?.selling_price ? <span className="td-muted"> · sells at {nairaFull(product.selling_price)}</span> : null}</span>
@@ -583,7 +621,7 @@ function ReportTab() {
                   {data.products.map(p => (
                     <tr key={p.product_id}>
                       <td>{p.product}{p.cost_per_unit ? <div className="td-muted" style={{ fontSize: 12 }}>{nairaFull(Math.round(p.cost_per_unit))} each to make</div> : null}</td>
-                      <td style={{ textAlign: "right" }}>{qtyStr(p.made)}</td>
+                      <td style={{ textAlign: "right" }}>{qtyStr(p.made)}{p.rejects > 0 && <div style={{ fontSize: 12, color: p.reject_pct >= 5 ? "#b91c1c" : "var(--muted)" }}>+{qtyStr(p.rejects)} rejects ({p.reject_pct}%)</div>}</td>
                       <td style={{ textAlign: "right" }}>{qtyStr(p.sold)}{p.sold_pct != null && <div className="td-muted" style={{ fontSize: 12 }}>{p.sold_pct}%</div>}</td>
                       <td style={{ textAlign: "right", color: p.removed_pct >= 10 ? "#b91c1c" : undefined }}>
                         {qtyStr(p.removed)}{p.removed > 0 && <div className="td-muted" style={{ fontSize: 12 }}>
@@ -617,7 +655,8 @@ function ReportTab() {
                             {m.difference == null ? "not in recipe" : m.difference === 0 ? "as recipe" : `${over ? "+" : ""}${qtyStr(m.difference)}`}
                             {m.difference ? <div style={{ fontSize: 12, fontWeight: 400 }}>{m.difference_pct > 0 ? "+" : ""}{m.difference_pct}%{m.difference_value ? ` · ${nairaFull(Math.abs(m.difference_value))}` : ""}</div> : null}
                           </td>
-                          <td style={{ textAlign: "right" }}>{m.removed ? `${qtyStr(m.removed)}${m.removed_value ? ` · ${nairaFull(m.removed_value)}` : ""}` : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{m.removed ? `${qtyStr(m.removed)}${m.removed_value ? ` · ${nairaFull(m.removed_value)}` : ""}` : "—"}
+                            {m.recovered > 0 && <div className="td-muted" style={{ fontSize: 12 }}>+{qtyStr(m.recovered)} back from rejects</div>}</td>
                         </tr>
                       );
                     })}
@@ -671,6 +710,7 @@ function HistoryTab({ onChange }) {
                 <div key={t.product} className="card" style={{ padding: "8px 12px" }}>
                   <div className="td-muted" style={{ fontSize: 12 }}>{t.product}</div>
                   <strong>{qtyStr(t.made)}{t.unit ? ` ${t.unit}` : ""}</strong>
+                  {t.rejects > 0 && <span className="td-muted" style={{ fontSize: 12 }}> · {t.reject_pct}% rejects</span>}
                   {t.cost_per_unit ? <span className="td-muted" style={{ fontSize: 12 }}> · {nairaFull(Math.round(t.cost_per_unit))} each</span> : null}
                 </div>
               ))}
@@ -680,7 +720,7 @@ function HistoryTab({ onChange }) {
           {data.runs.map(r => (
             <div key={r.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 8, display: "grid", gap: 2, opacity: r.undone ? 0.55 : 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                <strong>{qtyStr(r.made_qty)} {r.product}{r.undone && " · undone"}</strong>
+                <strong>{qtyStr(r.made_qty)} {r.product}{r.rejects > 0 && <span className="td-muted" style={{ fontWeight: 400 }}> + {qtyStr(r.rejects)} rejects ({r.reject_pct}%){r.regrind ? ` → ${qtyStr(r.regrind.qty)} ${r.regrind.unit || ""} ${r.regrind.name}` : ""}</span>}{r.undone && " · undone"}</strong>
                 <span className="td-muted" style={{ fontSize: 12 }}>{dateTimeStr(r.created_at)}{r.by ? ` · ${r.by}` : ""}</span>
               </div>
               <div className="td-muted" style={{ fontSize: 13 }}>

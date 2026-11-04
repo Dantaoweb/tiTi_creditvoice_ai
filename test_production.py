@@ -212,3 +212,81 @@ def test_report_made_sold_removed_and_the_flour_check():
     assert (m["Flour"]["used"], m["Flour"]["expected"], m["Flour"]["difference"]) == (3, 2, 1)
     assert m["Flour"]["difference_pct"] == 50.0 and m["Flour"]["difference_value"] == 60000
     assert m["Sugar"]["difference"] == 0
+
+
+def _pipe_factory():
+    phone = f"2347083{next(_seq):06d}"
+    client.post("/app/api/auth/register", json={"name": "Sterling PVC", "phone": phone, "pin": "5678"})
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter_by(phone=phone).one()
+        u.subscription_plan = "PREMIUM"; u.subscription_status = "ACTIVE"
+        mk = lambda name, unit, qty, cost: InventoryItem(owner_phone=phone, name=name, unit=unit, quantity=qty,  # noqa: E731
+                                                         cost_price=cost, is_available=True)
+        resin, calcium = mk("pvc resin", "kg", 2000, 1200), mk("calcium carbonate", "kg", 1000, 100)
+        regrind = mk("pvc regrind", "kg", 0, 600)
+        pipe = mk('4 inch pipe 6m', "length", 0, None)
+        db.add_all([resin, calcium, regrind, pipe]); db.commit()
+        ids = {"resin": resin.id, "calcium": calcium.id, "regrind": regrind.id, "pipe": pipe.id}
+    finally:
+        db.close()
+    return phone, client.post("/app/api/auth/login", json={"phone": phone, "pin": "5678"}).cookies, ids
+
+
+def test_rejects_count_in_the_recipe_and_become_regrind():
+    _phone, cook, ids = _pipe_factory()
+    # One length: 9 kg resin + 4 kg calcium (= ₦11,200)
+    client.put(f"/app/api/production/recipe/{ids['pipe']}", cookies=cook, json={
+        "yield_qty": 1, "lines": [{"item_id": ids["resin"], "qty": 9}, {"item_id": ids["calcium"], "qty": 4}]})
+    # A shift: 100 good lengths, 5 rejects ground into 60 kg of regrind (₦600/kg = ₦36,000)
+    p = client.post("/app/api/production/plan", cookies=cook, json={
+        "product_id": ids["pipe"], "made_qty": 100, "rejects": 5,
+        "regrind_item_id": ids["regrind"], "regrind_qty": 60}).json()
+    assert {l["name"]: l["qty"] for l in p["lines"]} == {"Pvc Resin": 945, "Calcium Carbonate": 420}   # 105 made in all
+    assert p["total_cost"] == 105 * 11200 and p["reject_pct"] == 4.8
+    assert p["regrind"]["value"] == 36000
+    assert p["cost_per_unit"] == round((105 * 11200 - 36000) / 100, 2)       # ₦11,400 a good length
+
+    run = client.post("/app/api/production/runs", cookies=cook, json={
+        "product_id": ids["pipe"], "made_qty": 100, "rejects": 5,
+        "regrind_item_id": ids["regrind"], "regrind_qty": 60}).json()
+    assert _q(ids["pipe"]) == (100, 11400) and _q(ids["regrind"])[0] == 60
+    assert run["rejects"] == 5 and run["regrind"]["qty"] == 60
+
+    rep = client.get("/app/api/production/report", cookies=cook).json()
+    pipe = rep["products"][0]
+    assert (pipe["made"], pipe["rejects"], pipe["reject_pct"]) == (100, 5, 4.8)
+    m = {x["name"]: x for x in rep["materials"]}
+    assert m["Pvc Resin"]["difference"] == 0                  # rejects counted: no false alarm
+    assert m["Pvc Regrind"]["recovered"] == 60
+
+    # Regrind goes back into the next mix
+    client.put(f"/app/api/production/recipe/{ids['pipe']}", cookies=cook, json={
+        "yield_qty": 1, "lines": [{"item_id": ids["resin"], "qty": 8}, {"item_id": ids["regrind"], "qty": 1},
+                                  {"item_id": ids["calcium"], "qty": 4}]})
+    client.post("/app/api/production/runs", cookies=cook, json={"product_id": ids["pipe"], "made_qty": 50})
+    assert _q(ids["regrind"])[0] == 10
+
+    # The first run can't be undone now: its regrind has been used
+    r = client.post(f"/app/api/production/runs/{run['id']}/undo", cookies=cook)
+    assert r.status_code == 400 and "regrind" in r.json()["detail"].lower()
+
+
+def test_rejects_without_regrind_and_undo_takes_regrind_back():
+    _phone, cook, ids = _pipe_factory()
+    client.put(f"/app/api/production/recipe/{ids['pipe']}", cookies=cook, json={
+        "yield_qty": 1, "lines": [{"item_id": ids["resin"], "qty": 9}]})
+    run = client.post("/app/api/production/runs", cookies=cook, json={
+        "product_id": ids["pipe"], "made_qty": 10, "rejects": 2}).json()
+    assert run["regrind"] is None and run["cost_per_unit"] == 12 * 9 * 1200 / 10     # rejects' cost on the good ones
+    run2 = client.post("/app/api/production/runs", cookies=cook, json={
+        "product_id": ids["pipe"], "made_qty": 10, "rejects": 1, "regrind_item_id": ids["regrind"], "regrind_qty": 12}).json()
+    assert client.post(f"/app/api/production/runs/{run2['id']}/undo", cookies=cook).status_code == 200
+    assert _q(ids["regrind"])[0] == 0 and _q(ids["pipe"])[0] == 10
+    # Refusals
+    assert client.post("/app/api/production/plan", cookies=cook, json={
+        "product_id": ids["pipe"], "made_qty": 10, "rejects": -1}).status_code == 400
+    assert client.post("/app/api/production/plan", cookies=cook, json={
+        "product_id": ids["pipe"], "made_qty": 10, "rejects": 1, "regrind_item_id": ids["regrind"]}).status_code == 400
+    assert client.post("/app/api/production/plan", cookies=cook, json={
+        "product_id": ids["pipe"], "made_qty": 10, "regrind_item_id": ids["pipe"], "regrind_qty": 5}).status_code == 400

@@ -124,7 +124,7 @@ NAV_GUIDE = {
     "/production": {
         "name": "Production",
         "where": "In the menu after Stock, for businesses that make what they sell (Settings → Production to show or hide)",
-        "what": "Recipes (what one batch uses) and Record production: what you made goes into stock, the flour, "
+        "what": "Recipes (what one batch uses) and Record production (with rejects, and regrind back into stock): what you made goes into stock, the flour, "
                 "sugar… it used comes out, and you see what each one really cost to make. Report: made / sold / removed, "
                 "and materials used against the recipe. Distributors: send goods out with sellers, settle what "
                 "they sold when they come back.",

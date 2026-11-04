@@ -764,6 +764,12 @@ class ProductionRun(Base):
     cost_per_unit = Column(Float, nullable=True)
     lines_json    = Column(Text)                     # [{"item_id", "name", "unit", "qty", "unit_cost", "short"}]
     expected_json = Column(Text, nullable=True)      # what the recipe said it should use: [{"item_id", "qty"}]
+    # Bad ones made in the run (not in stock); what they're turned back into, if
+    # anything (regrind, crumbs…) — a material that goes back into stock
+    rejects_qty     = Column(Float, nullable=True)
+    regrind_item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+    regrind_qty     = Column(Float, nullable=True)
+    regrind_value   = Column(Integer, nullable=True)
     note          = Column(String, nullable=True)
     created_by_id = Column(String, ForeignKey("users.id"), nullable=True)
     created_at    = Column(DateTime, default=utcnow)
