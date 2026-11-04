@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap, CheckCircle2, ClipboardList,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Globe, Settings as SettingsIcon,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Globe, Factory, Settings as SettingsIcon,
 } from "lucide-react";
 import { applyDisplay, loadSettings, useSettings } from "../lib/settings";
 import { checkForCameraCrash, takeCrashNotice } from "../lib/cameraSafety";
@@ -43,6 +43,8 @@ function navScore(entry) {
 
 // Business groups that book customers for a time (appointments.py SERVICE_GROUPS)
 const SERVICE_GROUPS = ["service", "clinic", "professional"];
+// Businesses that make what they sell (production.py PRODUCER_TYPES)
+const PRODUCER_TYPES = ["bakery", "food_vendor", "catering", "block_making", "carpentry_furniture", "welding_fabrication", "tailor_fashion"];
 
 function buildNav(L, group) {
   // Businesses that don't sell products (savings/ajo, dues collection) get the
@@ -57,6 +59,8 @@ function buildNav(L, group) {
     { to: "/school",       label: "School fees",      icon: GraduationCap,   schoolOnly: true },
     { to: "/pos",          label: L.pos,              icon: ShoppingCart,    tab: !noProducts },
     { to: "/inventory",    label: L.stock,            icon: Package,         tab: !noProducts },
+    // Businesses that make what they sell: recipes and what was made (Settings → Production)
+    { to: "/production",   label: "Production",       icon: Factory, productionOnly: true, fullAccessOnly: true },
     { to: "/customers",    label: L.navCustomers,     icon: Users,           tab: true  },
     { to: "/thrift",       label: "Thrift / Ajo",     icon: Activity,        tab: isThrift },
     { to: "/reminders",    label: L.reminders,        icon: Bell            },
@@ -189,10 +193,12 @@ export default function Layout() {
   const isSchool = user?.menu_group === "school";
   const { business: biz } = useSettings();
   const showAppointments = biz.show_appointments ?? SERVICE_GROUPS.includes(user?.label_group || user?.menu_group);
+  const showProduction = biz.show_production ?? PRODUCER_TYPES.includes(user?.business_type);
   const NAV = buildNav(L, user?.menu_group).filter(item =>
     (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel) && (!item.poultryOnly || isPoultry)
     && (!item.fullAccessOnly || (user?.full_access ?? !user?.parent_id))
-    && (!item.schoolOnly || isSchool) && (!item.appointmentsOnly || showAppointments));
+    && (!item.schoolOnly || isSchool) && (!item.appointmentsOnly || showAppointments)
+    && (!item.productionOnly || showProduction));
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {
@@ -212,6 +218,7 @@ export default function Layout() {
     "/school":       "School fees",
     "/transactions": "Transactions",
     "/suppliers":    "Suppliers",
+    "/production":   "Production",
     "/business-page": "Business page",
     "/staff":        "Staff",
     "/partners":     "Partners & Investors",

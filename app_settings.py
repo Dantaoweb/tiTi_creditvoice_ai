@@ -59,6 +59,9 @@ BUSINESS_DEFAULTS = {
     # Appointments in the menu: None = for service businesses (salon, clinic,
     # vet, mechanic, tailor, professionals); True / False = the owner's choice
     "show_appointments": None,
+    # Production (production.py): None = automatic (shown for businesses that make
+    # what they sell: bakery, food, blocks, furniture…); True / False = the owner's choice
+    "show_production": None,
     # Customer booking link (booking_link.py): off unless the owner turns it on;
     # requests wait for the owner to confirm unless they choose otherwise
     "booking_link": False,
@@ -189,7 +192,7 @@ def _clean_business(k, v):
         if n < 0:
             raise ValueError("The low-stock alert can't be negative.")
         return n
-    if k in ("show_appointments", "quotes"):
+    if k in ("show_appointments", "quotes", "show_production"):
         return None if v is None else bool(v)
     if k == "category_only_list":
         return bool(v)

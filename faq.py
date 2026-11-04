@@ -115,6 +115,9 @@ def detect_faq(text):
     if not _is_question(text):
         return None
 
+    # ── Production: recipes and what was made (production.py) ────────────────────
+    if any(k in q for k in ('recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how much to make', 'what i made', 'what we made', 'manufactur')):
+        return "production"
     # ── Business page (business_page.py) ─────────────────────────────────────────
     if any(k in q for k in ('business page', 'shop page', 'store page', 'my own page', 'own website', 'my website', 'business website', 'website for my business', 'web page for my business', 'online shop', 'online store', 'show my products online', 'quotation request', 'page enquiry')):
         return "business_page"
@@ -1224,6 +1227,21 @@ FAQ_ANSWERS = {
         "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
         "They work in your shop and branches only. To sell your product to supermarkets or other "
         "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
+    ),
+    "production": (
+        "🏭 *Production — for businesses that make what they sell*\n\n"
+        "Menu → *Production* (bakery, food, catering, blocks, furniture, welding and tailoring see it; anyone "
+        "else: Settings → Production → Show).\n\n"
+        "*1. Add a recipe* — Production → *Recipes* → pick the product → what one batch makes (e.g. 80 loaves), "
+        "what it uses (1 bag flour, 2 kg sugar, 0.5 kg yeast — these must be in your stock with their cost "
+        "price), and other costs per batch like gas and labour. You see what each one costs to make.\n\n"
+        "*2. Record production* — pick the product and how many you made. It goes into stock, and the flour, "
+        "sugar and yeast come out by the recipe. Change an amount if you used more or less. Add a best-before "
+        "date if it spoils.\n\n"
+        "The product's cost price becomes what it really costs to make, so your profit on every sale is right.\n"
+        "Not enough flour in stock? Record the purchase first, or tick *Record anyway*.\n"
+        "A mistake? *History* → *Undo* (while what was made is still in stock).\n\n"
+        "Only the owner and staff allowed to manage stock can use Production."
     ),
     "business_page": (
         "🌐 *Your business page*\n\n"

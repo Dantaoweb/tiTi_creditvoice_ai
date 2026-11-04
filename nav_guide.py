@@ -121,6 +121,12 @@ NAV_GUIDE = {
         "where": "Under More",
         "what": "Who you buy from and what you owe them — and the Verified Supplier directory: find suppliers, connect with them, or apply to be listed (Pro).",
     },
+    "/production": {
+        "name": "Production",
+        "where": "In the menu after Stock, for businesses that make what they sell (Settings → Production to show or hide)",
+        "what": "Recipes (what one batch uses) and Record production: what you made goes into stock, the flour, "
+                "sugar… it used comes out, and you see what each one really cost to make.",
+    },
     "/business-page": {
         "name": "Business page",
         "where": "Under More (owner and staff allowed to see all records)",

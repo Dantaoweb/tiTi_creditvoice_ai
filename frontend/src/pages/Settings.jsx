@@ -469,6 +469,32 @@ function InvoicesSection({ business }) {
   );
 }
 
+// Production in the menu: "auto" (null) = businesses that make what they sell
+function ProductionSection({ business }) {
+  const { save, msg, err } = useSaver(saveBusiness);
+  const v = business.show_production ?? "auto";
+  const hints = {
+    auto: "Automatic: shown for businesses that make what they sell (bakery, food, catering, blocks, furniture, welding, tailoring).",
+    true: "Shown: Production is in your menu. Add recipes, record what you make — it goes into stock and the materials come out — and see what each one costs to make.",
+    false: "Hidden: Production is not in your menu. What was recorded is kept.",
+  };
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">Production</span>
+        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
+      </div>
+      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+        {err && <div className="modal-error">{err}</div>}
+        <Row title="Show Production in the menu" hint={hints[String(v)]}>
+          <Seg value={v} onChange={x => save({ show_production: x === "auto" ? null : x })}
+            options={[["auto", "Automatic"], [true, "Show"], [false, "Hide"]]} />
+        </Row>
+      </div>
+    </div>
+  );
+}
+
 // Appointments in the menu: "auto" (null) = service businesses only
 function AppointmentsSection({ business }) {
   const { save, msg, err } = useSaver(saveBusiness);
@@ -744,6 +770,7 @@ export default function Settings() {
           <VatSection business={business} />
           <InvoicesSection business={business} />
           <AppointmentsSection business={business} />
+          <ProductionSection business={business} />
           <LoyaltySection business={business} />
           <PrintSection business={business} />
         </>

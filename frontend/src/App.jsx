@@ -32,6 +32,7 @@ const Receipts = lazyPage(() => import("./pages/Receipts"));
 const NewReceipt = lazyPage(() => import("./pages/NewReceipt"));
 const Invoices = lazyPage(() => import("./pages/Invoices"));
 const BusinessPage = lazyPage(() => import("./pages/BusinessPage"));
+const Production = lazyPage(() => import("./pages/Production"));
 const Expenses = lazyPage(() => import("./pages/Expenses"));
 const InvoiceEditor = lazyPage(() => import("./pages/InvoiceEditor"));
 const InvoiceView = lazyPage(() => import("./pages/InvoiceView"));
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="receipts/new" element={<NewReceipt />}   />
           <Route path="invoices"     element={<Invoices />}     />
           <Route path="business-page" element={<BusinessPage />} />
+          <Route path="production"   element={<Production />}   />
           <Route path="expenses"     element={<Expenses />}     />
           <Route path="invoices/new" element={<InvoiceEditor />} />
           <Route path="invoices/:id" element={<InvoiceView />}  />

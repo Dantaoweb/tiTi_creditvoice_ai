@@ -720,6 +720,55 @@ class HeldSale(Base):
     updated_at     = Column(DateTime, default=utcnow)
 
 
+class Recipe(Base):
+    """What one batch of a product uses (production.py): e.g. 1 bag of flour,
+    2 kg sugar, 500 g yeast → 80 loaves. Plus other costs per batch (gas,
+    labour) that aren't stock."""
+
+    __tablename__ = "recipes"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone = Column(String, index=True)
+    product_id  = Column(Integer, ForeignKey("inventory_items.id"), index=True)   # what it makes
+    yield_qty   = Column(Float, default=1)          # how many one batch makes
+    extra_cost  = Column(Integer, default=0)        # ₦ per batch not in stock: gas, labour, diesel
+    note        = Column(String, nullable=True)
+    created_at  = Column(DateTime, default=utcnow)
+    updated_at  = Column(DateTime, default=utcnow)
+
+
+class RecipeLine(Base):
+    __tablename__ = "recipe_lines"
+
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    recipe_id = Column(Integer, ForeignKey("recipes.id"), index=True)
+    item_id   = Column(Integer, ForeignKey("inventory_items.id"))   # the raw material
+    qty       = Column(Float)                                        # per batch, in the item's unit
+
+
+class ProductionRun(Base):
+    """One bake / batch made: the product goes into stock, what it used comes
+    out, and it is costed (production.py)."""
+
+    __tablename__ = "production_runs"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone   = Column(String, index=True)
+    branch_id     = Column(Integer, ForeignKey("branches.id"), nullable=True)
+    product_id    = Column(Integer, ForeignKey("inventory_items.id"), index=True)
+    recipe_id     = Column(Integer, ForeignKey("recipes.id"), nullable=True)
+    batches       = Column(Float, nullable=True)
+    made_qty      = Column(Float)
+    materials_cost = Column(Integer, default=0)
+    extra_cost    = Column(Integer, default=0)
+    cost_per_unit = Column(Float, nullable=True)
+    lines_json    = Column(Text)                     # [{"item_id", "name", "unit", "qty", "unit_cost", "short"}]
+    note          = Column(String, nullable=True)
+    created_by_id = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at    = Column(DateTime, default=utcnow)
+    undone_at     = Column(DateTime, nullable=True)  # a mistake, put back
+
+
 class PageEnquiry(Base):
     """"Ask for a quotation" from a business's public page (business_page.py).
     The owner turns it into a quotation, or closes it."""
