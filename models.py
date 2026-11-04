@@ -763,6 +763,7 @@ class ProductionRun(Base):
     extra_cost    = Column(Integer, default=0)
     cost_per_unit = Column(Float, nullable=True)
     lines_json    = Column(Text)                     # [{"item_id", "name", "unit", "qty", "unit_cost", "short"}]
+    expected_json = Column(Text, nullable=True)      # what the recipe said it should use: [{"item_id", "qty"}]
     note          = Column(String, nullable=True)
     created_by_id = Column(String, ForeignKey("users.id"), nullable=True)
     created_at    = Column(DateTime, default=utcnow)

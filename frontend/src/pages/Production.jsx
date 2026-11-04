@@ -17,13 +17,14 @@ export default function Production() {
   return (
     <div style={{ display: "grid", gap: 14, maxWidth: 820 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {[["make", "Record production"], ["recipes", "Recipes"], ["history", "History"]].map(([k, l]) => (
+        {[["make", "Record production"], ["recipes", "Recipes"], ["report", "Report"], ["history", "History"]].map(([k, l]) => (
           <button key={k} className={`btn btn-sm ${tab === k ? "btn-primary" : "btn-ghost"}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
       {err && <div className="pos-error">{err}</div>}
       {tab === "make" && <MakeTab items={items} onDone={loadItems} goRecipes={() => setTab("recipes")} />}
       {tab === "recipes" && <RecipesTab items={items} onChange={loadItems} />}
+      {tab === "report" && <ReportTab />}
       {tab === "history" && <HistoryTab onChange={loadItems} />}
     </div>
   );
@@ -281,6 +282,97 @@ function RecipeModal({ product, items, onClose, onSaved }) {
           <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save recipe"}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Report: made / sold / removed, and the materials check ─────────────── */
+function ReportTab() {
+  const [days, setDays] = useState(7);
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let live = true;
+    apiFetch("production/report", { days }).then(d => { if (live) setData(d); }).catch(e => live && setErr(e.message));
+    return () => { live = false; };
+  }, [days]);
+  const pick = d => { setData(null); setDays(d); };
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {[[1, "Today"], [7, "7 days"], [30, "30 days"], [90, "3 months"]].map(([d, l]) => (
+          <button key={d} className={`btn btn-sm ${days === d ? "btn-primary" : "btn-ghost"}`} onClick={() => pick(d)}>{l}</button>
+        ))}
+      </div>
+      {err && <div className="pos-error">{err}</div>}
+      {!data ? <div className="td-muted">Loading…</div> : data.products.length === 0 ? (
+        <div className="card td-muted" style={{ padding: 16 }}>Nothing made in this time.</div>
+      ) : (
+        <>
+          <div className="card" style={{ padding: 16, display: "grid", gap: 8 }}>
+            <h3 style={{ margin: 0 }}>Made, sold and removed</h3>
+            <span className="form-hint">Sold and removed count everything in the period, including from stock made before it.</span>
+            <div style={{ overflowX: "auto" }}>
+              <table className="data-table" style={{ width: "100%" }}>
+                <thead><tr><th>Product</th><th style={{ textAlign: "right" }}>Made</th><th style={{ textAlign: "right" }}>Sold</th>
+                  <th style={{ textAlign: "right" }}>Removed</th><th style={{ textAlign: "right" }}>Left now</th></tr></thead>
+                <tbody>
+                  {data.products.map(p => (
+                    <tr key={p.product_id}>
+                      <td>{p.product}{p.cost_per_unit ? <div className="td-muted" style={{ fontSize: 12 }}>{nairaFull(Math.round(p.cost_per_unit))} each to make</div> : null}</td>
+                      <td style={{ textAlign: "right" }}>{qtyStr(p.made)}</td>
+                      <td style={{ textAlign: "right" }}>{qtyStr(p.sold)}{p.sold_pct != null && <div className="td-muted" style={{ fontSize: 12 }}>{p.sold_pct}%</div>}</td>
+                      <td style={{ textAlign: "right", color: p.removed_pct >= 10 ? "#b91c1c" : undefined }}>
+                        {qtyStr(p.removed)}{p.removed > 0 && <div className="td-muted" style={{ fontSize: 12 }}>
+                          {p.removed_pct}% · {p.removed_why.map(w => w.label.toLowerCase()).join(", ")}{p.removed_value ? ` · ${nairaFull(p.removed_value)}` : ""}</div>}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{p.in_stock == null ? "—" : qtyStr(p.in_stock)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {data.materials.length > 0 && (
+            <div className="card" style={{ padding: 16, display: "grid", gap: 8 }}>
+              <h3 style={{ margin: 0 }}>Materials: used vs the recipe</h3>
+              <span className="form-hint">What production used against what your recipes say it should, for what came out. Using more than the recipe means waste, a wrong recipe, or material going missing.</span>
+              <div style={{ overflowX: "auto" }}>
+                <table className="data-table" style={{ width: "100%" }}>
+                  <thead><tr><th>Material</th><th style={{ textAlign: "right" }}>Used</th><th style={{ textAlign: "right" }}>Recipe says</th>
+                    <th style={{ textAlign: "right" }}>Difference</th><th style={{ textAlign: "right" }}>Removed</th></tr></thead>
+                  <tbody>
+                    {data.materials.map(m => {
+                      const over = m.difference > 0;
+                      return (
+                        <tr key={m.item_id}>
+                          <td>{m.name}{m.unit ? <span className="td-muted"> ({m.unit})</span> : null}</td>
+                          <td style={{ textAlign: "right" }}>{qtyStr(m.used)}</td>
+                          <td style={{ textAlign: "right" }}>{m.expected == null ? "—" : qtyStr(m.expected)}</td>
+                          <td style={{ textAlign: "right", color: over ? "#b91c1c" : m.difference < 0 ? "#166534" : undefined, fontWeight: over ? 700 : undefined }}>
+                            {m.difference == null ? "not in recipe" : m.difference === 0 ? "as recipe" : `${over ? "+" : ""}${qtyStr(m.difference)}`}
+                            {m.difference ? <div style={{ fontSize: 12, fontWeight: 400 }}>{m.difference_pct > 0 ? "+" : ""}{m.difference_pct}%{m.difference_value ? ` · ${nairaFull(Math.abs(m.difference_value))}` : ""}</div> : null}
+                          </td>
+                          <td style={{ textAlign: "right" }}>{m.removed ? `${qtyStr(m.removed)}${m.removed_value ? ` · ${nairaFull(m.removed_value)}` : ""}` : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {data.materials.some(m => m.difference > 0) && (
+                <div className="pos-credit-warn">
+                  {data.materials.filter(m => m.difference > 0).map(m =>
+                    `${qtyStr(m.difference)} ${m.unit || ""} more ${m.name.toLowerCase()} than the recipe needs`.replace(/\s+/g, " ")).join("; ")}
+                  {" "}— check the recipe, or where it went.
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

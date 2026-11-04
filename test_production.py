@@ -178,3 +178,37 @@ def test_titi_explains_production():
     assert detect_faq("i bake bread, how do i record it?") == "production"
     assert detect_faq("how do i sell my farm produce?") != "production"
     assert "Record production" in FAQ_ANSWERS["production"]
+
+
+def test_report_made_sold_removed_and_the_flour_check():
+    phone, cook, ids = _bakery()
+    _recipe(cook, ids)              # 80 loaves = 1 flour, 2 sugar, 0.5 yeast
+    # Bake 1: by the recipe. Bake 2: 80 loaves, but 2 bags of flour went in.
+    client.post("/app/api/production/runs", cookies=cook, json={"product_id": ids["loaf"], "made_qty": 80})
+    client.post("/app/api/production/runs", cookies=cook, json={
+        "product_id": ids["loaf"], "made_qty": 80,
+        "lines": [{"item_id": ids["flour"], "qty": 2}, {"item_id": ids["sugar"], "qty": 2}, {"item_id": ids["yeast"], "qty": 0.5}]})
+    # An undone bake doesn't count
+    bad = client.post("/app/api/production/runs", cookies=cook, json={"product_id": ids["loaf"], "made_qty": 80}).json()
+    client.post(f"/app/api/production/runs/{bad['id']}/undo", cookies=cook)
+
+    # 100 sold (one sale of 10 voided), 12 stale loaves thrown away
+    client.post("/app/api/pos/save", cookies=cook, json={"owner_phone": phone, "payment_amount": 150000, "items": [
+        {"inventory_item_id": ids["loaf"], "name": "bread large loaf", "qty": 100, "unit_price": 1500}]})
+    void = client.post("/app/api/pos/save", cookies=cook, json={"owner_phone": phone, "payment_amount": 15000, "items": [
+        {"inventory_item_id": ids["loaf"], "name": "bread large loaf", "qty": 10, "unit_price": 1500}]}).json()
+    assert client.post(f"/app/api/transactions/{void['receipt_id']}/void", cookies=cook,
+                       json={"reason": "wrong item"}).status_code == 200
+    r = client.post(f"/app/api/inventory/{ids['loaf']}/adjust", cookies=cook,
+                    json={"qty_delta": -12, "reason": "expired", "note": "stale"})
+    assert r.status_code == 200, r.text
+
+    rep = client.get("/app/api/production/report", cookies=cook).json()
+    assert rep["runs"] == 2
+    loaf = rep["products"][0]
+    assert (loaf["made"], loaf["sold"], loaf["removed"], loaf["in_stock"]) == (160, 100, 12, 48)
+    assert loaf["removed_pct"] == 7.5 and loaf["removed_why"][0]["label"] == "Expired"
+    m = {x["name"]: x for x in rep["materials"]}
+    assert (m["Flour"]["used"], m["Flour"]["expected"], m["Flour"]["difference"]) == (3, 2, 1)
+    assert m["Flour"]["difference_pct"] == 50.0 and m["Flour"]["difference_value"] == 60000
+    assert m["Sugar"]["difference"] == 0

@@ -143,6 +143,16 @@ def register_production_routes(app):
         finally:
             db.close()
 
+    @app.get("/app/api/production/report")
+    def web_production_report(days: int = 30, session: dict = Depends(require_web_auth)):
+        """Made / sold / removed per product, and materials used vs what the recipes say."""
+        db = SessionLocal()
+        try:
+            _u, owner_phone, branch = _ctx(db, session)
+            return pr.report(db, owner_phone, max(1, min(int(days), 366)), branch)
+        finally:
+            db.close()
+
     @app.post("/app/api/production/runs/{run_id}/undo")
     def web_production_undo(run_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()

@@ -161,7 +161,15 @@ def plan(db, owner_phone, product_id, made_qty, batches=None, lines=None, extra_
         except (TypeError, ValueError):
             raise ProductionError("Enter other costs as an amount.")
     total = round(materials) + extra
+    # What the recipe says making this many should use — kept with the run,
+    # so the materials check stays right if the recipe changes later
+    expected = []
+    if r and r.yield_qty:
+        factor = made / r.yield_qty
+        expected = [{"item_id": rl.item_id, "qty": round(rl.qty * factor, 3)}
+                    for rl in db.query(RecipeLine).filter(RecipeLine.recipe_id == r.id).all()]
     return {
+        "expected": expected,
         "product_id": product.id, "product": (product.name or "").title(), "unit": product.unit,
         "made_qty": _num(made), "batches": round(batches, 3) if batches else None,
         "has_recipe": bool(r), "lines": out, "materials_cost": round(materials), "extra_cost": extra,
@@ -188,6 +196,7 @@ def record_run(db, owner_phone, user_id, product_id, made_qty, *, batches=None, 
                         recipe_id=recipe.id if recipe else None, batches=p["batches"],
                         made_qty=made, materials_cost=p["materials_cost"], extra_cost=p["extra_cost"],
                         cost_per_unit=p["cost_per_unit"], lines_json=json.dumps(p["lines"]),
+                        expected_json=json.dumps(p["expected"]),
                         note=(note or "").strip()[:300] or None, created_by_id=user_id, created_at=now)
     db.add(run)
     db.flush()
@@ -198,7 +207,7 @@ def record_run(db, owner_phone, user_id, product_id, made_qty, *, batches=None, 
             mat.quantity = max(0.0, float(mat.quantity or 0) - l["qty"])
         mat.updated_at = now
         db.add(InventoryMovement(owner_phone=owner_phone, item_id=mat.id, movement_type="OUT", quantity=l["qty"],
-                                 unit_price=mat.cost_price, source_type="PRODUCTION_USE", source_id=str(run.id),
+                                 unit_price=mat.cost_price, source_type="PRODUCTION_USE", source_id=run.id,
                                  recorded_by_id=user_id, note=label + (" (not all was in stock)" if l["short"] else "")))
 
     # The real cost: the average of what was in stock and what was just made
@@ -211,7 +220,7 @@ def record_run(db, owner_phone, user_id, product_id, made_qty, *, batches=None, 
     product.updated_at = now
     db.add(InventoryMovement(owner_phone=owner_phone, item_id=product.id, movement_type="IN", quantity=made,
                              unit_price=round(cpu) if cpu else None, source_type="PRODUCTION",
-                             source_id=str(run.id), recorded_by_id=user_id,
+                             source_id=run.id, recorded_by_id=user_id,
                              note=f"Made — batch {run.id}"))
     db.add(StockBatch(owner_phone=owner_phone, item_id=product.id, quantity=made, expiry_date=expiry_date,
                       batch_no=f"P{run.id}", source_type="PRODUCTION"))
@@ -234,7 +243,7 @@ def undo_run(db, owner_phone, run_id, user_id):
     now = utcnow()
     product.quantity = float(product.quantity or 0) - float(run.made_qty)
     db.add(InventoryMovement(owner_phone=owner_phone, item_id=product.id, movement_type="OUT", quantity=run.made_qty,
-                             unit_price=product.cost_price, source_type="PRODUCTION_UNDO", source_id=str(run.id),
+                             unit_price=product.cost_price, source_type="PRODUCTION_UNDO", source_id=run.id,
                              recorded_by_id=user_id, note=f"Batch {run.id} undone"))
     db.query(StockBatch).filter(StockBatch.item_id == product.id, StockBatch.batch_no == f"P{run.id}").delete()
     for l in json.loads(run.lines_json or "[]"):
@@ -246,7 +255,7 @@ def undo_run(db, owner_phone, run_id, user_id):
             mat.quantity = float(mat.quantity or 0) + back
             db.add(InventoryMovement(owner_phone=owner_phone, item_id=mat.id, movement_type="IN", quantity=back,
                                      unit_price=mat.cost_price, source_type="PRODUCTION_UNDO",
-                                     source_id=str(run.id), recorded_by_id=user_id,
+                                     source_id=run.id, recorded_by_id=user_id,
                                      note=f"Batch {run.id} undone"))
     run.undone_at = now
     db.commit()
@@ -288,3 +297,95 @@ def list_runs(db, owner_phone, days=30, branch_id=None):
         t["made"] = _num(t["made"])
         t["cost_per_unit"] = round(t["cost"] / float(t["made"]), 2) if float(t["made"]) else None
     return {"runs": runs, "totals": sorted(totals.values(), key=lambda t: t["product"])}
+
+
+# ── Made / sold / wasted, and the materials check ───────────────────────────
+
+def report(db, owner_phone, days=30, branch_id=None):
+    """For each product made in the period: how many were made, sold, removed
+    (stale, spoilt, damaged…) and are left. For each material: what production
+    really used against what the recipes say it should have — more than the
+    recipe is flour going somewhere."""
+    from sqlalchemy import func
+    from inventory_suppliers import SALE_MOVEMENT_SOURCES
+    from stock_removal import _SOURCES, label as reason_label
+    since = datetime.utcnow() - timedelta(days=days)
+    q = db.query(ProductionRun).filter(ProductionRun.owner_phone == owner_phone, ProductionRun.created_at >= since,
+                                       ProductionRun.undone_at.is_(None))
+    if branch_id is not None:
+        q = q.filter(ProductionRun.branch_id == branch_id)
+    runs = q.all()
+    made, cost = {}, {}
+    used, expected = {}, {}
+    for r in runs:
+        made[r.product_id] = made.get(r.product_id, 0.0) + float(r.made_qty or 0)
+        cost[r.product_id] = cost.get(r.product_id, 0) + (r.materials_cost or 0) + (r.extra_cost or 0)
+        for l in json.loads(r.lines_json or "[]"):
+            used[l["item_id"]] = used.get(l["item_id"], 0.0) + float(l["qty"])
+        for e in json.loads(r.expected_json or "[]"):
+            expected[e["item_id"]] = expected.get(e["item_id"], 0.0) + float(e["qty"])
+
+    ids = set(made) | set(used) | set(expected)
+    items = {i.id: i for i in db.query(InventoryItem).filter(InventoryItem.id.in_(ids or [0])).all()}
+
+    def moved(item_ids, kind, sources):
+        rows = (db.query(InventoryMovement.item_id, InventoryMovement.reason, InventoryMovement.source_type,
+                         func.sum(InventoryMovement.quantity), func.sum(InventoryMovement.quantity *
+                                                                        func.coalesce(InventoryMovement.unit_price, 0)))
+                .filter(InventoryMovement.owner_phone == owner_phone, InventoryMovement.item_id.in_(item_ids or [0]),
+                        InventoryMovement.movement_type == kind, InventoryMovement.source_type.in_(list(sources)),
+                        InventoryMovement.created_at >= since)
+                .group_by(InventoryMovement.item_id, InventoryMovement.reason, InventoryMovement.source_type).all())
+        return rows
+
+    sold = {}
+    for iid, _r, _s, qty, _v in moved(list(made), "OUT", SALE_MOVEMENT_SOURCES):
+        sold[iid] = sold.get(iid, 0.0) + float(qty or 0)
+    for iid, _r, _s, qty, _v in moved(list(made), "IN", ("VOID_REVERSAL",)):
+        sold[iid] = sold.get(iid, 0.0) - float(qty or 0)
+    lost, lost_value, lost_why = {}, {}, {}
+    for iid, reason, src, qty, val in moved(list(ids), "OUT", _SOURCES):
+        why = reason or _SOURCES.get(src) or "unspecified"
+        lost[iid] = lost.get(iid, 0.0) + float(qty or 0)
+        lost_value[iid] = lost_value.get(iid, 0) + float(val or 0)
+        lost_why.setdefault(iid, {})
+        lost_why[iid][why] = lost_why[iid].get(why, 0.0) + float(qty or 0)
+
+    def name(iid):
+        it = items.get(iid)
+        return ((it.name or "").title(), it.unit) if it else ("?", None)
+
+    products = []
+    for iid, m in made.items():
+        n, unit = name(iid)
+        s = max(0.0, sold.get(iid, 0.0))
+        w = lost.get(iid, 0.0)
+        products.append({
+            "product_id": iid, "product": n, "unit": unit, "made": _num(m), "sold": _num(s), "removed": _num(w),
+            "removed_value": round(lost_value.get(iid, 0)),
+            "removed_why": [{"reason": k, "label": reason_label(k), "qty": _num(v)}
+                            for k, v in sorted(lost_why.get(iid, {}).items(), key=lambda kv: -kv[1])],
+            "removed_pct": round(100 * w / m, 1) if m else None,
+            "sold_pct": round(100 * s / m, 1) if m else None,
+            "in_stock": _num(items[iid].quantity) if iid in items and items[iid].quantity is not None else None,
+            "cost_per_unit": round(cost[iid] / m, 2) if m and cost.get(iid) else None,
+        })
+    products.sort(key=lambda p: p["product"])
+
+    materials = []
+    for iid in sorted(set(used) | set(expected), key=lambda i: name(i)[0]):
+        if iid in made and iid not in used and iid not in expected:
+            continue
+        n, unit = name(iid)
+        u, e = used.get(iid, 0.0), expected.get(iid, 0.0)
+        diff = round(u - e, 3)
+        unit_cost = float(items[iid].cost_price or 0) if iid in items else 0.0
+        materials.append({
+            "item_id": iid, "name": n, "unit": unit, "used": _num(u), "expected": _num(e) if e else None,
+            "difference": _num(diff) if e else None,
+            "difference_pct": round(100 * diff / e, 1) if e else None,
+            "difference_value": round(diff * unit_cost) if e else None,
+            "removed": _num(lost.get(iid, 0.0)),
+            "removed_value": round(lost_value.get(iid, 0)),
+        })
+    return {"days": days, "runs": len(runs), "products": products, "materials": materials}

@@ -125,7 +125,8 @@ NAV_GUIDE = {
         "name": "Production",
         "where": "In the menu after Stock, for businesses that make what they sell (Settings → Production to show or hide)",
         "what": "Recipes (what one batch uses) and Record production: what you made goes into stock, the flour, "
-                "sugar… it used comes out, and you see what each one really cost to make.",
+                "sugar… it used comes out, and you see what each one really cost to make. Report: made / sold / removed, "
+                "and materials used against the recipe.",
     },
     "/business-page": {
         "name": "Business page",

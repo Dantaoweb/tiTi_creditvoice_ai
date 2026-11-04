@@ -116,7 +116,7 @@ def detect_faq(text):
         return None
 
     # ── Production: recipes and what was made (production.py) ────────────────────
-    if any(k in q for k in ('recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how much to make', 'what i made', 'what we made', 'manufactur')):
+    if any(k in q for k in ('recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how many did we make', 'how many did i make', 'flour used', 'wastage', 'waste report', 'how much to make', 'what i made', 'what we made', 'manufactur')):
         return "production"
     # ── Business page (business_page.py) ─────────────────────────────────────────
     if any(k in q for k in ('business page', 'shop page', 'store page', 'my own page', 'own website', 'my website', 'business website', 'website for my business', 'web page for my business', 'online shop', 'online store', 'show my products online', 'quotation request', 'page enquiry')):
@@ -1240,6 +1240,9 @@ FAQ_ANSWERS = {
         "date if it spoils.\n\n"
         "The product's cost price becomes what it really costs to make, so your profit on every sale is right.\n"
         "Not enough flour in stock? Record the purchase first, or tick *Record anyway*.\n"
+        "*Report* — for today, 7 days or a month: how many you made, sold and removed (stale, spoilt), and "
+        "for each material what production used against what your recipes say. More flour than the recipe "
+        "needs shows in red with its value — waste, a wrong recipe, or flour going missing.\n"
         "A mistake? *History* → *Undo* (while what was made is still in stock).\n\n"
         "Only the owner and staff allowed to manage stock can use Production."
     ),
