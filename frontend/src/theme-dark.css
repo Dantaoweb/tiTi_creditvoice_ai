@@ -53,6 +53,7 @@
 :root[data-theme="dark"] .pos-remove:hover { background: color-mix(in srgb, #fee2e2 10%, var(--surface)); }
 :root[data-theme="dark"] .pos-add-custom:hover { background: color-mix(in srgb, #eff6ff 10%, var(--surface)); }
 :root[data-theme="dark"] .pos-customer-box .pos-search-row { background: var(--surface); }
+:root[data-theme="dark"] .customer-highlight input:not([type="checkbox"]) { background: var(--surface); }
 :root[data-theme="dark"] .pos-discount-mode { background: var(--surface); }
 :root[data-theme="dark"] .pos-credit-warn { background: color-mix(in srgb, #fff7ed 10%, var(--surface)); border-color: var(--line); color: color-mix(in srgb, #9a3412 45%, #ffffff); }
 :root[data-theme="dark"] .pos-credit-card { background: color-mix(in srgb, #fffbeb 10%, var(--surface)); }

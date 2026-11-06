@@ -120,7 +120,7 @@ function BookModal({ day, staff, appt, onClose, onSaved }) {
         ) : (
           <>
             <div className="modal-body" style={{ display: "grid", gap: 10 }}>
-              <div><label className="form-label">Customer</label><CustomerPick value={customer} onChange={setCustomer} /></div>
+              <div className="customer-highlight"><label className="form-label">Customer</label><CustomerPick value={customer} onChange={setCustomer} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                 <div><label className="form-label">Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: "100%" }} /></div>
                 <div><label className="form-label">Time</label><input type="time" value={time} onChange={e => setTime(e.target.value)} style={{ width: "100%" }} /></div>

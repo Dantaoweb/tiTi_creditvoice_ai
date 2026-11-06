@@ -247,7 +247,7 @@ export default function InvoiceEditor() {
                 debt when you record the payment.</>}
         </div>
 
-        <div>
+        <div className="customer-highlight">
           <label className="form-label">Bill to</label>
           {id ? (
             <div className="pos-customer-pill"><User size={13} /><span>{customer?.name}</span></div>

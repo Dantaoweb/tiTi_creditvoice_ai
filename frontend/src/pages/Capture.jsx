@@ -492,7 +492,7 @@ function PaymentForm({ ownerPhone, onSuccess }) {
 
   return (
     <form onSubmit={handleSubmit} className="qf-form">
-      <div className="form-group">
+      <div className="form-group customer-highlight">
         <label className="form-label">{L.customer} who paid *</label>
         <CustomerSearch ownerPhone={ownerPhone} placeholder={`Search ${L.customerName.toLowerCase()}…`} filterDebtors onSelect={setCustomer} value={customer} />
         <div className="form-hint">Shows {L.customers.toLowerCase()} with outstanding balance.</div>

@@ -136,7 +136,7 @@ export default function NewReceipt() {
           </button>
         </div>
 
-        <div className="form-group">
+        <div className="form-group customer-highlight">
           <label className="form-label">Customer <span className="text-subtle">— leave blank for a cash receipt</span></label>
           <CustomerSearch ownerPhone={ownerPhone} placeholder="Search customer…" allowNew value={customer}
             onSelect={c => { setCustomer(c); setSettleDebt(true); }} onQueryChange={setCustQuery} />

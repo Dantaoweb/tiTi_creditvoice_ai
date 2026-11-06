@@ -1487,28 +1487,38 @@ tr.low-stock td { background: #fffbeb; }
    Quick Record so the customer field is consistent everywhere. */
 .pos-customer-box,
 .customer-highlight {
-  background: rgba(26, 86, 219, 0.05);
-  border-left: 3px solid var(--brand);
+  background: rgba(26, 86, 219, 0.09);
+  border-left: 4px solid var(--brand);
 }
-/* Quick Record renders it as a standalone form-group card. */
+/* Quick Record and invoices render it as a standalone form-group card. */
 .customer-highlight {
-  border: 1px solid rgba(26, 86, 219, 0.22);
-  border-left: 3px solid var(--brand);
+  border: 1.5px solid rgba(26, 86, 219, 0.35);
+  border-left: 4px solid var(--brand);
   border-radius: var(--radius-sm);
   padding: 12px;
 }
-.pos-customer-label { color: var(--ink); font-size: 12px; }
-.pos-customer-opt {
+/* The label is blue and bold, not grey like every other field's */
+.pos-customer-label,
+.customer-highlight > .form-label { color: var(--brand); font-size: 12px; font-weight: 800; }
+.pos-customer-opt,
+.customer-highlight > .form-label .text-subtle {
   font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--muted);
 }
-.pos-customer-box .pos-search-row {
+/* The name field itself: a blue border, blue icon and blue placeholder */
+.pos-customer-box .pos-search-row,
+.customer-highlight input:not([type="checkbox"]) {
   background: #fff;
-  border: 1px solid var(--line);
+  border: 2px solid var(--brand);
   border-radius: var(--radius-sm);
 }
-.pos-customer-box .pos-search-row:focus-within {
-  border-color: var(--brand);
-  box-shadow: var(--shadow-sm);
+.pos-customer-box .pos-search-icon { color: var(--brand); }
+.pos-customer-box .pos-search-input::placeholder,
+.customer-highlight input::placeholder { color: var(--brand); opacity: 0.75; }
+.pos-customer-box .pos-search-row:focus-within,
+.customer-highlight input:focus {
+  border-color: var(--brand-dark);
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.18);
+  outline: none;
 }
 
 .pos-total-row {
