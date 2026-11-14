@@ -19,6 +19,14 @@ PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 # Thread-local collector for web chat — set by web_collect_start()
 _web_ctx = threading.local()
 
+# Demo businesses (demo_business.py) and their sample customers use numbers
+# starting 999 — not real numbers, and never messaged.
+DEMO_PREFIX = "999"
+
+
+def is_demo_number(to):
+    return str(to or "").lstrip("+").startswith(DEMO_PREFIX)
+
 
 def web_collect_start():
     """Start intercepting send_whatsapp_message calls for the current thread."""
@@ -37,6 +45,8 @@ def send_whatsapp_message(to, message):
     if _msgs is not None:
         _msgs.append(message)
         return True
+    if is_demo_number(to):
+        return None
 
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
         print(
@@ -91,6 +101,8 @@ def send_whatsapp_template(to, template_name, language="en", components=None):
     if _msgs is not None:
         _msgs.append(f"[template:{template_name}]")
         return True
+    if is_demo_number(to):
+        return None
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
         print("WhatsApp template skipped: token/phone id missing", flush=True)
         return None

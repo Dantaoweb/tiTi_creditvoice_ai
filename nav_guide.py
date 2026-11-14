@@ -129,6 +129,13 @@ NAV_GUIDE = {
                 "and materials used against the recipe. Distributors: send goods out with sellers, settle what "
                 "they sold when they come back.",
     },
+    "/demo": {
+        "name": "Demo business",
+        "where": "In the menu, only for CreditVoice admins and marketers",
+        "what": "Show the app as any kind of business (bakery, school, pharmacy…) with sample data, to demo it or "
+                "train staff — separate from every real business, nothing is sent. The blue bar switches type, "
+                "resets, or exits the demo.",
+    },
     "/marketer": {
         "name": "My marketing",
         "where": "In the menu, only for CreditVoice marketers",

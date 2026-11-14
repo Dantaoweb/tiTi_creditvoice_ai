@@ -110,6 +110,10 @@ class User(Base):
     page_slug = Column(String, nullable=True, unique=True, index=True)   # creditvoiceai.com/b/<slug>
     # The marketer who brought this business (marketers.py), if any
     marketer_id = Column(Integer, ForeignKey("marketers.id"), nullable=True, index=True)
+    # A demo business (demo_business.py) for an admin or marketer to show and
+    # teach with — sample data only, never counted, never messaged
+    is_demo = Column(Boolean, default=False)
+    demo_owner_id = Column(String, nullable=True, index=True)   # the real user it belongs to
     bank_accounts_json = Column(Text, nullable=True)
 
     subscription_plan = Column(String, default="BASIC")

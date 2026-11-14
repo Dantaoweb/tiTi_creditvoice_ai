@@ -1238,7 +1238,8 @@ def ensure_schema_updates(engine):
                           ("inventory_items", {"removed_at": "TIMESTAMP", "removed_reason": "VARCHAR"}),
                           ("branches", {"phone": "VARCHAR"}),
                           ("users", {"receipt_phones": "VARCHAR", "page_enabled": "BOOLEAN DEFAULT FALSE",
-                                     "page_slug": "VARCHAR", "marketer_id": "INTEGER"}),
+                                     "page_slug": "VARCHAR", "marketer_id": "INTEGER",
+                                     "is_demo": "BOOLEAN DEFAULT FALSE", "demo_owner_id": "VARCHAR"}),
                           ("production_runs", {"expected_json": "TEXT", "rejects_qty": "FLOAT",
                                                "regrind_item_id": "INTEGER", "regrind_qty": "FLOAT",
                                                "regrind_value": "INTEGER"})):

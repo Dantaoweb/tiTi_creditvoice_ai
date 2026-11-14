@@ -415,6 +415,8 @@ def register_auth_routes(app):
                 "is_app_admin": bool(is_app_admin(user.phone, db)),
                 # A CreditVoice marketer (marketers.py): "My marketing" in the menu
                 "is_marketer": bool(__import__("marketers").for_user(db, user)),
+                "is_demo": bool(getattr(user, "is_demo", False)),
+                "can_demo": bool(__import__("demo_business").can_demo(db, user)),
                 "plan": sub["plan"],
                 "subscription_plan": sub["plan"],
                 "subscription_status": sub["status"],   # ACTIVE | TRIAL | GRACE | EXPIRED

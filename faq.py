@@ -115,6 +115,9 @@ def detect_faq(text):
     if not _is_question(text):
         return None
 
+    # ── Demo business (demo_business.py) ─────────────────────────────────────────
+    if any(k in q for k in ('demo business', 'demo account', 'demo mode', 'open demo', 'exit demo', 'show me as', 'sample data', 'show a customer how')):
+        return "demo_business"
     # ── CreditVoice marketers (marketers.py) — not referrals ─────────────────────
     if any(k in q for k in ('marketer', 'marketers', 'my marketing', 'marketing bonus', 'become a marketer', 'sales agent for creditvoice', 'market creditvoice', 'sell creditvoice')):
         return "marketer"
@@ -1236,6 +1239,15 @@ FAQ_ANSWERS = {
         "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
         "They work in your shop and branches only. To sell your product to supermarkets or other "
         "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
+    ),
+    "demo_business": (
+        "🎬 *Demo business — show CreditVoice as any business*\n\n"
+        "For CreditVoice admins and marketers: Menu → *Demo business* → pick a type (bakery, school, pharmacy, "
+        "building materials…) → *Open a fresh demo*. You get a business of that type with sample products, "
+        "customers, sales and a debt — to show a customer how it works, or to train staff.\n\n"
+        "It's separate from every real business, and nothing is sent: sample customers are never messaged.\n\n"
+        "The blue *DEMO* bar at the top stays while you're inside: *Show me as…* switches to another type, "
+        "*Reset* starts the same type fresh, and *Exit demo* takes you back to your own account."
     ),
     "marketer": (
         "📣 *CreditVoice marketers*\n\n"

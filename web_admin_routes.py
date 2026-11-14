@@ -217,14 +217,18 @@ def register_admin_routes(app):
             week_start    = today_start - timedelta(days=7)
             month_start   = today_start - timedelta(days=30)
 
-            total_users   = db.query(User).filter(User.parent_id == None).count()
-            new_today     = db.query(User).filter(User.parent_id == None, User.created_at >= today_start).count()
-            new_this_week = db.query(User).filter(User.parent_id == None, User.created_at >= week_start).count()
-            new_this_month= db.query(User).filter(User.parent_id == None, User.created_at >= month_start).count()
+            total_users   = db.query(User).filter(User.parent_id == None, User.is_demo.isnot(True)).count()
+            new_today     = db.query(User).filter(User.parent_id == None, User.is_demo.isnot(True), User.created_at >= today_start).count()
+            new_this_week = db.query(User).filter(User.parent_id == None, User.is_demo.isnot(True), User.created_at >= week_start).count()
+            new_this_month= db.query(User).filter(User.parent_id == None, User.is_demo.isnot(True), User.created_at >= month_start).count()
 
-            total_tx      = db.query(Transaction).count()
-            tx_today      = db.query(Transaction).filter(Transaction.created_at >= today_start).count()
-            tx_this_week  = db.query(Transaction).filter(Transaction.created_at >= week_start).count()
+            # Demo businesses' sample sales (demo_business.py) don't count
+            from sqlalchemy import or_ as _or
+            _demo_ids = db.query(User.id).filter(User.is_demo.is_(True))
+            _real_tx = _or(Transaction.recorded_by_id.is_(None), Transaction.recorded_by_id.notin_(_demo_ids))
+            total_tx      = db.query(Transaction).filter(_real_tx).count()
+            tx_today      = db.query(Transaction).filter(_real_tx, Transaction.created_at >= today_start).count()
+            tx_this_week  = db.query(Transaction).filter(_real_tx, Transaction.created_at >= week_start).count()
 
             failed_total  = db.query(FailedParse).count()
             failed_today  = db.query(FailedParse).filter(FailedParse.created_at >= today_start).count()
@@ -236,7 +240,7 @@ def register_admin_routes(app):
                 day_start = today_start - timedelta(days=i)
                 day_end   = day_start + timedelta(days=1)
                 count = db.query(User).filter(
-                    User.parent_id == None,
+                    User.parent_id == None, User.is_demo.isnot(True),
                     User.created_at >= day_start,
                     User.created_at < day_end,
                 ).count()
@@ -250,7 +254,7 @@ def register_admin_routes(app):
             for i in range(13, -1, -1):
                 day_start = today_start - timedelta(days=i)
                 day_end   = day_start + timedelta(days=1)
-                count = db.query(Transaction).filter(
+                count = db.query(Transaction).filter(_real_tx,
                     Transaction.created_at >= day_start,
                     Transaction.created_at < day_end,
                 ).count()
@@ -261,7 +265,7 @@ def register_admin_routes(app):
 
             # Business type breakdown
             biz_types = {}
-            for u in db.query(User).filter(User.parent_id == None).all():
+            for u in db.query(User).filter(User.parent_id == None, User.is_demo.isnot(True)).all():
                 key = u.business_type_label or u.business_type or "Unknown"
                 biz_types[key] = biz_types.get(key, 0) + 1
 
@@ -382,7 +386,7 @@ def register_admin_routes(app):
                     last_seen[ph] = last
 
             # ── Base directory query ──────────────────────────────────────────
-            query = db.query(User).filter(User.parent_id == None)
+            query = db.query(User).filter(User.parent_id == None, User.is_demo.isnot(True))
             if q:
                 like = f"%{q}%"
                 query = query.filter(

@@ -29,6 +29,7 @@ ASKED = [
     ("how do i become a marketer?", "marketer"),
     ("where is my marketing bonus?", "marketer"),
     ("how do i refer a friend?", "referral"),
+    ("how do i open the demo business?", "demo_business"),
 ]
 
 

@@ -570,6 +570,9 @@ def _build_auth_response(user: User, db=None) -> dict:
             "can_quote": __import__("business_templates").can_quote(user, db),
             # A CreditVoice marketer (marketers.py) — shows "My marketing" in the menu
             "is_marketer": bool(db is not None and __import__("marketers").for_user(db, user)),
+            # A demo business (demo_business.py): the app shows the demo bar with Exit
+            "is_demo": bool(getattr(user, "is_demo", False)),
+            "can_demo": bool(db is not None and __import__("demo_business").can_demo(db, user)),
             "address": user.address,
             "subscription_plan": plan,
             "subscription_expires_at": expires_at.isoformat() if expires_at else None,

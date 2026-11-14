@@ -2952,6 +2952,7 @@ def _parse_message(text):
             # "customer" or "supplier", which used to send "how do I give a
             # customer a discount" to the customer guide. These reuse the FAQ
             # answers (build_app_guide_message falls back to FAQ_ANSWERS).
+            "demo_business":      ['demo business', 'demo account', 'demo mode', 'open demo', 'exit demo', 'show me as', 'sample data', 'show a customer how'],
             "marketer":           ['marketer', 'marketers', 'my marketing', 'marketing bonus', 'become a marketer', 'sales agent for creditvoice', 'market creditvoice', 'sell creditvoice'],
             "distributors":       ['my distributor', 'our distributor', 'van sale', 'van sales', 'van seller', 'sales rep', 'hawker', 'hawkers', 'seller took', 'sellers took', 'unsold bread', 'returned bread', 'bread returned', 'brought back unsold', 'settle seller', 'settle my seller', 'settle distributor', 'goods out with', 'sell on commission', 'commission seller'],
             "production":         ['recipe', 'production', 'i bake', 'we bake', 'baked', 'baking', 'bake bread', 'raw material', 'raw materials', 'ingredient', 'ingredients', 'cost to make', 'cost of making', 'cost of production', 'how many did we make', 'how many did i make', 'flour used', 'wastage', 'waste report', 'rejects', 'regrind', 'reject rate', 'scrap', 'how much to make', 'what i made', 'what we made', 'manufactur'],

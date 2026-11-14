@@ -4494,3 +4494,25 @@ a.inv-step__ref { color: var(--brand); }
 .cat-chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
 .cat-chip.on { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
 .cat-chip small { opacity: .75; margin-left: 4px; }
+
+/* Demo business (DemoStart.jsx): always visible while inside a demo */
+.demo-bar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+}
+.demo-bar strong { letter-spacing: 0.08em; }
+.demo-bar__label { flex: 1 1 180px; min-width: 0; }
+.demo-bar select { max-width: 230px; padding: 4px 6px; border-radius: 6px; border: 0; }
+.demo-bar .btn { background: rgba(255, 255, 255, 0.18); color: #fff; border: 1px solid rgba(255, 255, 255, 0.5); }
+.demo-bar .btn:hover { background: rgba(255, 255, 255, 0.3); }
