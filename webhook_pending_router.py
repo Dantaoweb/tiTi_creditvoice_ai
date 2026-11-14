@@ -1085,6 +1085,22 @@ def handle_pending_actions(
         if _ref_match:
             from models import User as _User, Referral as _Referral
             _ref_code = _ref_match.group(1).upper()
+            from marketers import find_by_code as _marketer_by_code
+            _marketer = _marketer_by_code(db, _ref_code)
+            if _marketer and _marketer.phone != phone:
+                if pending:
+                    db.delete(pending)
+                    db.commit()
+                db.add(PendingAction(phone=phone, action="ONBOARD_USER", customer_name="", last_customer="",
+                                     items_json=json.dumps({"_ref_code": _ref_code})))
+                db.commit()
+                send_whatsapp_message(
+                    phone,
+                    f"👋 Welcome! *{_marketer.name.title()}* from CreditVoice invited you.\n"
+                    "You'll get *14 days on GO plan* free when you sign up.\n\n"
+                    "Let's get you set up — what's your full name?"
+                )
+                return PendingRouteResult(response={"status": "marketer_onboard_started"})
             _referrer = db.query(_User).filter(_User.referral_code == _ref_code).first()
             if _referrer:
                 _ref_plan = (_referrer.subscription_plan or "BASIC").upper()

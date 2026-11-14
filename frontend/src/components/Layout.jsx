@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Users, ArrowLeftRight,
   Package, Bell, Truck, UserCheck, ShoppingCart, LogOut, Wallet, PlusCircle, MapPin, Zap, CheckCircle2, ClipboardList,
   Handshake, FileText, Menu, X, ShieldCheck, Activity, Sparkles, ArrowUpCircle, Receipt, PackageCheck, ScrollText, Fuel,
-  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Globe, Factory, Settings as SettingsIcon,
+  MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Globe, Factory, Megaphone, Settings as SettingsIcon,
 } from "lucide-react";
 import { applyDisplay, loadSettings, useSettings } from "../lib/settings";
 import { checkForCameraCrash, takeCrashNotice } from "../lib/cameraSafety";
@@ -91,6 +91,8 @@ function buildNav(L, group) {
     { to: "/automation",    label: "Automation",       icon: Zap               },
     { to: "/opportunities", label: "Opportunities",   icon: Sparkles          },
     { to: "/scorecard",     label: "Business Score",  icon: Gauge             },
+    // CreditVoice marketers: their code, businesses and bonus (marketers.py)
+    { to: "/marketer",      label: "My marketing",    icon: Megaphone, marketerOnly: true },
     { to: "/admin",         label: "Admin",           icon: ShieldCheck, adminOnly: true },
     { to: "/profile",       label: "My Profile",      icon: UserCircle },
     { to: "/settings",      label: "Settings",        icon: SettingsIcon },
@@ -198,7 +200,7 @@ export default function Layout() {
     (!item.adminOnly || isAdmin) && (!item.fuelOnly || isFuel) && (!item.poultryOnly || isPoultry)
     && (!item.fullAccessOnly || (user?.full_access ?? !user?.parent_id))
     && (!item.schoolOnly || isSchool) && (!item.appointmentsOnly || showAppointments)
-    && (!item.productionOnly || showProduction));
+    && (!item.productionOnly || showProduction) && (!item.marketerOnly || user?.is_marketer));
   const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
 
   const TITLES = {
@@ -220,6 +222,7 @@ export default function Layout() {
     "/suppliers":    "Suppliers",
     "/production":   "Production",
     "/business-page": "Business page",
+    "/marketer":      "My marketing",
     "/staff":        "Staff",
     "/partners":     "Partners & Investors",
     "/notes":        "Business Notes",

@@ -65,12 +65,17 @@ def complete_user_onboarding(
         pass
 
     referrer = None
-    if ref_code:
+    # A marketer's code: the business is the marketer's — same free trial, no referral
+    from marketers import find_by_code as _marketer_by_code
+    marketer = _marketer_by_code(db, ref_code) if ref_code else None
+    if marketer and marketer.phone == phone:
+        marketer = None
+    if ref_code and not marketer:
         referrer = db.query(User).filter(User.referral_code == ref_code).first()
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    plan = "GO" if referrer else "BASIC"
-    expires_at = (now + timedelta(days=14)) if referrer else None
+    plan = "GO" if (referrer or marketer) else "BASIC"
+    expires_at = (now + timedelta(days=14)) if (referrer or marketer) else None
 
     if not user:
         user = User(
@@ -83,7 +88,8 @@ def complete_user_onboarding(
             subscription_plan=plan,
             subscription_status="ACTIVE",
             subscription_expires_at=expires_at,
-            referred_by_code=ref_code,
+            referred_by_code=None if marketer else ref_code,
+            marketer_id=marketer.id if marketer else None,
         )
         db.add(user)
         db.flush()

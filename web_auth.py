@@ -458,7 +458,13 @@ def web_register(db: Session, name: str, phone: str, pin: str,
     # Validate referral code
     referrer = None
     clean_ref = ref_code.strip().upper() if ref_code and ref_code.strip() else None
-    if clean_ref:
+    # A marketer's code (marketers.py): the business is theirs — the same free
+    # trial, but no referral (and so no referral cashback)
+    from marketers import find_by_code as _marketer_by_code
+    marketer = _marketer_by_code(db, clean_ref) if clean_ref else None
+    if marketer and marketer.phone == phone.strip():
+        raise HTTPException(status_code=400, detail="You can't sign up with your own marketer code.")
+    if clean_ref and not marketer:
         referrer = db.query(User).filter(User.referral_code == clean_ref).first()
         if not referrer:
             raise HTTPException(status_code=404, detail="Referral code not found.")
@@ -471,8 +477,8 @@ def web_register(db: Session, name: str, phone: str, pin: str,
                 raise HTTPException(status_code=403, detail="This referral code has reached its invite limit.")
 
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).replace(tzinfo=None)
-    plan = "GO" if referrer else "BASIC"
-    expires_at = (now + __import__("datetime").timedelta(days=_REFERRAL_TRIAL_DAYS)) if referrer else None
+    plan = "GO" if (referrer or marketer) else "BASIC"
+    expires_at = (now + __import__("datetime").timedelta(days=_REFERRAL_TRIAL_DAYS)) if (referrer or marketer) else None
 
     user = User(
         name=name.strip(),
@@ -488,7 +494,8 @@ def web_register(db: Session, name: str, phone: str, pin: str,
         business_type_label=business_type_label or None,
         recovery_pin_hash=_hash_pin(pin.strip()),
         whatsapp_linked=False,
-        referred_by_code=clean_ref,
+        referred_by_code=None if marketer else clean_ref,
+        marketer_id=marketer.id if marketer else None,
     )
     db.add(user)
     db.flush()
@@ -561,6 +568,8 @@ def _build_auth_response(user: User, db=None) -> dict:
             "parent_id": user.parent_id,
             "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
             "can_quote": __import__("business_templates").can_quote(user, db),
+            # A CreditVoice marketer (marketers.py) — shows "My marketing" in the menu
+            "is_marketer": bool(db is not None and __import__("marketers").for_user(db, user)),
             "address": user.address,
             "subscription_plan": plan,
             "subscription_expires_at": expires_at.isoformat() if expires_at else None,

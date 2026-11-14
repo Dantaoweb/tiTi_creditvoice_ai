@@ -129,6 +129,12 @@ NAV_GUIDE = {
                 "and materials used against the recipe. Distributors: send goods out with sellers, settle what "
                 "they sold when they come back.",
     },
+    "/marketer": {
+        "name": "My marketing",
+        "where": "In the menu, only for CreditVoice marketers",
+        "what": "A marketer's code and sign-up link, the businesses they brought, and their bonus — a % of every "
+                "plan payment those businesses make, renewals too: earned, owed and paid.",
+    },
     "/business-page": {
         "name": "Business page",
         "where": "Under More (owner and staff allowed to see all records)",

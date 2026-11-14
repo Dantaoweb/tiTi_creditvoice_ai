@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { apiFetch, apiPost, apiPut, apiPatch, apiDelete } from "../lib/api";
 import { nairaFull, parseAmt } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
+import AdminMarketers from "../components/AdminMarketers";
 import { Download, RefreshCw, Search, Ticket, Trash2, RotateCcw } from "lucide-react";
 
 // ── tiny bar chart ──────────────────────────────────────────────────────────
@@ -3356,7 +3357,7 @@ function announcePendingChanged() {
   window.dispatchEvent(new Event("cv-admin-pending"));
 }
 
-const TABS = ["Overview", "Users", "Payments", "Enquiries", "Suppliers", "Fakes", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Referrals", "Notify", "Failed Messages"];
+const TABS = ["Overview", "Users", "Payments", "Enquiries", "Suppliers", "Fakes", "Opportunities", "Finance", "Token Codes", "Public Pages", "Site", "Campaigns", "Marketers", "Referrals", "Notify", "Failed Messages"];
 
 export default function Admin() {
   const [stats, setStats] = useState(null);
@@ -3517,6 +3518,7 @@ export default function Admin() {
       {tab === "Site"           && <SiteTab />}
       {tab === "Campaigns"      && <CampaignsTab />}
       {tab === "Token Codes"    && <TokenCodesTab />}
+      {tab === "Marketers"        && <AdminMarketers />}
       {tab === "Referrals"        && <ReferralSettingsTab />}
       {tab === "Notify"         && <NotifyTab />}
       {tab === "Failed Messages"&& <FailedParsesTab />}

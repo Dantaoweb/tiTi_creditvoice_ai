@@ -115,6 +115,9 @@ def detect_faq(text):
     if not _is_question(text):
         return None
 
+    # ── CreditVoice marketers (marketers.py) — not referrals ─────────────────────
+    if any(k in q for k in ('marketer', 'marketers', 'my marketing', 'marketing bonus', 'become a marketer', 'sales agent for creditvoice', 'market creditvoice', 'sell creditvoice')):
+        return "marketer"
     # ── Distributors / van sales (distributors.py) ───────────────────────────────
     if any(k in q for k in ('my distributor', 'our distributor', 'van sale', 'van sales', 'van seller', 'sales rep', 'hawker', 'hawkers', 'seller took', 'sellers took', 'unsold bread', 'returned bread', 'bread returned', 'brought back unsold', 'settle seller', 'settle my seller', 'settle distributor', 'goods out with', 'sell on commission', 'commission seller')):
         return "distributors"
@@ -1233,6 +1236,17 @@ FAQ_ANSWERS = {
         "the numbers kept for a shop's own use, so they never clash with real product barcodes.\n\n"
         "They work in your shop and branches only. To sell your product to supermarkets or other "
         "shops, get an official barcode from GS1 Nigeria. Printing labels is coming soon."
+    ),
+    "marketer": (
+        "📣 *CreditVoice marketers*\n\n"
+        "Marketers are people CreditVoice recruits to sell the app — different from referring a friend. "
+        "CreditVoice adds them; to become one, talk to the CreditVoice team.\n\n"
+        "*If you're a marketer:* log in with your CreditVoice account on the phone CreditVoice registered → "
+        "Menu → *My marketing*. You'll see your code and link, every business you brought, and your bonus.\n\n"
+        "*How businesses join with you:* your link, or on WhatsApp *join YOURCODE*. They get 14 days on GO free.\n\n"
+        "*Your bonus:* a % of every plan payment those businesses make — the first and every renewal. "
+        "CreditVoice pays it to you and marks it paid; you see what's owed and paid. A business you bring "
+        "doesn't earn anyone referral cashback."
     ),
     "distributors": (
         "🚚 *Distributors and van sales*\n\n"

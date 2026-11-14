@@ -108,6 +108,8 @@ class User(Base):
     # one-time payment; the owner then turns it on in the app.
     page_enabled = Column(Boolean, default=False)
     page_slug = Column(String, nullable=True, unique=True, index=True)   # creditvoiceai.com/b/<slug>
+    # The marketer who brought this business (marketers.py), if any
+    marketer_id = Column(Integer, ForeignKey("marketers.id"), nullable=True, index=True)
     bank_accounts_json = Column(Text, nullable=True)
 
     subscription_plan = Column(String, default="BASIC")
@@ -2136,6 +2138,56 @@ class Referral(Base):
     cashback_amount = Column(Integer, nullable=True)    # naira, set when rewarded
     rewarded_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow)
+
+
+class Marketer(Base):
+    """Someone CreditVoice recruits to sell the app (marketers.py) — not a
+    referrer. Added by admin; earns a % of every plan payment (renewals too)
+    from the businesses they bring. A business brought by a marketer earns no
+    referral cashback."""
+
+    __tablename__ = "marketers"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    name       = Column(String)
+    phone      = Column(String, unique=True, index=True)   # logs in with a CreditVoice account on this phone
+    code       = Column(String, unique=True, index=True)   # e.g. MKADE12 — at sign-up or "join MKADE12"
+    percent    = Column(Float, nullable=True)              # their bonus %; empty = the default
+    status     = Column(String, default="active")          # active | inactive
+    note       = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    created_by = Column(String, nullable=True)
+
+
+class MarketerEarning(Base):
+    """A marketer's bonus on one plan payment by a business they brought."""
+
+    __tablename__ = "marketer_earnings"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    marketer_id    = Column(Integer, ForeignKey("marketers.id"), index=True)
+    business_id    = Column(String, ForeignKey("users.id"), index=True)
+    payment_id     = Column(Integer, ForeignKey("subscription_payments.id"), unique=True)
+    plan           = Column(String, nullable=True)
+    billing_period = Column(String, nullable=True)
+    amount         = Column(Integer, default=0)          # what the business paid
+    percent        = Column(Float, default=0)            # the % at the time
+    bonus          = Column(Integer, default=0)
+    renewal        = Column(Boolean, default=False)      # not their first payment
+    status         = Column(String, default="owed")      # owed | paid
+    created_at     = Column(DateTime, default=utcnow)
+    paid_at        = Column(DateTime, nullable=True)
+    paid_by        = Column(String, nullable=True)
+    pay_reference  = Column(String, nullable=True)       # e.g. the bank transfer reference
+
+
+class MarketerSettings(Base):
+    __tablename__ = "marketer_settings"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    default_percent = Column(Float, default=10.0)
+    updated_by      = Column(String, nullable=True)
+    updated_at      = Column(DateTime, default=utcnow)
 
 
 class ReferralSettings(Base):

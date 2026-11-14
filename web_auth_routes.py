@@ -413,6 +413,8 @@ def register_auth_routes(app):
                 # Admin-ness lives in APP_ADMIN_PHONES / AppAdminRole, not user.role —
                 # the frontend gates the Admin menu on this flag.
                 "is_app_admin": bool(is_app_admin(user.phone, db)),
+                # A CreditVoice marketer (marketers.py): "My marketing" in the menu
+                "is_marketer": bool(__import__("marketers").for_user(db, user)),
                 "plan": sub["plan"],
                 "subscription_plan": sub["plan"],
                 "subscription_status": sub["status"],   # ACTIVE | TRIAL | GRACE | EXPIRED

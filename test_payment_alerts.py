@@ -34,6 +34,8 @@ def sent(monkeypatch):
     monkeypatch.setattr("whatsapp_client.send_whatsapp_message", lambda p, m: box.append((p, m)))
     db = SessionLocal()
     try:
+        from models import MarketerEarning      # a marketer's bonus points at its payment
+        db.query(MarketerEarning).delete()
         db.query(SubscriptionPayment).delete()
         db.query(AppNotification).delete()
         db.commit()

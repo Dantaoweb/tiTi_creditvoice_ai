@@ -387,6 +387,14 @@ def approve_subscription_payment(db, payment, admin_user):
     payment.status = "APPROVED"
     payment.approved_at = _utcnow()
     payment.approved_by_user_id = admin_user.id if admin_user else None
+    # The marketer who brought this business earns their % — every payment,
+    # renewals too (marketers.py). Never blocks the subscription.
+    try:
+        from marketers import record_earning
+        record_earning(db, owner, payment)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("marketer earning failed for payment %s", payment.id)
     return owner
 
 

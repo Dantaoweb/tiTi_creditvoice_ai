@@ -26,6 +26,9 @@ ASKED = [
     ("how do i remove damaged stock?", "remove_stock"),
     ("my product has no barcode, how do i make one?", "make_barcode"),
     ("how do i change the phone number on my receipt?", "receipt_phone"),
+    ("how do i become a marketer?", "marketer"),
+    ("where is my marketing bonus?", "marketer"),
+    ("how do i refer a friend?", "referral"),
 ]
 
 
