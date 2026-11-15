@@ -7,6 +7,7 @@ import {
   MoreHorizontal, ChevronDown, UserCircle, BarChart2, Egg, Gauge, GraduationCap, Coins, CalendarClock, Globe, Factory, Megaphone, MonitorPlay, Settings as SettingsIcon,
 } from "lucide-react";
 import { DemoBar } from "../pages/DemoStart";
+import { refreshOfflineCustomers } from "../lib/offlineCustomers";
 import { applyDisplay, loadSettings, useSettings } from "../lib/settings";
 import { checkForCameraCrash, takeCrashNotice } from "../lib/cameraSafety";
 import { useApp } from "../context/AppContext";
@@ -126,6 +127,18 @@ export default function Layout() {
   // Dashboard joins the always-visible primary set (checked daily), on top of
   // the mobile tab-bar items — without adding it to the bottom bar itself.
   const isPrimary = (item) => item.tab || item.to === "/dashboard" || item.to === "/poultry";
+
+  // Ready for offline (public/sw.js): keep the customer list on the phone, and
+  // load the till and Quick Record once so they're stored and open with no internet
+  useEffect(() => {
+    if (!ownerPhone || !navigator.onLine) return undefined;
+    const t = setTimeout(() => {
+      refreshOfflineCustomers(ownerPhone);
+      import("../pages/POS").catch(() => {});
+      import("../pages/Capture").catch(() => {});
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [ownerPhone]);
 
   useEffect(() => {
     apiFetch("auth/config").then(d => setTitiNumber(d.titi_whatsapp || "")).catch(() => {});

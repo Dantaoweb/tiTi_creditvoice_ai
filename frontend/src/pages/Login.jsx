@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { ArrowLeft, KeyRound, UserPlus, Loader2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost } from "../lib/api";
+import { getQueue } from "../lib/offlineQueue";
 
 const PARTIAL_SUPPORT = {
   hotel_guest_house: { works: "Track guest bills, payments, and outstanding balances", missing: "Room booking, availability management, and check-in/check-out" },
@@ -314,6 +315,12 @@ export default function Login() {
             </div>
 
             {(err || authError) && <div className="login-error">{err || authError}</div>}
+            {getQueue().length > 0 && (
+              <div className="form-hint" style={{ color: "var(--brand)", fontWeight: 600 }}>
+                {getQueue().length} record{getQueue().length === 1 ? "" : "s"} made offline {getQueue().length === 1 ? "is" : "are"} waiting —
+                log in to the account that made {getQueue().length === 1 ? "it" : "them"} and {getQueue().length === 1 ? "it's" : "they're"} sent automatically.
+              </div>
+            )}
 
             <button
               type="submit"

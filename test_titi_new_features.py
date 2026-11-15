@@ -30,6 +30,7 @@ ASKED = [
     ("where is my marketing bonus?", "marketer"),
     ("how do i refer a friend?", "referral"),
     ("how do i open the demo business?", "demo_business"),
+    ("does it work without network?", "pwa_install"),
 ]
 
 

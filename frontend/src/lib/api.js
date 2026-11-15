@@ -32,12 +32,18 @@ export async function apiFetch(path, params = {}, options = {}) {
   return res.json();
 }
 
-export async function apiPost(path, body) {
+export async function apiPost(path, body, headers = {}) {
   return apiFetch(path, {}, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
+}
+
+// A record that may be sent again (offline queue, weak signal) carries its own
+// ID; the server answers a repeat with the first answer (offline_ref.py).
+export function apiPostOnce(path, body, ref) {
+  return apiPost(path, body, ref ? { "X-Client-Ref": ref } : {});
 }
 
 export async function apiPut(path, body) {

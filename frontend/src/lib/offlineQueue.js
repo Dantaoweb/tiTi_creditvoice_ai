@@ -17,10 +17,28 @@ function writeFailed(q) {
 export function getQueue()      { return read(); }
 export function getFailedQueue(){ return readFailed(); }
 
-export function enqueue(endpoint, body, label) {
+// The logged-in person: waiting records are only ever sent by the one who made them
+export function currentUserId() {
+  try { return JSON.parse(localStorage.getItem("cv_user") || "null")?.id || null; } catch { return null; }
+}
+export function myQueue() {
+  const me = currentUserId();
+  return read().filter(item => !item.user_id || item.user_id === me);
+}
+
+// A new ID for one record — made before the first try, so a retry of the same
+// record (online or from the queue) is never recorded twice
+export function newRef() {
+  const rnd = (crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
+  return `cv-${rnd}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+}
+
+export function enqueue(endpoint, body, label, ref) {
   const q = read();
   q.push({
     id:        Date.now().toString(36) + Math.random().toString(36).slice(2),
+    ref:       ref || newRef(),
+    user_id:   currentUserId(),
     endpoint,
     body,
     label,

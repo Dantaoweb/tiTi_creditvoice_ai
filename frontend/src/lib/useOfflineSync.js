@@ -1,35 +1,35 @@
 import { useCallback, useEffect, useState } from "react";
-import { getQueue, getFailedQueue, dequeue, markFailed, clearFailed } from "./offlineQueue";
-import { apiPost } from "./api";
+import { myQueue, getFailedQueue, dequeue, markFailed, clearFailed, newRef } from "./offlineQueue";
+import { apiPostOnce } from "./api";
 import { useToast } from "../components/Toast";
 
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
-  const [pending,  setPending]  = useState(() => getQueue().length);
+  const [pending,  setPending]  = useState(() => myQueue().length);
   const [failed,   setFailed]   = useState(() => getFailedQueue().length);
   const [syncing,  setSyncing]  = useState(false);
   const toast = useToast();
 
   const refresh = useCallback(() => {
-    setPending(getQueue().length);
+    setPending(myQueue().length);
     setFailed(getFailedQueue().length);
   }, []);
 
   const sync = useCallback(async () => {
-    const q = getQueue();
+    const q = myQueue();
     if (q.length === 0 || !navigator.onLine) return;
     setSyncing(true);
     let synced = 0;
     for (const item of q) {
       try {
-        await apiPost(item.endpoint, item.body);
+        // The record's own ID: if an earlier try got through, the server
+        // gives that answer back instead of recording it again
+        await apiPostOnce(item.endpoint, item.body, item.ref || (item.ref = newRef()));
         dequeue(item.id);
         synced++;
       } catch (e) {
-        if (e.message?.includes("Session expired")) {
-          dequeue(item.id);
-          continue;
-        }
+        // Logged out: keep everything — it's sent after logging in again
+        if (e.message?.includes("Session expired")) break;
         // Network still down — stop and retry later
         if (e instanceof TypeError) break;
         // Server error (4xx/5xx) — move to failed queue so it doesn't block others
@@ -74,7 +74,7 @@ export function useOfflineSync() {
 
   // Sync any leftover queue on first mount
   useEffect(() => {
-    if (navigator.onLine && getQueue().length > 0) sync();
+    if (navigator.onLine && myQueue().length > 0) sync();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

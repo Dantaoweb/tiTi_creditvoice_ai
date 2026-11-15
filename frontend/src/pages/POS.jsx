@@ -4,10 +4,11 @@ import { useNavigate, Link } from "react-router-dom";
 import { Search, Plus, Minus, Trash2, ShoppingCart, User, X, Camera } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiPost, apiDelete } from "../lib/api";
+import { apiFetch, apiPost, apiPostOnce, apiDelete } from "../lib/api";
 import HeldSales from "../components/HeldSales";
+import { searchCustomers } from "../lib/offlineCustomers";
 import { nairaFull, nairaInWords, qty } from "../lib/format";
-import { enqueue, isNetworkError } from "../lib/offlineQueue";
+import { enqueue, isNetworkError, newRef } from "../lib/offlineQueue";
 import { usePlan } from "../lib/usePlan";
 import DiscountInput from "../components/DiscountInput";
 import CameraScanner from "../components/CameraScanner";
@@ -469,8 +470,8 @@ function CustomerSearch({ ownerPhone, customer, onSelect, onClear, onQueryChange
     if (!term) return;
     let live = true;
     const t = setTimeout(() => {
-      apiFetch("customers", { owner_phone: ownerPhone, q: term, limit: 8 })
-        .then(d => { if (live) setFound({ q: term, items: d.customers || [] }); })
+      searchCustomers(ownerPhone, { q: term, limit: 8 })          // the phone's copy when offline
+        .then(items => { if (live) setFound({ q: term, items }); })
         .catch(() => { if (live) setFound({ q: term, items: [] }); });
     }, 250);
     return () => { live = false; clearTimeout(t); };
@@ -865,13 +866,15 @@ export default function POS() {
       service_date: serviceDate || null,
       held_id: heldId,
     };
+    // One ID for this sale: the first try and any retry from the offline queue
+    const ref = newRef();
     try {
-      const result = await apiPost("pos/save", payload);
+      const result = await apiPostOnce("pos/save", payload, ref);
       navigate(`/pos/receipt/${result.receipt_id}`);
     } catch (e) {
       if (isNetworkError(e)) {
         const label = `POS sale — ${cart.length} item(s), ${nairaFull(paid)}`;
-        enqueue("pos/save", payload, label);
+        enqueue("pos/save", payload, label, ref);
         setCart([]); setCustomer(null); setPayment(""); setDueDate(""); setServiceDate(""); setSaveErr("");
         setPartDelivery(false);
         setDiscountValue(NO_DISCOUNT);

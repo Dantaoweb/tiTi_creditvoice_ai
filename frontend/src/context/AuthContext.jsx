@@ -10,6 +10,14 @@ function _isSessionExpired(usr) {
   return new Date(usr.session_expires_at) < new Date();
 }
 
+// The data the app keeps on the phone to work offline (public/sw.js) belongs to
+// whoever is logged in — cleared when they log out or someone else logs in.
+// (Records waiting to be sent are kept: they're only ever sent by their owner.)
+function clearOfflineData() {
+  try { navigator.serviceWorker?.controller?.postMessage("cv-clear-api"); } catch { /* no worker */ }
+  try { localStorage.removeItem("cv_offline_customers"); } catch { /* ignore */ }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUserState] = useState(() => {
     try {
@@ -25,6 +33,10 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState("");
 
   function _persist(usr) {
+    // Someone else on this phone: forget the last person's data kept for offline
+    let before = null;
+    try { before = JSON.parse(localStorage.getItem(USER_KEY) || "null")?.id || null; } catch { /* none */ }
+    if (before !== usr?.id) clearOfflineData();
     localStorage.setItem(USER_KEY, JSON.stringify(usr));
     setUserState(usr);
   }
@@ -49,6 +61,7 @@ export function AuthProvider({ children }) {
     fetch("/app/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem("cv_owner_phone");
+    clearOfflineData();
     setUserState(null);
   }, []);
 

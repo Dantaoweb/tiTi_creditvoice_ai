@@ -2144,6 +2144,22 @@ class Referral(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class ClientRequest(Base):
+    """A record the phone sent with its own ID (offline_ref.py). If the same ID
+    comes again — the phone retrying after the reply was lost on a weak signal —
+    the first answer is given back and nothing is recorded twice."""
+
+    __tablename__ = "client_requests"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    user_id     = Column(String, index=True)
+    ref         = Column(String, index=True)        # the phone's ID for this one record
+    path        = Column(String)
+    status_code = Column(Integer)
+    body        = Column(Text)
+    created_at  = Column(DateTime, default=utcnow, index=True)
+
+
 class Marketer(Base):
     """Someone CreditVoice recruits to sell the app (marketers.py) — not a
     referrer. Added by admin; earns a % of every plan payment (renewals too)

@@ -4,8 +4,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { Mic, MicOff, Play, Send, X, CheckCircle, ShoppingCart, CreditCard, Package } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch, apiPost } from "../lib/api";
-import { enqueue, isNetworkError } from "../lib/offlineQueue";
+import { apiFetch, apiPost, apiPostOnce } from "../lib/api";
+import { enqueue, isNetworkError, newRef } from "../lib/offlineQueue";
+import { searchCustomers } from "../lib/offlineCustomers";
 import { nairaFull, qty } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import WaitingCustomersModal from "../components/WaitingCustomersModal";
@@ -43,8 +44,8 @@ export function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false,
 
   useEffect(() => {
     if (!ownerPhone || !filterDebtors) return;
-    apiFetch("customers", { owner_phone: ownerPhone, debtors: "true", limit: 8 })
-      .then(d => setTopDebtors(d.customers || []))
+    searchCustomers(ownerPhone, { debtors: true, limit: 8 })
+      .then(setTopDebtors)
       .catch(() => setTopDebtors([]));
   }, [ownerPhone, filterDebtors]);
 
@@ -52,8 +53,8 @@ export function CustomerSearch({ ownerPhone, placeholder, filterDebtors = false,
     if (!ownerPhone || !q) return;
     let live = true;
     const t = setTimeout(() => {
-      apiFetch("customers", { owner_phone: ownerPhone, q, debtors: debtorParam, limit: 20 })
-        .then(d => { if (live) setResult({ q, items: d.customers || [] }); })
+      searchCustomers(ownerPhone, { q, debtors: !!debtorParam, limit: 20 })   // the phone's copy when offline
+        .then(items => { if (live) setResult({ q, items }); })
         .catch(() => { if (live) setResult({ q, items: [] }); });
     }, 250);
     return () => { live = false; clearTimeout(t); };
@@ -304,6 +305,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
       setLoading(false);
       return;
     }
+    const ref = newRef();          // one ID: first try and any retry
     try {
       const qtyNum = Math.max(1, parseAmt(qty) || 1);
       const total  = parseAmt(amount);
@@ -320,7 +322,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
         branch_id:      branchId || null,
         loyalty_use:    rewardOff > 0,
       };
-      const result = await apiPost("pos/save", body);
+      const result = await apiPostOnce("pos/save", body, ref);
       const bal = Math.max(0, (result?.total ?? total) - paidNum);
       onSuccess(
         customer
@@ -343,7 +345,7 @@ function SaleForm({ ownerPhone, onSuccess }) {
           debt_payment: debtPaid2,
           branch_id: branchId || null,
           loyalty_use: rewardOff > 0,
-        }, `Sale ${nairaFull(total2)}${customer ? ` — ${customer.name}` : " (cash)"}`);
+        }, `Sale ${nairaFull(total2)}${customer ? ` — ${customer.name}` : " (cash)"}`, ref);
         onSuccess(`No internet — sale saved offline. Will sync automatically when you reconnect.`);
         setProduct(""); setQty("1"); setUnit(""); setAmount(""); setPaid(""); setCustomer(null); setCustQuery("");
       } else {
@@ -466,8 +468,9 @@ function PaymentForm({ ownerPhone, onSuccess }) {
     e.preventDefault();
     if (!customer || !amount) return;
     setLoading(true); setError(null);
+    const ref = newRef();          // one ID: first try and any retry
     try {
-      const result = await apiPost(`customers/${customer.id}/pay`, { amount: parseAmt(amount), note: note || null, branch_id: branchId || null });
+      const result = await apiPostOnce(`customers/${customer.id}/pay`, { amount: parseAmt(amount), note: note || null, branch_id: branchId || null }, ref);
       onSuccess(
         `Payment of ${nairaFull(parseAmt(amount))} from ${customer.name} recorded.`,
         result?.id ? `/pos/receipt/${result.id}` : null,
@@ -479,6 +482,7 @@ function PaymentForm({ ownerPhone, onSuccess }) {
           `customers/${customer.id}/pay`,
           { amount: parseAmt(amount), note: note || null, branch_id: branchId || null },
           `Payment ${nairaFull(parseAmt(amount))} from ${customer.name}`,
+          ref,
         );
         onSuccess(`No internet — payment saved offline. Will sync automatically when you reconnect.`);
         setCustomer(null); setAmount(""); setNote("");
@@ -573,8 +577,9 @@ function StockForm({ ownerPhone, onSuccess }) {
     if (!item || !qty) return;
     setLoading(true); setError(null);
     const who = supplier.trim() ? ` from ${supplier.trim()}` : "";
+    const ref = newRef();          // one ID: first try and any retry
     try {
-      const r = await apiPost("inventory/stock-received", _body());
+      const r = await apiPostOnce("inventory/stock-received", _body(), ref);
       onSuccess(`${qty} ${item.unit || "units"} of ${item.name} added to stock${who}.`);
       const name = item.name;
       setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote(""); setExpiry(""); setBatchNo("");
@@ -583,7 +588,7 @@ function StockForm({ ownerPhone, onSuccess }) {
     } catch (e) {
       if (isNetworkError(e)) {
         enqueue("inventory/stock-received", _body(),
-          `Stock +${qty} ${item.unit || "units"} of ${item.name}${who}`);
+          `Stock +${qty} ${item.unit || "units"} of ${item.name}${who}`, ref);
         onSuccess("No internet — stock entry saved offline. Will sync automatically when you reconnect.");
         setItem(null); setQty(""); setCost(""); setPaidNow(""); setSupplier(""); setDueDate(""); setNote(""); setExpiry(""); setBatchNo("");
       } else {

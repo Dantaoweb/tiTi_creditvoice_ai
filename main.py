@@ -148,6 +148,11 @@ class _RequestTimingMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_RequestTimingMiddleware)
 
+# Records sent from the phone's offline queue carry their own ID: a repeat
+# (reply lost on a weak signal) gets the first answer back, never recorded twice.
+from offline_ref import ClientRefMiddleware
+app.add_middleware(ClientRefMiddleware)
+
 # ── Explicit CORS policy — driven by env var so it's auditable and intentional.
 # Production: set CORS_ALLOWED_ORIGINS to your Render URL (no trailing slash).
 # Development: Vite proxies /app/api to localhost:8000 so the browser sees
@@ -162,7 +167,7 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Client-Ref"],
 )
 
 register_http_routes(app)

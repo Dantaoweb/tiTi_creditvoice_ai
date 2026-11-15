@@ -554,6 +554,7 @@ def detect_faq(text):
         "install app", "install on phone", "add to home screen",
         "home screen", "pwa", "progressive web", "app icon",
         "offline mode", "no internet", "without internet", "work offline",
+        "without network", "no network", "network is bad", "bad network", "poor network",
         "app offline", "offline queue", "offline sync", "pending sync",
         "how to install", "install the app", "save to phone",
         "install creditvoice", "install titi",
@@ -1651,13 +1652,19 @@ FAQ_ANSWERS = {
         "3. Choose  Add to Home Screen\n"
         "4. Tap Install or Add\n\n"
         "The CreditVoice icon will appear on your home screen like any other app.\n\n"
-        "Offline mode:\n"
-        "If you record a sale or payment while offline, tiTi saves it locally and syncs it "
-        "automatically the moment your internet returns.\n\n"
+        "*Offline — no internet, no problem:*\n"
+        "• Once you've opened CreditVoice on this phone with internet, it opens and works without it.\n"
+        "• *{till}* and *{record}* work fully offline: your products and customers are kept on the "
+        "phone, so you can sell on credit to a named customer too.\n"
+        "• Sales, debt payments and stock received are saved on the phone and sent by themselves when the "
+        "internet returns — never recorded twice, even on a weak signal.\n"
+        "• Logged out meanwhile? Nothing is lost: log in again and they're sent.\n"
+        "• Screens you've opened before show what they last showed.\n\n"
         "You will see:\n"
-        "- Offline chip in the top bar when there is no connection\n"
-        "- X pending when records are waiting to sync\n"
-        "- Synced message when records upload successfully"
+        "- *Offline* in the top bar when there is no connection\n"
+        "- *X pending* while records are waiting to be sent\n"
+        "- *Synced* when they've gone through\n\n"
+        "tiTi chat needs internet."
     ),
     "quick_record": (
         "Quick Record is the fast web form for recording sales, payments, and stock changes "
