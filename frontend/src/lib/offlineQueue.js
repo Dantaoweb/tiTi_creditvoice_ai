@@ -62,6 +62,31 @@ export function clearFailed() {
   writeFailed([]);
 }
 
+// The ones the server refused: try one again (back in the queue, same ID —
+// never doubled), or remove it for good
+export function retryFailed(id) {
+  const failed = readFailed();
+  const item = failed.find(f => f.id === id);
+  if (!item) return;
+  writeFailed(failed.filter(f => f.id !== id));
+  const back = { ...item };
+  delete back.failed_at;
+  delete back.error;
+  write([...read(), back]);
+}
+export function removeFailed(id) {
+  writeFailed(readFailed().filter(f => f.id !== id));
+}
+export function myFailed() {
+  const me = currentUserId();
+  return readFailed().filter(item => !item.user_id || item.user_id === me);
+}
+
+// What's waiting to be sent for one screen, e.g. waitingFor(/^expenses$/)
+export function waitingFor(pattern) {
+  return myQueue().filter(item => pattern.test(item.endpoint));
+}
+
 export function isNetworkError(err) {
   return err instanceof TypeError || !navigator.onLine;
 }

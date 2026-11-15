@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { saveOrQueue, QUEUED_NOTE } from "../lib/offlineSave";
 import { useToast } from "../components/Toast";
+import { WaitingHere } from "../components/WaitingRecords";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtBalance } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
@@ -1009,6 +1010,7 @@ export default function Customers() {
   return (
     <>
       <StaleDataBanner isStale={isStale} />
+      <WaitingHere pattern={/^customers(\/\d+\/pay)?$/} what="customer records" />
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
       <div className="card">
         {/* Header — wraps on mobile so title stays on its own line */}

@@ -116,3 +116,16 @@ def test_stage_two_records_are_never_doubled_either():
     finally:
         db.close()
     assert _stock(item) == 47
+
+
+def test_waiting_records_can_be_seen_and_failed_ones_retried():
+    from pathlib import Path
+    src = Path(__file__).parent / "frontend" / "src"
+    q = (src / "lib" / "offlineQueue.js").read_text(encoding="utf-8")
+    assert "export function retryFailed" in q and "export function waitingFor" in q
+    layout = (src / "components" / "Layout.jsx").read_text(encoding="utf-8")
+    assert "WaitingRecords" in layout and "dismissFailed" not in layout        # never thrown away with one tap
+    for page in ("Customers", "Expenses", "Inventory", "Receipts"):
+        assert "WaitingHere" in (src / "pages" / f"{page}.jsx").read_text(encoding="utf-8"), page
+    from faq import FAQ_ANSWERS
+    assert "waiting to send" in FAQ_ANSWERS["pwa_install"] and "Try again" in FAQ_ANSWERS["pwa_install"]

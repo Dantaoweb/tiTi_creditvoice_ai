@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { myQueue, getFailedQueue, dequeue, markFailed, clearFailed, newRef } from "./offlineQueue";
+import { myQueue, myFailed, getFailedQueue, dequeue, markFailed, clearFailed, newRef } from "./offlineQueue";
 import { apiPostOnce } from "./api";
 import { useToast } from "../components/Toast";
 
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [pending,  setPending]  = useState(() => myQueue().length);
-  const [failed,   setFailed]   = useState(() => getFailedQueue().length);
+  const [failed,   setFailed]   = useState(() => myFailed().length);
   const [syncing,  setSyncing]  = useState(false);
   const toast = useToast();
 
   const refresh = useCallback(() => {
     setPending(myQueue().length);
-    setFailed(getFailedQueue().length);
+    setFailed(myFailed().length);
   }, []);
 
   const sync = useCallback(async () => {
@@ -78,5 +78,5 @@ export function useOfflineSync() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { isOnline, pending, failed, syncing, refresh, dismissFailed };
+  return { isOnline, pending, failed, syncing, refresh, dismissFailed, sync };
 }

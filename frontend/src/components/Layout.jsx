@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { DemoBar } from "../pages/DemoStart";
 import { refreshOfflineCustomers } from "../lib/offlineCustomers";
+import WaitingRecords from "./WaitingRecords";
 import { applyDisplay, loadSettings, useSettings } from "../lib/settings";
 import { checkForCameraCrash, takeCrashNotice } from "../lib/cameraSafety";
 import { useApp } from "../context/AppContext";
@@ -136,6 +137,13 @@ export default function Layout() {
       refreshOfflineCustomers(ownerPhone);
       import("../pages/POS").catch(() => {});
       import("../pages/Capture").catch(() => {});
+      // The main screens' first view, so they show the latest numbers offline
+      // (same addresses the screens ask for — public/sw.js keeps the answers)
+      [["dashboard", { period: "MONTH" }], ["transactions", { period: "MONTH", limit: 8 }],
+       ["customers", { owner_phone: ownerPhone, offset: 0, limit: 50 }],
+       ["customers", { owner_phone: ownerPhone, debtors: "true", offset: 0, limit: 50 }],
+       ["customers/summary", {}], ["reminders", { owner_phone: ownerPhone }]]
+        .forEach(([path, params]) => apiFetch(path, params).catch(() => {}));
     }, 4000);
     return () => clearTimeout(t);
   }, [ownerPhone]);
@@ -218,7 +226,8 @@ export default function Layout() {
     && (!item.schoolOnly || isSchool) && (!item.appointmentsOnly || showAppointments)
     && (!item.productionOnly || showProduction) && (!item.marketerOnly || user?.is_marketer)
     && (!item.demoOnly || user?.can_demo));
-  const { isOnline, pending, failed, syncing, dismissFailed } = useOfflineSync();
+  const { isOnline, pending, failed, syncing, sync } = useOfflineSync();
+  const [showWaiting, setShowWaiting] = useState(false);
 
   const TITLES = {
     "/home":         "Chat with tiTi",
@@ -473,21 +482,28 @@ export default function Layout() {
           </div>
 
           <div className="topbar-sync" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {!isOnline && <span className="sync-chip sync-chip--offline">Offline</span>}
+            {/* Tap any of these to see what's waiting (WaitingRecords) */}
+            {!isOnline && (
+              <button className="sync-chip sync-chip--offline" onClick={() => setShowWaiting(true)}
+                title="No internet — tap to see what's waiting to send">
+                Offline{pending > 0 ? ` · ${pending} waiting` : ""}
+              </button>
+            )}
             {isOnline && pending > 0 && (
-              <span className="sync-chip sync-chip--syncing">
+              <button className="sync-chip sync-chip--syncing" onClick={() => setShowWaiting(true)}>
                 {syncing ? `Syncing ${pending}…` : `${pending} pending`}
-              </span>
+              </button>
             )}
             {failed > 0 && (
               <button
                 className="sync-chip sync-chip--failed"
-                onClick={dismissFailed}
-                title={`${failed} record${failed !== 1 ? "s" : ""} failed to sync. Click to dismiss.`}
+                onClick={() => setShowWaiting(true)}
+                title={`${failed} record${failed !== 1 ? "s" : ""} not accepted — tap to try again or remove`}
               >
-                {failed} failed ×
+                {failed} not sent
               </button>
             )}
+            {showWaiting && <WaitingRecords onClose={() => setShowWaiting(false)} onRetry={() => sync()} />}
             <NotificationBell />
           </div>
 
@@ -516,6 +532,12 @@ export default function Layout() {
 
         <main className="page-content">
           {user?.is_demo && <DemoBar label={user.business_type_label} businessType={user.business_type} />}
+          {!isOnline && (
+            <div className="offline-note" role="status">
+              No internet — you're seeing what was saved when you were last online. New sales, payments and stock
+              are kept on this phone and sent by themselves when the internet returns.
+            </div>
+          )}
           <InstallPrompt />
           <SubscriptionBanner />
           {camNotice && (

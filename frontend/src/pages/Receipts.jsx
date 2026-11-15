@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
+import { WaitingHere } from "../components/WaitingRecords";
 import { nairaFull, dateStr } from "../lib/format";
 
 export default function Receipts() {
@@ -25,6 +26,7 @@ export default function Receipts() {
 
   return (
     <div className="card" style={{ maxWidth: 640 }}>
+      <WaitingHere pattern={/^pos\/save$/} what="sales (receipts come when they're sent)" />
       <div className="card-header">
         <span className="card-title">Receipts</span>
         <button className="btn btn-primary btn-sm" onClick={() => navigate("/receipts/new")}>+ New receipt</button>

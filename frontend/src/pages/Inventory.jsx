@@ -7,6 +7,7 @@ import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { saveOrQueue, QUEUED_NOTE } from "../lib/offlineSave";
 import { useToast } from "../components/Toast";
+import { WaitingHere } from "../components/WaitingRecords";
 import WaitingCustomersModal from "../components/WaitingCustomersModal";
 import ExpiryModal from "../components/ExpiryModal";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtAmt } from "../lib/format";
@@ -1411,6 +1412,7 @@ export default function Inventory() {
   return (
     <>
       <StaleDataBanner isStale={isStale} />
+      <WaitingHere pattern={/^inventory\//} what="stock changes" />
       {error && <div style={{ color: "var(--rose)" }}>{error}</div>}
 
       {(lowCount > 0 || lowOnly) && (

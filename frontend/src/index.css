@@ -4516,3 +4516,25 @@ a.inv-step__ref { color: var(--brand); }
 .demo-bar select { max-width: 230px; padding: 4px 6px; border-radius: 6px; border: 0; }
 .demo-bar .btn { background: rgba(255, 255, 255, 0.18); color: #fff; border: 1px solid rgba(255, 255, 255, 0.5); }
 .demo-bar .btn:hover { background: rgba(255, 255, 255, 0.3); }
+
+/* Offline (WaitingRecords.jsx, Layout) */
+.offline-note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--amber) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--surface));
+  color: var(--ink);
+  font-size: 13px;
+}
+.waiting-here {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--brand);
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+  color: var(--ink);
+}
+button.sync-chip { cursor: pointer; border: none; font: inherit; }

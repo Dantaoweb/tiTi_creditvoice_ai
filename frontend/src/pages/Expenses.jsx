@@ -5,6 +5,7 @@ import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost, apiPut, apiDelete } from "../lib/api";
 import { saveOrQueue, QUEUED_NOTE } from "../lib/offlineSave";
 import { useToast } from "../components/Toast";
+import { WaitingHere } from "../components/WaitingRecords";
 import { nairaFull, dateStr, parseAmt, fmtAmt } from "../lib/format";
 
 // Expenses: money spent running the business, taken off gross profit to give
@@ -132,6 +133,7 @@ export default function Expenses() {
 
   return (
     <div style={{ display: "grid", gap: 16, maxWidth: 820 }}>
+      <WaitingHere pattern={/^expenses$/} what="expenses" />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h2 style={{ margin: "0 0 2px" }}>Expenses</h2>
