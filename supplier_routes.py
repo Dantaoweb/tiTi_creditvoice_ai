@@ -164,7 +164,9 @@ def _rating_stats(db: Session, supplier_id: str) -> dict:
     return {"avg_rating": avg, "rating_count": len(ratings)}
 
 
-def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True, include_ratings=True):
+def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True, include_ratings=True, public=False):
+    """public=True (the directory anyone can open): no phone number — contacts stay
+    hidden until a connection is accepted — and none of CreditVoice's review notes."""
     user = db.query(User).filter(User.phone == vs.owner_phone).first()
     products = []
     if include_products:
@@ -188,7 +190,7 @@ def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True, inc
     contact_count = db.query(SupplierContactMessage).filter(
         SupplierContactMessage.supplier_id == vs.id
     ).count() if include_ratings else 0
-    return {
+    out = {
         "id": vs.id,
         "owner_phone": vs.owner_phone,
         "business_name": (user.business_type_label or user.name or vs.owner_phone) if user else vs.owner_phone,
@@ -210,6 +212,12 @@ def _supplier_dict(db: Session, vs: VerifiedSupplier, include_products=True, inc
         "rating_count": stats["rating_count"],
         "contact_count": contact_count,
     }
+    if public:
+        for k in ("owner_phone", "rejection_reason", "previous_rejection_reason", "reapplied_at", "reviewed_at"):
+            out.pop(k, None)
+        if out["business_name"] == vs.owner_phone:
+            out["business_name"] = "Supplier"
+    return out
 
 
 # ── Route registration ─────────────────────────────────────────────────────────
@@ -263,7 +271,7 @@ def register_supplier_routes(app, get_db=None):
                 results = filtered
 
             return {
-                "suppliers": [_supplier_dict(db, r) for r in results],
+                "suppliers": [_supplier_dict(db, r, public=True) for r in results],
                 "total": len(results),
             }
         finally:
@@ -961,7 +969,7 @@ def register_supplier_routes(app, get_db=None):
                 "ratings": [
                     {
                         "id": r.id,
-                        "from_business_name": r.from_business_name or r.from_phone,
+                        "from_business_name": r.from_business_name or "A verified buyer",   # never their phone (public)
                         "rating": r.rating,
                         "review": r.review or "",
                         "created_at": r.created_at.isoformat() if r.created_at else None,

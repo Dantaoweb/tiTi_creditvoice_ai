@@ -20,10 +20,24 @@ _REF = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
 def _user_id(request):
+    """The logged-in user — only a login that is still valid: not signed out
+    everywhere since (token_version) and the account not removed. Otherwise
+    nothing is replayed and the request goes through the normal login check."""
     from web_auth import verify_web_token
     token = request.cookies.get("cv_session") or request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     payload = verify_web_token(token) if token else None
-    return payload["user_id"] if payload else None
+    if not payload:
+        return None
+    from database import SessionLocal
+    from models import User
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == payload["user_id"]).first()
+        if not u or u.deleted_at or (u.token_version or 0) != payload.get("ver", 0):
+            return None
+        return u.id
+    finally:
+        db.close()
 
 
 class ClientRefMiddleware(BaseHTTPMiddleware):

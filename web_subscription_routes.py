@@ -284,12 +284,17 @@ def register_subscription_routes(app):
         from models import SubscriptionPayment
         body_bytes = await request.body()
         sig_header = request.headers.get("monnify-signature", "")
-        # Verify HMAC-SHA512
+        # Verify HMAC-SHA512 — always. It used to be checked only when a signature
+        # was sent, so a forged "PAID" with no signature activated a plan for free.
+        # Same rule as the wallet webhook: no key in production = reject everything.
+        import hmac as _hmac, hashlib as _hs
         secret = os.getenv("MONNIFY_SECRET_KEY", "")
-        if secret and sig_header:
-            import hmac as _hmac, hashlib as _hs
+        if not secret:
+            if os.getenv("ENVIRONMENT", "production") != "development":
+                raise HTTPException(status_code=401, detail="Webhook not accepted.")
+        else:
             expected = _hmac.new(secret.encode(), body_bytes, _hs.sha512).hexdigest()
-            if not _hmac.compare_digest(expected, sig_header):
+            if not _hmac.compare_digest(expected, sig_header or ""):
                 raise HTTPException(status_code=401, detail="Invalid webhook signature.")
         try:
             data = json.loads(body_bytes)

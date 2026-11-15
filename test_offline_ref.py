@@ -9,13 +9,23 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("WEB_SECRET_KEY", "test-secret-key-for-offline-ref-00000000000000")
 
+import pytest
 from fastapi.testclient import TestClient
+
+import web_auth
 
 from database import SessionLocal
 from main import app
 from models import InventoryItem, Transaction, User
 
 _seq = iter(range(100, 999))
+
+
+@pytest.fixture(autouse=True)
+def _reset():
+    with web_auth._auth_lock:
+        web_auth._auth_attempts.clear()
+    yield
 
 
 def _shop():
