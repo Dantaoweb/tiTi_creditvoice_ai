@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { apiFetch, apiPost, apiPut, apiDelete } from "../lib/api";
+import { saveOrQueue, QUEUED_NOTE } from "../lib/offlineSave";
+import { useToast } from "../components/Toast";
 import { nairaFull, dateStr, parseAmt, fmtAmt } from "../lib/format";
 
 // Expenses: money spent running the business, taken off gross profit to give
@@ -107,6 +109,7 @@ function ReviewRow({ item, categories, onDone }) {
 }
 
 export default function Expenses() {
+  const toast = useToast();
   const { period, setPeriod } = useApp();
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
@@ -166,7 +169,11 @@ export default function Expenses() {
         </div>
         {adding && (
           <ExpenseForm categories={cats}
-            onSave={async body => { await apiPost("expenses", body); setAdding(false); load(); }}
+            onSave={async body => {
+              const r = await saveOrQueue("expenses", body, `Expense ₦${Number(body.amount || 0).toLocaleString()} — ${body.category || "expense"}`);
+              if (r?.queued) toast(QUEUED_NOTE, "success");
+              setAdding(false); load();
+            }}
             onCancel={() => setAdding(false)} />
         )}
         {data.by_category.length > 0 && (

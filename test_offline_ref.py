@@ -93,3 +93,26 @@ def test_the_app_is_kept_on_the_phone_for_offline():
     assert '"cv-clear-api"' in sw                                      # forgotten on logout
     js = (Path(__file__).parent / "frontend" / "src" / "lib" / "useOfflineSync.js").read_text(encoding="utf-8")
     assert "apiPostOnce" in js and "dequeue(item.id);\n          continue;" not in js   # never thrown away on logout
+
+
+def test_stage_two_records_are_never_doubled_either():
+    from models import Customer, Expense
+    c, phone, item = _shop()
+    h = {"X-Client-Ref": "exp-ref-00001"}
+    body = {"amount": 5000, "category": "Transport", "note": "diesel"}
+    r1 = c.post("/app/api/expenses", headers=h, json=body)
+    assert r1.status_code == 200, r1.text
+    c.post("/app/api/expenses", headers=h, json=body)
+    h2 = {"X-Client-Ref": "cust-ref-0001"}
+    c.post("/app/api/customers", headers=h2, json={"owner_phone": phone, "name": "Offline Ade"})
+    c.post("/app/api/customers", headers=h2, json={"owner_phone": phone, "name": "Offline Ade"})
+    h3 = {"X-Client-Ref": "adj-ref-00001"}
+    for _ in range(2):
+        c.post(f"/app/api/inventory/{item}/adjust", headers=h3, json={"qty_delta": -3, "reason": "damaged"})
+    db = SessionLocal()
+    try:
+        assert db.query(Expense).filter(Expense.owner_phone == phone).count() == 1
+        assert db.query(Customer).filter(Customer.owner_phone == phone, Customer.name.ilike("offline ade")).count() == 1
+    finally:
+        db.close()
+    assert _stock(item) == 47

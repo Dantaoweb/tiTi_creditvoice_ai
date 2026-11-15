@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { apiFetch, apiPost } from "../lib/api";
+import { apiFetch } from "../lib/api";
+import { saveOrQueue, QUEUED_NOTE } from "../lib/offlineSave";
+import { useToast } from "../components/Toast";
 import { nairaFull, dateTimeStr } from "../lib/format";
 
 // The reasons stock can leave without a sale (stock_removal.py REASONS)
@@ -37,6 +39,7 @@ export function ReasonPicker({ reason, onReason, note, onNote }) {
 /* Remove a product from the business: its stock goes out with the reason,
    the product is hidden — past sales and receipts stay. */
 export function RemoveProductModal({ item, onClose, onRemoved }) {
+  const toast = useToast();
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,7 +49,11 @@ export function RemoveProductModal({ item, onClose, onRemoved }) {
     if (!reason) { setErr("Pick why the product is being removed."); return; }
     if (reason === "other" && !note.trim()) { setErr("Say what happened."); return; }
     setBusy(true); setErr("");
-    try { await apiPost(`inventory/${item.id}/remove`, { reason, note: note.trim() || null }); onRemoved(); }
+    try {
+      const r = await saveOrQueue(`inventory/${item.id}/remove`, { reason, note: note.trim() || null }, `Remove ${item.name} (${reason})`);
+      if (r?.queued) toast(QUEUED_NOTE, "success");
+      onRemoved();
+    }
     catch (e) { setErr(e.message); setBusy(false); }
   }
   return (

@@ -4,6 +4,8 @@ import { Plus, Wallet, X, Pencil, Check, Bell, Send, AlertTriangle, TrendingDown
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
+import { saveOrQueue, QUEUED_NOTE } from "../lib/offlineSave";
+import { useToast } from "../components/Toast";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtBalance } from "../lib/format";
 import MoneyInput from "../components/MoneyInput";
 import DataTable from "../components/DataTable";
@@ -31,6 +33,7 @@ function Modal({ title, onClose, children, wide }) {
 
 // ── Add customer modal ───────────────────────────────────────────────────────
 function AddCustomerModal({ ownerPhone, onClose, onSaved, L }) {
+  const toast = useToast();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
@@ -40,11 +43,12 @@ function AddCustomerModal({ ownerPhone, onClose, onSaved, L }) {
     if (!name.trim()) { setErr(`${L.customerName} is required.`); return; }
     setSaving(true); setErr("");
     try {
-      const c = await apiPost("customers", {
+      const c = await saveOrQueue("customers", {
         owner_phone: ownerPhone,
         name: name.trim(),
         phone: phone.trim() || null,
-      });
+      }, `New ${L.customerName.toLowerCase()}: ${name.trim()}`);
+      if (c?.queued) { toast(QUEUED_NOTE, "success"); onClose(); return; }
       onSaved(c);
       onClose();
     } catch (e) { setErr(e.message); }
@@ -171,6 +175,7 @@ function SendBalanceModal({ customer, onClose }) {
 
 // ── Record payment modal ─────────────────────────────────────────────────────
 function PaymentModal({ customer, onClose, onSaved }) {
+  const toast = useToast();
   const navigate = useNavigate();
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -182,10 +187,11 @@ function PaymentModal({ customer, onClose, onSaved }) {
     if (!amt || amt <= 0) { setErr("Enter a valid amount."); return; }
     setSaving(true); setErr("");
     try {
-      const result = await apiPost(`customers/${customer.id}/pay`, {
+      const result = await saveOrQueue(`customers/${customer.id}/pay`, {
         amount: amt,
         note: note.trim() || null,
-      });
+      }, `Payment ₦${amt.toLocaleString()} from ${customer.name}`);
+      if (result?.queued) { toast(QUEUED_NOTE, "success"); onClose(); return; }
       onSaved(result.new_balance);
       onClose();
       // Show the printable payment receipt as proof — works whether or not the

@@ -5,6 +5,8 @@ import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
 import { getBizLabels } from "../lib/bizLabels";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
+import { saveOrQueue, QUEUED_NOTE } from "../lib/offlineSave";
+import { useToast } from "../components/Toast";
 import WaitingCustomersModal from "../components/WaitingCustomersModal";
 import ExpiryModal from "../components/ExpiryModal";
 import { nairaFull, dateStr, dateTimeStr, parseAmt, fmtAmt } from "../lib/format";
@@ -880,6 +882,7 @@ function ExpiryBadge({ e }) {
 
 // ── Adjust stock modal (only for physical stock items) ───────────────────────
 function AdjustModal({ item, onClose, onSaved }) {
+  const toast = useToast();
   const [delta, setDelta] = useState("");
   const [supplier, setSupplier] = useState(item.usual_supplier || "");
   const [cost, setCost] = useState("");
@@ -910,7 +913,7 @@ function AdjustModal({ item, onClose, onSaved }) {
         // Adding stock is receiving goods: record against a supplier (defaults
         // to "Others" server-side) so it shows in the supplier ledger, and add
         // to physical stock — the same path as Quick Record → Stock Received.
-        await apiPost("inventory/stock-received", {
+        const r = await saveOrQueue("inventory/stock-received", {
           item_id: item.id,
           quantity: qty,
           cost_per_unit: cost ? parseAmt(cost) : null,
@@ -920,7 +923,8 @@ function AdjustModal({ item, onClose, onSaved }) {
           expiry_date: expiry || null,
           batch_no: batchNo.trim() || null,
           note: note.trim() || null,
-        });
+        }, `Stock +${qty} ${item.unit || ""} ${item.name}`.replace(/\s+/g, " "));
+        if (r?.queued) { toast(QUEUED_NOTE, "success"); onSaved(); onClose(); return; }
         setWaitingFor(item.id);
         setSaving(false);
         return;
@@ -929,11 +933,12 @@ function AdjustModal({ item, onClose, onSaved }) {
         if (!removing) { setRemoving(true); setSaving(false); return; }
         if (!reason) { setErr("Pick why the stock is being removed."); setSaving(false); return; }
         if (reason === "other" && !note.trim()) { setErr("Say what happened."); setSaving(false); return; }
-        await apiPost(`inventory/${item.id}/adjust`, {
+        const r = await saveOrQueue(`inventory/${item.id}/adjust`, {
           qty_delta: -qty,
           reason,
           note: note.trim() || null,
-        });
+        }, `Stock −${qty} ${item.unit || ""} ${item.name} (${reason})`.replace(/\s+/g, " "));
+        if (r?.queued) toast(QUEUED_NOTE, "success");
       }
       onSaved();
       onClose();
