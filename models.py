@@ -23,6 +23,8 @@ class Customer(Base):
 
     # Branch this customer belongs to (multi-branch isolation). NULL = business-wide.
     branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    # Who added them — so staff always see the customers they added
+    created_by_id = Column(String, nullable=True, index=True)
 
     customer_phone = Column(String, nullable=True)
 
@@ -110,6 +112,13 @@ class User(Base):
     page_slug = Column(String, nullable=True, unique=True, index=True)   # creditvoiceai.com/b/<slug>
     # The marketer who brought this business (marketers.py), if any
     marketer_id = Column(Integer, ForeignKey("marketers.id"), nullable=True, index=True)
+    # A staff admin: what the owner keeps from them (staff_access.py), e.g. ["profit"]
+    staff_limits = Column(Text, nullable=True)
+    # An invitation to an EXISTING account, held until they accept — their account
+    # isn't touched before that (web_staff_routes)
+    invite_owner_id = Column(String, nullable=True, index=True)
+    invite_branch_id = Column(Integer, nullable=True)
+    invite_admin = Column(Boolean, nullable=True)
     # A demo business (demo_business.py) for an admin or marketer to show and
     # teach with — sample data only, never counted, never messaged
     is_demo = Column(Boolean, default=False)

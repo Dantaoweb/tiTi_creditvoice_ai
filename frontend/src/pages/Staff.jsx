@@ -26,6 +26,17 @@ function CopyButton({ text, label = "Copy code" }) {
   );
 }
 
+// What an admin can be kept from (staff_access.py LIMITS). An admin sees
+// everything about the business unless the owner ticks one of these.
+const ADMIN_LIMITS = [
+  ["dashboard", "Dashboard & Insights"],
+  ["profit", "Profit & cost prices"],
+  ["expenses", "Expenses"],
+  ["suppliers", "What we owe suppliers"],
+  ["stock", "Changing stock (add, adjust, remove)"],
+  ["own_branch", "Other branches (only their own branch)"],
+];
+
 // Renders an invite code with copy + a shareable link + WhatsApp share.
 function InviteShare({ code, phone }) {
   const link = `${window.location.origin}/app/login?invite=${encodeURIComponent(code)}`
@@ -381,6 +392,32 @@ export default function Staff() {
     finally { setInvBusy(false); }
   }
 
+  async function saveLimits(id, limits) {
+    setAccessBusy(p => ({ ...p, [id]: true }));
+    try {
+      const r = await apiPut(`staff/${id}/limits`, { limits });
+      setMembers(ms => ms.map(m => (m.id === id ? { ...m, limits: r.limits } : m)));
+    } catch (e) { alert(e.message); }
+    finally { setAccessBusy(p => ({ ...p, [id]: false })); }
+  }
+
+  async function removeStaff(m) {
+    const what = m.pending ? `Cancel the invitation for ${m.name}?` :
+      `Remove ${m.name} from your business? They're signed out at once and can't record any more. What they recorded stays.`;
+    if (!window.confirm(what)) return;
+    try {
+      await apiPost(`staff/${m.id}/remove`, {});
+      setMembers(ms => ms.filter(x => x.id !== m.id));
+      setData(d => (d ? { ...d, staff: (d.staff || []).filter(x => x.id !== m.id) } : d));
+    } catch (e) { alert(e.message); }
+  }
+
+  async function signOutStaff(m) {
+    if (!window.confirm(`Sign ${m.name} out on every phone? They can log in again with their PIN.`)) return;
+    try { await apiPost(`staff/${m.id}/revoke-sessions`, {}); alert(`${m.name} has been signed out everywhere.`); }
+    catch (e) { alert(e.message); }
+  }
+
   async function toggleAccess(id, next) {
     setAccessBusy(p => ({ ...p, [id]: true }));
     try {
@@ -664,6 +701,7 @@ export default function Staff() {
                     onClick={() => resendInvite(m)}>
                     {resendBusy[m.id] ? "Sending…" : "Resend invite"}
                   </button>
+                  <button className="btn btn-ghost btn-sm" style={{ color: "#b91c1c" }} onClick={() => removeStaff(m)}>Cancel</button>
                   <span className="badge badge-amber">Pending</span>
                 </div>
                 {resendResult[m.id] && (
@@ -721,25 +759,44 @@ export default function Staff() {
                   const mem = members.find(x => x.id === member.id);
                   if (!mem || mem.pending) return null;
                   const full = mem.full_access;
+                  const limits = mem.limits || [];
                   return (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>
-                          {full ? "Branch admin" : "Own records only"}
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{full ? "Admin" : "Staff"}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            {full
+                              ? (limits.length ? "Sees the business, except what's ticked below." : "Sees everything about the business — all customers, sales, debts and stock.")
+                              : "Records sales; sees only what they record and the customers they added."}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                          {full
-                            ? (mem.branch_id ? "Sees all records in their branch." : "Assign a branch below to scope this.")
-                            : "Sees only what they record."}
-                        </div>
+                        <button
+                          className={`btn btn-sm ${full ? "btn-secondary" : "btn-primary"}`}
+                          disabled={accessBusy[member.id]}
+                          onClick={() => toggleAccess(member.id, !full)}
+                        >
+                          {accessBusy[member.id] ? "Saving…" : (full ? "Make ordinary staff" : "Make admin")}
+                        </button>
                       </div>
-                      <button
-                        className={`btn btn-sm ${full ? "btn-secondary" : "btn-primary"}`}
-                        disabled={accessBusy[member.id]}
-                        onClick={() => toggleAccess(member.id, !full)}
-                      >
-                        {accessBusy[member.id] ? "Saving…" : (full ? "Remove branch admin" : "Make branch admin")}
-                      </button>
+                      {full && (
+                        <div className="staff-limits">
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>This admin can't see…</div>
+                          {ADMIN_LIMITS.filter(([k]) => k !== "own_branch" || branches.length > 0).map(([k, label]) => (
+                            <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                              <input type="checkbox" style={{ width: "auto" }} disabled={accessBusy[member.id]}
+                                checked={limits.includes(k)}
+                                onChange={e => saveLimits(member.id, e.target.checked ? [...limits, k] : limits.filter(x => x !== k))} />
+                              {label}
+                              {k === "own_branch" && !mem.branch_id && <span className="text-muted" style={{ fontSize: 12 }}>(give them a branch below)</span>}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => signOutStaff(mem)}>Sign out their phone</button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: "#b91c1c" }} onClick={() => removeStaff(mem)}>Remove from business</button>
+                      </div>
                     </div>
                   );
                 })()}

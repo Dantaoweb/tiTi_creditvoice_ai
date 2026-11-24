@@ -15,6 +15,7 @@ from database import SessionLocal
 from models import Supplier, SupplierPurchase, SupplierPayment, User, utcnow
 from web_auth import require_web_auth
 from web_common import _session_owner_phone, _owner_filter, _iso, _money, _require_stock_manager
+from web_common import kept_guard
 
 
 def _biz_name(db, owner_phone):
@@ -176,7 +177,7 @@ def supplier_debt_total(db, owner_phone):
 
 def register_supplier_routes(app):
 
-    @app.get("/app/api/suppliers")
+    @app.get("/app/api/suppliers", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_suppliers(session: dict = Depends(require_web_auth)):
         remaining_by_purchase = {}
         db = SessionLocal()
@@ -255,7 +256,7 @@ def register_supplier_routes(app):
 
     # ── Supplier receipts (stock-received purchases + payments) ───────────────
     # Registered before /suppliers/{supplier_id} so the literal path wins.
-    @app.get("/app/api/suppliers/receipts")
+    @app.get("/app/api/suppliers/receipts", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_supplier_receipts(session: dict = Depends(require_web_auth)):
         """List supplier receipts (purchases + payments) for the Receipts menu."""
         db = SessionLocal()
@@ -290,7 +291,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.get("/app/api/suppliers/{supplier_id}")
+    @app.get("/app/api/suppliers/{supplier_id}", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_supplier_detail(
         supplier_id: int,
         from_: Optional[str] = Query(default=None, alias="from"),
@@ -347,7 +348,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.get("/app/api/suppliers/{supplier_id}/statement")
+    @app.get("/app/api/suppliers/{supplier_id}/statement", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_supplier_statement(
         supplier_id: int,
         from_: Optional[str] = Query(default=None, alias="from"),
@@ -416,7 +417,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.post("/app/api/suppliers/{supplier_id}/pay")
+    @app.post("/app/api/suppliers/{supplier_id}/pay", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_supplier_pay(
         supplier_id: int,
         payload: SupplierPayRequest,
@@ -450,7 +451,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.post("/app/api/suppliers/{supplier_id}/purchase")
+    @app.post("/app/api/suppliers/{supplier_id}/purchase", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_supplier_record_purchase(
         supplier_id: int,
         payload: SupplierPurchaseAddRequest,
@@ -543,7 +544,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.post("/app/api/suppliers")
+    @app.post("/app/api/suppliers", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_add_supplier(payload: AddSupplierRequest, session: dict = Depends(require_web_auth)):
         """Create a supplier manually (before any purchase). Owner/branch-admin."""
         db = SessionLocal()
@@ -567,7 +568,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.put("/app/api/suppliers/{supplier_id}")
+    @app.put("/app/api/suppliers/{supplier_id}", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_edit_supplier(
         supplier_id: int,
         payload: EditSupplierRequest,
@@ -600,7 +601,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.put("/app/api/suppliers/purchases/{purchase_id}/due-date")
+    @app.put("/app/api/suppliers/purchases/{purchase_id}/due-date", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_set_purchase_due(
         purchase_id: int,
         payload: SupplierPurchaseDueRequest,
@@ -629,7 +630,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.put("/app/api/suppliers/purchases/{purchase_id}")
+    @app.put("/app/api/suppliers/purchases/{purchase_id}", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_edit_purchase(
         purchase_id: int,
         payload: SupplierPurchaseEditRequest,
@@ -692,7 +693,7 @@ def register_supplier_routes(app):
         finally:
             db.close()
 
-    @app.get("/app/api/suppliers/receipt/{kind}/{item_id}")
+    @app.get("/app/api/suppliers/receipt/{kind}/{item_id}", dependencies=[Depends(kept_guard("suppliers", "what the business owes suppliers"))])
     def web_supplier_receipt(kind: str, item_id: int, session: dict = Depends(require_web_auth)):
         """Rich supplier receipt (same shape/style as a sale receipt) for a
         stock-received purchase or a supplier payment."""

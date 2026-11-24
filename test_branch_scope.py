@@ -65,9 +65,14 @@ def test_branch_scope_for_user():
     owner = User(id="o", phone="1", role="owner", parent_id=None)
     assert branch_scope_for_user(owner) == (None, False)          # all branches
 
-    # Branch admin: full-access staff assigned to a branch → sees that branch
+    # Admin (full-access staff) → the whole business by default, branch or not
+    admin = User(id="ad", phone="2a", role="delegate", parent_id="o",
+                 branch_id=5, can_view_all_transactions=True)
+    assert branch_scope_for_user(admin) == (None, False)
+
+    # …unless the owner kept them to their branch (staff_access.py "own_branch")
     branch_admin = User(id="ba", phone="2", role="delegate", parent_id="o",
-                        branch_id=5, can_view_all_transactions=True)
+                        branch_id=5, can_view_all_transactions=True, staff_limits='["own_branch"]')
     assert branch_scope_for_user(branch_admin) == (5, True)
 
     # Regular staff (even with a branch) → own records only
@@ -75,7 +80,7 @@ def test_branch_scope_for_user():
                    branch_id=5, can_view_all_transactions=False)
     assert branch_scope_for_user(regular) == (None, True)
 
-    # Full-access staff not yet assigned a branch → own records
+    # Admin with no branch → the whole business (they can serve every customer)
     unassigned = User(id="s2", phone="4", role="delegate", parent_id="o",
                       branch_id=None, can_view_all_transactions=True)
-    assert branch_scope_for_user(unassigned) == (None, True)
+    assert branch_scope_for_user(unassigned) == (None, False)

@@ -257,7 +257,9 @@ def _can_see_profit(db, session: dict) -> bool:
     authorised to see all records (branch admins) — not regular staff, who
     record sales but shouldn't see what the business makes on them."""
     user = _session_user(db, session)
-    return bool(user and (user.parent_id is None or user.can_view_all_transactions))
+    from staff_access import kept_from
+    return bool(user and (user.parent_id is None or user.can_view_all_transactions)
+                and not kept_from(user, "profit"))
 
 
 def _require_stock_manager(db, session: dict):
@@ -267,9 +269,33 @@ def _require_stock_manager(db, session: dict):
     user = _session_user(db, session)
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
-    if user.parent_id is None or user.can_view_all_transactions:
+    from staff_access import kept_from
+    if user.parent_id is None or (user.can_view_all_transactions and not kept_from(user, "stock")):
         return user
-    raise HTTPException(status_code=403, detail="Only the owner or a branch admin can manage stock.")
+    raise HTTPException(status_code=403, detail="Only the owner or a staff admin allowed to change stock can manage stock.")
+
+
+def kept_guard(key: str, what: str):
+    """A route dependency: refuse a staff admin the owner keeps from `what`
+    (staff_access.py). e.g. @app.get(..., dependencies=[Depends(kept_guard("expenses", "Expenses"))])"""
+    from fastapi import Depends as _Depends
+    from web_auth import require_web_auth as _auth
+
+    def _check(session: dict = _Depends(_auth)):
+        from database import SessionLocal as _SL
+        db = _SL()
+        try:
+            _require_not_kept(db, session, key, what)
+        finally:
+            db.close()
+    return _check
+
+
+def _require_not_kept(db, session: dict, key: str, what: str):
+    """A staff admin the owner keeps from `what` (staff_access.py) is refused."""
+    from staff_access import kept_from
+    if kept_from(_session_user(db, session), key):
+        raise HTTPException(status_code=403, detail=f"The owner hasn't given you access to {what}.")
 
 
 def _require_can_record(db, session: dict, count_sale: bool = True):

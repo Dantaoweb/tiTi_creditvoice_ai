@@ -182,6 +182,13 @@ def handle_staff_command(db, phone, parsed, user, subscription, business_name, s
         staff_name = parsed["name"]
 
         staff_user = db.query(User).filter(User.phone == staff_phone).first()
+        if staff_user and staff_user.parent_id != user.id:
+            # An existing account is never turned into someone's staff from here
+            # (it used to be, at once — locking its owner out). The web app holds
+            # the invitation until they accept.
+            send_message(phone, "That number already has a CreditVoice account. Invite them from the web app "
+                                "(Menu → Staff) — they join when they accept with the code.")
+            return {"status": "staff_number_has_account"}
         if staff_user:
             staff_user.role = "delegate_pending"
             staff_user.parent_id = user.id

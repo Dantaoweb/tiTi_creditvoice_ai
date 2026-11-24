@@ -296,6 +296,7 @@ def register_inventory_routes(app):
                 close_matches = describe(db, [
                     i for i, _s in find_similar(db, _owner_phone, term, limit=8, items=scope.all())
                     if i.id not in shown])
+            _hide_cost = __import__("staff_access").kept_from(_session_user(db, session), "profit")
             return {
                 "close_matches": close_matches,
                 "total": total,
@@ -312,7 +313,7 @@ def register_inventory_routes(app):
                         "waiting": (owed.get(item.id) or {}).get("waiting") or 0,
                         "waiting_customers": (owed.get(item.id) or {}).get("customers") or [],
                         "expiry": _exp.get(item.id),
-                        "cost_price": _money(item.cost_price),
+                        "cost_price": None if _hide_cost else _money(item.cost_price),   # an admin kept from profit
                         "selling_price": _money(item.selling_price),
                         "low_stock_alert": item.low_stock_alert,
                         "vat_exempt": bool(item.vat_exempt),

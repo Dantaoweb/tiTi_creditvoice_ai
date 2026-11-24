@@ -63,7 +63,7 @@ def _business():
         clerk_phone = f"2348101{next(_seq):06d}"
         db.add_all([cem_a, cem_b, ade, bola,
                     User(phone=admin_phone, name="Sade", role="delegate", parent_id=owner.id,
-                         branch_id=a.id, can_view_all_transactions=True, subscription_status="ACTIVE",
+                         branch_id=a.id, can_view_all_transactions=True, staff_limits='["own_branch"]', subscription_status="ACTIVE",
                          recovery_pin_hash=web_auth._hash_pin("1234")),
                     User(phone=clerk_phone, name="Tayo", role="delegate", parent_id=owner.id,
                          branch_id=a.id, can_view_all_transactions=False, subscription_status="ACTIVE",

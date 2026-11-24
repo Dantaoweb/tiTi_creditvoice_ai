@@ -35,20 +35,23 @@ def branch_scope_for_user(user):
     """The data-access scope for multi-branch isolation.
 
     Returns (branch_id, limited):
-      - owner/admin (top-level account): (None, False) — sees all branches
-      - branch admin (authorized staff assigned to a branch): (branch_id, True)
-        — sees that whole branch (all staff in it)
-      - regular staff (incl. a branch admin not yet assigned a branch):
-        (None, True) — caller scopes to the staff's own records (recorded_by_id)
-
-    "Branch admin" is a staff with can_view_all_transactions set — the "see all
-    branch records" authorization — but their view is still confined to their
-    own branch, not the whole business.
+      - owner (top-level account): (None, False) — sees all branches
+      - admin (staff with can_view_all_transactions): (None, False) — the whole
+        business, like the owner (staff_access.py)…
+      - …unless the owner kept them to their branch ("own_branch"):
+        (branch_id, True) — that whole branch (all staff in it)
+      - regular staff: (None, True) — caller scopes to the staff's own records
+        (recorded_by_id)
     """
     if not user or getattr(user, "parent_id", None) is None:
         return None, False
-    if getattr(user, "can_view_all_transactions", False) and getattr(user, "branch_id", None):
-        return user.branch_id, True
+    if getattr(user, "can_view_all_transactions", False):
+        # An admin sees the whole business by default (staff_access.py), unless
+        # the owner kept them to their own branch
+        from staff_access import kept_from
+        if getattr(user, "branch_id", None) and kept_from(user, "own_branch"):
+            return user.branch_id, True
+        return None, False
     return None, True
 
 

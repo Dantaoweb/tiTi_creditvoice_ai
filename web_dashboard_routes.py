@@ -18,6 +18,7 @@ from reports import (
 )
 from web_auth import require_web_auth
 from web_common import _session_owner_phone, _scoped_read
+from web_common import kept_guard
 
 
 class FastModeToggleRequest(BaseModel):
@@ -41,7 +42,7 @@ def _suppliers_owed(db, owner_phone):
 def register_dashboard_routes(app):
 
     # ── Dashboard ────────────────────────────────────────────────────────
-    @app.get("/app/api/dashboard")
+    @app.get("/app/api/dashboard", dependencies=[Depends(kept_guard("dashboard", "the Dashboard and Insights"))])
     def web_dashboard(
         # Default to all-time (None), like every other period endpoint. The web
         # client sends "" for All Time, which apiFetch drops — so an absent
@@ -122,7 +123,7 @@ def register_dashboard_routes(app):
             db.close()
 
     # ── Inventory Insights (margin snapshot, price changes, stock received) ──
-    @app.get("/app/api/reports/inventory-insights")
+    @app.get("/app/api/reports/inventory-insights", dependencies=[Depends(kept_guard("dashboard", "the Dashboard and Insights"))])
     def web_inventory_insights(
         period: Optional[str] = Query(default=None),
         branch_id: Optional[int] = Query(default=None),
@@ -147,7 +148,7 @@ def register_dashboard_routes(app):
         finally:
             db.close()
 
-    @app.get("/app/api/reports/charts")
+    @app.get("/app/api/reports/charts", dependencies=[Depends(kept_guard("dashboard", "the Dashboard and Insights"))])
     def web_report_charts(
         period: Optional[str] = Query(default=None),
         branch_id: Optional[int] = Query(default=None),

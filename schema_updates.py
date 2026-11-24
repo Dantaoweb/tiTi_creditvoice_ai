@@ -1239,7 +1239,10 @@ def ensure_schema_updates(engine):
                           ("branches", {"phone": "VARCHAR"}),
                           ("users", {"receipt_phones": "VARCHAR", "page_enabled": "BOOLEAN DEFAULT FALSE",
                                      "page_slug": "VARCHAR", "marketer_id": "INTEGER",
-                                     "is_demo": "BOOLEAN DEFAULT FALSE", "demo_owner_id": "VARCHAR"}),
+                                     "is_demo": "BOOLEAN DEFAULT FALSE", "demo_owner_id": "VARCHAR",
+                                     "staff_limits": "TEXT", "invite_owner_id": "VARCHAR",
+                                     "invite_branch_id": "INTEGER", "invite_admin": "BOOLEAN"}),
+                          ("customers", {"created_by_id": "VARCHAR"}),
                           ("production_runs", {"expected_json": "TEXT", "rejects_qty": "FLOAT",
                                                "regrind_item_id": "INTEGER", "regrind_qty": "FLOAT",
                                                "regrind_value": "INTEGER"})):
@@ -1249,6 +1252,18 @@ def ensure_schema_updates(engine):
                 if _col not in _have:
                     with engine.begin() as connection:
                         connection.execute(text(f"ALTER TABLE {_table} ADD COLUMN {_col} {_typ}"))
+
+    # ── Staff admins now see the whole business by default (staff_access.py).
+    # Existing branch admins keep what they had — their branch only — until the
+    # owner changes it. Runs once.
+    if "users" in inspector.get_table_names() and not _migration_applied(engine, "branch_admins_keep_own_branch_2026_11"):
+        with engine.begin() as connection:
+            connection.execute(text(
+                "UPDATE users SET staff_limits = '[\"own_branch\"]' "
+                "WHERE parent_id IS NOT NULL AND can_view_all_transactions = :t AND branch_id IS NOT NULL "
+                "AND (staff_limits IS NULL OR staff_limits = '')"
+            ), {"t": True})
+        _mark_migration(engine, "branch_admins_keep_own_branch_2026_11")
 
     # ── appointments: requests from the customer booking link ─────────────────
     if "appointments" in inspector.get_table_names():

@@ -46,6 +46,8 @@ function navScore(entry) {
 
 // Business groups that book customers for a time (appointments.py SERVICE_GROUPS)
 const SERVICE_GROUPS = ["service", "clinic", "professional"];
+// A staff admin the owner keeps from these doesn't see them (staff_access.py)
+const STAFF_LIMIT_FOR = { "/dashboard": "dashboard", "/insights": "dashboard", "/expenses": "expenses", "/suppliers": "suppliers" };
 // Businesses that make what they sell (production.py PRODUCER_TYPES)
 const PRODUCER_TYPES = ["bakery", "food_vendor", "catering", "block_making", "carpentry_furniture", "welding_fabrication", "tailor_fashion"];
 
@@ -225,7 +227,8 @@ export default function Layout() {
     && (!item.fullAccessOnly || (user?.full_access ?? !user?.parent_id))
     && (!item.schoolOnly || isSchool) && (!item.appointmentsOnly || showAppointments)
     && (!item.productionOnly || showProduction) && (!item.marketerOnly || user?.is_marketer)
-    && (!item.demoOnly || user?.can_demo));
+    && (!item.demoOnly || user?.can_demo)
+    && !(STAFF_LIMIT_FOR[item.to] && (user?.staff_limits || []).includes(STAFF_LIMIT_FOR[item.to])));
   const { isOnline, pending, failed, syncing, sync } = useOfflineSync();
   const [showWaiting, setShowWaiting] = useState(false);
 

@@ -28,6 +28,31 @@ class StaffInviteRequest(BaseModel):
     as_branch_admin: bool = False            # grant "see all branch records" (needs a branch)
 
 
+class StaffLimitsRequest(BaseModel):
+    limits: list[str] = Field(default_factory=list, max_length=20)   # staff_access.LIMITS keys
+
+
+def _runs_own_business(db, user):
+    """Does this account already run a business of its own? Then it can't be
+    made someone's staff — that would lock its owner out of their records."""
+    from models import Customer, InventoryItem, Transaction
+    if not user or user.parent_id is not None:
+        return False
+    if db.query(User.id).filter(User.parent_id == user.id).first():
+        return True
+    for model in (Customer, InventoryItem):
+        if db.query(model.id).filter(model.owner_phone == user.phone).first():
+            return True
+    return bool(db.query(Transaction.id).filter(Transaction.recorded_by_id == user.id).first())
+
+
+def _owners_member(db, owner, user_id):
+    """One of this owner's staff, or someone with a pending invitation from them."""
+    from sqlalchemy import or_
+    return db.query(User).filter(User.id == user_id,
+                                 or_(User.parent_id == owner.id, User.invite_owner_id == owner.id)).first()
+
+
 class StaffAcceptRequest(BaseModel):
     phone: str = Field(max_length=20)
     code: str = Field(max_length=10)
@@ -59,7 +84,9 @@ def register_staff_routes(app):
             owner = db.query(User).filter(User.phone == session["phone"]).first()
             if not owner or owner.parent_id is not None:   # any top-level owner
                 return {"members": []}
-            members = db.query(User).filter(User.parent_id == owner.id).all()
+            from sqlalchemy import or_
+            from staff_access import limits_of
+            members = db.query(User).filter(or_(User.parent_id == owner.id, User.invite_owner_id == owner.id)).all()
             branch_names = {b.id: b.name for b in db.query(Branch).filter(Branch.owner_phone == owner.phone).all()}
             return {
                 "members": [
@@ -69,10 +96,11 @@ def register_staff_routes(app):
                         "phone": m.phone,
                         "email": m.email,
                         "role": m.role,
-                        "pending": m.role == "delegate_pending",
-                        "full_access": bool(m.can_view_all_transactions),
-                        "branch_id": m.branch_id,
-                        "branch_name": branch_names.get(m.branch_id),
+                        "pending": m.role == "delegate_pending" or (m.invite_owner_id == owner.id and m.parent_id != owner.id),
+                        "full_access": bool(m.can_view_all_transactions) if m.parent_id == owner.id else bool(m.invite_admin),
+                        "limits": limits_of(m) if m.parent_id == owner.id else [],
+                        "branch_id": m.branch_id if m.parent_id == owner.id else m.invite_branch_id,
+                        "branch_name": branch_names.get(m.branch_id if m.parent_id == owner.id else m.invite_branch_id),
                         "invite_expires_at": m.invite_expires_at.isoformat() if m.invite_expires_at else None,
                     }
                     for m in members
@@ -126,14 +154,26 @@ def register_staff_routes(app):
             as_admin = bool(payload.as_branch_admin and branch_id is not None)
 
             staff_user = user_by_phone(db, payload.phone)
-            if staff_user:
-                staff_user.role = "delegate_pending"
-                staff_user.parent_id = owner.id
+            if staff_user and staff_user.id == owner.id:
+                raise HTTPException(status_code=400, detail="That's your own number.")
+            if staff_user and staff_user.parent_id == owner.id:
+                # Already yours (staff, or pending): fresh code, new details
                 staff_user.name = staff_name
                 if staff_email:
                     staff_user.email = staff_email
                 staff_user.branch_id = branch_id
                 staff_user.can_view_all_transactions = as_admin
+            elif staff_user:
+                # An existing account: NOTHING about it changes until they accept
+                # with the code. (It used to become this owner's staff at once —
+                # another business owner's login then opened this business.)
+                if _runs_own_business(db, staff_user):
+                    raise HTTPException(status_code=409, detail=(
+                        "This number already runs its own business on CreditVoice, so it can't be added as "
+                        "your staff. Ask them for another number to use as your staff."))
+                staff_user.invite_owner_id = owner.id
+                staff_user.invite_branch_id = branch_id
+                staff_user.invite_admin = as_admin
             else:
                 staff_user = User(
                     phone=staff_phone,
@@ -181,9 +221,9 @@ def register_staff_routes(app):
             owner = _session_user(db, session)
             if not owner or owner.parent_id is not None:
                 raise HTTPException(status_code=403, detail="Only business owners can resend invitations.")
-            member = db.query(User).filter(
-                User.id == user_id, User.parent_id == owner.id, User.role == "delegate_pending",
-            ).first()
+            member = _owners_member(db, owner, user_id)
+            if member and not (member.role == "delegate_pending" or member.invite_owner_id == owner.id):
+                member = None
             if not member:
                 raise HTTPException(status_code=404, detail="No pending invitation for this staff member.")
             from datetime import timezone as _tz
@@ -222,7 +262,8 @@ def register_staff_routes(app):
             # Tolerant of local vs international format — the owner may have typed
             # the number differently from how the staff enters it here.
             staff_user = user_by_phone(db, phone)
-            if not staff_user or staff_user.role != "delegate_pending":
+            held = bool(staff_user and staff_user.invite_owner_id)        # an existing account, invited
+            if not staff_user or not (staff_user.role == "delegate_pending" or held):
                 raise HTTPException(status_code=404, detail="No pending invitation found for this phone number.")
 
             # Expired — invalidate the old code but keep them pending in the
@@ -250,8 +291,29 @@ def register_staff_routes(app):
                 raise HTTPException(status_code=400, detail=f"Wrong code. {remaining} attempt(s) remaining.")
 
             # Accept
+            if held:
+                # Their own business can't be given up by joining someone else's
+                if _runs_own_business(db, staff_user):
+                    raise HTTPException(status_code=409, detail=(
+                        "This number runs its own business on CreditVoice. Use another number to join as staff."))
+                staff_user.parent_id = staff_user.invite_owner_id
+                staff_user.branch_id = staff_user.invite_branch_id
+                staff_user.can_view_all_transactions = bool(staff_user.invite_admin)
+                staff_user.staff_limits = None
+                staff_user.invite_owner_id = staff_user.invite_branch_id = staff_user.invite_admin = None
+                staff_user.token_version = (staff_user.token_version or 0) + 1    # their old sessions end
             had_pin = bool(staff_user.recovery_pin_hash)
             staff_user.role = "delegate"
+            # Tell the owner
+            try:
+                from web_common import _add_notification
+                boss = db.query(User).filter(User.id == staff_user.parent_id).first()
+                if boss:
+                    _add_notification(db, boss.phone, "staff_joined", f"👥 {staff_user.name or 'Your staff'} joined",
+                                      f"{staff_user.name or staff_user.phone} accepted your invitation and can now record "
+                                      "for your business.", link="/staff")
+            except Exception:
+                pass
             staff_user.invite_code = None
             staff_user.invite_code_attempts = 0
             staff_user.invite_expires_at = None
@@ -369,6 +431,56 @@ def register_staff_routes(app):
             member.can_view_all_transactions = bool(payload.full_access)
             db.commit()
             return {"ok": True, "full_access": bool(member.can_view_all_transactions)}
+        finally:
+            db.close()
+
+    @app.put("/app/api/staff/{user_id}/limits")
+    def web_set_staff_limits(user_id: str, payload: StaffLimitsRequest, session: dict = Depends(require_web_auth)):
+        """What a staff admin can't see (staff_access.py) — owner only."""
+        from staff_access import LIMITS, set_limits
+        db = SessionLocal()
+        try:
+            owner = _session_user(db, session)
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can change what staff see.")
+            member = db.query(User).filter(User.id == user_id, User.parent_id == owner.id).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            bad = [k for k in payload.limits if k not in LIMITS]
+            if bad:
+                raise HTTPException(status_code=400, detail="Unknown choice.")
+            limits = set_limits(member, payload.limits)
+            db.commit()
+            return {"ok": True, "limits": limits}
+        finally:
+            db.close()
+
+    @app.post("/app/api/staff/{user_id}/remove")
+    def web_remove_staff(user_id: str, session: dict = Depends(require_web_auth)):
+        """Take a staff member off the business (or cancel an invitation). They're
+        signed out everywhere at once; what they recorded stays in the business."""
+        db = SessionLocal()
+        try:
+            owner = _session_user(db, session)
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can remove staff.")
+            member = _owners_member(db, owner, user_id)
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            if member.invite_owner_id == owner.id and member.parent_id != owner.id:
+                # Only an invitation to an existing account: cancel it, touch nothing else
+                member.invite_owner_id = member.invite_branch_id = member.invite_admin = None
+                member.invite_code = None
+            else:
+                member.parent_id = None
+                member.role = "user"
+                member.can_view_all_transactions = False
+                member.branch_id = None
+                member.staff_limits = None
+                member.invite_code = None
+                member.token_version = (member.token_version or 0) + 1
+            db.commit()
+            return {"ok": True}
         finally:
             db.close()
 

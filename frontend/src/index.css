@@ -4538,3 +4538,13 @@ a.inv-step__ref { color: var(--brand); }
   color: var(--ink);
 }
 button.sync-chip { cursor: pointer; border: none; font: inherit; }
+
+/* Staff page: what an admin can't see */
+.staff-limits {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--line-2);
+}

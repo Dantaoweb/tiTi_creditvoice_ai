@@ -567,6 +567,8 @@ def _build_auth_response(user: User, db=None) -> dict:
             "newsletter_consent": bool(user.newsletter_consent),
             "parent_id": user.parent_id,
             "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
+            # A staff admin: what the owner keeps from them (staff_access.py) — menu hides these
+            "staff_limits": __import__("staff_access").limits_of(user),
             "can_quote": __import__("business_templates").can_quote(user, db),
             # A CreditVoice marketer (marketers.py) — shows "My marketing" in the menu
             "is_marketer": bool(db is not None and __import__("marketers").for_user(db, user)),

@@ -53,7 +53,8 @@ def _setup():
                  branch_id=a_id, can_view_all_transactions=False,
                  recovery_pin_hash=web_auth._hash_pin("1234"), subscription_status="ACTIVE")
     admin = User(phone=admin_phone, name="Bimpe", role="delegate", parent_id=owner.id,
-                 branch_id=a_id, can_view_all_transactions=True,   # branch admin
+                 branch_id=a_id, can_view_all_transactions=True,   # branch admin…
+                 staff_limits='["own_branch"]',                    # …kept to their branch (staff_access.py)
                  recovery_pin_hash=web_auth._hash_pin("1234"), subscription_status="ACTIVE")
     db.add_all([staff, admin]); db.commit()
     staff_id = staff.id

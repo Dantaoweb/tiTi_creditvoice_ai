@@ -438,6 +438,8 @@ def register_auth_routes(app):
                 "parent_id": user.parent_id,
                 # Owner or branch admin — may manage stock, branches, etc.
                 "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
+                # A staff admin: what the owner keeps from them (staff_access.py) — menu hides these
+                "staff_limits": __import__("staff_access").limits_of(user),
             "can_quote": __import__("business_templates").can_quote(user, db),
             }
         finally:

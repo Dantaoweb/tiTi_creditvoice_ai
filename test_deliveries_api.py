@@ -144,12 +144,14 @@ def test_cancel_undelivered_and_refund_through_the_api():
 
 def test_return_goods_through_the_api():
     phone, cook, item_id, ade = _shop()
-    # Authorised staff with no branch act on the sales they recorded (branch
-    # isolation: only the owner, or a branch admin within their branch, sees more)
+    # An admin (authorised staff) sees the whole business — they can take a
+    # return on the owner's sale too (staff_access.py); ordinary staff can't
     staff = _staff(phone, True)
     sale = _sell(phone, staff, item_id, 10, customer_id=ade).json()["receipt_id"]
     owners_sale = _sell(phone, cook, item_id, 1, customer_id=ade).json()["receipt_id"]
-    assert client.get(f"/app/api/sales/{owners_sale}/returnable", cookies=staff).status_code == 404
+    assert client.get(f"/app/api/sales/{owners_sale}/returnable", cookies=staff).status_code == 200
+    plain = _staff(phone, False)
+    assert client.get(f"/app/api/sales/{owners_sale}/returnable", cookies=plain).status_code == 404
     lines = client.get(f"/app/api/sales/{sale}/returnable", cookies=staff).json()["lines"]
     r = client.post(f"/app/api/sales/{sale}/return", cookies=staff, json={
         "lines": [{"line_id": lines[0]["line_id"], "quantity": 2}], "mode": "CREDIT",

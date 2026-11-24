@@ -151,7 +151,7 @@ NAV_GUIDE = {
     "/staff": {
         "name": "Staff",
         "where": "Under More",
-        "what": "Invite staff (Pro): each logs in with their own phone and PIN; make one a branch admin.",
+        "what": "Invite staff (Pro): each logs in with their own phone and PIN. Make one an admin to see the whole business, and tick what that admin can't see (dashboard, profit, expenses, supplier debts, stock changes, other branches). Remove staff or sign out their phone.",
     },
     "/partners": {
         "name": "Partners",

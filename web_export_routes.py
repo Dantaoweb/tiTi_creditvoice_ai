@@ -14,6 +14,7 @@ from database import SessionLocal
 from models import User, Transaction, Customer, InventoryItem
 from web_auth import require_web_auth
 from web_common import _session_owner_phone, _safe_filename, _money
+from web_common import kept_guard
 
 
 def register_export_routes(app):
@@ -236,7 +237,7 @@ def register_export_routes(app):
         finally:
             db.close()
 
-    @app.get("/app/api/reports/bought-vs-sold")
+    @app.get("/app/api/reports/bought-vs-sold", dependencies=[Depends(kept_guard("dashboard", "the business reports"))])
     def web_bought_vs_sold(
         from_: Optional[str] = Query(default=None, alias="from"),
         to: Optional[str] = Query(default=None),

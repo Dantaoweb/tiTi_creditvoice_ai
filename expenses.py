@@ -25,6 +25,7 @@ from database import SessionLocal
 from models import BusinessNote, Expense, User
 from web_auth import require_web_auth
 from web_common import _can_see_profit, _iso, _scoped_read, _session_owner_phone, _session_user
+from web_common import kept_guard
 
 CATEGORIES = {
     "rent": "Rent",
@@ -138,7 +139,7 @@ def register_expense_routes(app):
             raise HTTPException(status_code=404, detail="Expense not found.")
         return e
 
-    @app.get("/app/api/expenses")
+    @app.get("/app/api/expenses", dependencies=[Depends(kept_guard("expenses", "Expenses"))])
     def list_expenses(period: Optional[str] = Query(default=None, max_length=20),
                       branch_id: Optional[int] = Query(default=None),
                       session: dict = Depends(require_web_auth)):
@@ -181,7 +182,7 @@ def register_expense_routes(app):
         finally:
             db.close()
 
-    @app.post("/app/api/expenses")
+    @app.post("/app/api/expenses", dependencies=[Depends(kept_guard("expenses", "Expenses"))])
     def add_expense(payload: ExpenseIn, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
@@ -199,7 +200,7 @@ def register_expense_routes(app):
         finally:
             db.close()
 
-    @app.put("/app/api/expenses/{expense_id}")
+    @app.put("/app/api/expenses/{expense_id}", dependencies=[Depends(kept_guard("expenses", "Expenses"))])
     def edit_expense(expense_id: int, payload: ExpenseIn, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
@@ -213,7 +214,7 @@ def register_expense_routes(app):
         finally:
             db.close()
 
-    @app.delete("/app/api/expenses/{expense_id}")
+    @app.delete("/app/api/expenses/{expense_id}", dependencies=[Depends(kept_guard("expenses", "Expenses"))])
     def delete_expense(expense_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
@@ -254,7 +255,7 @@ def register_expense_routes(app):
         except Exception:
             pass
 
-    @app.post("/app/api/expenses/from-note/{note_id}")
+    @app.post("/app/api/expenses/from-note/{note_id}", dependencies=[Depends(kept_guard("expenses", "Expenses"))])
     def approve_note(note_id: int, payload: ApproveNoteIn, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:
@@ -278,7 +279,7 @@ def register_expense_routes(app):
         finally:
             db.close()
 
-    @app.post("/app/api/expenses/notes/{note_id}/dismiss")
+    @app.post("/app/api/expenses/notes/{note_id}/dismiss", dependencies=[Depends(kept_guard("expenses", "Expenses"))])
     def dismiss_note(note_id: int, session: dict = Depends(require_web_auth)):
         db = SessionLocal()
         try:

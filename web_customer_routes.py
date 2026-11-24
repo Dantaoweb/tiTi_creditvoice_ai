@@ -98,17 +98,19 @@ def register_customer_routes(app):
 
     # ── Customers ────────────────────────────────────────────────────────
     def _scoped_customer_query(db, session):
-        """Customers this viewer may see. Branch isolation: a branch staff sees
-        their branch's customers; an unassigned staff sees only customers
-        they've recorded a sale for."""
+        """Customers this viewer may see. Branch isolation: a branch-limited
+        viewer sees their branch's customers and the business-wide ones (no
+        branch) — so they can still serve them; an ordinary staff sees the
+        customers they added or recorded a sale for."""
         owner_phone = _session_owner_phone(db, session)
         query = _owner_filter(db.query(Customer), Customer, owner_phone)
         eff_branch, rec = _scoped_read(db, session)
         if eff_branch is not None:
-            query = query.filter(Customer.branch_id == eff_branch)
+            query = query.filter(or_(Customer.branch_id == eff_branch, Customer.branch_id.is_(None)))
         elif rec is not None:
-            query = query.filter(Customer.id.in_(
-                db.query(Transaction.customer_id).filter(Transaction.recorded_by_id == rec)
+            query = query.filter(or_(
+                Customer.created_by_id == rec,
+                Customer.id.in_(db.query(Transaction.customer_id).filter(Transaction.recorded_by_id == rec)),
             ))
         return query
 
@@ -252,6 +254,7 @@ def register_customer_routes(app):
                 # Tag to the creator's branch (or the business default) so it
                 # lands in the right branch under isolation.
                 branch_id=_get_recording_branch_id(db, owner_phone, _session_user(db, session)),
+                created_by_id=session["user_id"],
             )
             db.add(c)
             db.commit()
