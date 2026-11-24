@@ -1895,6 +1895,18 @@ UNCLEAR_SALE_REPLIES = {
 
 
 def parse_message(text):
+    parsed = _parse_message_inner(text)
+    # A broad feature guide gives way to the exact steps when one fits
+    # ("my staff did not get the code" → resend the invite, not all of Staff)
+    if parsed and parsed.get("type") == "APP_GUIDE" and not str(parsed.get("topic", "")).startswith("howto:"):
+        from howto import exact_for, topic_for
+        _exact = exact_for(text)
+        if _exact:
+            return {"type": "APP_GUIDE", "topic": topic_for(_exact)}
+    return parsed
+
+
+def _parse_message_inner(text):
     """Parse a message; a question is never recorded as a transaction ("can i
     give 10% discount?" used to save a payment of N10 by someone called
     "can i"). A due date said in words ("due friday", "pay by next week") is

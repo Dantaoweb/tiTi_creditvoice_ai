@@ -73,6 +73,41 @@ CASES = [
     ("my prices already include vat how do i set it", "vat_inclusive"),
     ("some products have no vat how do i do it", "vat_exempt"),
     ("how much vat did i collect this month", "vat_report"),
+    # round 2 — staff
+    ("how do i add staff", "staff_invite"),
+    ("how do i add my sales girl", "staff_invite"),
+    ("i want to add a worker", "staff_invite"),
+    ("how can i give my cashier access to the app", "staff_invite"),
+    ("how do i invite my stafs", "staff_invite"),
+    ("how do i give my staff admin", "staff_make_admin"),
+    ("how do i make my manager see everything", "staff_make_admin"),
+    ("i want my staff to run the shop when i travel", "staff_make_admin"),
+    ("how do i stop staff from seeing profit", "staff_limits"),
+    ("how do i hide cost price from staff", "staff_limits"),
+    ("i don't want my admin to see expenses", "staff_limits"),
+    ("can my staff see my customers", "staff_customers"),
+    ("how do i let my staff serve my customers", "staff_customers"),
+    ("my sales girl can't see customers", "staff_customers"),
+    ("how do i remove a staff", "staff_remove"),
+    ("my worker has left how do i remove him", "staff_remove"),
+    ("how do i sack my staff from the app", "staff_remove"),
+    ("my staff lost his phone what do i do", "staff_sign_out"),
+    ("how do i log out my staff", "staff_sign_out"),
+    ("how do i move staff to another branch", "staff_branch"),
+    ("how do i see which staff sold the most", "staff_performance"),
+    ("how do i check my staff performance", "staff_performance"),
+    ("how do i set my staff salary", "staff_profile"),
+    ("my staff forgot his pin", "staff_pin"),
+    ("what can my staff see", "staff_what_they_see"),
+    ("what is the difference between staff and admin", "staff_what_they_see"),
+    ("the staff code has expired", "staff_code_expired"),
+    ("my staff did not get the code", "staff_code_expired"),
+    ("how do i cancel a staff invitation", "staff_cancel_invite"),
+    ("my boss invited me how do i join", "staff_accept"),
+    ("i have the code how do i accept the invite", "staff_accept"),
+    ("it says the number already has an account when i invite staff", "staff_number_taken"),
+    ("how do i add a partner", "partner"),
+    ("how do i record salary as expense", "expenses"),
     # broad questions still get the feature's full guide
     ("how do i add vat to my invoice", "vat"),
     ("how do i make a quotation", "quotation"),
@@ -122,6 +157,19 @@ def test_ai_is_given_the_exact_steps():
     assert "Bank details on invoices & quotations" in llm_fallback._SYSTEM_PROMPT
     assert "EXACT STEPS" in llm_fallback._SYSTEM_PROMPT
     assert howto_facts().count("\n") >= 20
+
+
+def test_staff_answers_use_the_staff_page_words():
+    import pathlib
+    page = pathlib.Path(__file__).with_name("frontend").joinpath("src", "pages", "Staff.jsx").read_text(encoding="utf-8")
+    for label in ("Invite a staff member", "Send Invitation", "Send on WhatsApp", "Copy link", "Join as admin",
+                  "Make admin", "Make ordinary staff", "This admin can't see", "Can see the business's customers",
+                  "Sign out their phone", "Remove from business", "Resend invite", "Pending Invitations",
+                  "HR Profiles", "Staff Leaderboard", "Monthly Salary"):
+        assert label in page, label
+    login = pathlib.Path(__file__).with_name("frontend").joinpath("src", "pages", "Login.jsx").read_text(encoding="utf-8")
+    for label in ("Accept a staff invitation", "Accept Code", "Create your PIN", "Your Phone Number"):
+        assert label in login, label
 
 
 def test_answers_point_at_the_real_settings_card():

@@ -14,7 +14,7 @@ Each entry:  key: (groups, answer[, without])
   the one listed first. without — words that rule the entry out.
 
 Add a feature's exact answers here when it's built (rounds so far:
-1 selling & paperwork).
+1 selling & paperwork, 2 staff).
 """
 import re
 
@@ -38,6 +38,7 @@ _TYPOS = {
     r"\bsettins?\b": "settings",
     r"\bsetings?\b": "settings",
     r"\bstaffs\b": "staff",
+    r"\bstafs?\b": "staff",
     r"\bsuppliar?s?\b": "supplier",
     r"\bcostumers?\b": "customer",
     r"\bcustormers?\b": "customer",
@@ -73,6 +74,14 @@ _CHANGE = Loose(("change", "edit", "set", "put", "add", "remove", "hide", "show"
 # Parts of a paper: a question about these is not about editing the paper itself
 _PARTS = ("logo", "bank", "account", "paper", "title", "closing", "footer", "email", "address", "phone",
           "vat", "tin", "size", "colour", "color", "heading", "status", "progress", "stage", "deposit")
+
+# Round 2 — staff
+_STAFF = ("staff", "worker", "employee", "cashier", "sales girl", "salesgirl", "sales boy", "salesboy",
+          "salesperson", "sales person", "attendant", "assistant", "my boy", "my girl", "apprentice",
+          "admin", "manager", "supervisor")
+_STAFF_NOUN = tuple(w for w in _STAFF if w not in ("admin", "manager", "supervisor"))
+_STAFF_PAGE = "Menu → *Staff*"
+_ON_CARD = f"{_STAFF_PAGE} → find them under the staff list"
 
 _SETTINGS_PRINT = "Menu → More → *Settings* → *Receipts & printables* (under Selling & paperwork)"
 
@@ -291,6 +300,147 @@ HOWTO = {
         "🧾 *VAT you collected*\n\n"
         "Menu → More → *Settings* → *VAT* → *VAT collected* shows this month and last month — from sales "
         "and paid invoices. That's what you file.",
+    ),
+
+    # ── Staff (round 2) ──────────────────────────────────────────────────────
+    "staff_number_taken": (
+        [("already", "own business", "has an account", "registered", "using creditvoice", "has creditvoice",
+          "can't invite", "cant invite", "won't invite", "wont invite", "refused", "not allowed"),
+         _STAFF_NOUN + ("invite", "number")],
+        "📵 *That number already runs a business*\n\n"
+        "A phone number that runs its own business on CreditVoice can't be your staff — it would mix the two "
+        "businesses. Ask them for another number (a second SIM is fine) and invite that one.",
+        ("pin", "password", "receipt", "invoice"),
+    ),
+    "staff_accept": (
+        [("accept", "join", "code", "invitation", "invite link", "invite code"),
+         ("my boss", "my employer", "my oga", "my madam", "invited me", "i was invited", "i got invite",
+          "i got an invite", "i got the code", "i have the code", "i received", "as staff", "staff invitation",
+          "accept the invite", "accept invite", "accept invitation", "join code", "accept code")],
+        "🔑 *Joining as staff*\n\n"
+        "1. Open the link you were sent — or go to creditvoiceai.com and tap *Accept a staff invitation*.\n"
+        "2. Type *Your Phone Number* and the 6-digit *Accept Code*.\n"
+        "3. *Create your PIN* (at least 4 digits). You're in — log in with your phone and PIN from then on.\n\n"
+        "Code expired? Ask your employer to tap *Resend invite* (a new code lasts 24 hours).",
+        ("cancel", "withdraw", "delete", "remove", "resend", "expired", "not working", "didn't get", "did not get",
+         "didnt get", "already"),
+    ),
+    "staff_code_expired": (
+        [("expired", "expire", "not working", "invalid", "wrong code", "didn't get", "didnt get", "did not get",
+          "lost", "resend", "new code", "another code", "fresh code", "24 hours"),
+         ("code", "invite", "invitation", "join link", "staff link")],
+        "🔁 *A fresh invite code*\n\n"
+        f"{_STAFF_PAGE} → *Pending Invitations* → *Resend invite*. They get a new code and link, good for 24 hours. "
+        "Send it with *Send on WhatsApp* or *Copy link*.",
+        ("pin", "password", "loyalty", "discount", "coupon", "redeem", "plan"),
+    ),
+    "staff_cancel_invite": (
+        [("cancel", "withdraw", "delete", "remove", "take back", "stop"), ("invite", "invitation")],
+        "🗑️ *Cancelling an invitation*\n\n"
+        f"{_STAFF_PAGE} → *Pending Invitations* → *Cancel* next to their name. The code stops working.",
+        ("partner", "investor", "friend", "referral"),
+    ),
+    "staff_invite": (
+        [_STAFF_NOUN, ("add", "invite", "join", "register", "create", "bring", "new", "employ", "hire", "onboard",
+                       "set up", "access")],
+        "👷 *Adding staff* (Pro and Premium)\n\n"
+        f"1. {_STAFF_PAGE} → *Invite a staff member* → *Full Name* and *Phone Number* (with country code, no +, "
+        "e.g. _2348031234567_). Email and branch are optional.\n"
+        "2. Choose: tick *Join as admin* to let them see the whole business, or leave it for ordinary staff "
+        "(they can see the business's customers to serve them — untick to keep them to their own).\n"
+        "3. *Send Invitation* → *Send on WhatsApp* or *Copy link*. The code lasts 24 hours.\n"
+        "They open it → enter the code → set a PIN, and you get a notice when they join.",
+        ("partner", "investor", "customer", "supplier", "teacher", "pupil", "student"),
+    ),
+    "staff_make_admin": (
+        [("admin", "manager", "supervisor", "full access", "see everything", "everything", "in charge",
+          "run the business", "run the shop", "when i'm away", "when i am away", "when i travel", "not around"),
+         _STAFF_NOUN + ("make", "give", "turn", "change", "promote")],
+        "⭐ *Making someone admin*\n\n"
+        f"{_ON_CARD} → *Make admin*. An admin sees everything about the business — all customers, sales, debts "
+        "and stock — so they can run it when you're away.\n"
+        "Inviting someone new? Tick *Join as admin* on the invite.\n"
+        "Keep some things from them: tick them under *This admin can't see…*. "
+        "Changed your mind: *Make ordinary staff*.",
+        ("pin", "password", "app admin", "creditvoice admin", "difference", "what can", "what does"),
+    ),
+    "staff_limits": (
+        [_STAFF,
+         ("can't see", "cant see", "cannot see", "not see", "not to see", "stop", "hide", "block", "prevent",
+          "restrict", "limit", "keep from", "don't want", "dont want", "shouldn't see", "shouldnt see", "should not see",
+          "away from", "without seeing"),
+         ("profit", "dashboard", "insight", "expense", "supplier", "cost", "stock", "branch", "total", "report",
+          "margin", "money", "chart")],
+        "🔒 *What staff can't see*\n\n"
+        "*Ordinary staff* never see cost prices or profit, and see only their own sales — nothing to switch.\n"
+        f"*Admins* see everything, unless you choose: {_ON_CARD} → *This admin can't see…* → tick "
+        "*Dashboard & Insights*, *Profit & cost prices*, *Expenses*, *What we owe suppliers*, "
+        "*Changing stock (add, adjust, remove)* or *Other branches*. It works at once.",
+    ),
+    "staff_customers": (
+        [_STAFF, ("customer", "debtor", "client")],
+        "👥 *Which customers staff see*\n\n"
+        "*Ordinary staff* see the business's customers so they can serve them (sell, take payments) — "
+        f"unless you choose otherwise: {_ON_CARD} → untick *Can see the business's customers*. "
+        "Then they see only the customers they added or sold to. You can choose this on the invite too.\n"
+        "*Admins* see all customers.",
+        ("partner", "investor", "supplier"),
+    ),
+    "staff_remove": (
+        [_STAFF, ("remove", "delete", "sack", "fire", "fired", "left", "leave", "leaving", "resign", "resigned",
+                  "quit", "stopped working", "stop working", "no longer", "disable", "deactivate", "block",
+                  "kick out", "take away access", "revoke")],
+        "🚪 *Someone leaves*\n\n"
+        f"{_ON_CARD} → *Remove from business*. They're signed out at once and can't record any more. "
+        "Everything they recorded stays in your records.",
+        ("invite", "invitation", "profit", "cost", "dashboard", "expense", "customer", "admin"),
+    ),
+    "staff_sign_out": (
+        [_STAFF, ("lost", "stolen", "sign out", "signed out", "log out", "logout", "logged in", "signed in",
+                  "new phone", "changed phone", "change phone", "another phone", "someone else", "phone missing")],
+        "📱 *A staff phone lost or in the wrong hands*\n\n"
+        f"{_ON_CARD} → *Sign out their phone*. They're signed out on every phone and log in again with their PIN.\n"
+        "Leaving for good? Use *Remove from business* instead.",
+    ),
+    "staff_branch": (
+        [_STAFF, ("branch", "shop", "outlet", "location", "store")],
+        "🏬 *A staff member's branch*\n\n"
+        f"{_ON_CARD} → *Branch* → pick it. Or choose the branch on the invite — they're attached when they join.\n"
+        "An admin can be kept to their own branch: tick *Other branches* under *This admin can't see…*.",
+        ("customer", "profit", "cost", "remove", "sack", "fire", "add branch", "new branch", "create branch"),
+    ),
+    "staff_performance": (
+        [_STAFF, ("performance", "leaderboard", "best", "top", "compare", "each", "sales by", "who sold",
+                  "how is my", "doing", "sold the most", "sell the most", "record")],
+        "🏆 *How each staff member is doing*\n\n"
+        f"{_STAFF_PAGE} → *Performance* → the *Staff Leaderboard*: each one's sales, payments taken, transactions, "
+        "customers served and top products. Pick the period at the top (e.g. *All time*).",
+        ("salary", "pin", "customer", "invite", "add", "remove"),
+    ),
+    "staff_profile": (
+        [_STAFF, ("salary", "position", "level", "employee id", "hr", "job title", "role", "pay my")],
+        "🗂️ *Staff details — position, level, salary*\n\n"
+        f"{_STAFF_PAGE} → *HR Profiles* → their name → *Position*, *Level*, *Monthly Salary (₦)*, "
+        "*Employee ID* → *Save*. Only you see these.",
+        ("admin", "expense", "record salary", "paid salary", "pay salary"),
+    ),
+    "staff_pin": (
+        [_STAFF, ("pin", "password", "can't log in", "cant log in", "cannot log in", "can't login", "cant login",
+                  "locked out")],
+        "🔑 *Staff who forgot their PIN*\n\n"
+        "They reset it themselves: login page → *Forgot PIN* → their phone number → the code sent to them → a new PIN.\n"
+        "Phone in the wrong hands? You can also "
+        f"{_ON_CARD[0].lower() + _ON_CARD[1:]} → *Sign out their phone*.",
+    ),
+    "staff_what_they_see": (
+        [_STAFF, ("what can", "what does", "what do", "what will", "what they see", "permission", "allowed",
+                  "able to", "can they", "can he", "can she", "difference")],
+        "👀 *What staff can do*\n\n"
+        "*Ordinary staff* record sales and payments, see their own sales, and see the business's customers to serve "
+        "them (you can keep them to their own). They see only their own sales and never see cost prices or profit.\n"
+        "*Admins* see everything about the business — all branches, customers, sales, debts, stock, the Dashboard "
+        "and profit — except what you tick under *This admin can't see…*. Only you manage staff.\n"
+        f"Change it any time: {_ON_CARD}.",
     ),
 }
 

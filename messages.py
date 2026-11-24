@@ -1021,8 +1021,8 @@ def build_app_guide_message(topic, user=None):
         ),
         "staff": (
             "👷 *How to manage staff* (Pro and Premium)\n\n"
-            "*Invite:* Menu → *Staff* → *+ Invite Staff* → their name and phone. You get a join code (24 hours) — "
-            "*Share on WhatsApp* or copy it. They open the link, enter the code and set a PIN, and they're in. "
+            "*Invite:* Menu → *Staff* → *Invite a staff member* → their name and phone → *Send Invitation*. You get a join code (24 hours) — "
+            "*Send on WhatsApp* or *Copy link*. They open the link, enter the code and set a PIN, and they're in. "
             "You get a notice when they join.\n"
             "A number that already runs its own business on CreditVoice can't be your staff — ask for another number.\n\n"
             "*What they see:*\n"
