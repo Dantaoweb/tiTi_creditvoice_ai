@@ -71,8 +71,12 @@ NAV_GUIDE = {
     },
     "/settings": {
         "name": "Settings",
-        "what": "Your text size, dark/light theme and list style; and (owner) grouping stock by category, "
-                "managing categories, selling below zero, part delivery at the POS, and the daily WhatsApp summary.",
+        "what": "Every feature is its own card, closed until you tap it — a closed card shows how it's set now. "
+                "Grouped: Me (text size, theme, list style, camera scanning); Stock (stock rules, categories, "
+                "production); Selling & paperwork (VAT, invoices & quotations, receipts & printables); Customers "
+                "(loyalty, appointments & booking link); Alerts (notifications, daily WhatsApp summary). "
+                "Open all / Close all at the top. Business cards are for the owner and authorised staff; "
+                "logo, bank accounts and email are on My Profile.",
     },
     "/deliveries": {
         "name": "Deliveries",

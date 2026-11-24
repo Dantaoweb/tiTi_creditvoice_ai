@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { ArrowUp, ArrowDown, Pencil, Check, X } from "lucide-react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowUp, ArrowDown, Pencil, Check, X, ChevronDown } from "lucide-react";
 import { apiFetch, apiPost } from "../lib/api";
 import { nairaFull } from "../lib/format";
 import { saveBusiness, saveDisplay, useSettings } from "../lib/settings";
@@ -31,6 +32,76 @@ function Row({ title, hint, children }) {
   );
 }
 
+/* Each feature is its own card, closed until tapped. A closed card shows how
+   it is set now. Which cards are open is remembered on this device, and a link
+   like /app/settings#vat opens that card straight away. */
+const OPEN_KEY = "cv-settings-open";
+const PanelsCtx = createContext(null);
+
+function readOpen() {
+  try { return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "[]")); } catch { return new Set(); }
+}
+
+function usePanels() {
+  const [open, setOpen] = useState(readOpen);
+  const keep = next => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...next])); } catch { /* private mode */ } return next; };
+  const toggle = id => setOpen(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return keep(n); });
+  const all = (ids, on) => setOpen(() => keep(new Set(on ? ids : [])));
+  useEffect(() => {
+    const go = () => {
+      const id = decodeURIComponent(window.location.hash.slice(1));
+      if (!id) return;
+      setOpen(prev => {
+        if (prev.has(id)) return prev;
+        const n = new Set(prev).add(id);
+        try { localStorage.setItem(OPEN_KEY, JSON.stringify([...n])); } catch { /* private mode */ }
+        return n;
+      });
+      setTimeout(() => document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    };
+    go();
+    window.addEventListener("hashchange", go);
+    return () => window.removeEventListener("hashchange", go);
+  }, []);
+  return { open, toggle, all };
+}
+
+function Panel({ id, title, summary, msg, bodyStyle, children }) {
+  const { open, toggle } = useContext(PanelsCtx);
+  const isOpen = open.has(id);
+  return (
+    <div className="card settings-panel" id={`set-${id}`}>
+      <button type="button" className="settings-panel-head" aria-expanded={isOpen} onClick={() => toggle(id)}>
+        <span className="settings-panel-text">
+          <span className="card-title">{title}</span>
+          <span className={msg ? "settings-panel-saved" : "settings-panel-sum"}>{msg || summary}</span>
+        </span>
+        <ChevronDown size={18} className="settings-panel-chev" />
+      </button>
+      {/* Kept mounted while closed, so nothing half-typed is lost */}
+      <div className="card-body" style={bodyStyle} hidden={!isOpen}>{children}</div>
+    </div>
+  );
+}
+
+function Group({ title, note, children }) {
+  return (
+    <section className="settings-group">
+      <h2 className="settings-group-title">{title}{note && <span> · {note}</span>}</h2>
+      <div style={{ display: "grid", gap: 8 }}>{children}</div>
+    </section>
+  );
+}
+
+// Things that live on My Profile, linked from where they are needed
+function ProfileLink({ children }) {
+  return <Link to="/profile" className="link-btn" style={{ fontSize: "inherit" }}>{children} →</Link>;
+}
+
+const TEXT_SIZES = { small: "Small", normal: "Normal", large: "Large", xlarge: "Extra large" };
+const THEMES = { light: "Light", dark: "Dark", system: "Phone's theme" };
+const LOGO_SHORT = { top: "logo on top", left: "logo on the left", right: "logo on the right", none: "no logo" };
+
 function useSaver(fn) {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -46,12 +117,8 @@ function DisplaySection({ display }) {
   const d = { text_size: "normal", theme: "light", density: "comfortable", scan_mode: "keep", ...(display || {}) };
   const { save, msg, err } = useSaver(saveDisplay);
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">My display</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg || "Just for you, on every device you use"}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="display" title="My display" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={`${TEXT_SIZES[d.text_size] || "Normal"} text · ${THEMES[d.theme] || "Light"} · ${d.density === "compact" ? "Compact" : "Comfortable"} lists`}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Text size" hint="Makes everything bigger or smaller — text, buttons and icons.">
           <Seg value={d.text_size} onChange={v => save({ text_size: v })}
@@ -70,8 +137,7 @@ function DisplaySection({ display }) {
           <Seg value={d.scan_mode} onChange={v => save({ scan_mode: v })}
             options={[["tap", "Tap to scan"], ["keep", "Keep scanning"], ["photo", "From a photo"]]} />
         </Row>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -81,12 +147,8 @@ function StockSection({ business }) {
   const [low, setLow] = useState(business.default_low_stock ?? "");
   useEffect(() => { setLow(business.default_low_stock ?? ""); }, [business.default_low_stock]);
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Stock</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg || "For everyone in your business"}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="stock" title="Stock" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={[business.group_by_category ? "Grouped by category" : "One list", business.allow_negative_stock ? "Can sell past stock" : "Can't sell past stock", `Expiry warning ${business.expiry_warn_days} days`].join(" · ")}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Group stock by category" hint="Shows your products in groups (Drinks, Provisions…) instead of one long list.">
           <Seg value={business.group_by_category} onChange={v => save({ group_by_category: v })}
@@ -139,8 +201,7 @@ function StockSection({ business }) {
           <Seg value={business.show_part_delivery} onChange={v => save({ show_part_delivery: v })}
             options={[[true, "Yes"], [false, "No"]]} />
         </Row>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -221,12 +282,8 @@ function CategoriesSection({ business }) {
 
   const uncategorised = (cats || []).find(c => !c.name);
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Manage categories</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg || (business.group_by_category ? "" : "Turn on grouping above to see them on Inventory")}</span>
-      </div>
-      <div className="card-body">
+    <Panel id="categories" title="Manage categories" msg={msg}
+      summary={cats ? `${named.length} categor${named.length === 1 ? "y" : "ies"}${uncategorised ? ` · ${uncategorised.count} product${uncategorised.count === 1 ? "" : "s"} with none` : ""}` : "Add, rename, sort, and put products in them"}>
         {err && <div className="modal-error" onClick={() => setErr("")}>{err}</div>}
         {!cats && <p className="td-muted">Loading…</p>}
         {cats && named.length === 0 && <p className="td-muted">No categories yet — add some below, then pick them when you add a product.</p>}
@@ -329,8 +386,7 @@ function CategoriesSection({ business }) {
           )}
           <span className="form-hint">Leave the category empty to take products out of their category.</span>
         </div>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -345,12 +401,8 @@ function VatSection({ business }) {
   }, [business.vat_enabled]);
   const on = !!business.vat_enabled;
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">VAT</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="vat" title="VAT" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={on ? `On · ${business.vat_rate}% · ${business.vat_mode === "inclusive" ? "prices include VAT" : "added on top"}` : "Off"}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="I charge VAT"
           hint={on ? "VAT shows on sales, receipts, invoices and quotations." : "Off: no VAT anywhere. Turn on only if your business is registered to charge VAT."}>
@@ -388,8 +440,7 @@ function VatSection({ business }) {
             )}
           </>
         )}
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -398,12 +449,8 @@ function SummarySection({ business }) {
   const [time, setTime] = useState(business.daily_summary_time || "20:00");
   useEffect(() => { setTime(business.daily_summary_time || "20:00"); }, [business.daily_summary_time]);
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Notifications & WhatsApp</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="notifications" title="Notifications & WhatsApp" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={[business.daily_summary ? `Daily summary at ${business.daily_summary_time || "20:00"}` : "Daily summary off", business.push_hide_details ? "lock screen hides amounts" : "lock screen shows details"].join(" · ")}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Phone notifications on the lock screen"
           hint={business.push_hide_details
@@ -424,8 +471,7 @@ function SummarySection({ business }) {
             </div>
           </Row>
         )}
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -453,19 +499,14 @@ function InvoicesSection({ business }) {
     false: "Hidden: no quotations, only invoices. Quotations already written are kept.",
   };
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Invoices</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="invoices" title="Invoices" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={`Quotations: ${{ auto: "Automatic", true: "Shown", false: "Hidden" }[String(v)]}`}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Quotations" hint={hints[String(v)]}>
           <Seg value={v} onChange={async x => { await save({ quotes: x === "auto" ? null : x }); refreshUser?.(); }}
             options={[["auto", "Automatic"], [true, "Show"], [false, "Hide"]]} />
         </Row>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -479,19 +520,14 @@ function ProductionSection({ business }) {
     false: "Hidden: Production is not in your menu. What was recorded is kept.",
   };
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Production</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="production" title="Production" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={`In the menu: ${{ auto: "Automatic", true: "Shown", false: "Hidden" }[String(v)]}`}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Show Production in the menu" hint={hints[String(v)]}>
           <Seg value={v} onChange={x => save({ show_production: x === "auto" ? null : x })}
             options={[["auto", "Automatic"], [true, "Show"], [false, "Hide"]]} />
         </Row>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -505,12 +541,8 @@ function AppointmentsSection({ business }) {
     false: "Hidden: Appointments is not in your menu. Bookings already made are kept.",
   };
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Appointments</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="appointments" title="Appointments" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={`In the menu: ${{ auto: "Automatic", true: "Shown", false: "Hidden" }[String(v)]} · booking link ${business.booking_link ? "on" : "off"}`}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Show Appointments in the menu" hint={hints[String(v)]}>
           <Seg value={v} onChange={x => save({ show_appointments: x === "auto" ? null : x })}
@@ -551,8 +583,7 @@ function AppointmentsSection({ business }) {
             <HoursRow key={JSON.stringify(business.booking_hours)} hours={business.booking_hours} onSave={h => save({ booking_hours: h })} />
           </>
         )}
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -578,12 +609,8 @@ function LoyaltySection({ business }) {
     points: `Points: customers get ₦${business.loyalty_points_percent} back for every ₦100 they spend. Tick "Use points" at the till to take them off.`,
   };
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Loyalty</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="loyalty" title="Loyalty" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={mode === "stamps" ? `Stamp card: buy ${business.loyalty_stamps_needed}, next one free` : mode === "points" ? `Points: ₦${business.loyalty_points_percent} back for every ₦100` : "Off"}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Reward customers who come back" hint={hints[mode]}>
           <Seg value={mode} onChange={v => save({ loyalty_mode: v })}
@@ -635,8 +662,7 @@ function LoyaltySection({ business }) {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -689,18 +715,14 @@ function PrintSection({ business }) {
     },
   };
   return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">Receipts & printables</span>
-        <span className="td-muted" style={{ fontSize: 12 }}>{msg || "Receipts, invoices, quotations, waybills"}</span>
-      </div>
-      <div className="card-body" style={{ paddingTop: 4, paddingBottom: 4 }}>
+    <Panel id="receipts" title="Receipts & printables" msg={msg} bodyStyle={{ paddingTop: 4, paddingBottom: 4 }}
+      summary={`${{ "80mm": "Thermal 80mm", "58mm": "Thermal 58mm", a4: "A4 page" }[b.print_paper] || b.print_paper} · ${LOGO_SHORT[b.print_logo] || ""}`}>
         {err && <div className="modal-error">{err}</div>}
         <Row title="Paper size" hint={PAPER_OUTCOME[b.print_paper]}>
           <Seg value={b.print_paper} onChange={v => save({ print_paper: v })}
             options={[["80mm", "Thermal 80mm"], ["58mm", "Thermal 58mm"], ["a4", "A4 page"]]} />
         </Row>
-        <Row title="Logo" hint={biz?.biz_logo ? LOGO_OUTCOME[b.print_logo] : "Add your logo on My Profile first. " + LOGO_OUTCOME[b.print_logo]}>
+        <Row title="Logo" hint={biz?.biz_logo ? LOGO_OUTCOME[b.print_logo] : <>Add your logo on <ProfileLink>My Profile</ProfileLink> first. {LOGO_OUTCOME[b.print_logo]}</>}>
           <Seg value={b.print_logo} onChange={v => save({ print_logo: v })}
             options={[["top", "On top"], ["left", "Left"], ["right", "Right"], ["none", "Hide"]]} />
         </Row>
@@ -715,12 +737,12 @@ function PrintSection({ business }) {
         <Row title="Address" hint={b.print_show_address ? "Your address (or the branch's) prints under your name." : "Your address is left off."}>
           <Seg value={b.print_show_address} onChange={v => save({ print_show_address: v })} options={[[true, "Show"], [false, "Hide"]]} />
         </Row>
-        <Row title="Email" hint={!biz?.biz_email ? "Add your business email on My Profile first."
+        <Row title="Email" hint={!biz?.biz_email ? <>Add your business email on <ProfileLink>My Profile</ProfileLink> first.</>
           : b.print_show_email ? "Your business email prints under your name." : "Your email is left off."}>
           <Seg value={b.print_show_email} onChange={v => save({ print_show_email: v })} options={[[true, "Show"], [false, "Hide"]]} />
         </Row>
         <Row title="Bank details on invoices & quotations"
-          hint={!banks.length ? "Add your bank account on My Profile first."
+          hint={!banks.length ? <>Add your bank account on <ProfileLink>My Profile</ProfileLink> first.</>
             : b.print_bank_invoices ? "Customers see where to pay on every invoice and quotation." : "Bank details are left off invoices and quotations."}>
           <Seg value={b.print_bank_invoices} onChange={v => save({ print_bank_invoices: v })} options={[[true, "Show"], [false, "Hide"]]} />
         </Row>
@@ -751,34 +773,60 @@ function PrintSection({ business }) {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
+const ALL_PANELS = ["display", "stock", "categories", "production", "vat", "invoices", "receipts", "loyalty", "appointments", "notifications"];
+
 export default function Settings() {
   const { loaded, display, business, canEditBusiness } = useSettings();
+  const panels = usePanels();
   if (!loaded) return <div className="page-loading">Loading settings…</div>;
+  const ids = canEditBusiness ? ALL_PANELS : ["display"];
   return (
-    <div style={{ display: "grid", gap: 14, maxWidth: 760 }}>
-      <DisplaySection display={display} />
-      {canEditBusiness ? (
-        <>
-          <StockSection business={business} />
-          <CategoriesSection business={business} />
-          <SummarySection business={business} />
-          <VatSection business={business} />
-          <InvoicesSection business={business} />
-          <AppointmentsSection business={business} />
-          <ProductionSection business={business} />
-          <LoyaltySection business={business} />
-          <PrintSection business={business} />
-        </>
-      ) : (
-        <div className="card card-body td-muted" style={{ fontSize: 13 }}>
-          Business settings (stock, categories, daily summary, receipts) are set by the owner.
+    <PanelsCtx.Provider value={panels}>
+      <div style={{ display: "grid", gap: 18, maxWidth: 760 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span className="td-muted" style={{ fontSize: 13 }}>Tap a card to open it.</span>
+          <span style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => panels.all(ids, true)}>Open all</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => panels.all(ids, false)}>Close all</button>
+          </span>
         </div>
-      )}
-    </div>
+        <Group title="Me" note="just for you, on every device">
+          <DisplaySection display={display} />
+        </Group>
+        {canEditBusiness ? (
+          <>
+            <Group title="Stock" note="for everyone in your business">
+              <StockSection business={business} />
+              <CategoriesSection business={business} />
+              <ProductionSection business={business} />
+            </Group>
+            <Group title="Selling & paperwork">
+              <VatSection business={business} />
+              <InvoicesSection business={business} />
+              <PrintSection business={business} />
+            </Group>
+            <Group title="Customers">
+              <LoyaltySection business={business} />
+              <AppointmentsSection business={business} />
+            </Group>
+            <Group title="Alerts">
+              <SummarySection business={business} />
+            </Group>
+            <div className="td-muted" style={{ fontSize: 13 }}>
+              Your logo, bank accounts, business email and receipt phones are on <ProfileLink>My Profile</ProfileLink>.
+              {" "}Who works with you and what they can see is on <Link to="/staff" className="link-btn" style={{ fontSize: "inherit" }}>Staff →</Link>
+            </div>
+          </>
+        ) : (
+          <div className="card card-body td-muted" style={{ fontSize: 13 }}>
+            Business settings (stock, categories, daily summary, receipts) are set by the owner.
+          </div>
+        )}
+      </div>
+    </PanelsCtx.Provider>
   );
 }
