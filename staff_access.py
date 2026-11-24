@@ -13,8 +13,10 @@ owner can still keep some things from them (User.staff_limits):
   suppliers    what the business owes its suppliers (My supply chain)
   stock        adding, adjusting or removing stock
 
-Ordinary staff (not admins) are unchanged: they record sales; they see their
-branch's records (or their own, with no branch).
+Ordinary staff (not admins) record sales and see their own records. To serve
+customers they see the business's customers too (their branch's and the
+business-wide ones) — on by default; the owner can set "only their own"
+(User.staff_sees_customers False). They never see cost prices or profit.
 """
 import json
 
@@ -46,6 +48,14 @@ def kept_from(user, key):
     """True when this staff admin is kept from `key`. The owner, and ordinary
     staff (whose rules are elsewhere), are never limited here."""
     return key in limits_of(user)
+
+
+def sees_business_customers(user):
+    """An ordinary staff member sees the business's customers (to serve them)
+    unless the owner chose "only their own" (User.staff_sees_customers False)."""
+    if not user or not getattr(user, "parent_id", None) or getattr(user, "can_view_all_transactions", False):
+        return False
+    return getattr(user, "staff_sees_customers", None) is not False
 
 
 def set_limits(user, keys):

@@ -304,6 +304,7 @@ export default function Staff() {
   const [invPhone, setInvPhone] = useState("");
   const [invEmail, setInvEmail] = useState("");
   const [invBranch, setInvBranch] = useState("");     // branch to pre-assign on accept
+  const [invSeeCustomers, setInvSeeCustomers] = useState(true);   // ordinary staff: serve the business's customers
   const [invAsAdmin, setInvAsAdmin] = useState(false); // grant branch-admin access
   const [invBusy, setInvBusy]   = useState(false);
   const [invErr, setInvErr]     = useState("");
@@ -383,10 +384,11 @@ export default function Staff() {
         phone: invPhone.trim(),
         email: invEmail.trim() || null,
         branch_id: invBranch ? Number(invBranch) : null,
-        as_branch_admin: !!invBranch && invAsAdmin,
+        as_branch_admin: invAsAdmin,
+        see_customers: invSeeCustomers,
       });
       setInvResult({ ...res, phone: invPhone.trim(), name: invName.trim() });
-      setInvName(""); setInvPhone(""); setInvEmail(""); setInvBranch(""); setInvAsAdmin(false);
+      setInvName(""); setInvPhone(""); setInvEmail(""); setInvBranch(""); setInvAsAdmin(false); setInvSeeCustomers(true);
       setShowInvite(false);
     } catch (e) { setInvErr(e.message); }
     finally { setInvBusy(false); }
@@ -397,6 +399,15 @@ export default function Staff() {
     try {
       const r = await apiPut(`staff/${id}/limits`, { limits });
       setMembers(ms => ms.map(m => (m.id === id ? { ...m, limits: r.limits } : m)));
+    } catch (e) { alert(e.message); }
+    finally { setAccessBusy(p => ({ ...p, [id]: false })); }
+  }
+
+  async function setSeesCustomers(id, on) {
+    setAccessBusy(p => ({ ...p, [id]: true }));
+    try {
+      await apiPost(`staff/${id}/customers`, { on });
+      setMembers(ms => ms.map(m => (m.id === id ? { ...m, sees_customers: on } : m)));
     } catch (e) { alert(e.message); }
     finally { setAccessBusy(p => ({ ...p, [id]: false })); }
   }
@@ -654,20 +665,28 @@ export default function Staff() {
                 <div className="form-group">
                   <label className="form-label">Branch (optional)</label>
                   <select value={invBranch} disabled={invBusy}
-                    onChange={e => { setInvBranch(e.target.value); if (!e.target.value) setInvAsAdmin(false); }}>
+                    onChange={e => setInvBranch(e.target.value)}>
                     <option value="">No branch (assign later)</option>
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                   <span className="form-hint">They'll be attached to this branch on accept — no extra step.</span>
-                  {invBranch && (
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 13 }}>
-                      <input type="checkbox" checked={invAsAdmin} disabled={invBusy}
-                        onChange={e => setInvAsAdmin(e.target.checked)} style={{ width: "auto" }} />
-                      Join as branch admin (sees all records in this branch)
-                    </label>
-                  )}
                 </div>
               )}
+
+              <div className="form-group" style={{ gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <input type="checkbox" checked={invAsAdmin} disabled={invBusy}
+                    onChange={e => setInvAsAdmin(e.target.checked)} style={{ width: "auto" }} />
+                  Join as admin — sees the whole business (choose what they can't see once they've joined)
+                </label>
+                {!invAsAdmin && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    <input type="checkbox" checked={invSeeCustomers} disabled={invBusy}
+                      onChange={e => setInvSeeCustomers(e.target.checked)} style={{ width: "auto" }} />
+                    Can see the business's customers, to serve them (untick: only the customers they add or sell to)
+                  </label>
+                )}
+              </div>
 
               {invErr && <div className="login-error">{invErr}</div>}
 
@@ -768,7 +787,9 @@ export default function Staff() {
                           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                             {full
                               ? (limits.length ? "Sees the business, except what's ticked below." : "Sees everything about the business — all customers, sales, debts and stock.")
-                              : "Records sales; sees only what they record and the customers they added."}
+                              : (mem.sees_customers
+                                ? "Records sales; sees the business's customers to serve them, and only their own sales. No cost prices or profit."
+                                : "Records sales; sees only their own sales and the customers they added. No cost prices or profit.")}
                           </div>
                         </div>
                         <button
@@ -779,6 +800,13 @@ export default function Staff() {
                           {accessBusy[member.id] ? "Saving…" : (full ? "Make ordinary staff" : "Make admin")}
                         </button>
                       </div>
+                      {!full && (
+                        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                          <input type="checkbox" style={{ width: "auto" }} disabled={accessBusy[member.id]}
+                            checked={!!mem.sees_customers} onChange={e => setSeesCustomers(member.id, e.target.checked)} />
+                          Can see the business's customers, to serve them
+                        </label>
+                      )}
                       {full && (
                         <div className="staff-limits">
                           <div style={{ fontSize: 13, fontWeight: 600 }}>This admin can't see…</div>

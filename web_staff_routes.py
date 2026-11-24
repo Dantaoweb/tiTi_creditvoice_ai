@@ -26,6 +26,11 @@ class StaffInviteRequest(BaseModel):
     email: Optional[str] = Field(default=None, max_length=254)
     branch_id: Optional[int] = None          # pre-assign to this branch on accept
     as_branch_admin: bool = False            # grant "see all branch records" (needs a branch)
+    see_customers: bool = True               # ordinary staff: see the business's customers to serve them
+
+
+class StaffCustomersRequest(BaseModel):
+    on: bool                                 # see the business's customers (True) or only their own
 
 
 class StaffLimitsRequest(BaseModel):
@@ -99,6 +104,8 @@ def register_staff_routes(app):
                         "pending": m.role == "delegate_pending" or (m.invite_owner_id == owner.id and m.parent_id != owner.id),
                         "full_access": bool(m.can_view_all_transactions) if m.parent_id == owner.id else bool(m.invite_admin),
                         "limits": limits_of(m) if m.parent_id == owner.id else [],
+                        "sees_customers": (m.staff_sees_customers is not False) if m.parent_id == owner.id
+                                          else (m.invite_sees_customers is not False),
                         "branch_id": m.branch_id if m.parent_id == owner.id else m.invite_branch_id,
                         "branch_name": branch_names.get(m.branch_id if m.parent_id == owner.id else m.invite_branch_id),
                         "invite_expires_at": m.invite_expires_at.isoformat() if m.invite_expires_at else None,
@@ -143,7 +150,7 @@ def register_staff_routes(app):
             staff_email = (payload.email or "").strip() or None
 
             # Optional: pre-assign a branch (and, if asked, branch-admin access).
-            # Branch admin only takes effect with a branch, so require one.
+            # (A branch is optional — an admin sees the whole business either way.)
             branch_id = payload.branch_id
             if branch_id is not None:
                 branch = db.query(Branch).filter(
@@ -151,7 +158,8 @@ def register_staff_routes(app):
                 ).first()
                 if not branch:
                     raise HTTPException(status_code=404, detail="Branch not found.")
-            as_admin = bool(payload.as_branch_admin and branch_id is not None)
+            # An admin sees the whole business — with or without a branch (staff_access.py)
+            as_admin = bool(payload.as_branch_admin)
 
             staff_user = user_by_phone(db, payload.phone)
             if staff_user and staff_user.id == owner.id:
@@ -163,6 +171,7 @@ def register_staff_routes(app):
                     staff_user.email = staff_email
                 staff_user.branch_id = branch_id
                 staff_user.can_view_all_transactions = as_admin
+                staff_user.staff_sees_customers = bool(payload.see_customers)
             elif staff_user:
                 # An existing account: NOTHING about it changes until they accept
                 # with the code. (It used to become this owner's staff at once —
@@ -174,6 +183,7 @@ def register_staff_routes(app):
                 staff_user.invite_owner_id = owner.id
                 staff_user.invite_branch_id = branch_id
                 staff_user.invite_admin = as_admin
+                staff_user.invite_sees_customers = bool(payload.see_customers)
             else:
                 staff_user = User(
                     phone=staff_phone,
@@ -183,6 +193,7 @@ def register_staff_routes(app):
                     parent_id=owner.id,
                     branch_id=branch_id,
                     can_view_all_transactions=as_admin,
+                    staff_sees_customers=bool(payload.see_customers),
                 )
                 db.add(staff_user)
 
@@ -300,7 +311,9 @@ def register_staff_routes(app):
                 staff_user.branch_id = staff_user.invite_branch_id
                 staff_user.can_view_all_transactions = bool(staff_user.invite_admin)
                 staff_user.staff_limits = None
+                staff_user.staff_sees_customers = staff_user.invite_sees_customers is not False
                 staff_user.invite_owner_id = staff_user.invite_branch_id = staff_user.invite_admin = None
+                staff_user.invite_sees_customers = None
                 staff_user.token_version = (staff_user.token_version or 0) + 1    # their old sessions end
             had_pin = bool(staff_user.recovery_pin_hash)
             staff_user.role = "delegate"
@@ -455,6 +468,24 @@ def register_staff_routes(app):
         finally:
             db.close()
 
+    @app.post("/app/api/staff/{user_id}/customers")
+    def web_set_staff_customers(user_id: str, payload: StaffCustomersRequest, session: dict = Depends(require_web_auth)):
+        """Ordinary staff: see the business's customers to serve them, or only
+        the customers they added or sold to — owner only."""
+        db = SessionLocal()
+        try:
+            owner = _session_user(db, session)
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can change what staff see.")
+            member = db.query(User).filter(User.id == user_id, User.parent_id == owner.id).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            member.staff_sees_customers = bool(payload.on)
+            db.commit()
+            return {"ok": True, "sees_customers": bool(payload.on)}
+        finally:
+            db.close()
+
     @app.post("/app/api/staff/{user_id}/remove")
     def web_remove_staff(user_id: str, session: dict = Depends(require_web_auth)):
         """Take a staff member off the business (or cancel an invitation). They're
@@ -477,6 +508,7 @@ def register_staff_routes(app):
                 member.can_view_all_transactions = False
                 member.branch_id = None
                 member.staff_limits = None
+                member.staff_sees_customers = None
                 member.invite_code = None
                 member.token_version = (member.token_version or 0) + 1
             db.commit()

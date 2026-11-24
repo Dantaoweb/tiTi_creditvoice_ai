@@ -182,7 +182,8 @@ def register_pos_routes(app):
             # Expired goods still in stock — the till warns, never blocks
             from expiry import expiry_by_item, item_expiry_summary
             _exp = {k: item_expiry_summary(v, 1)["expired_qty"] for k, v in expiry_by_item(db, rows).items()}
-            _hide_cost = __import__("staff_access").kept_from(_session_user(db, session), "profit")
+            # Cost prices only for those who may see profit (owner, admins not kept from it)
+            _hide_cost = not __import__("web_common")._can_see_profit(db, session)
             return {
                 "products": [
                     {
@@ -194,7 +195,7 @@ def register_pos_routes(app):
                         "expired_qty": _exp.get(item.id) or 0,
                         "vat_exempt": bool(item.vat_exempt),       # "No VAT" product
                         "selling_price": _money(item.selling_price),
-                        "cost_price": None if _hide_cost else _money(item.cost_price),   # an admin kept from profit
+                        "cost_price": None if _hide_cost else _money(item.cost_price),
                         "is_service": item.quantity is None or item.category == "service",
                         # Settings → group stock by category: the till's category tabs
                         "category": item.category or None,

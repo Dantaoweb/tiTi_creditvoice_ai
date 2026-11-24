@@ -108,10 +108,18 @@ def register_customer_routes(app):
         if eff_branch is not None:
             query = query.filter(or_(Customer.branch_id == eff_branch, Customer.branch_id.is_(None)))
         elif rec is not None:
-            query = query.filter(or_(
-                Customer.created_by_id == rec,
-                Customer.id.in_(db.query(Transaction.customer_id).filter(Transaction.recorded_by_id == rec)),
-            ))
+            from staff_access import sees_business_customers
+            me = _session_user(db, session)
+            if sees_business_customers(me):
+                # Ordinary staff serving the business's customers (the owner's
+                # choice, on by default): their branch's and the business-wide ones
+                if me.branch_id:
+                    query = query.filter(or_(Customer.branch_id == me.branch_id, Customer.branch_id.is_(None)))
+            else:
+                query = query.filter(or_(
+                    Customer.created_by_id == rec,
+                    Customer.id.in_(db.query(Transaction.customer_id).filter(Transaction.recorded_by_id == rec)),
+                ))
         return query
 
     def _earliest_due_query(db):

@@ -128,10 +128,16 @@ def test_admin_without_a_branch_serves_every_customer():
     admin, aid, _ = _invite_and_join(owner, "Admin Ade", admin=True)
     cashier, cid, _ = _invite_and_join(owner, "Cashier Kemi")
     assert "mama bola" in _names(admin) and "mama bola" in _names(admin, debtors="true")
-    assert "mama bola" not in _names(cashier)                          # ordinary staff: as before
-    # Ordinary staff see a customer they added themselves
+    # Ordinary staff see the business's customers to serve them (the default)…
+    assert "mama bola" in _names(cashier)
     assert cashier.post("/app/api/customers", json={"owner_phone": ophone, "name": "Kemi's buyer"}).status_code == 200
-    assert "kemi's buyer" in {n.lower() for n in _names(cashier)}
+    # …or only their own, when the owner chooses
+    assert owner.post(f"/app/api/staff/{cid}/customers", json={"on": False}).json()["sees_customers"] is False
+    assert "mama bola" not in _names(cashier)
+    assert "kemi's buyer" in {n.lower() for n in _names(cashier)}      # the one they added
+    m = next(x for x in owner.get("/app/api/staff/members").json()["members"] if x["id"] == cid)
+    assert m["sees_customers"] is False
+    assert cashier.post(f"/app/api/staff/{cid}/customers", json={"on": True}).status_code == 403   # owner only
     # The admin sees profit, the dashboard, expenses and supplier debts by default
     assert admin.get("/app/api/dashboard").status_code == 200
     assert admin.get("/app/api/expenses").status_code == 200
@@ -195,4 +201,34 @@ def test_titi_explains_staff_admins():
     from models import User as _U
     a = build_app_guide_message("staff", _U(phone="1", business_type="provision_store"))
     assert "Make admin" in a and "can't see" in a and "Remove from business" in a
+    assert "business's customers" in a and "cost prices" in a
     assert "receive a WhatsApp message" not in a
+
+
+
+def test_ordinary_staff_never_see_cost_prices():
+    owner, ophone = _owner()
+    db = SessionLocal()
+    db.add(InventoryItem(owner_phone=ophone, name="beans", selling_price=1500, cost_price=1100, quantity=20,
+                         is_available=True))
+    db.commit(); db.close()
+    cashier, _cid, _ = _invite_and_join(owner, "Cashier Ola")
+    admin, _aid, _ = _invite_and_join(owner, "Admin Femi", admin=True)
+
+    def cost(client, path, key):
+        d = client.get(path, params={"owner_phone": ophone}).json()
+        return next(i for i in d[key] if i["name"].lower() == "beans").get("cost_price")
+    assert cost(cashier, "/app/api/inventory", "items") is None
+    assert cost(cashier, "/app/api/pos/products", "products") is None
+    assert cost(admin, "/app/api/inventory", "items") == 1100           # admins do, unless kept from profit
+    assert cost(owner, "/app/api/pos/products", "products") == 1100
+
+
+def test_inviting_can_choose_only_their_own_customers():
+    owner, ophone = _owner()
+    _customer(ophone, "owner's buyer")
+    phone = _phone("2347144")
+    r = owner.post("/app/api/staff/invite", json={"name": "Only Own", "phone": phone, "see_customers": False})
+    staff = TestClient(app)
+    staff.post("/app/api/staff/accept", json={"phone": phone, "code": r.json()["invite_code"], "new_pin": "1234"})
+    assert "owner's buyer" not in _names(staff)

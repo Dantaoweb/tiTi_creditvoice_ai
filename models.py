@@ -119,6 +119,10 @@ class User(Base):
     invite_owner_id = Column(String, nullable=True, index=True)
     invite_branch_id = Column(Integer, nullable=True)
     invite_admin = Column(Boolean, nullable=True)
+    # Ordinary staff: see the business's customers so they can serve them
+    # (None/True = yes, the default; False = only the customers they added or sold to)
+    staff_sees_customers = Column(Boolean, nullable=True)
+    invite_sees_customers = Column(Boolean, nullable=True)
     # A demo business (demo_business.py) for an admin or marketer to show and
     # teach with — sample data only, never counted, never messaged
     is_demo = Column(Boolean, default=False)

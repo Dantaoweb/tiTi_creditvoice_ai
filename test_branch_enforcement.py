@@ -83,6 +83,14 @@ def test_regular_staff_sees_only_own_records():
 
     txns = client.get("/app/api/transactions", cookies=staff).json()["transactions"]
     assert [t["amount"] for t in txns] == [5000]            # only their own sale
+    # Customers: by default their branch's, to serve them (not the other branch's BolaB)…
+    custs = {c["name"] for c in client.get("/app/api/customers", cookies=staff).json()["customers"]}
+    assert custs == {"AdaA", "AdaA2"}
+    # …or only their own, when the owner chooses (staff_access.sees_business_customers)
+    db = SessionLocal()
+    u = db.query(User).filter(User.phone == staff_phone).first()
+    u.staff_sees_customers = False
+    db.commit(); db.close()
     custs = {c["name"] for c in client.get("/app/api/customers", cookies=staff).json()["customers"]}
     assert custs == {"AdaA"}                                 # not the colleague's AdaA2, not BolaB
 
