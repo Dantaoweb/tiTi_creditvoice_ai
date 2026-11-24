@@ -14,7 +14,7 @@ Each entry:  key: (groups, answer[, without])
   the one listed first. without — words that rule the entry out.
 
 Add a feature's exact answers here when it's built (rounds so far:
-1 selling & paperwork, 2 staff).
+1 selling & paperwork, 2 staff, 3 stock & categories).
 """
 import re
 
@@ -83,6 +83,11 @@ _STAFF_NOUN = tuple(w for w in _STAFF if w not in ("admin", "manager", "supervis
 _STAFF_PAGE = "Menu → *Staff*"
 _ON_CARD = f"{_STAFF_PAGE} → find them under the staff list"
 
+# Round 3 — stock & categories
+_PRODUCT = ("product", "item", "goods", "stock", "inventory", "drug", "drugs")
+_EDIT_PRODUCT = "*Inventory* → tap the product → *Edit details*"
+_SETTINGS_STOCK = "Menu → More → *Settings* → *Stock*"
+_SETTINGS_CATS = "Menu → More → *Settings* → *Manage categories* (under Stock)"
 _SETTINGS_PRINT = "Menu → More → *Settings* → *Receipts & printables* (under Selling & paperwork)"
 
 HOWTO = {
@@ -292,7 +297,8 @@ HOWTO = {
         [("vat",), ("some product", "some items", "one product", "a product", "exempt", "no vat", "without vat",
                     "not all", "certain product", "certain items", "food items")],
         "🧾 *Products without VAT*\n\n"
-        "*Inventory* → tap the product → *Edit* → tick *No VAT* → save. That product is left out of VAT "
+        "*Inventory* → tap the product → *Edit details* → tick *No VAT on this product* → *Save Changes*. "
+        "That product is left out of VAT "
         "on every sale; the rest still have it.",
     ),
     "vat_report": (
@@ -442,6 +448,208 @@ HOWTO = {
         "and profit — except what you tick under *This admin can't see…*. Only you manage staff.\n"
         f"Change it any time: {_ON_CARD}.",
     ),
+
+    # ── Stock & categories (round 3) ─────────────────────────────────────────
+    "purchase_order": (
+        [("order", "reorder", "re-order", "purchase order"), ("supplier", "stock", "goods", "more")],
+        None,   # the full answer is the FAQ's "purchase_order"
+        ("customer", "status", "categor", "sale", "sell"),
+    ),
+    "stock_add_more": (
+        [("restock", "add more", "more stock", "new delivery", "new stock", "goods came", "goods arrived",
+          "goods have arrived", "received goods", "received stock", "received new", "top up", "add stock",
+          "add to stock", "add to my stock", "stock came", "increase the stock", "increase stock", "increase quantity",
+          "supplier brought", "supplier delivered", "new supply")],
+        "📦 *More stock came in*\n\n"
+        "*Inventory* → tap the product → *Adjust stock* (or *±* on its row) → *Quantity* → *Add Stock*.\n"
+        "Optional, when adding: *Supplier*, *Cost per unit*, *Amount paid now* (the rest goes on what you owe the "
+        "supplier), *Expiry date* and *Batch no.*\n"
+        "Don't add the product again — that makes a duplicate.",
+        ("new product", "barcode", "categor", "price list", "catalog", "purchase order"),
+    ),
+    "many_products": (
+        [("many", "several", "all my", "list of", "bulk", "at once", "plenty", "hundreds", "fast", "quick"),
+         ("product", "item", "goods", "names", "drugs")],
+        "⚡ *Adding many products at once*\n\n"
+        "*Inventory* → *Quick Add* → type the names, one per line → add them all. Then set prices and stock on each.\n"
+        "Or *Catalog* → pick from the ready-made list for your business type, with suggested prices.",
+        ("sell", "sale", "sold", "remove", "delete", "categor"),
+    ),
+    "low_stock_alert": (
+        [("alert", "warn", "notif", "remind", "tell me when", "let me know", "know when"),
+         ("low", "finish", "running out", "run out", "running low", "remaining", "left")],
+        "🔔 *Low-stock alert*\n\n"
+        f"*One product:* {_EDIT_PRODUCT} → *Low-stock alert* → the number to warn at → *Save Changes*.\n"
+        f"*Every new product:* {_SETTINGS_STOCK} → *Low-stock alert for new products* → a number → *Save*.\n"
+        "tiTi then tells you when it falls to that number, and *Order stock* lists what to buy.",
+        ("expir",),
+    ),
+    "expiry_warn": (
+        [("expir",), ("warn", "alert", "notify", "remind", "days before", "how many days", "before it", "early")],
+        "⏳ *Warning before goods expire*\n\n"
+        f"{_SETTINGS_STOCK} → *Warn me before goods expire* → the number of days (food sellers often use 7) → *Save*.\n"
+        "tiTi tells you about goods expiring within that time, and *Inventory* → *Expiry* lists them.",
+    ),
+    "expiry_add_date": (
+        [("expir",), ("add", "enter", "put", "record", "set", "write", "date")],
+        "📅 *Adding an expiry date*\n\n"
+        "When the stock comes in: *Inventory* → the product → *Adjust stock* → *Quantity* → *Expiry date* "
+        "(and *Batch no.* if you like) → *Add Stock*. Each delivery keeps its own date.",
+        ("warn", "alert", "notify", "remind", "days before", "subscription", "plan", "code", "invite"),
+    ),
+    "expiry_list": (
+        [("expir",), ("see", "check", "list", "which", "show", "find", "what", "throw", "write off", "remove",
+                      "do with", "get rid")],
+        "⏳ *Expired and expiring goods*\n\n"
+        "*Inventory* → *Expiry*: what has expired and what expires soon, by product.\n"
+        "To throw expired goods away: tap *Write off expired* beside it — they leave stock and count as a loss.\n"
+        "Selling a product with expired stock shows a warning at the till.",
+        ("subscription", "plan", "code", "invite"),
+    ),
+    "count_blind": (
+        [("count",), ("hide", "blind", "see the numbers", "show the numbers", "copy", "copying", "app's number",
+                     "apps number")],
+        "📋 *Hiding the app's numbers while counting*\n\n"
+        f"{_SETTINGS_STOCK} → *Stock count: hide the app's numbers while counting* → *Hide (blind)* or *Show*.\n"
+        "Blind means counters see only empty boxes, so they count what's really there.",
+    ),
+    "count_approve": (
+        [("count",), ("approve", "approval", "accept the count", "confirm the count", "fix my stock")],
+        "✅ *Approving a stock count*\n\n"
+        "Staff count, then tap *Send for approval*. You open it from *Inventory* → *Count stock* → the count "
+        "*Waiting for approval* → check each *Difference* → *Approve — fix my stock*. Stock changes by each "
+        "difference, with the reason recorded.",
+    ),
+    "duplicates": (
+        [("duplicate", "twice", "two times", "same product", "double", "entered it again", "added it again",
+          "same thing"), _PRODUCT + ("same product", "same thing")],
+        "👯 *The same product entered twice*\n\n"
+        "*Inventory* → *Check duplicates* — it lists products that look like the same thing.\n"
+        "To keep one: open the other → *Adjust stock* → *Remove Stock* (reason *Counting correction*), add that "
+        "quantity to the one you keep with *Add Stock*, then *Remove product* on the extra one.",
+        ("receipt", "invoice", "quotation", "sale", "payment", "customer", "sync"),
+    ),
+    "price_change": (
+        [("price", "selling price", "how much i sell"), ("change", "update", "edit", "increase", "reduce",
+                                                         "new", "adjust", "correct", "wrong", "set")],
+        "💲 *Changing a price*\n\n"
+        f"{_EDIT_PRODUCT} → *Selling price* → *Save Changes*. New sales use it at once; old sales keep their price.\n"
+        "The product's *Price changes* list shows every change and when.",
+        ("wholesale", "bulk", "sub-unit", "sub unit", "sachet", "piece", "cost", "quotation", "invoice", "receipt",
+         "plan", "subscription", "paper", "vat"),
+    ),
+    "wholesale_price": (
+        [("wholesale", "bulk price", "carton price", "price for many", "buy many", "buys many", "buy plenty",
+          "big buyer", "bulk buyer", "price for bulk", "cheaper for")],
+        "📦 *Wholesale price*\n\n"
+        f"{_EDIT_PRODUCT} → *Wholesale price (₦)* and *From qty (buy ≥)* — e.g. ₦180 each from 12. "
+        "At the till, a sale of that many or more uses the wholesale price → *Save Changes*.",
+    ),
+    "sub_unit": (
+        [("sub-unit", "sub unit", "subunit", "sachet", "sachets", "piece", "pieces", "by the cup", "derica",
+          "loose", "break bulk", "single", "singles", "one one", "retail breakdown", "tablet", "tablets", "strip"),
+         ("sell", "price", "unit", "carton", "pack", "packet", "box", "bag")],
+        "✂️ *Selling in smaller units* (sachets from a pack)\n\n"
+        f"{_EDIT_PRODUCT} → *Retail Breakdown*: *Sub-unit name* (e.g. sachet), *Per …* (how many in one pack, e.g. 15) "
+        "and *Sub-unit price (₦)* → *Save Changes*. You can then sell either the pack or single sachets.",
+        ("receipt", "invoice"),
+    ),
+    "cost_price": (
+        [("cost price", "cost", "buying price", "bought at", "bought it for", "purchase price", "how much i buy"),
+         ("change", "update", "edit", "set", "add", "put", "enter", "correct", "wrong", "new")],
+        "💰 *Cost price* (what you paid for it)\n\n"
+        f"{_EDIT_PRODUCT} → *Cost price (₦)* → *Save Changes*.\n"
+        "Bought new stock at a different cost? Put it in *Cost per unit* when you *Add Stock* — each delivery keeps "
+        "its own cost. Ordinary staff never see cost prices.",
+        ("staff", "worker", "employee", "hide", "expense", "delivery cost", "transport"),
+    ),
+    "product_rename": (
+        [("rename", "change the name", "change name", "edit name", "edit the name", "wrong name", "spelling", "spelt",
+          "spelled", "misspelt", "misspelled", "name is wrong", "correct the name"), _PRODUCT],
+        "✏️ *Renaming a product*\n\n"
+        f"{_EDIT_PRODUCT} → *Product name* → *Save Changes*. Its stock, sales and history stay with it.",
+        ("business", "shop name", "company", "categor", "customer"),
+    ),
+    "stock_history": (
+        [("history", "movement", "movements", "where did", "what happened", "trail", "track", "who added",
+          "who removed", "when did"), ("stock", "product", "item", "goods", "quantity")],
+        "📜 *What happened to a product's stock*\n\n"
+        "*Inventory* → tap the product → *Stock movements*: every sale, delivery, removal and count, with the date "
+        "and who did it. *Price changes* is just under it.\n"
+        "Stock that left without a sale: *Inventory* → *Removed stock*.",
+        ("expir", "count"),
+    ),
+    "removed_stock_report": (
+        [("removed", "damaged", "stolen", "lost", "written off", "write off", "wasted", "spoilt", "spoiled",
+          "missing"), ("report", "list", "see", "total", "how much", "value", "check", "show")],
+        "🗑️ *Stock that left without being sold*\n\n"
+        "*Inventory* → *Removed stock*: date, product, quantity, reason (damaged, expired, stolen…), note and value.",
+        ("staff", "phone", "customer"),
+    ),
+    "keep_aside": (
+        [("keep aside", "kept aside", "keep goods aside", "keep it aside", "reserve", "reserved", "not collected",
+          "haven't collected", "havent collected", "yet to collect", "left the goods", "left their goods",
+          "left his goods", "left her goods", "come back for")],
+        "🧺 *Goods customers paid for but haven't collected*\n\n"
+        f"{_SETTINGS_STOCK} → *Keep goods aside for customers who have not collected*:\n"
+        "• *Yes* — they're kept aside, so no one else can buy them\n"
+        "• *No* — they stay free to sell until you keep them aside yourself (*Deliveries* or *Add stock*)\n"
+        "Inventory shows *Kept aside for customers* on each product.",
+        ("loyalty", "points"),
+    ),
+    "part_delivery_switch": (
+        [("not all goods delivered", "part delivery", "partial delivery", "deliver later", "collect later",
+          "part delivered"), ("show", "hide", "remove", "button", "option", "setting", "turn", "don't see",
+                              "dont see", "can't see", "cant see", "where is")],
+        "🚚 *The \"Not all goods delivered now\" option at the till*\n\n"
+        f"{_SETTINGS_STOCK} → *Show \"Not all goods delivered now\" when selling* → *Yes* or *No*.",
+    ),
+    "category_create": (
+        [("categor",), ("add", "create", "new", "make", "set up", "start")],
+        "🗂️ *Adding categories*\n\n"
+        f"{_SETTINGS_CATS} → type them, separated by commas (e.g. _Drinks, Provisions, Toiletries_) → *+ Add*.\n"
+        "They show on *Add product* straight away, even before any product is in them.",
+        ("move", "put", "assign", "into", "under", "group", "suggest", "rename"),
+    ),
+    "category_move": (
+        [("categor",), ("move", "put", "assign", "change", "into", "under", "place", "transfer")],
+        "🗂️ *Putting products into a category*\n\n"
+        f"{_SETTINGS_CATS} → *Put products into a category*: *Find products…* → tick them → type the category → "
+        "*Move*.\n"
+        f"One product: {_EDIT_PRODUCT} → *Category* → *Save Changes*.",
+        ("rename", "delete", "order", "arrange", "suggest", "business"),
+    ),
+    "category_rename": (
+        [("categor",), ("rename", "delete", "remove", "change the name", "wrong name", "spelling")],
+        "🗂️ *Renaming or deleting a category*\n\n"
+        f"{_SETTINGS_CATS} → *Rename* next to it — its products move with it.\n"
+        "Delete: the *✕* shows once the category has no products (move them out first).",
+    ),
+    "category_group_view": (
+        [("categor",), ("group", "show", "see", "inventory", "till", "pos", "sell", "view", "display", "by category")],
+        "🗂️ *Showing stock in categories*\n\n"
+        f"{_SETTINGS_STOCK} → *Group stock by category* → *On*. Then *Where grouping shows* → *Inventory only* "
+        "or *Inventory and POS* (at the till: tap a category, then the product).",
+        ("staff", "only", "suggest", "move", "put", "assign", "add", "create", "rename", "delete"),
+    ),
+    "category_only_list": (
+        [("categor",), ("staff", "only", "lock", "restrict", "stop", "from my list", "creating", "making new")],
+        "🗂️ *Only your categories*\n\n"
+        f"{_SETTINGS_CATS} → *Only categories from my list* → *On*: staff pick from your list when they add a "
+        "product; only you make new ones. *Off*: anyone can type a new one.",
+    ),
+    "category_suggest": (
+        [("categor",), ("suggest", "automatic", "automatically", "auto", "titi", "by itself", "for me")],
+        "🗂️ *Let tiTi pick categories*\n\n"
+        f"*New products:* {_SETTINGS_STOCK} → *New categories come from* → *tiTi suggests*.\n"
+        f"*Products with none yet:* {_SETTINGS_CATS} → *Let tiTi suggest categories* → untick any that are wrong → "
+        "*Apply*.",
+    ),
+    "category_order": (
+        [("categor",), ("order", "arrange", "sort", "first", "top", "rearrange", "sequence", "up and down")],
+        "🗂️ *Order of categories*\n\n"
+        f"{_SETTINGS_CATS} → the ↑ ↓ arrows beside each one. That order is used on Inventory and at the till.",
+    ),
 }
 
 
@@ -474,7 +682,12 @@ def match_howto(text):
     return best
 
 
-_DATA_QUESTION = re.compile(r"^\s*(?:how much|how many|who|when did|what did|did|which customer|list)\b")
+_DATA_QUESTION = re.compile(r"^\s*(?:how much|how many|who (?:owes?|bought|paid|pays|has|is owing|are owing)"
+                            r"|when did|what did|did|which customer|list)\b")
+
+
+_MEANING_QUESTION = re.compile(r"^\s*(?:what\s+is|what'?s|what\s+are|what\s+does\s+.+\s+mean|meaning\s+of)\b"
+                               r"(?!.*\b(?:how|where|difference)\b)")
 
 
 def exact_for(text):
@@ -485,6 +698,8 @@ def exact_for(text):
     from faq import _is_question
     q = fix_typos(text)
     if _DATA_QUESTION.match(q) and not re.search(r"\bvat\b", q):   # "how much VAT…" is answered here
+        return None
+    if _MEANING_QUESTION.match(q):     # "what is blind count?" — the feature's own guide explains it
         return None
     key = match_howto(q)
     if not key:

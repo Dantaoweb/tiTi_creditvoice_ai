@@ -108,6 +108,57 @@ CASES = [
     ("it says the number already has an account when i invite staff", "staff_number_taken"),
     ("how do i add a partner", "partner"),
     ("how do i record salary as expense", "expenses"),
+    # round 3 — stock & categories
+    ("how do i add more stock to rice", "stock_add_more"),
+    ("new goods arrived how do i add them", "stock_add_more"),
+    ("my supplier brought 20 cartons how do i add it", "stock_add_more"),
+    ("how do i restock", "stock_add_more"),
+    ("how do i add many products at once", "many_products"),
+    ("how do i add all my drugs fast", "many_products"),
+    ("how do i set low stock alert", "low_stock_alert"),
+    ("how do i get notified when stock is running low", "low_stock_alert"),
+    ("how do i set expiry warning days", "expiry_warn"),
+    ("can tiTi warn me before my drugs expire", "expiry_warn"),
+    ("how do i add expiry date to my drugs", "expiry_add_date"),
+    ("how do i see expired goods", "expiry_list"),
+    ("which products are expiring", "expiry_list"),
+    ("how do i hide the numbers during stock count", "count_blind"),
+    ("how do i approve stock count", "count_approve"),
+    ("i entered the same product twice", "duplicates"),
+    ("how do i find duplicate products", "duplicates"),
+    ("how do i change the price of rice", "price_change"),
+    ("how do i update my selling price", "price_change"),
+    ("how do i set wholesale price", "wholesale_price"),
+    ("how do i give cheaper price for bulk buyer", "wholesale_price"),
+    ("how do i sell sachets from a pack", "sub_unit"),
+    ("how do i sell tablets from a pack of drugs", "sub_unit"),
+    ("how do i change cost price", "cost_price"),
+    ("how do i rename a product", "product_rename"),
+    ("i spelt my product name wrong", "product_rename"),
+    ("how do i see stock history of a product", "stock_history"),
+    ("who removed stock from my inventory", "stock_history"),
+    ("how do i see damaged goods report", "removed_stock_report"),
+    ("how do i keep goods aside for customers", "keep_aside"),
+    ("customer has not collected his goods what do i do", "keep_aside"),
+    ("how do i hide the part delivery option", "part_delivery_switch"),
+    ("how do i create categories", "category_create"),
+    ("how do i move products to a category", "category_move"),
+    ("how do i put rice under provisions category", "category_move"),
+    ("how do i rename a category", "category_rename"),
+    ("how do i delete a category", "category_rename"),
+    ("how do i show my stock by category", "category_group_view"),
+    ("how do i group products by category at the till", "category_group_view"),
+    ("how do i stop staff from creating categories", "category_only_list"),
+    ("can titi suggest categories for me", "category_suggest"),
+    ("how do i arrange my categories", "category_order"),
+    ("how do i remove damaged stock", "remove_stock"),
+    ("how do i do stock count", "stock_count"),
+    ("how do i sell when stock is finished", "sell_out_of_stock"),
+    ("how do i change the price on my quotation", "edit_invoice"),
+    ("how do i hide cost price from staff", "staff_limits"),
+    ("how do i make my own barcode", "make_barcode"),
+    ("how do i order stock from my supplier", "purchase_order"),
+    ("some products have no vat how do i do it", "vat_exempt"),
     # broad questions still get the feature's full guide
     ("how do i add vat to my invoice", "vat"),
     ("how do i make a quotation", "quotation"),
@@ -170,6 +221,29 @@ def test_staff_answers_use_the_staff_page_words():
     login = pathlib.Path(__file__).with_name("frontend").joinpath("src", "pages", "Login.jsx").read_text(encoding="utf-8")
     for label in ("Accept a staff invitation", "Accept Code", "Create your PIN", "Your Phone Number"):
         assert label in login, label
+
+
+def test_stock_answers_use_the_inventory_words():
+    import pathlib
+    src = pathlib.Path(__file__).with_name("frontend").joinpath("src")
+    inv = src.joinpath("pages", "Inventory.jsx").read_text(encoding="utf-8")
+    for label in ("Adjust stock", "Add Stock", "Remove Stock", "Confirm removal", "Edit details", "Save Changes",
+                  "Low-stock alert", "Wholesale price (₦)", "From qty (buy ≥)", "Retail Breakdown", "Sub-unit name",
+                  "Sub-unit price (₦)", "Cost price (₦)", "Cost per unit", "Expiry date", "Batch no.", "Quick Add",
+                  "Catalog", "Check duplicates", "Removed stock", "Expiry", "Count stock", "Stock movements",
+                  "Price changes", "Remove product", "No VAT on this", "Kept aside for customers"):
+        assert label in inv, label
+    counts = src.joinpath("pages", "StockCount.jsx").read_text(encoding="utf-8") + \
+        src.joinpath("pages", "StockCounts.jsx").read_text(encoding="utf-8")
+    assert "Write off expired" in src.joinpath("components", "ExpiryModal.jsx").read_text(encoding="utf-8")
+    for label in ("Start a count", "Send for approval", "Approve — fix my stock", "Waiting for approval"):
+        assert label in counts, label
+    settings = src.joinpath("pages", "Settings.jsx").read_text(encoding="utf-8")
+    for label in ("Low-stock alert for new products", "Warn me before goods expire", "Group stock by category",
+                  "Where grouping shows", "New categories come from", "Only categories from my list",
+                  "Let tiTi suggest categories", "Put products into a category", "Keep goods aside for customers",
+                  "hide the app's numbers while counting"):
+        assert label in settings, label
 
 
 def test_answers_point_at_the_real_settings_card():

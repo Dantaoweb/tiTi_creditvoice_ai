@@ -163,7 +163,7 @@ def test_titi_explains_settings(ask):
     from parser import parse_message
     p = parse_message(ask) or {}
     topic = p.get("topic") if p.get("type") == "APP_GUIDE" else detect_faq(ask)
-    assert topic == "settings"
+    assert topic in ("settings", "howto:category_group_view")  # exact steps for grouping (howto.py)
 
 
 def test_light_is_the_default_until_someone_picks_a_theme():

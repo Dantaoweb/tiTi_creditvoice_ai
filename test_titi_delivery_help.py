@@ -35,7 +35,7 @@ def _topic(text):
     ("how do I make a waybill for the driver", "waybill"),
     ("print loading order", "waybill"),
     ("can I sell more than I have in store?", "waybill"),
-    ("how do i keep goods aside for a customer", "waybill"),
+    ("how do i keep goods aside for a customer", "howto:keep_aside"),
 ])
 def test_tit_knows_which_answer(text, topic):
     assert _topic(text) == topic

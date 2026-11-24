@@ -165,7 +165,7 @@ def test_titi_explains_stock_count(text):
     from parser import parse_message
     p = parse_message(text) or {}
     topic = p["topic"] if p.get("type") == "APP_GUIDE" else detect_faq(text)
-    assert topic == "stock_count"
+    assert topic in ("stock_count", "howto:count_approve")     # exact steps for approving (howto.py)
     answer = build_app_guide_message("stock_count")
     assert "Count stock" in answer and "blind count" in answer and "Approve" in answer
 

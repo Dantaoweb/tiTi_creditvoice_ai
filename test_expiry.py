@@ -152,7 +152,9 @@ def test_titi_explains_expiry(text):
     from parser import parse_message
     from models import User
     p = parse_message(text) or {}
-    assert (p["topic"] if p.get("type") == "APP_GUIDE" else detect_faq(text)) == "expiry"
+    # the broad expiry guide, or the exact steps for the one thing asked (howto.py)
+    assert (p["topic"] if p.get("type") == "APP_GUIDE" else detect_faq(text)) in (
+        "expiry", "howto:expiry_add_date", "howto:expiry_list", "howto:expiry_warn")
     a = build_app_guide_message("expiry", User(phone="1", business_type="pharmacy", business_category="health"))
     assert "Expiry date" in a and "Write off expired" in a and "{record}" not in a
 

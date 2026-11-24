@@ -31,7 +31,7 @@ _HELP_PATTERNS = re.compile(
     r"i want to (know|learn|understand|see|find)|"
     r"walk me through|guide me|"
     r"made a mistake|by mistake|entered (it |the )?wrong|recorded (it |the )?wrong|"
-    r"explain|show me how"
+    r"explain|show me how|what (?:do|should|can) i do|what now"
     r")\b",
     re.I,
 )
