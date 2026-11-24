@@ -77,7 +77,8 @@ _MAKE_BARCODE = re.compile(
 
 
 def detect_faq(text):
-    q = text.lower().strip()
+    from howto import exact_for, fix_typos
+    q = fix_typos(text).strip()
 
     # ── Business name / profile change — HIGH PRIORITY ────────────────────────
     # Handled before the question gate (so statements like "my business name is
@@ -111,6 +112,13 @@ def detect_faq(text):
     # A forgotten PIN is said as a statement ("i forgot my pin"), not a question.
     if any(k in q for k in ["forgot my pin", "forgot pin", "forget my pin", "forgotten my pin"]):
         return "pin_help"
+
+    # One exact task ("bank details on my quotation") — its exact steps, not
+    # the whole feature's guide (howto.py)
+    _exact = exact_for(text)
+    if _exact:
+        from howto import topic_for
+        return topic_for(_exact)
 
     if not _is_question(text):
         return None
@@ -1753,6 +1761,9 @@ def _where_answer(route):
 def get_faq_answer(key, user=None):
     """The answer, in this business's menu words ({till} → "Select product")."""
     from biz_language import in_menu_words
+    if key and key.startswith("howto:"):
+        from howto import howto_answer
+        return in_menu_words(howto_answer(key[len("howto:"):]) or FAQ_ANSWERS["formats"], user)
     if key and key.startswith("where:"):
         return in_menu_words(_where_answer(key[len("where:"):]), user)
     topic = _FAQ_KEY_TO_GUIDE_TOPIC.get(key)

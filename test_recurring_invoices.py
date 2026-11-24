@@ -162,4 +162,5 @@ def test_titi_explains_repeat_invoices(text):
 
 def test_plain_invoice_question_still_goes_to_invoices():
     from faq import detect_faq
-    assert detect_faq("how do I send an invoice") == "invoices"
+    assert detect_faq("how do I create an invoice") == "invoices"
+    assert detect_faq("how do I send an invoice") == "howto:invoice_send"   # the exact steps

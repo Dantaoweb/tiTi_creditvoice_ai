@@ -195,6 +195,9 @@ NEW RECEIPT (web app → Receipts → New Receipt):
 
 {NAV_GUIDE}
 
+EXACT STEPS (use these exact paths and button names when asked how to do one of these):
+{HOWTO}
+
 SUPPORT:
 - For help, users can email support@creditvoiceai.com.
 
@@ -205,7 +208,9 @@ Keep replies under 150 words."""
 # The menu map comes from nav_guide, the one list checked against the real menu.
 from nav_guide import nav_guide_text  # noqa: E402
 
-_SYSTEM_PROMPT = _SYSTEM_PROMPT.replace("{NAV_GUIDE}", nav_guide_text())
+from howto import howto_facts  # noqa: E402
+
+_SYSTEM_PROMPT = _SYSTEM_PROMPT.replace("{NAV_GUIDE}", nav_guide_text()).replace("{HOWTO}", howto_facts())
 
 _DISCLAIMER = "\n\n_⚠️ tiTi can make mistakes — please double-check important figures._"
 

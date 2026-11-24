@@ -1930,6 +1930,14 @@ def parse_message(text):
 def _parse_message(text):
 
     clean_text = text.lower().strip()
+    # One exact how-to task (howto.py) — before any command reads the words as
+    # a name ("how do i change my bank account" is not a customer)
+    from howto import exact_for
+    from faq import _is_question
+    _exact = exact_for(text) if _is_question(text) else None
+    if _exact:
+        from howto import topic_for
+        return {"type": "APP_GUIDE", "topic": topic_for(_exact)}
     if clean_text in SELECT_PRODUCT_COMMANDS:
         return {"type": "SELECT_PRODUCT"}
 

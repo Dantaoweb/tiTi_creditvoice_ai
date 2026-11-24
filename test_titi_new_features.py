@@ -13,7 +13,7 @@ ASKED = [
     ("my customer is not ready, what do i do?", "hold_sale"),
     ("can i save a sale as draft?", "hold_sale"),
     ("what does completed mean on my invoice?", "invoices"),
-    ("how do i track a quotation?", "quotation"),
+    ("how do i write a quotation?", "quotation"),
     ("how do i get a business page?", "business_page"),
     ("can i have my own website?", "business_page"),
     ("how do i add a recipe?", "production"),

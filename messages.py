@@ -899,6 +899,9 @@ def build_app_guide_message(topic, user=None):
     Works on both WhatsApp (plain text) and web app (same text shown in tiTi panel).
     No LLM call — completely free and instant.
     """
+    if topic and topic.startswith("howto:"):
+        from faq import get_faq_answer
+        return get_faq_answer(topic, user)
     guides = {
         "pdf": (
             "🧾 *Receipts — view, share, print or download*\n\n"

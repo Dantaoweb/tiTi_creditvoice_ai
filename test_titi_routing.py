@@ -36,7 +36,7 @@ def test_a_question_is_never_recorded_as_a_sale():
 
 @pytest.mark.parametrize("question, expected", [
     ("how do i give a customer discount?", "guide:discount"),
-    ("how do i send invoice to my customer?", "guide:invoices"),
+    ("how do i send invoice to my customer?", "guide:howto:invoice_send"),
     ("my customer paid part of his debt how do i record it?", "guide:record_payment"),
     ("how do i send reminder to customers?", "guide:reminder"),
     ("how do i tell customer order is ready?", "guide:delivery_date"),

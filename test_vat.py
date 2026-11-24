@@ -157,7 +157,9 @@ def test_titi_explains_vat(text):
     from parser import parse_message
     from models import User
     p = parse_message(text) or {}
-    assert (p["topic"] if p.get("type") == "APP_GUIDE" else detect_faq(text)) == "vat"
+    # the broad VAT guide, or the exact steps for the one thing asked (howto.py)
+    assert (p["topic"] if p.get("type") == "APP_GUIDE" else detect_faq(text)) in (
+        "vat", "howto:vat_number", "howto:vat_inclusive")
     a = build_app_guide_message("vat", User(phone="1", business_type="pharmacy", business_category="health"))
     assert "Add VAT on top" in a and "Already include VAT" in a and "No VAT" in a and "{till}" not in a
 

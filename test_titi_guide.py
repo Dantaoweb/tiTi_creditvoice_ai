@@ -58,9 +58,9 @@ QUESTIONS = {
     "how do I get financing for a motorcycle?": "finance_scorecard",
     "how do i record a repayment?": "finance_scorecard",
     # Older topics still land where they did.
-    "how do I print a receipt?": "receipt",
+    "how do I print a receipt?": "howto:print_how",      # exact steps (howto.py)
     "who owes me?": "overdue_debtors",
-    "how do i send invoice?": "invoices",
+    "how do i send invoice?": "howto:invoice_send",
 }
 
 
