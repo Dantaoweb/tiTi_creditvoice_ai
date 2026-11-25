@@ -228,6 +228,7 @@ def register_customer_routes(app):
                     "has_overdue": has_overdue,
                     "next_due": _iso(next_due),
                     "created_at": _iso(c.created_at),
+                    "last_at": _iso(c.last_transaction_at),
                 })
             return {
                 "customers": result,
@@ -236,6 +237,62 @@ def register_customer_routes(app):
                 "limit": limit,
                 "has_more": offset + len(rows) < total,
             }
+        finally:
+            db.close()
+
+    # ── Same customer, two records (customer_merge.py) ────────────────────
+    def _can_merge(user):
+        """The owner, or an admin who sees the whole business."""
+        from staff_access import is_admin, kept_from
+        if not user:
+            return False
+        if not getattr(user, "parent_id", None):
+            return True
+        return is_admin(user) and not kept_from(user, "own_branch")
+
+    def _dup_row(db, c):
+        return {
+            "id": c.id, "name": c.name, "phone": c.customer_phone,
+            "balance": _money(c.balance if c.balance is not None else get_balance(db, c.id)),
+            "created_at": _iso(c.created_at), "last_at": _iso(c.last_transaction_at),
+            "records": db.query(func.count(Transaction.id)).filter(Transaction.customer_id == c.id).scalar() or 0,
+        }
+
+    @app.get("/app/api/customers/duplicates")
+    def web_customer_duplicates(session: dict = Depends(require_web_auth)):
+        """Customers that share a name (capitals and extra spaces ignored)."""
+        from customer_merge import duplicate_groups
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            if not _can_merge(user):
+                return {"can_merge": False, "groups": []}
+            owner_phone = _session_owner_phone(db, session)
+            groups = [[_dup_row(db, c) for c in g] for g in duplicate_groups(db, owner_phone)]
+            return {"can_merge": True, "groups": groups}
+        finally:
+            db.close()
+
+    class MergeCustomersRequest(BaseModel):
+        other_id: int
+
+    @app.post("/app/api/customers/{customer_id}/merge")
+    def web_merge_customers(customer_id: int, payload: MergeCustomersRequest,
+                            session: dict = Depends(require_web_auth)):
+        """Join another record into this one: sales, payments, debts, invoices,
+        deliveries, loyalty, appointments, fees — all move here; the other goes."""
+        from customer_merge import merge_customers
+        db = SessionLocal()
+        try:
+            user = _session_user(db, session)
+            if not _can_merge(user):
+                raise HTTPException(status_code=403, detail="Only the owner or an admin can merge customers.")
+            owner_phone = _session_owner_phone(db, session)
+            try:
+                keep, moved = merge_customers(db, owner_phone, customer_id, payload.other_id)
+            except ValueError as e:
+                raise HTTPException(status_code=404 if "not found" in str(e) else 400, detail=str(e))
+            return {"customer": _dup_row(db, keep), "moved": moved}
         finally:
             db.close()
 

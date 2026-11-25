@@ -246,11 +246,9 @@ def _commit_entry(db, owner_phone, entry, parsed):
         entry.reviewed_at = _utcnow()
         return
 
-    name = (parsed.get("name") or "").lower()
-    customer = db.query(Customer).filter(
-        Customer.owner_phone == owner_phone,
-        Customer.name == name,
-    ).first()
+    from customer_merge import find_customer_named, tidy_name
+    name = tidy_name(parsed.get("name") or "").lower()
+    customer = find_customer_named(db, owner_phone, name)   # capitals and spaces ignored
     if not customer:
         customer = Customer(name=name, owner_phone=owner_phone)
         db.add(customer)

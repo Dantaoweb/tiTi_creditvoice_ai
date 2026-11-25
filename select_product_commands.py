@@ -580,16 +580,15 @@ def _handle_cart_choice(db, phone, normalized, pending, business_owner_phone, se
 
 
 def _handle_customer_name(db, phone, text, pending, business_owner_phone, send_message):
-    name = text.strip().lower()
+    from customer_merge import find_customer_named, tidy_name
+    name = tidy_name(text).lower()
     if not name or len(name) < 2:
         send_message(phone, "Send the customer name.")
         return {"status": "select_product_customer_invalid"}
 
-    # Look up existing customer to get their phone
-    customer = db.query(Customer).filter(
-        Customer.owner_phone == business_owner_phone,
-        Customer.name == name,
-    ).first()
+    # Look up existing customer to get their phone — capitals and extra spaces
+    # ignored, so "mr adewale" is the "Mr Adewale" already saved
+    customer = find_customer_named(db, business_owner_phone, name)
 
     if not customer:
         customer = Customer(name=name, owner_phone=business_owner_phone)
@@ -783,11 +782,8 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
 
     # Customer lookup — pure read, outside try. Case-insensitive so a web-added
     # "Ade" matches the WhatsApp-lowercased "ade" instead of duplicating.
-    from sqlalchemy import func as _func
-    customer = db.query(Customer).filter(
-        Customer.owner_phone == business_owner_phone,
-        _func.lower(Customer.name) == _func.lower(customer_name),
-    ).first()
+    from customer_merge import find_customer_named
+    customer = find_customer_named(db, business_owner_phone, customer_name)
 
     inventory_enabled = bool(
         subscription and plan_allows_feature(subscription.get("plan"), "INVENTORY")

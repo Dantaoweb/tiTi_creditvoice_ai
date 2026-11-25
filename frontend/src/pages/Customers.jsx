@@ -900,6 +900,85 @@ function BestCustomersModal({ onClose }) {
   );
 }
 
+/* Same customer saved twice ("Mr Adewale" and "mr adewale") — the debt is
+   split across two records. Pick the one to keep; the others join into it. */
+function DuplicateCustomersModal({ onClose, onMerged }) {
+  const toast = useToast();
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [keep, setKeep] = useState({});        // group index → id kept
+  const [busy, setBusy] = useState(null);      // group index being merged
+  const load = () => apiFetch("customers/duplicates")
+    .then(d => { setData(d); setKeep({}); }).catch(e => setErr(e.message));
+  useEffect(() => { load(); }, []);
+
+  // Default keep: the record with the most entries (oldest on a tie — groups come oldest first)
+  const keptId = (g, n) => keep[n] ?? g.reduce((a, b) => (b.records > a.records ? b : a)).id;
+
+  async function merge(g, n) {
+    const keepId = keptId(g, n);
+    const others = g.filter(c => c.id !== keepId);
+    const kept = g.find(c => c.id === keepId);
+    if (!window.confirm(`Join ${others.length === 1 ? "the other record" : `the other ${others.length} records`} into "${kept.name}"? `
+      + "Their sales, payments and debts move across and the extra record is deleted. This can't be undone.")) return;
+    setBusy(n); setErr("");
+    try {
+      let moved = 0;
+      for (const o of others) {
+        const r = await apiPost(`customers/${keepId}/merge`, { other_id: o.id });
+        moved += r.moved || 0;
+      }
+      toast(`Merged — ${moved} record${moved === 1 ? "" : "s"} moved to ${kept.name}.`, "success");
+      onMerged();
+      await load();
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(null); }
+  }
+
+  return (
+    <Modal title="Possible duplicate customers" onClose={onClose} wide>
+      <div className="modal-body">
+        {err && <div className="modal-error">{err}</div>}
+        {!data && !err && <p className="td-muted">Checking every customer…</p>}
+        {data && !data.can_merge && (
+          <p className="td-muted">Only the owner or an admin who sees the whole business can merge customers.</p>
+        )}
+        {data && data.can_merge && data.groups.length === 0 && (
+          <p>No duplicates — every customer has a name of their own. ✓</p>
+        )}
+        {data && data.can_merge && data.groups.length > 0 && (
+          <>
+            <p className="td-muted" style={{ fontSize: 13, marginTop: 0 }}>
+              These customers share a name (capitals and extra spaces ignored), so one person's debt may be split in two.
+              If they are the same person, tick the record to keep and press Merge — everything moves to it and the balances add up.
+              Different people with the same name? Leave them, or give one a fuller name.
+            </p>
+            {data.groups.map((g, n) => (
+              <div key={g.map(c => c.id).join("-")} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                {g.map(c => (
+                  <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", cursor: "pointer", flexWrap: "wrap" }}>
+                    <input type="radio" name={`keep-${n}`} checked={keptId(g, n) === c.id}
+                      onChange={() => setKeep(k => ({ ...k, [n]: c.id }))} />
+                    <strong>{c.name}</strong>
+                    <span className="td-muted" style={{ fontSize: 13 }}>
+                      {c.phone || "no phone"} · owes {nairaFull(c.balance)} · {c.records} record{c.records === 1 ? "" : "s"}
+                      {c.last_at ? ` · last ${dateStr(c.last_at)}` : ""}
+                    </span>
+                  </label>
+                ))}
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 6 }}
+                  disabled={busy !== null} onClick={() => merge(g, n)}>
+                  {busy === n ? "Merging…" : "Merge into the ticked one"}
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function Customers() {
   const { ownerPhone } = useApp();
   const { user } = useAuth();
@@ -914,6 +993,8 @@ export default function Customers() {
   const [isStale, setIsStale] = useState(false);
   const [search, setSearch] = useState("");
   const [showBest, setShowBest] = useState(false);
+  const [showDupes, setShowDupes] = useState(false);
+  const canMerge = user?.full_access ?? !user?.parent_id;   // server checks too
   const [query, setQuery] = useState("");         // debounced search sent to the server
   const [sort, setSort] = useState(null);         // { col, dir } — null = newest first
   const [activeTab, setActiveTab] = useState("all");
@@ -1034,6 +1115,12 @@ export default function Customers() {
               <button className="btn btn-ghost btn-sm" onClick={() => setShowBest(true)} style={{ flexShrink: 0 }} title="Who spends most, and their loyalty rewards">
                 <Award size={14} /> Best
               </button>
+              {canMerge && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowDupes(true)} style={{ flexShrink: 0 }}
+                  title="Find the same customer saved twice and join them">
+                  Duplicates
+                </button>
+              )}
               <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)} style={{ flexShrink: 0 }}>
                 <Plus size={14} /> {L.addCustomer}
               </button>
@@ -1186,6 +1273,7 @@ export default function Customers() {
         <WaybillModal source={{ customer_id: waybillFor.id }} onClose={() => { setWaybillFor(null); load(rows.length); }} />
       )}
       {showBest && <BestCustomersModal onClose={() => setShowBest(false)} />}
+      {showDupes && <DuplicateCustomersModal onClose={() => setShowDupes(false)} onMerged={reload} />}
       {showAdd && (
         <AddCustomerModal
           ownerPhone={ownerPhone}

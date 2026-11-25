@@ -291,15 +291,14 @@ def handle_parsed_command(
         if not user:
             send_whatsapp_message(phone, "Register first to manage thrift participants.")
             return {"status": "add_thrift_no_user"}
-        name = parsed.get("name", "").strip().lower()
+        from customer_merge import find_customer_named, tidy_name
+        name = tidy_name(parsed.get("name", "")).lower()
         if not name:
             send_whatsapp_message(phone, "Please include a name. Example:\n→ add thrift member Amina Bello")
             return {"status": "add_thrift_no_name"}
         from models import Customer
-        existing = db.query(Customer).filter(
-            Customer.owner_phone == business_owner_phone,
-            Customer.name == name,
-        ).first()
+        # Capitals and extra spaces ignored — never a second record for the same person
+        existing = find_customer_named(db, business_owner_phone, name)
         if existing:
             send_whatsapp_message(
                 phone,

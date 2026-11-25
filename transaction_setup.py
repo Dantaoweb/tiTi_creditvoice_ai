@@ -466,12 +466,9 @@ def handle_transaction_setup(
     # Case-insensitive match: the parser lowercases the typed name ("Ade" →
     # "ade"), but web-added customers are stored mixed-case ("Ade"). A
     # case-sensitive == never matched, so every payment spawned a duplicate
-    # customer instead of finding the debtor. Lower both sides.
-    from sqlalchemy import func as _func
-    customer = db.query(Customer).filter(
-        _func.lower(Customer.name) == _func.lower(customer_name),
-        Customer.owner_phone == business_owner_phone,
-    ).first()
+    # customer instead of finding the debtor. Capitals and extra spaces ignored.
+    from customer_merge import find_customer_named   # capitals and extra spaces ignored
+    customer = find_customer_named(db, business_owner_phone, customer_name)
     customer_was_created = False
 
     if not customer:
