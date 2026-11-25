@@ -116,6 +116,27 @@ def test_sale_linked_payment_not_listed_separately():
     assert [r for r in receipts if r["type"] == "PAY"] == []   # debt-settle PAY is internal
 
 
+@pytest.mark.parametrize("typed,left", [(0, 6100), (2000, 4100), (3100, 3000), (4000, 2100), (6100, 0)])
+def test_owes_what_the_till_box_shows(typed, left):
+    """Mr Akin owes 3,000 and buys 3,100 with "Settle previous debt" ticked. The
+    till's box shows 6,100, less what's typed; saving must leave exactly that."""
+    phone, cook = _owner()
+    cid = _customer(phone, "Mr Akin")
+    client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": cid,
+        "items": [{"name": "old", "qty": 1, "unit_price": 3000}], "payment_amount": 0})
+    assert _balance(cid) == 3000
+    # The till splits what's typed: this sale first, the rest toward the old debt
+    paid = min(typed, 3100)
+    debt_paid = min(max(0, typed - 3100), 3000)
+    r = client.post("/app/api/pos/save", cookies=cook, json={
+        "owner_phone": phone, "customer_id": cid,
+        "items": [{"name": "aspirin", "qty": 1, "unit_price": 3000}, {"name": "x", "qty": 1, "unit_price": 100}],
+        "payment_amount": paid, "debt_payment": debt_paid})
+    assert r.status_code == 200, r.text
+    assert _balance(cid) == left
+
+
 def test_pos_debt_payment_never_overpays():
     phone, cook = _owner()
     cid = _customer(phone, "Small Debt")

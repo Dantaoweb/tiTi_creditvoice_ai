@@ -653,7 +653,11 @@ export default function POS() {
   const debtPaid = Math.min(Math.max(0, payNum - total), debtDue);      // toward prior debt
   const change   = Math.max(0, payNum - amountDue);
   const owed     = customer ? total - paid : 0;                         // new credit on this sale
-  const showCredit = customer && owed > 0;
+  // With "Settle previous debt" ticked the box shows what they'll owe in all —
+  // old debt + this sale — and comes down as the payment is typed
+  const owedAll  = customer ? Math.max(0, amountDue - payNum) : 0;
+  const creditShown = settleDebt && debtDue > 0 ? owedAll : owed;
+  const showCredit = customer && creditShown > 0;
 
   const canPartDeliver = it =>
     it.inventory_item_id && !it.is_service && !it.sold_unit && (it.fraction || 1) === 1;
@@ -1150,9 +1154,15 @@ export default function POS() {
             <div className="pos-credit-card" ref={creditRef}>
               <div className="pos-credit-card-header">
                 <span className="pos-credit-label">Credit balance</span>
-                <span className="pos-credit-amount">{nairaFull(owed)}</span>
+                <span className="pos-credit-amount">{nairaFull(creditShown)}</span>
               </div>
-              <div className="pos-credit-card-body">
+              {settleDebt && debtDue > 0 && (
+                <div className="form-hint" style={{ padding: "0 16px" }}>
+                  {nairaFull(debtDue)} before + {nairaFull(total)} now{payNum > 0 ? ` − ${nairaFull(Math.min(payNum, amountDue))} paid` : ""}
+                </div>
+              )}
+              {/* The due date goes on this sale's credit — none when this sale is paid */}
+              {owed > 0 && <div className="pos-credit-card-body">
                 <label className="pos-summary-label">
                   Payment due date <span style={{ opacity: 0.55, fontWeight: 400 }}>(optional)</span>
                 </label>
@@ -1166,7 +1176,7 @@ export default function POS() {
                 {!dueDate && (
                   <span className="form-hint">Set a due date to enable WhatsApp reminders</span>
                 )}
-              </div>
+              </div>}
             </div>
           )}
 

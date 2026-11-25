@@ -1,0 +1,1 @@
+import{t as e}from"./vendor-GP02EYEy.js";import{p as t}from"./index-BU_rRJ_o.js";var n=e();function r({value:e,onChange:r,...i}){return(0,n.jsx)(`input`,{type:`text`,inputMode:`decimal`,value:t(e),onChange:e=>r(t(e.target.value)),...i})}export{r as t};
