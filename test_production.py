@@ -174,7 +174,7 @@ def test_only_stock_managers_and_only_your_own_stock():
 
 def test_titi_explains_production():
     from faq import FAQ_ANSWERS, detect_faq
-    assert detect_faq("how do i add a recipe?") == "production"
+    assert detect_faq("how do i add a recipe?") == "howto:recipe_add"   # the exact steps
     assert detect_faq("i bake bread, how do i record it?") == "production"
     assert detect_faq("how do i sell my farm produce?") != "production"
     assert "Record production" in FAQ_ANSWERS["production"]

@@ -183,5 +183,5 @@ def test_production_report_counts_seller_sales_and_whats_out():
 def test_titi_explains_distributors():
     from faq import FAQ_ANSWERS, detect_faq
     assert detect_faq("how do i record my distributors?") == "distributors"
-    assert detect_faq("sales rep brought back unsold bread, what do i do?") == "distributors"
+    assert detect_faq("sales rep brought back unsold bread, what do i do?") == "howto:seller_settle"   # the exact steps
     assert "Settle" in FAQ_ANSWERS["distributors"]

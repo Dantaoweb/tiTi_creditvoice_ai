@@ -16,13 +16,9 @@ ASKED = [
     ("how do i write a quotation?", "quotation"),
     ("how do i get a business page?", "business_page"),
     ("can i have my own website?", "business_page"),
-    ("how do i add a recipe?", "production"),
     ("i bake bread, how do i record it?", "production"),
-    ("how do i know the cost to make one loaf?", "production"),
     ("how do i see wastage?", "production"),
-    ("how do i record rejects?", "production"),
     ("how do i record my distributors?", "distributors"),
-    ("sales rep brought back unsold bread, what do i do?", "distributors"),
     ("how do i remove damaged stock?", "remove_stock"),
     ("my product has no barcode, how do i make one?", "make_barcode"),
     ("how do i change the phone number on my receipt?", "receipt_phone"),
@@ -43,6 +39,7 @@ def _topic(text):
 
 
 @pytest.mark.parametrize("text,topic", ASKED)
+# Recipe, cost to make, rejects and settling a seller get exact steps — test_howto.py
 def test_titi_answers(text, topic):
     assert _topic(text) == topic
     assert topic in FAQ_ANSWERS

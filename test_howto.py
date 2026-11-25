@@ -209,6 +209,38 @@ CASES = [
     ('customer said they paid how do i confirm', 'payment_claim_confirm'),
     ('how do i confirm a transfer', 'payment_claim_confirm'),
     ('how do i see customers waiting for goods', 'waiting_for_goods'),
+    # Round 5a: production & distributors
+    ('how do i add a recipe?', 'recipe_add'),
+    ('how do i set the recipe for bread', 'recipe_add'),
+    ('how do i change my recipe', 'recipe_add'),
+    ('how do i delete a recipe', 'recipe_delete'),
+    ('how do i record production', 'production_record'),
+    ('how do i record what we made today', 'production_record'),
+    ("how do i enter today's batch", 'production_record'),
+    ('how do i record rejects', 'production_rejects'),
+    ('some bread got burnt during baking how do i record it', 'production_rejects'),
+    ('how do i record regrind', 'production_rejects'),
+    ('how do i know the cost to make one loaf', 'production_cost'),
+    ('what does it cost to make my product', 'production_cost'),
+    ('how do i know my production cost', 'production_cost'),
+    ('i recorded production wrong how do i undo it', 'production_undo'),
+    ('how do i delete a batch', 'production_undo'),
+    ('how do i see production report', 'production_report'),
+    ('how do i check waste in production', 'production_report'),
+    ('how do i know if material is missing', 'production_report'),
+    ('how do i send goods out with a seller', 'seller_send_out'),
+    ('my sales rep is taking bread out how do i record it', 'seller_send_out'),
+    ('how do i give goods to distributor', 'seller_send_out'),
+    ('sales rep brought back unsold bread, what do i do?', 'seller_settle'),
+    ('how do i settle a seller', 'seller_settle'),
+    ('distributor came back how do i record', 'seller_settle'),
+    ('my van seller paid part, how do i record it', 'seller_settle'),
+    ('how do i see what my seller owes', 'seller_owes'),
+    ('which distributor owes me', 'seller_owes'),
+    ('how do i set my distributor price', 'seller_price'),
+    ('how do i give my seller commission', 'seller_price'),
+    ("i can't find production in the menu", 'production_menu'),
+    ('where is production', 'production_menu'),
 ]
 
 
@@ -327,3 +359,19 @@ def test_customer_answers_use_the_page_words():
     for label in ("Payments to confirm", "Confirm — money is in", "Not received", "Amount that arrived"):
         assert label in claims, label
     assert "Copy pay link" in src.joinpath("pages", "InvoiceView.jsx").read_text(encoding="utf-8")
+
+
+def test_production_answers_use_the_page_words():
+    import pathlib
+    src = pathlib.Path(__file__).with_name("frontend").joinpath("src")
+    page = src.joinpath("pages", "Production.jsx").read_text(encoding="utf-8")
+    for label in ("Record production", "Recipes", "Distributors", "Report", "History", "+ Add or change a recipe for…",
+                  "One batch makes how many", "What one batch uses", "Add material", "Other costs per batch",
+                  "Save recipe", "Delete recipe", "What did you make?", "How many good ones", "Rejects",
+                  "Turned back into", "Other costs (gas, labour…)", "Best before", "to make", "Undo",
+                  "Made, sold and removed", "Materials: used vs the recipe", "Left now",
+                  "Send goods out with a seller", "Send out", "Out with sellers now", "Settle", "Back, good",
+                  "Back, spoilt", "Paid now", "Pay by", "Sellers", "Owes now", "Their price"):
+        assert label in page, label
+    settings = src.joinpath("pages", "Settings.jsx").read_text(encoding="utf-8")
+    assert "Show Production in the menu" in settings

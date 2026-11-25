@@ -14,7 +14,8 @@ Each entry:  key: (groups, answer[, without])
   the one listed first. without — words that rule the entry out.
 
 Add a feature's exact answers here when it's built (rounds so far:
-1 selling & paperwork, 2 staff, 3 stock & categories, 4 customers).
+1 selling & paperwork, 2 staff, 3 stock & categories, 4 customers,
+5a production & distributors).
 """
 import re
 
@@ -98,6 +99,8 @@ _CUSTOMER = ("customer", "client", "patient", "buyer", "debtor")
 _SETTINGS_LOYALTY = "Menu → More → *Settings* → *Loyalty*"
 _SETTINGS_APPT = "Menu → More → *Settings* → *Appointments*"
 _OPEN_CUSTOMER = "*Customers* → tap their name"
+_SETTINGS_PROD = "Menu → More → *Settings* → *Production*"
+_SELLER = ("seller", "distributor", "sales rep", "salesrep", "van", "hawker", "salesman", "sales man", "rep")
 
 HOWTO = {
     # ── Bank details ─────────────────────────────────────────────────────────
@@ -545,7 +548,7 @@ HOWTO = {
         f"{_EDIT_PRODUCT} → *Selling price* → *Save Changes*. New sales use it at once; old sales keep their price.\n"
         "The product's *Price changes* list shows every change and when.",
         ("wholesale", "bulk", "sub-unit", "sub unit", "sachet", "piece", "cost", "quotation", "invoice", "receipt",
-         "plan", "subscription", "paper", "vat"),
+         "plan", "subscription", "paper", "vat") + _SELLER,
     ),
     "wholesale_price": (
         [("wholesale", "bulk price", "carton price", "price for many", "buy many", "buys many", "buy plenty",
@@ -719,7 +722,7 @@ HOWTO = {
         "📋 *Seeing who owes you*\n\n"
         "*Customers* → *Debtors* tab — everyone with a balance, *Total Outstanding*, *Next Due* and *Days Overdue*. "
         "Tap a name to see what they bought and record a payment.",
-        ("supplier", "i owe", "staff", "remind", "send"),
+        ("supplier", "i owe", "staff", "remind", "send") + _SELLER,
     ),
     "reminder_mode": (
         [("remind",), ("automatic", "auto", "review", "mode", "turn on", "turn off", "turn it", "switch", "stop",
@@ -813,6 +816,116 @@ HOWTO = {
         "*Customers* → *To deliver* tab — who bought and is still waiting, and how much is left. "
         "Tap one → *Waybill* when you send the next part.",
         ("supplier", "purchase order"),
+    ),
+
+    # ── Production & distributors (round 5a) ─────────────────────────────────
+    "production_menu": (
+        [("production",), ("menu", "can't find", "cannot find", "can't see", "cannot see", "don't see", "missing",
+                           "turn on", "switch on", "show", "where is", "hide")],
+        "🏭 *Production in the menu*\n\n"
+        f"{_SETTINGS_PROD} → *Show Production in the menu* → on. Bakeries, food, blocks, furniture, welding and "
+        "tailoring see it already.",
+        ("report", "recipe", "seller", "distributor", "cost"),
+    ),
+    "recipe_add": (
+        [("recipe", "formula", "ingredient", "what one batch uses", "materials for"),
+         ("add", "create", "set", "make", "enter", "write", "put", "change", "edit", "update", "new")],
+        "📝 *Adding a recipe*\n\n"
+        "*Production* → *Recipes* → *+ Add or change a recipe for…* → pick the product → *One batch makes how many?* → "
+        "under *What one batch uses* pick each material and its amount (*Add material* for more) → *Other costs per "
+        "batch* (gas, diesel, labour) → *Save recipe*.\n"
+        "Materials must be in *Inventory* with a cost price, so tiTi can work out what each one costs to make.",
+        ("delete", "remove"),
+    ),
+    "recipe_delete": (
+        [("recipe",), ("delete", "remove", "clear", "get rid")],
+        "🗑️ *Deleting a recipe*\n\n"
+        "*Production* → *Recipes* → *Edit* beside it → *Delete recipe*. What you made before stays recorded.",
+    ),
+    "production_record": (
+        [("production", "produced", "we made", "i made", "what we made", "what i made", "batch", "manufactur",
+          "output", "how many we made", "how many i made")],
+        "🏭 *Recording what you made*\n\n"
+        "*Production* → *Record production* → *What did you make?* → *How many good ones?* → *Rejects* if any → "
+        "check the materials used (change an amount if you used more or less) → *Other costs (gas, labour…)* → "
+        "*Best before* if it expires → *Record production*.\n"
+        "The materials come out of stock and what you made goes in, at its real cost.",
+        ("recipe", "seller", "distributor", "sales rep", "report", "undo", "mistake", "wrong", "reject", "spoil",
+         "cost", "menu", "delete", "remove", "show", "batch number", "batch no", "expir"),
+    ),
+    "production_rejects": (
+        [("reject", "spoil", "bad ones", "damaged", "broken", "burnt", "regrind", "crumbs", "scrap", "offcut"),
+         ("production", "batch", "made", "make", "produc", "bake", "baked", "record")],
+        "♻️ *Rejects when making*\n\n"
+        "*Production* → *Record production* → after *How many good ones?*, put the bad ones in *Rejects*. If they're "
+        "turned into something you keep (regrind, crumbs…), pick it under *Turned back into* → *How much?*.\n"
+        "Rejects used materials too, so their cost falls on the good ones; what's turned back goes into stock.",
+        ("seller", "distributor", "sales rep", "van"),
+    ),
+    "production_cost": (
+        [("cost", "costs", "costing"),
+         ("to make", "making", "production", "produce", "batch", "each one", "per one", "per unit", "my product")],
+        "💰 *What it costs to make*\n\n"
+        "*Production* → *Recipes* shows what each one costs. When you record a batch, it shows *Each … costs ₦… to "
+        "make* — materials at their cost price plus *Other costs (gas, labour…)*, with rejects counted in.\n"
+        "Recording sets the product's cost price, averaged with any already in stock, so profit is right.",
+        ("seller", "distributor", "sales rep", "selling price", "vat", "subscription", "plan", "staff"),
+    ),
+    "production_undo": (
+        [("production", "batch", "produced", "what we made", "what i made"),
+         ("undo", "wrong", "mistake", "cancel", "reverse", "delete", "remove", "correct")],
+        "↩️ *Undoing a production entry*\n\n"
+        "*Production* → *History* → find it → *Undo*. What was made comes out of stock and the materials go back. "
+        "Then record it again correctly.",
+        ("recipe", "menu", "seller", "distributor", "batch number", "batch no", "expir"),
+    ),
+    "production_report": (
+        [("production", "made", "material", "recipe", "produced"),
+         ("report", "waste", "used vs", "compare", "against the recipe", "more than the recipe", "missing",
+          "leakage", "theft", "stolen")],
+        "📊 *Production report*\n\n"
+        "*Production* → *Report* → pick the time.\n"
+        "• *Made, sold and removed* — for each product: *Made*, *Sold*, *Removed* and *Left now*.\n"
+        "• *Materials: used vs the recipe* — what was used against what the recipes say. Using more than the recipe "
+        "means waste, a wrong recipe, or material going missing.",
+        ("seller", "distributor", "sales rep", "staff"),
+    ),
+    "seller_send_out": (
+        [_SELLER, ("send", "give", "goods out", "take goods", "took goods", "takes goods", "taking", "takes", "took", "collect goods", "load",
+                   "out with", "morning", "go out", "record what", "carry")],
+        "🚚 *Sending goods out with a seller*\n\n"
+        "*Production* → *Distributors* → *Send goods out with a seller* → pick the seller (search your customers, or "
+        "type a new name and phone) → each product, how many and *Their price* → *Send out*.\n"
+        "The goods leave stock now. When the seller comes back, you *Settle*.",
+        ("settle", "came back", "come back", "returned", "brought back", "unsold", "owe", "commission", "price",
+         "staff", "invite"),
+    ),
+    "seller_settle": (
+        [_SELLER, ("settle", "came back", "come back", "returned", "brought back", "unsold", "remaining", "left over",
+                   "leftover", "paid", "pays", "payment", "spoilt", "spoiled", "evening")],
+        "✅ *Settling a seller when they come back*\n\n"
+        "*Production* → *Distributors* → *Out with sellers now* → *Settle* beside them → for each product, *Back, "
+        "good* and *Back, spoilt* (say why) → *Paid now* → *Pay by* if they still owe → *Settle*.\n"
+        "Unsold goods go back into stock, what they sold is recorded, and anything unpaid becomes their debt. "
+        "You get a receipt.",
+        ("staff", "invite", "commission"),
+    ),
+    "seller_owes": (
+        [_SELLER, ("owe", "owing", "debt", "balance", "performance", "how did", "record of", "history", "sold most",
+                   "best")],
+        "📋 *What each seller took, sold and owes*\n\n"
+        "*Production* → *Distributors* → *Sellers* — for each one: *Took*, *Back*, *Spoilt*, *Sold*, *Paid* and "
+        "*Owes now*. *Out with sellers now* shows who still has goods.\n"
+        "A seller's debt is also on *Customers* → *Debtors*, so you can record their payment there.",
+        ("staff", "invite", "salary"),
+    ),
+    "seller_price": (
+        [_SELLER, ("price", "commission", "percent", "wholesale", "discount", "cut", "margin")],
+        "🏷️ *A seller's price or commission*\n\n"
+        "When you *Send out*, each product's *Their price* starts at your wholesale price — type another to change "
+        "it. Paying commission instead? Put retail less their commission; it comes to the same.\n"
+        "Set a product's wholesale price on *Inventory* → the product → *Edit details*.",
+        ("staff", "invite", "salary", "marketer", "plan"),
     ),
 }
 
