@@ -150,9 +150,8 @@ def test_bad_input_and_other_business():
 
 
 @pytest.mark.parametrize("text", [
-    "how do I book an appointment?", "how can I book customers for a time", "how do appointments work",
-    "how can customers book online with a booking link",
-])
+    "how do appointments work", "what are appointments?",
+])   # "how do I book one" / "booking link" get the exact steps — test_howto.py
 def test_titi_explains_appointments(text):
     from faq import detect_faq
     from messages import build_app_guide_message

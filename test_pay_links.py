@@ -162,7 +162,7 @@ def test_customer_replies_paid_on_whatsapp():
 
 
 @pytest.mark.parametrize("text", [
-    "how do customers use the pay link?", "how do I confirm payment", "customer says he paid, what do I do?",
+    "how do customers use the pay link?", "customer says he paid, what do I do?",   # "how do I confirm payment" → exact steps
     "can customers pay by transfer?",
 ])
 def test_titi_explains_pay_links(text):

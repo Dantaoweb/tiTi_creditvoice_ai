@@ -163,6 +163,52 @@ CASES = [
     ("how do i add vat to my invoice", "vat"),
     ("how do i make a quotation", "quotation"),
     ("how do i create an invoice", "invoices"),
+    # Round 4: customers
+    ("how do I book an appointment?", "appointment_book"),
+    ("how can I book customers for a time", "appointment_book"),
+    ("how can customers book online with a booking link", "booking_link"),
+    ("how do I confirm payment", "payment_claim_confirm"),
+    ("how to reward loyal customers", "loyalty"),
+    ("how do i send reminder to customers?", "reminder"),
+    ('how do i add a new customer', 'customer_add'),
+    ('how do i add costumer', 'customer_add'),
+    ('how can i register a client', 'customer_add'),
+    ('how do i change customer name', 'customer_edit'),
+    ('how do i edit my customer phone number', 'customer_edit'),
+    ('customer name is spelt wrong how do i fix it', 'customer_edit'),
+    ('how do i delete a customer', 'customer_delete'),
+    ('how to remove customer', 'customer_delete'),
+    ('same customer is showing two times', 'customer_duplicate'),
+    ('how do i merge two customers', 'customer_duplicate'),
+    ('customer appears twice what do i do', 'customer_duplicate'),
+    ('how do i send customer their balance', 'customer_send_balance'),
+    ('how can i tell my customer how much he owes', 'customer_send_balance'),
+    ('how do i change due date', 'due_date_change'),
+    ('how do i extend the due date for a debt', 'due_date_change'),
+    ('where can i see my debtors', 'debtors_list'),
+    ('how do i see people owing me', 'debtors_list'),
+    ('how do i see all overdue customers', 'debtors_list'),
+    ('how do i turn on reminders', 'reminder_mode'),
+    ('how do i stop debt reminders', 'reminder_mode'),
+    ('how do i make reminders automatic', 'reminder_mode'),
+    ('how do i see my best customers', 'best_customers'),
+    ('who are my top customers?', 'best_customers'),
+    ('how do i set up loyalty', 'loyalty_setup'),
+    ('how do i start stamp card', 'loyalty_setup'),
+    ('how do i turn off loyalty points', 'loyalty_setup'),
+    ('how does a customer use their points', 'loyalty_use'),
+    ('how do i redeem a customers reward', 'loyalty_use'),
+    ('how do i book an appointment', 'appointment_book'),
+    ('how do i make a new appoinment', 'appointment_book'),
+    ('how can customers book by themselves', 'booking_link'),
+    ('how do i get my booking link', 'booking_link'),
+    ('how do i mark appointment done', 'appointment_status'),
+    ('customer did not come for appointment how do i mark it', 'appointment_status'),
+    ('how do i copy pay link', 'pay_link_copy'),
+    ('where is the pay link for invoice', 'pay_link_copy'),
+    ('customer said they paid how do i confirm', 'payment_claim_confirm'),
+    ('how do i confirm a transfer', 'payment_claim_confirm'),
+    ('how do i see customers waiting for goods', 'waiting_for_goods'),
 ]
 
 
@@ -253,3 +299,31 @@ def test_answers_point_at_the_real_settings_card():
     for card in ("Receipts & printables", "Bank details on invoices & quotations", "Bank details on receipts",
                  "Paper size", "Receipt title", "Closing line", "TIN / VAT number", "My prices", "VAT collected"):
         assert card in page, card
+
+
+def test_customer_answers_use_the_page_words():
+    import pathlib
+    src = pathlib.Path(__file__).with_name("frontend").joinpath("src")
+    cust = src.joinpath("pages", "Customers.jsx").read_text(encoding="utf-8")
+    for label in ("Duplicates", "Merge into the ticked one", "Record payment", "Record Payment", "Send balance",
+                  "Payment amount", "Edit due date", "Due Date", "Transaction history", "Reminder mode:", "Review",
+                  "Automatic", "Generate Reminders", "Send Reminders", "Total Outstanding", "Next Due",
+                  "Days Overdue", "To deliver", "Waybill", "Best", "Last ", "Edit"):
+        assert label in cust, label
+    assert "Add Customer" in src.joinpath("lib", "bizLabels.js").read_text(encoding="utf-8")
+    appt = src.joinpath("pages", "Appointments.jsx").read_text(encoding="utf-8")
+    for label in ("Book", "Booking link", "Send on WhatsApp", "Arrived", "Done", "No-show", "Confirm", "Decline",
+                  "What was done", "Paid now", "Record sale"):
+        assert label in appt, label
+    settings = src.joinpath("pages", "Settings.jsx").read_text(encoding="utf-8")
+    for label in ("Loyalty", "Reward customers who come back", "Stamp card", "Points", "Stamps for a free one",
+                  "Points for every ₦100 spent", "Rewards expire", "Products that count", "Appointments",
+                  "Show Appointments in the menu", "Customers can book from a link", "When a customer books from the link",
+                  "Opening hours", "Save hours"):
+        assert label in settings, label
+    pos = src.joinpath("pages", "POS.jsx").read_text(encoding="utf-8")
+    assert "Use reward" in pos and "Use points" in pos
+    claims = src.joinpath("pages", "PaymentClaims.jsx").read_text(encoding="utf-8")
+    for label in ("Payments to confirm", "Confirm — money is in", "Not received", "Amount that arrived"):
+        assert label in claims, label
+    assert "Copy pay link" in src.joinpath("pages", "InvoiceView.jsx").read_text(encoding="utf-8")

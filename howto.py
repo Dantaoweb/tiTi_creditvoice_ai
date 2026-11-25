@@ -14,7 +14,7 @@ Each entry:  key: (groups, answer[, without])
   the one listed first. without — words that rule the entry out.
 
 Add a feature's exact answers here when it's built (rounds so far:
-1 selling & paperwork, 2 staff, 3 stock & categories).
+1 selling & paperwork, 2 staff, 3 stock & categories, 4 customers).
 """
 import re
 
@@ -42,6 +42,11 @@ _TYPOS = {
     r"\bsuppliar?s?\b": "supplier",
     r"\bcostumers?\b": "customer",
     r"\bcustormers?\b": "customer",
+    r"\bcus(?:to|t|o)m(?:e|a)?rs?\b": "customer",
+    r"\bcustomr?s?\b": "customer",
+    r"\bap+oi?n(?:t)?ments?\b": "appointment",
+    r"\bloyal(?:i|e)ty\b": "loyalty",
+    r"\bdebitors?\b": "debtor",
     r"\bdiscout\b": "discount",
     r"\bdeposite\b": "deposit",
     r"\badress\b": "address",
@@ -89,6 +94,10 @@ _EDIT_PRODUCT = "*Inventory* → tap the product → *Edit details*"
 _SETTINGS_STOCK = "Menu → More → *Settings* → *Stock*"
 _SETTINGS_CATS = "Menu → More → *Settings* → *Manage categories* (under Stock)"
 _SETTINGS_PRINT = "Menu → More → *Settings* → *Receipts & printables* (under Selling & paperwork)"
+_CUSTOMER = ("customer", "client", "patient", "buyer", "debtor")
+_SETTINGS_LOYALTY = "Menu → More → *Settings* → *Loyalty*"
+_SETTINGS_APPT = "Menu → More → *Settings* → *Appointments*"
+_OPEN_CUSTOMER = "*Customers* → tap their name"
 
 HOWTO = {
     # ── Bank details ─────────────────────────────────────────────────────────
@@ -649,6 +658,161 @@ HOWTO = {
         [("categor",), ("order", "arrange", "sort", "first", "top", "rearrange", "sequence", "up and down")],
         "🗂️ *Order of categories*\n\n"
         f"{_SETTINGS_CATS} → the ↑ ↓ arrows beside each one. That order is used on Inventory and at the till.",
+    ),
+
+    # ── Customers (round 4) ──────────────────────────────────────────────────
+    "customer_add": (
+        [("add", "create", "register", "new", "save", "enter", "record", "put"), _CUSTOMER],
+        "👤 *Adding a customer*\n\n"
+        "*Customers* → *Add Customer* → their *Name* (and *Phone number* for WhatsApp reminders) → *Add Customer*.\n"
+        "Or just type their name at the till when you sell — tiTi adds them. Same name again? tiTi uses the "
+        "one already saved, capitals and spaces ignored.",
+        ("staff", "pay", "paid", "phone", "number", "loyal", "appointment", "book", "invoice", "receipt",
+         "quotation", "duplicate", "twice", "merge", "debt", "remind", "balance", "thrift", "group", "categor",
+         "field", "detail", "supplier", "waybill", "deliver"),
+    ),
+    "customer_edit": (
+        [("change", "edit", "rename", "correct", "update", "fix", "wrong", "add", "put", "spell"), _CUSTOMER,
+         ("name", "phone", "number", "spelling", "spelt", "contact")],
+        "✏️ *Changing a customer's name or phone*\n\n"
+        f"{_OPEN_CUSTOMER} → *Edit* → change *Name* or *Phone* → *Save*.\n"
+        "Their sales, payments and debt stay with them.",
+        ("staff", "invoice", "receipt", "quotation", "due", "supplier", "my phone", "business"),
+    ),
+    "customer_delete": (
+        [("delete", "remove", "erase", "clear", "get rid"), _CUSTOMER],
+        "🗑️ *Removing a customer*\n\n"
+        "There's no delete for customers — their sales and payments stay on your records.\n"
+        "*Saved twice?* Join them: *Customers* → *Duplicates* → tick the one to keep → *Merge into the ticked one*.\n"
+        f"*Wrong name?* {_OPEN_CUSTOMER} → *Edit*.",
+        ("staff", "invoice", "receipt", "sale", "transaction", "payment", "loyal", "appointment", "supplier",
+         "debt from", "from the debt"),
+    ),
+    "customer_duplicate": (
+        [("duplicate", "twice", "two times", "double", "merge", "join", "combine", "same customer", "same person",
+          "same name", "two records", "appears two", "showing two", "entered two"), _CUSTOMER],
+        "👥 *Same customer saved twice*\n\n"
+        "*Customers* → *Duplicates* → for each pair, tick the record to keep → *Merge into the ticked one*.\n"
+        "Their sales, payments and debts move to the one kept and the balances add up. Only the owner or an admin "
+        "who sees the whole business can merge. Two different people with one name? Leave them, or give one a "
+        "fuller name.",
+        ("product", "item", "stock", "staff", "supplier"),
+    ),
+    "customer_send_balance": (
+        [("send", "share", "tell", "message", "whatsapp", "show"), _CUSTOMER, ("balance", "owe", "debt", "statement")],
+        "📲 *Sending a customer their balance*\n\n"
+        "*Customers* → the ✈️ send button on their row (or tap their name → *Send balance*) → change the "
+        "message if you like → send. It goes on WhatsApp with a pay link, so they need a phone number saved.",
+        ("staff", "supplier", "remind"),
+    ),
+    "due_date_change": (
+        [("due", "pay by", "deadline", "when to pay", "payment date"),
+         ("change", "edit", "set", "put", "add", "extend", "move", "shift", "give")],
+        "📅 *Changing when a debt is due*\n\n"
+        f"{_OPEN_CUSTOMER} → *Transaction history* → the ✏️ beside *Due Date* on that sale → pick the date → ✓.\n"
+        "Reminders follow the new date.",
+        ("invoice", "subscription", "plan", "supplier", "expir", "rent"),
+    ),
+    "debtors_list": (
+        [("debtor", "owing", "owe", "credit", "overdue", "unpaid", "haven't paid", "have not paid", "outstanding"),
+         ("see", "list", "find", "check", "view", "where", "show", "all")],
+        "📋 *Seeing who owes you*\n\n"
+        "*Customers* → *Debtors* tab — everyone with a balance, *Total Outstanding*, *Next Due* and *Days Overdue*. "
+        "Tap a name to see what they bought and record a payment.",
+        ("supplier", "i owe", "staff", "remind", "send"),
+    ),
+    "reminder_mode": (
+        [("remind",), ("automatic", "auto", "review", "mode", "turn on", "turn off", "turn it", "switch", "stop",
+                       "by itself", "themselves", "before sending", "before they go")],
+        "🔔 *Debt reminders*\n\n"
+        "*Customers* → *Debtors* tab → *Reminder mode*:\n"
+        "• *Review* — tiTi prepares them, you check and send: *Generate Reminders* → *Review*.\n"
+        "• *Automatic* — they go out by themselves; *Send Reminders* sends today's now.\n"
+        "Only customers with a phone number get them.",
+        ("stock", "low", "expir", "appointment", "staff", "subscription", "plan", "supplier", "rent", "fee"),
+    ),
+    "best_customers": (
+        [("best", "top", "most", "biggest", "regular", "loyal customer", "highest"),
+         ("customer", "client", "buyer", "spend", "spender")],
+        "🏆 *Your best customers*\n\n"
+        "*Customers* → *Best* → *Last 30 days*, *Last 90 days* or *Last year*. It lists who spent most and how "
+        "often they came, with their loyalty reward if that's on.",
+        ("product", "item", "staff", "supplier", "reward", "stamp", "point", "how to keep", "attract"),
+    ),
+    "loyalty_setup": (
+        [("loyalty", "reward", "stamp", "points", "free one"),
+         ("set up", "setup", "set it", "start", "switch", "turn on", "turn off", "turn it", "stop", "create",
+          "change", "where do i", "where can i", "how many stamps", "expire", "products that count")],
+        "🎁 *Rewarding customers who come back*\n\n"
+        f"{_SETTINGS_LOYALTY} → *Reward customers who come back* → *Stamp card* (buy a number, next one free) or "
+        "*Points* (money back on what they spend); *Off* to stop.\n"
+        "Then: *Stamps for a free one* or *Points for every ₦100 spent*, *Rewards expire*, and *Products that "
+        "count* (leave empty for everything).",
+        ("staff", "redeem", "use their", "use reward", "use points", "at the till", "claim", "spend their", "pin"),
+    ),
+    "loyalty_use": (
+        [("loyalty", "reward", "stamp", "points", "free one"),
+         ("redeem", "use their", "use the", "use a", "use his", "use her", "claim", "spend their", "collect their",
+          "apply")],
+        "🎁 *Using a customer's reward at the till*\n\n"
+        "At the till, pick the customer. Their stamps or points show — when there's enough, tap *Use reward* "
+        "(stamp card: the free one comes off) or *Use points* (the points come off the total), then save the sale.",
+        ("staff", "set", "switch", "turn on", "start"),
+    ),
+    "appointment_book": (
+        [("appointment", "booking", "book", "schedule", "slot"),
+         ("add", "make", "create", "new", "book", "enter", "record", "fix", "set")],
+        "📆 *Booking an appointment*\n\n"
+        "*Appointments* → *Book* → customer, date, time, service(s), who does it → *Book*.\n"
+        f"Don't see *Appointments* in the menu? {_SETTINGS_APPT} → *Show Appointments in the menu*.",
+        ("link", "online", "customers book", "customer book", "themselves", "hours", "done", "finish", "arrived",
+         "no-show", "no show", "cancel"),
+    ),
+    "booking_link": (
+        [("appointment", "booking", "book"),
+         ("link", "online", "themselves", "by themselves", "customers book", "customer book", "share", "website")],
+        "🔗 *Letting customers book from a link*\n\n"
+        f"1. {_SETTINGS_APPT} → *Customers can book from a link* → on, and set *Opening hours* → *Save hours*.\n"
+        "2. *Appointments* → *Booking link* → copy it or *Send on WhatsApp*.\n"
+        "New bookings wait for you — *Confirm* or *Decline* them on *Appointments* "
+        "(or let them confirm by themselves under *When a customer books from the link*).",
+    ),
+    "appointment_status": (
+        [("appointment", "booking"),
+         ("done", "finish", "complete", "arrived", "came", "no-show", "no show", "didn't come", "did not come",
+          "cancel", "decline", "confirm")],
+        "✅ *Updating an appointment*\n\n"
+        "*Appointments* → the booking → *Arrived* when they come, *Done* when finished (then *What was done* and "
+        "*Paid now* → *Record sale*), or *No-show* if they didn't come. Booked from your link? *Confirm* or "
+        "*Decline* first.",
+        ("invoice", "quotation", "staff", "stock", "count", "delivery", "waybill", "payment", "paid", "pay"),
+    ),
+    "pay_link_copy": (
+        [("pay link", "payment link", "link"), ("copy", "send", "share", "get", "find", "where")],
+        "💳 *Getting a pay link to send*\n\n"
+        "Open the invoice → *Copy pay link* → paste it to the customer. Balance messages and receipts with a "
+        "balance carry the link by themselves.\n"
+        "The customer sees your bank account, transfers, then taps *I've paid* — you confirm on "
+        "*Payments to confirm*.",
+        ("booking", "appointment", "invite", "staff", "business page", "partner", "thrift", "investor", "join"),
+    ),
+    "payment_claim_confirm": (
+        [("paid", "pay", "transfer", "payment"),
+         ("confirm", "approve", "check", "verify", "accept", "said they", "says they", "claim", "i've paid",
+          "not received", "didn't receive", "did not receive", "reject")],
+        "✅ *A customer says they've paid*\n\n"
+        "Check your bank first. Then Menu → *Payments to confirm* → their payment → *Confirm — money is in* "
+        "(change *Amount that arrived* if less came), or *Not received* and say why — they're told.\n"
+        "Nothing is recorded until you confirm. Only the owner or authorised staff can.",
+        ("staff", "salary", "supplier", "subscription", "plan", "upgrade"),
+    ),
+    "waiting_for_goods": (
+        [("waiting", "still to deliver", "not delivered", "yet to deliver", "to deliver", "haven't collected",
+          "have not collected", "owe goods", "balance of goods", "remaining goods"), _CUSTOMER + ("who", "see", "list")],
+        "🚚 *Customers waiting for goods*\n\n"
+        "*Customers* → *To deliver* tab — who bought and is still waiting, and how much is left. "
+        "Tap one → *Waybill* when you send the next part.",
+        ("supplier", "purchase order"),
     ),
 }
 
