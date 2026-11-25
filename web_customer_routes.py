@@ -304,17 +304,18 @@ def register_customer_routes(app):
         db = SessionLocal()
         try:
             owner_phone = _session_owner_phone(db, session)
-            # Case-insensitive: "Mama Bola" and "mama bola" are the same person.
-            existing = db.query(Customer).filter(
-                Customer.owner_phone == owner_phone,
-                func.lower(Customer.name) == payload.name.strip().lower(),
-            ).first()
+            # "Mama Bola", "mama bola" and "Mama  Bola" are the same person
+            from customer_merge import find_customer_named, tidy_name
+            name = tidy_name(payload.name)
+            if not name:
+                raise HTTPException(status_code=400, detail="Name cannot be empty.")
+            existing = find_customer_named(db, owner_phone, name)
             if existing:
-                raise HTTPException(status_code=409, detail="A customer with this name already exists.")
+                raise HTTPException(status_code=409, detail=f'"{existing.name}" is already a customer — open them instead, or add a fuller name if this is someone else.')
             from transaction_save import _get_recording_branch_id
             c = Customer(
                 owner_phone=owner_phone,
-                name=payload.name.strip(),
+                name=name,
                 customer_phone=(payload.phone or "").strip() or None,
                 # Tag to the creator's branch (or the business default) so it
                 # lands in the right branch under isolation.
@@ -347,16 +348,12 @@ def register_customer_routes(app):
                 raise HTTPException(status_code=404, detail="Customer not found.")
 
             if payload.name is not None:
-                new_name = payload.name.strip()
+                from customer_merge import find_customer_named, tidy_name
+                new_name = tidy_name(payload.name)
                 if not new_name:
                     raise HTTPException(status_code=400, detail="Name cannot be empty.")
-                clash = db.query(Customer).filter(
-                    Customer.owner_phone == owner_phone,
-                    func.lower(Customer.name) == new_name.lower(),
-                    Customer.id != customer_id,
-                ).first()
-                if clash:
-                    raise HTTPException(status_code=409, detail="Another customer already has this name.")
+                if find_customer_named(db, owner_phone, new_name, exclude_id=customer_id):
+                    raise HTTPException(status_code=409, detail="Another customer already has this name. If it's the same person, merge them with Duplicates.")
                 customer.name = new_name
 
             if payload.phone is not None:

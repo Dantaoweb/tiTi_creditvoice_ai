@@ -22,13 +22,16 @@ def name_key(name):
     return tidy_name(name).lower()
 
 
-def find_customer_named(db, owner_phone, name):
+def find_customer_named(db, owner_phone, name, exclude_id=None):
     """The business's customer with this name — capitals and extra spaces
-    ignored. The oldest wins if there are already two."""
+    ignored. The oldest wins if there are already two. `exclude_id` skips one
+    record (a rename checking for a clash with someone else)."""
     key = name_key(name)
     if not key or not owner_phone:
         return None
     base = db.query(Customer).filter(Customer.owner_phone == owner_phone)
+    if exclude_id is not None:
+        base = base.filter(Customer.id != exclude_id)
     exact = base.filter(func.lower(Customer.name) == key).order_by(Customer.id.asc()).first()
     if exact:
         return exact

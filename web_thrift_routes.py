@@ -191,10 +191,8 @@ def register_thrift_routes(app):
         try:
             owner_phone = _session_owner_phone(db, session)
             # Check for duplicate
-            existing = db.query(Customer).filter(
-                Customer.owner_phone == owner_phone,
-                Customer.name == payload.name.strip().lower(),
-            ).first()
+            from customer_merge import find_customer_named
+            existing = find_customer_named(db, owner_phone, payload.name)
             if existing:
                 return {"id": existing.id, "name": existing.name, "existing": True}
             customer = Customer(

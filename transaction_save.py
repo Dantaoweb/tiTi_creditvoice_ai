@@ -434,11 +434,8 @@ def save_customer_pending(
     inventory_enabled,
     send_message,
 ):
-    from sqlalchemy import func as _func
-    customer = db.query(Customer).filter(
-        _func.lower(Customer.name) == _func.lower(pending.customer_name),
-        Customer.owner_phone == business_owner_phone,
-    ).first()
+    from customer_merge import find_customer_named
+    customer = find_customer_named(db, business_owner_phone, pending.customer_name)  # capitals/spaces ignored
     if not customer:
         send_message(phone, "Customer not found.")
         db.delete(pending)

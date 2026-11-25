@@ -107,14 +107,12 @@ def resolve_sale_customer(db, owner_phone, customer_id, customer_name=None, cust
 
     # Resolve an inline (unlisted) customer by name when no id was selected.
     if customer_name and customer_name.strip():
-        cname = customer_name.strip()
+        from customer_merge import find_customer_named, tidy_name
+        cname = tidy_name(customer_name)
         cphone = (customer_phone or "").strip() or None
-        # Case-insensitive so "mama bola" reuses "Mama Bola" instead of splitting
-        # her debt across two records. Oldest match wins if duplicates exist.
-        existing = db.query(Customer).filter(
-            Customer.owner_phone == owner_phone,
-            func.lower(Customer.name) == cname.lower(),
-        ).order_by(Customer.id.asc()).first()
+        # Capitals and extra spaces ignored so "mama  bola" reuses "Mama Bola"
+        # instead of splitting her debt across two records. Oldest wins.
+        existing = find_customer_named(db, owner_phone, cname)
         if existing:
             customer_id = existing.id
             if cphone and not existing.customer_phone:

@@ -836,11 +836,8 @@ def handle_pending_actions(
         db.commit()
 
         from transaction_setup import build_projected_balance_line
-        from sqlalchemy import func as _func
-        customer = db.query(Customer).filter(
-            _func.lower(Customer.name) == _func.lower(pending.customer_name),
-            Customer.owner_phone == business_owner_phone,
-        ).first()
+        from customer_merge import find_customer_named
+        customer = find_customer_named(db, business_owner_phone, pending.customer_name)  # capitals/spaces ignored
         if not customer:
             customer = Customer(name=pending.customer_name, owner_phone=business_owner_phone)
             db.add(customer)
@@ -899,11 +896,8 @@ def handle_pending_actions(
             build_customer_confirm_message, build_projected_balance_line,
             _price_deviation_alert,
         )
-        from sqlalchemy import func as _func
-        customer = db.query(Customer).filter(
-            _func.lower(Customer.name) == _func.lower(pending.customer_name),
-            Customer.owner_phone == business_owner_phone,
-        ).first()
+        from customer_merge import find_customer_named
+        customer = find_customer_named(db, business_owner_phone, pending.customer_name)  # capitals/spaces ignored
         if not customer:
             customer = Customer(name=pending.customer_name, owner_phone=business_owner_phone)
             db.add(customer)
@@ -1681,11 +1675,8 @@ def _handle_onboard_customer(
     normalized = text.lower().strip()
 
     if normalized in ["yes", "1", "save"]:
-        from sqlalchemy import func as _func
-        customer = db.query(Customer).filter(
-            _func.lower(Customer.name) == _func.lower(pending.customer_name),
-            Customer.owner_phone == business_owner_phone,
-        ).first()
+        from customer_merge import find_customer_named
+        customer = find_customer_named(db, business_owner_phone, pending.customer_name)  # capitals/spaces ignored
 
         if not customer:
             customer = Customer(
