@@ -275,6 +275,37 @@ CASES = [
     ('why is my profit wrong', 'profit_wrong'),
     ('how do i see sales for each branch', 'branch_sales'),
     ('how do i compare my branches', 'branch_sales'),
+    # Round 5c: business set-up
+    ('how do i change my business name', 'change_name'),
+    ('my shop name is wrong on receipt how do i correct it', 'change_name'),
+    ('how do i change my business address', 'change_name'),
+    ('how do i change my business type', 'change_name'),
+    ('how do i add my logo', 'logo'),
+    ('how do i upload my logo', 'logo'),
+    ('how do i change my pin', 'pin_help'),
+    ('i forgot my pin', 'pin_help'),
+    ('how do i reset my pin', 'pin_help'),
+    ('i lost my phone number how do i get my account back', 'account_recovery'),
+    ('i changed my number what do i do', 'account_recovery'),
+    ('where do i enter my plan code', 'redeem_code'),
+    ('i have a token code how do i use it', 'redeem_code'),
+    ('how do i upgrade', 'upgrade_pay'),
+    ('how do i pay for go plan', 'upgrade_pay'),
+    ('how do i renew my subscription', 'upgrade_pay'),
+    ('how can i pay for premium', 'upgrade_pay'),
+    ('which plan am i on', 'plan_current'),
+    ('when does my plan expire', 'plan_current'),
+    ('how do i downgrade my plan', 'plan_downgrade'),
+    ('how do i cancel my subscription', 'plan_downgrade'),
+    ('do you have a plan for big companies', 'enterprise'),
+    ('how do i get enterprise', 'enterprise'),
+    ('how do i get a business page', 'business_page'),
+    ('how do i turn on my business page', 'business_page'),
+    ('how do i put products on my business page', 'page_products'),
+    ('how do i hide prices on my page', 'page_products'),
+    ('where do i see quotation requests from my page', 'page_requests'),
+    ('how do i share my business page link', 'page_link'),
+    ('where is my page link', 'page_link'),
 ]
 
 
@@ -434,3 +465,31 @@ def test_money_answers_use_the_page_words():
     ins = read("Insights.jsx")
     for label in ("Profit by product", "Margin snapshot", "No cost"):
         assert label in ins, label
+
+
+def test_setup_answers_use_the_page_words():
+    import pathlib
+    src = pathlib.Path(__file__).with_name("frontend").joinpath("src")
+    read = lambda *p: src.joinpath(*p).read_text(encoding="utf-8")   # noqa: E731
+    up = read("pages", "Upgrade.jsx")
+    for label in ("Monthly", "Yearly", "by Bank Transfer", "Reference / Narration", "I've made the transfer",
+                  "Contact support to downgrade", "Enterprise", "Talk to us", "Send — we'll call you",
+                  "Current plan: ", "currently unavailable"):
+        assert label in up, label
+    assert "Have a plan code?" in read("pages", "Dashboard.jsx") and "Activate" in read("pages", "Dashboard.jsx")
+    assert "Upgrade Plan ✦" in read("components", "Layout.jsx")
+    page = read("pages", "BusinessPage.jsx")
+    for label in ("Products on your page", "Show prices (off: \"Ask for price\")", "Save", "Quotation requests",
+                  "Make quotation", "Open quotation", "Your page", "Copy link", "Share on WhatsApp", "Open"):
+        assert label in page, label
+    assert "Forgot PIN or never set one?" in read("pages", "Login.jsx")
+
+
+def test_pin_and_upgrade_guides_tell_the_truth():
+    # My Profile has no PIN change (it's a WhatsApp command); card payment is off;
+    # the plan-code box is on the Dashboard, not the Upgrade page
+    from faq import FAQ_ANSWERS
+    pin = FAQ_ANSWERS["pin_help"]
+    assert "My Profile" not in pin and "change pin 1234 5678" in pin and "Forgot PIN or never set one?" in pin
+    up = FAQ_ANSWERS["upgrade"]
+    assert "Card payment is unavailable" in up and "Have a plan code?" in up and "on the Upgrade page" not in up

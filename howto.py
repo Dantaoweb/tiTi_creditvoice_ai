@@ -15,7 +15,8 @@ Each entry:  key: (groups, answer[, without])
 
 Add a feature's exact answers here when it's built (rounds so far:
 1 selling & paperwork, 2 staff, 3 stock & categories, 4 customers,
-5a production & distributors, 5b money).
+5a production & distributors, 5b money,
+5c business set-up).
 """
 import re
 
@@ -204,7 +205,7 @@ HOWTO = {
         "*Transactions* → find it → *Void* → type the reason. It stops counting in your balances and "
         "reports, and the stock goes back. It's kept, marked voided, for your records.\n\n"
         "Goods brought back (not a mistake)? Open the receipt → *Return goods*.",
-        _PARTS,
+        _PARTS + ("shop name", "business name", "company name", "my name on"),
     ),
     "resend_receipt": (
         [("send", "resend", "share", "whatsapp", "forward"), _RECEIPT],
@@ -797,7 +798,8 @@ HOWTO = {
         "balance carry the link by themselves.\n"
         "The customer sees your bank account, transfers, then taps *I've paid* — you confirm on "
         "*Payments to confirm*.",
-        ("booking", "appointment", "invite", "staff", "business page", "partner", "thrift", "investor", "join"),
+        ("booking", "appointment", "invite", "staff", "business page", "partner", "thrift", "investor", "join",
+         "page"),
     ),
     "payment_claim_confirm": (
         [("paid", "pay", "transfer", "payment"),
@@ -1035,6 +1037,107 @@ HOWTO = {
         "*Dashboard* → *Branch:* → *All* or one branch — sales, profit and the rest for that branch.\n"
         "*Transactions* → *All branches* → pick one to see its sales.",
         ("staff", "move", "transfer", "send", "stock", "delete", "add branch", "new branch", "create"),
+    ),
+
+    # ── Business set-up (round 5c) ───────────────────────────────────────────
+    "change_name": (
+        [("business name", "shop name", "company name", "my name", "name of my business", "name of my shop",
+          "business type", "type of business", "business address", "shop address", "my address"),
+         Loose(("change", "edit", "update", "correct", "wrong", "rename", "set", "put", "spell"))],
+        None,   # the FAQ's "change_name". Loose: "change my business name" (no question) still starts the WhatsApp wizard
+        ("customer", "product", "staff", "branch", "category", "supplier", "item", "receipt title", "title",
+         "login", "phone number", "page", "i want to"),   # "i want to change my business name" starts the wizard
+    ),
+    "logo": (
+        [("logo",), ("add", "upload", "put", "change", "set", "my logo", "new", "picture", "image")],
+        None,   # the FAQ's "logo": My Profile → Business logo → Upload logo
+        ("left", "right", "top", "middle", "centre", "center", "position", "move", "side", "size", "bigger",
+         "smaller", "page"),
+    ),
+    "pin_help": (
+        [("pin",), ("change", "forgot", "forget", "reset", "new", "lost", "remember", "set", "create")],
+        None,   # the FAQ's "pin_help" (corrected: change PIN is a WhatsApp command)
+        ("staff", "worker", "employee", "cashier", "invite", "recover", "phone number", "new number"),
+    ),
+    "account_recovery": (
+        [("phone number", "my number", "my line", "sim", "phone"),
+         ("lost", "stolen", "new number", "new line", "change my", "changed my", "switch", "can't use",
+          "no longer use", "recover")],
+        None,   # the FAQ's "account_recovery": recover <old number> <PIN> from the new number
+        ("customer", "receipt", "invoice", "staff", "supplier", "branch", "show", "hide", "link another",
+         "add another", "second phone"),
+    ),
+    "redeem_code": (
+        [("code", "token", "voucher"), ("plan", "redeem", "activate", "use", "enter", "where", "got a", "have a")],
+        None,   # the FAQ's "redeem_code": Dashboard → Have a plan code? → Activate
+        ("barcode", "staff", "invite", "verification", "referral", "bank", "reference", "otp", "discount",
+         "qr", "promo for my customers", "accept"),
+    ),
+    "upgrade_pay": (
+        [("upgrade", "subscription", "subscribe", "renew", "go plan", "pro plan", "premium plan", "premium",
+          "pay for my plan", "pay for the app", "pay for creditvoice", "monthly fee", "yearly"),
+         Loose(("pay", "how", "transfer", "card", "buy", "get", "where", "can i", "do i", "to"))],
+        "⬆️ *Upgrading your plan*\n\n"
+        "Menu → *Upgrade Plan ✦* → *Monthly* or *Yearly* → on the plan you want, *Pay ₦… by Bank Transfer* → pay "
+        "to the account shown, with the *Reference / Narration* → *I've made the transfer*. It switches on once "
+        "we confirm the money (card payment is unavailable for now).\n"
+        "Have a plan code? *Dashboard* → *Have a plan code?* → *Activate*.",
+        ("code", "token", "staff", "current", "which plan am", "what plan am", "my plan", "downgrade", "cancel",
+         "enterprise", "customer", "supplier", "loyalty", "stamp", "point", "invoice", "receipt", "page"),
+    ),
+    "plan_current": (
+        [("plan", "subscription"),
+         ("which", "current", "am i on", "expire", "expiry", "when does", "ends", "end", "still active", "check")],
+        "📋 *Your plan*\n\n"
+        "Menu → *Upgrade Plan ✦* → *Current plan:* at the top. On WhatsApp, send *my plan* — it also says when "
+        "it ends.",
+        ("upgrade to", "price", "cost", "staff", "payment plan", "customer", "downgrade", "cancel", "production",
+         "recipe", "instalment"),
+    ),
+    "plan_downgrade": (
+        [("downgrade", "cancel my plan", "cancel my subscription", "cancel subscription", "stop my plan",
+          "lower plan", "cheaper plan", "back to basic", "go back to free", "stop paying")],
+        "⬇️ *Moving to a smaller plan*\n\n"
+        "Downgrading is done by CreditVoice support — the *Upgrade Plan* page says *Contact support to "
+        "downgrade*. A plan you've paid for runs until its end date.",
+    ),
+    "enterprise": (
+        [("enterprise", "custom plan", "big compan", "large compan", "big business", "many stores", "many shops", "many outlets",
+          "chain of", "special plan", "corporate")],
+        "🏢 *Enterprise — for big businesses*\n\n"
+        "Menu → *Upgrade Plan ✦* → *Enterprise* → *Talk to us* → your name, business, phone and how many "
+        "branches → *Send — we'll call you*.",
+    ),
+    "business_page": (
+        [("business page", "my page", "website", "web page", "online page", "page for my business",
+          "page for my shop", "google"),
+         Loose(("how", "get", "set", "create", "start", "turn", "on", "off", "want", "make", "open", "can i"))],
+        None,   # the FAQ's "business_page": how to get it, set it up, turn it on
+        ("product", "price", "quotation", "request", "link", "share", "url", "copy", "staff", "invoice"),
+    ),
+    "page_products": (
+        [("business page", "my page", "website", "web page", "online page"),
+         ("product", "price", "item", "goods", "ask for price", "hide price", "show price")],
+        "🛍️ *Products on your business page*\n\n"
+        "*Business page* → *Products on your page* → tick the ones to show (search to find them) → *Save*.\n"
+        "Untick *Show prices (off: \"Ask for price\")* to hide all prices. Stock counts are never shown.",
+        ("quotation", "request", "link", "share"),
+    ),
+    "page_requests": (
+        [("quotation request", "quote request", "requests from my page", "request from my page",
+          "asked for a quotation", "asked for a quote", "enquiry", "enquiries", "page request")],
+        "📨 *Quotation requests from your page*\n\n"
+        "*Business page* → *Quotation requests* → the request → *Make quotation* → check it and send it. "
+        "Once made, *Open quotation* takes you back to it.",
+        ("supplier", "verified"),
+    ),
+    "page_link": (
+        [("business page", "my page", "website", "web page", "online page", "page link", "my link"),
+         ("link", "share", "url", "address", "copy", "send", "whatsapp", "where is")],
+        "🔗 *Your business page link*\n\n"
+        "*Business page* → *Your page* → *Copy link*, *Open* to see it, or *Share on WhatsApp*. Put it on your "
+        "WhatsApp status, flyers and signboard.",
+        ("booking", "appointment", "invite", "staff", "pay link", "payment link"),
     ),
 }
 

@@ -91,7 +91,7 @@ TOKEN / PLAN CODES:
 - Codes can be set to expire and can be tracked by batch label.
 
 SUBSCRIPTION & PLAN:
-- Users upgrade to GO, PRO or PREMIUM (web app → Upgrade Plan, or send UPGRADE). Pay by card — the plan switches on immediately — or by bank transfer, which switches on once the CreditVoice team confirms it. A rejected transfer comes with the reason.
+- Users upgrade to GO, PRO or PREMIUM (web app → Upgrade Plan, or send UPGRADE). Pay by bank transfer (Pay ₦… by Bank Transfer → I've made the transfer), which switches on once the CreditVoice team confirms it; card payment is unavailable for now. A plan code goes in Dashboard → Have a plan code?. A rejected transfer comes with the reason.
 - When a subscription expires, the account automatically returns to BASIC — no features are lost permanently, just locked until renewed.
 - To renew or upgrade, send UPGRADE on WhatsApp or visit the dashboard.
 

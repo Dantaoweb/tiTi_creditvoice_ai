@@ -40,7 +40,7 @@ def test_payment_and_plans_are_described_correctly():
     assert "PREMIUM" in prompt and "card" in prompt.lower()
     assert "Payment is via bank transfer and confirmed by admin" not in prompt
     upgrade = faq.get_faq_answer("upgrade")
-    assert "card" in upgrade and "PREMIUM" in upgrade
+    assert "card" in upgrade.lower() and "PREMIUM" in upgrade       # says card is unavailable for now
     assert "PRO: GO + staff accounts" in upgrade        # staff is a Pro feature
 
 

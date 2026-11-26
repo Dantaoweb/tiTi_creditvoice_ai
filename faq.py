@@ -1164,8 +1164,10 @@ FAQ_ANSWERS = {
         "- GO: unlimited stock, exports, multi-item sales, voice, automatic reminders\n"
         "- PRO: GO + staff accounts, branches, 1 partner and 1 investor\n"
         "- PREMIUM: PRO with unlimited branches, partners and investors\n\n"
-        "Pay by card (your plan switches on at once) or bank transfer (switches on "
-        "once we confirm it). Have a plan code? Enter it on the Upgrade page.\n\n"
+        "Pay by bank transfer: pick the plan → *Pay ₦… by Bank Transfer* → pay to the account "
+        "shown with the reference → *I've made the transfer*. It switches on once we confirm it. "
+        "(Card payment is unavailable for now.)\n"
+        "Have a plan code? *Dashboard* → *Have a plan code?* → enter it → *Activate*.\n\n"
         "Send  my plan  to see your current plan."
     ),
     "discount": (
@@ -1200,9 +1202,10 @@ FAQ_ANSWERS = {
     ),
     "pin_help": (
         "Your PIN:\n\n"
-        "*Forgot it?* On the login page tap *Forgot PIN*, enter your phone number, then "
-        "the code we send you, and choose a new PIN.\n"
-        "*Change it:* web app → Menu → More → *My Profile* → change PIN.\n\n"
+        "*Forgot it?* On the sign-in page tap *Forgot PIN or never set one?*, enter your phone "
+        "number, then the code we send you, and choose a *New PIN*.\n"
+        "*Change it:* on WhatsApp send *change pin* then your old and new PIN — e.g. "
+        "_change pin 1234 5678_. On the web, use *Forgot PIN or never set one?* to set a new one.\n\n"
         "Never share your PIN — CreditVoice staff will never ask for it."
     ),
     "school_fees": (

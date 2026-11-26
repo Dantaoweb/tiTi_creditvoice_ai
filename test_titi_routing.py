@@ -53,7 +53,7 @@ def test_a_question_is_never_recorded_as_a_sale():
     ("how do i record school fees?", "faq:school_fees"),
     ("how do i record eggs collected?", "faq:poultry"),
     ("how do i record fuel sales?", "faq:fuel_station"),
-    ("how do i change my pin?", "faq:pin_help"),
+    ("how do i change my pin?", "guide:pin_help"),
     ("i forgot my pin", "faq:pin_help"),
     ("how do i pay with card?", "faq:upgrade"),
     ("where is the till?", "faq:where:/pos"),
