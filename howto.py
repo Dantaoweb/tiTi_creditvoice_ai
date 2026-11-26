@@ -927,6 +927,17 @@ HOWTO = {
         "Set a product's wholesale price on *Inventory* → the product → *Edit details*.",
         ("staff", "invite", "salary", "marketer", "plan"),
     ),
+    # ── Branches ─────────────────────────────────────────────────────────────
+    "branch_transfer": (
+        [("transfer", "move", "send", "shift", "take"), ("branch", "shop to", "location", "outlet"),
+         Loose(("stock", "goods", "product", "item", "how", "where", "some", "bag", "carton"))],
+        "🚚 *Moving stock to another branch*\n\n"
+        "*Inventory* → *Transfer stock* (or open the product → *Transfer*) → *From* and *To* → each product and how "
+        "many → *Carried by* if you like → *Send*. You get a transfer note to print, with no prices.\n"
+        "It's in the other branch at once — or, if you chose so on *Branches* → *Branch settings*, it waits until "
+        "that branch taps *Received* and says what came. See them all on *Inventory* → *Transfers*.",
+        ("staff", "money", "pay", "bank", "customer", "invoice", "sale", "receipt"),
+    ),
 }
 
 

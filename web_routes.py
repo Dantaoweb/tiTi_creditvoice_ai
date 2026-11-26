@@ -289,6 +289,8 @@ def register_web_routes(app):
     # ── Branches — split into web_branch_routes ───────────────────────────────
     from web_branch_routes import register_branch_routes
     register_branch_routes(app)
+    from web_transfer_routes import register_transfer_routes
+    register_transfer_routes(app)
 
     # ── Wallet (+ Monnify webhook & provision) — split into web_wallet_routes ─
     from web_wallet_routes import register_wallet_routes

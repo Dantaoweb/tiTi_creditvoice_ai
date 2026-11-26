@@ -398,6 +398,42 @@ class WaybillLine(Base):
     moved           = Column(Boolean, default=False)   # counted as delivered by this waybill
 
 
+class StockTransfer(Base):
+    """Stock moved from one branch to another (TR-0001) — stock_transfers.py.
+    status: "on_the_way" (the receiving branch still has to confirm) or
+    "received". Prices never print on the transfer note."""
+    __tablename__ = "stock_transfers"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    owner_phone     = Column(String, index=True)
+    number          = Column(Integer)
+    from_branch_id  = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    to_branch_id    = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
+    status          = Column(String, default="received")
+    carried_by      = Column(String, nullable=True)      # driver / who takes it
+    carrier_phone   = Column(String, nullable=True)
+    note            = Column(String, nullable=True)
+    created_by_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=utcnow)
+    received_by_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    received_at     = Column(DateTime, nullable=True)
+    receive_note    = Column(String, nullable=True)
+
+
+class StockTransferLine(Base):
+    __tablename__ = "stock_transfer_lines"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    transfer_id     = Column(Integer, ForeignKey("stock_transfers.id"), index=True)
+    from_item_id    = Column(Integer, ForeignKey("inventory_items.id"))
+    to_item_id      = Column(Integer, ForeignKey("inventory_items.id"))
+    product         = Column(String)
+    unit            = Column(String, nullable=True)
+    qty_sent        = Column(Float)
+    qty_received    = Column(Float, nullable=True)       # None until received
+    unit_cost       = Column(Integer, nullable=True)     # the sending branch's cost price
+
+
 class PaymentClaim(Base):
     """A customer says they've paid — from the pay link page (or by replying
     PAID on WhatsApp). Nothing is recorded until the owner checks their bank

@@ -439,7 +439,7 @@ def register_inventory_routes(app):
                     raise HTTPException(status_code=400,
                                         detail="That does not look like a barcode.")
                 try:
-                    item.barcode = barcodes.assert_free(db, owner_phone, payload.barcode)
+                    item.barcode = barcodes.assert_free(db, owner_phone, payload.barcode, branch_id=item.branch_id)
                 except ValueError as exc:
                     raise HTTPException(status_code=400, detail=str(exc))
             db.add(item)
@@ -653,7 +653,7 @@ def register_inventory_routes(app):
                 else:
                     try:
                         item.barcode = barcodes.assert_free(db, owner_phone, code,
-                                                            item_id=item.id)
+                                                            item_id=item.id, branch_id=item.branch_id)
                     except ValueError as exc:
                         raise HTTPException(status_code=400, detail=str(exc))
             if payload.usual_supplier is not None:

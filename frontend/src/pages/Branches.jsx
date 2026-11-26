@@ -3,6 +3,42 @@ import { MapPin, Plus, Star, Trash2, Lock } from "lucide-react";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { usePlan } from "../lib/usePlan";
+import { Link } from "react-router-dom";
+import { useSettings, saveBusiness } from "../lib/settings";
+
+/* Settings about branches live here (Settings only points to this page). */
+function BranchSettings() {
+  const { business, canEditBusiness, loaded } = useSettings();
+  const toast = useToast();
+  if (!loaded || !canEditBusiness) return null;
+  const confirmMode = !!business.transfer_confirm;
+  async function set(v) {
+    try { await saveBusiness({ transfer_confirm: v }); toast("Saved.", "success"); }
+    catch (e) { toast(e.message, "error"); }
+  }
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <div className="card-header"><span className="card-title">Branch settings</span></div>
+      <div className="card-body" style={{ display: "grid", gap: 8 }}>
+        <strong style={{ fontSize: 14 }}>Stock sent between branches</strong>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" className={`btn btn-sm ${!confirmMode ? "btn-primary" : "btn-ghost"}`} onClick={() => confirmMode && set(false)}>
+            Arrives at once
+          </button>
+          <button type="button" className={`btn btn-sm ${confirmMode ? "btn-primary" : "btn-ghost"}`} onClick={() => !confirmMode && set(true)}>
+            The receiving branch confirms
+          </button>
+        </div>
+        <span className="form-hint">
+          {confirmMode
+            ? "It leaves the sending branch and shows as on the way. The receiving branch taps Received and says what came — anything less is recorded as missing on the way."
+            : "It leaves the sending branch and is in the other branch's stock straight away."}
+          {" "}Send stock from <Link to="/inventory?transfers" className="link-btn" style={{ fontSize: "inherit" }}>Inventory → Transfers</Link>.
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function Branches() {
   const { allows } = usePlan();
@@ -19,6 +55,7 @@ export default function Branches() {
   const [editAddr, setEditAddr] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const toast = useToast();
+  useEffect(() => { if (canUseBranches) load(); }, [canUseBranches]);   // hooks before the plan check below
 
   if (!canUseBranches) {
     return (
@@ -50,7 +87,6 @@ export default function Branches() {
     }
   }
 
-  useEffect(() => { load(); }, []);
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -196,6 +232,7 @@ export default function Branches() {
           </ul>
         )}
       </div>
+      <BranchSettings />
     </div>
   );
 }

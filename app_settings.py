@@ -66,6 +66,9 @@ BUSINESS_DEFAULTS = {
     # requests wait for the owner to confirm unless they choose otherwise
     "booking_link": False,
     "booking_auto_confirm": False,
+    # Branches page: stock sent between branches arrives at once (False) or
+    # waits for the receiving branch to confirm what came (True) — stock_transfers.py
+    "transfer_confirm": False,
     "booking_pick_staff": False,
     "booking_hours": {d: (["08:00", "18:00"] if d != "sun" else None)
                       for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")},
@@ -165,7 +168,7 @@ def _clean_business(k, v):
              "show_part_delivery", "daily_summary", "print_show_phone", "print_show_address",
              "print_show_email", "print_bank_invoices", "print_bank_receipts", "count_blind", "push_hide_details",
              "vat_enabled", "booking_link", "booking_auto_confirm", "booking_pick_staff",
-             "page_on", "page_show_prices"):
+             "page_on", "page_show_prices", "transfer_confirm"):
         return bool(v)
     if k in ("page_about", "page_hours"):
         text = "\n".join(" ".join(line.split()) for line in str(v or "").splitlines())

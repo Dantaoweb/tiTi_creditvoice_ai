@@ -24,6 +24,7 @@ import { usePlan } from "../lib/usePlan";
 import { useSettings } from "../lib/settings";
 import GiveBarcodes from "../components/GiveBarcodes";
 import { ReasonPicker, RemoveProductModal, RemovedStockModal } from "../components/StockRemoval";
+import { TransferModal, TransfersModal } from "../components/Transfers";
 
 /* No barcode on the goods? The app makes the shop's own (starts with 2). */
 function MakeBarcodeButton({ onCode }) {
@@ -1135,7 +1136,7 @@ function ReportFakeForm({ item, onDone, onCancel }) {
   );
 }
 
-function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust, onRemove }) {
+function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust, onRemove, onTransfer }) {
   const [movs, setMovs] = useState(null);
   const [changes, setChanges] = useState(null);
   const [err, setErr] = useState("");
@@ -1201,6 +1202,10 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust, o
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
             {!item.is_service && (
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => onAdjust(item)}>Adjust stock</button>
+            )}
+            {onTransfer && !item.is_service && (item.quantity ?? 0) > 0 && (
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onTransfer(item)}
+                title="Send some of it to another branch">Transfer</button>
             )}
             <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => onEdit(item)}>Edit details</button>
             <button className="btn btn-ghost" style={{ color: "#b91c1c" }} onClick={() => onRemove(item)}
@@ -1335,10 +1340,20 @@ export default function Inventory() {
   const [branches, setBranches] = useState([]);
   const [branchView, setBranchView] = useState("");      // "" = all branches
   useEffect(() => {
-    if (!canPickBranch) return;
+    if (!canManageStock) return;
     apiFetch("branches").then(d => setBranches(d.branches || [])).catch(() => {});
-  }, [canPickBranch]);
-  const manyBranches = branches.length > 1;
+  }, [canManageStock]);
+  // Transfers between branches: stock managers, 2+ branches. Kept to a branch → send from it only.
+  const keptBranch = (user?.staff_limits || []).includes("own_branch") ? (user?.branch_id || null) : null;
+  const canTransfer = canManageStock && branches.length > 1;
+  const [transferFor, setTransferFor] = useState(null);     // {} = new transfer, an item = preset
+  const [showTransfers, setShowTransfers] = useState(() => new URLSearchParams(window.location.search).has("transfers"));
+  const [toReceive, setToReceive] = useState(0);
+  useEffect(() => {
+    if (!canTransfer) return;
+    apiFetch("transfers", { limit: 1 }).then(d => setToReceive(d.to_receive || 0)).catch(() => {});
+  }, [canTransfer]);
+  const manyBranches = canPickBranch && branches.length > 1;
   const branchPick = manyBranches
     ? (Number(branchView) || (branches.find(b => b.is_default) || branches[0]).id) : null;
 
@@ -1499,6 +1514,16 @@ export default function Inventory() {
             {canManageStock && (
               <button className="btn btn-ghost btn-sm" onClick={() => setShowRemoved(true)} title="Stock that left without being sold, and why">
                 Removed stock
+              </button>
+            )}
+            {canTransfer && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowTransfers(true)} title="Stock moved between branches">
+                Transfers{toReceive > 0 && <span className="tab-badge">{toReceive}</span>}
+              </button>
+            )}
+            {canTransfer && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setTransferFor({})} title="Send stock to another branch">
+                Transfer stock
               </button>
             )}
             <button className="btn btn-ghost btn-sm" onClick={() => setShowExpiry(true)} title="Expired and expiring goods">
@@ -1780,7 +1805,16 @@ export default function Inventory() {
           onEdit={it => { setDetailItem(null); setEditItem(it); }}
           onAdjust={it => { setDetailItem(null); setAdjustItem(it); }}
           onRemove={it => { setDetailItem(null); setRemoveItem(it); }}
+          onTransfer={canTransfer ? (it => { setDetailItem(null); setTransferFor(it); }) : null}
         />
+      )}
+      {transferFor && (
+        <TransferModal branches={branches} lockedFrom={keptBranch} confirm={!!business.transfer_confirm}
+          preset={transferFor.id ? transferFor : null} onClose={() => setTransferFor(null)} />
+      )}
+      {showTransfers && (
+        <TransfersModal onClose={() => setShowTransfers(false)}
+          onNew={() => { setShowTransfers(false); setTransferFor({}); }} />
       )}
       {removeItem && (
         <RemoveProductModal item={removeItem} onClose={() => setRemoveItem(null)}

@@ -28,8 +28,8 @@ REASONS = {
 }
 # Losses recorded by other parts of the app, and the reason they stand for
 _SOURCES = {"WEB_ADJUST": None, "MANUAL": None, "PRODUCT_REMOVED": None, "EXPIRED_WRITE_OFF": "expired",
-            "STOCK_COUNT": "count_short"}
-_EXTRA_LABELS = {"count_short": "Short at stock count", "unspecified": "No reason given (before reasons were required)"}
+            "STOCK_COUNT": "count_short", "TRANSFER_SHORT": "transfer_short"}
+_EXTRA_LABELS = {"count_short": "Short at stock count", "transfer_short": "Missing on the way (branch transfer)", "unspecified": "No reason given (before reasons were required)"}
 
 
 class RemovalError(ValueError):

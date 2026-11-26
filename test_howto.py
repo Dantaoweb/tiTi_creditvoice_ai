@@ -241,6 +241,10 @@ CASES = [
     ('how do i give my seller commission', 'seller_price'),
     ("i can't find production in the menu", 'production_menu'),
     ('where is production', 'production_menu'),
+    # Branches
+    ("how do i move stock to another branch", "branch_transfer"),
+    ("how can i transfer goods from ikeja branch to lekki branch?", "branch_transfer"),
+    ("how do i send 20 bags to my other branch", "branch_transfer"),
 ]
 
 

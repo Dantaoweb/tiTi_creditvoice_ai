@@ -75,9 +75,11 @@ def find(db, owner_phone, code, branch_id=None):
     return query.first()
 
 
-def assert_free(db, owner_phone, code, item_id=None):
+def assert_free(db, owner_phone, code, item_id=None, branch_id=None):
     """Refuse a code already in use, naming the product that has it — the
-    cashier needs to know which one, not that something went wrong."""
+    cashier needs to know which one, not that something went wrong. With a
+    branch: only that branch counts (the same product in another branch — e.g.
+    sent there by a transfer — carries the same code, like find() expects)."""
     code = clean(code)
     if not code:
         return None
@@ -88,6 +90,8 @@ def assert_free(db, owner_phone, code, item_id=None):
     )
     if item_id is not None:
         clash = clash.filter(InventoryItem.id != item_id)
+    if branch_id is not None:
+        clash = clash.filter((InventoryItem.branch_id == branch_id) | (InventoryItem.branch_id.is_(None)))
     found = clash.first()
     if found:
         raise ValueError(f"That barcode is already on {found.name}.")
@@ -110,7 +114,7 @@ def attach(db, owner_phone, item_id, code):
     ).first()
     if not item:
         raise ValueError("Product not found.")
-    assert_free(db, owner_phone, code, item_id=item.id)
+    assert_free(db, owner_phone, code, item_id=item.id, branch_id=item.branch_id)
     item.barcode = code
     db.commit()
     return item

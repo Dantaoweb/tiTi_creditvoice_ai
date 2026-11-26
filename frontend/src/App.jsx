@@ -40,6 +40,7 @@ const InvoiceEditor = lazyPage(() => import("./pages/InvoiceEditor"));
 const InvoiceView = lazyPage(() => import("./pages/InvoiceView"));
 const Deliveries = lazyPage(() => import("./pages/Deliveries"));
 const WaybillView = lazyPage(() => import("./pages/WaybillView"));
+const TransferView = lazyPage(() => import("./pages/TransferView"));
 const StockCounts = lazyPage(() => import("./pages/StockCounts"));
 const PayPage = lazyPage(() => import("./pages/PayPage"));
 const BookPage = lazyPage(() => import("./pages/BookPage"));
@@ -117,6 +118,7 @@ export default function App() {
           <Route path="invoices/:id/edit" element={<InvoiceEditor />} />
           <Route path="deliveries"   element={<Deliveries />}   />
           <Route path="waybills/:id" element={<WaybillView />}  />
+          <Route path="transfers/:id" element={<TransferView />} />
           <Route path="stock-counts"     element={<StockCounts />} />
           <Route path="payment-claims"   element={<PaymentClaims />} />
           <Route path="purchase-orders"          element={<PurchaseOrders />} />
