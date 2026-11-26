@@ -99,8 +99,12 @@ def _selling_branch(db, session, owner_phone, requested_branch_id):
         ).first()
         if b:
             return b.id
-    from transaction_save import _get_default_branch_id
-    return _get_default_branch_id(db, owner_phone)
+    # Same rule as recording (_recording_branch): staff placed in a branch sell
+    # that branch's stock; everyone else sells from the default branch. (This
+    # used the default for everyone, so Lekki staff saw Ikeja's stock and the
+    # save then refused it as "another branch's".)
+    from transaction_save import _get_recording_branch_id
+    return _get_recording_branch_id(db, owner_phone, _session_user(db, session))
 
 
 def _recording_branch(db, session, owner_phone, requested_branch_id):

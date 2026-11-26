@@ -819,6 +819,8 @@ export default function Settings() {
             <div className="td-muted" style={{ fontSize: 13 }}>
               Your logo, bank accounts, business email and receipt phones are on <ProfileLink>My Profile</ProfileLink>.
               {" "}Who works with you and what they can see is on <Link to="/staff" className="link-btn" style={{ fontSize: "inherit" }}>Staff →</Link>
+              {" "}Your branches and everything about them (address and phone on their receipts, which branch is the
+              default, branch settings) are on <Link to="/branches" className="link-btn" style={{ fontSize: "inherit" }}>Branches →</Link>
             </div>
           </>
         ) : (

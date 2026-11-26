@@ -120,3 +120,34 @@ def test_single_location_unaffected():
         "payment_amount": 1000,
     })
     assert r.status_code == 200, r.text
+
+
+def test_branch_staff_sell_their_own_branch_stock():
+    # Staff and admins placed at Lekki see Lekki's stock at the till and can sell
+    # it — they used to see the default branch's (Ikeja) and have the sale refused.
+    import web_auth
+    phone, cook = _premium_owner()
+    ikeja, lekki = _two_branches(cook)
+    rice_ikeja = _stock(phone, "rice ikeja", ikeja)
+    rice_lekki = _stock(phone, "rice lekki", lekki)
+    db = SessionLocal()
+    owner = db.query(User).filter(User.phone == phone).first()
+    n = next(_seq)
+    people = [(f"234877{n:06d}1"[:13], False), (f"234878{n:06d}2"[:13], True)]
+    for sp, admin in people:
+        db.add(User(phone=sp, name="S", role="delegate", parent_id=owner.id, branch_id=lekki,
+                    can_view_all_transactions=admin, recovery_pin_hash=web_auth._hash_pin("1234"),
+                    subscription_status="ACTIVE"))
+    db.commit(); db.close()
+    for sp, _admin in people:
+        c = client.post("/app/api/auth/login", json={"phone": sp, "pin": "1234"}).cookies
+        names = [p["name"] for p in client.get("/app/api/pos/products", cookies=c).json()["products"]]
+        assert names == ["rice lekki"], names
+        sale = lambda iid: client.post("/app/api/pos/save", cookies=c, json={   # noqa: E731
+            "owner_phone": phone, "payment_amount": 1000,
+            "items": [{"inventory_item_id": iid, "name": "rice", "quantity": 1, "unit_price": 1000}]})
+        assert sale(rice_lekki).status_code == 200
+        assert sale(rice_ikeja).status_code == 400
+    # the owner still sells from the default branch unless they pick another
+    names = [p["name"] for p in client.get("/app/api/pos/products", cookies=cook).json()["products"]]
+    assert names == ["rice ikeja"]
