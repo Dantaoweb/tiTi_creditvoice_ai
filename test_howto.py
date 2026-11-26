@@ -245,6 +245,36 @@ CASES = [
     ("how do i move stock to another branch", "branch_transfer"),
     ("how can i transfer goods from ikeja branch to lekki branch?", "branch_transfer"),
     ("how do i send 20 bags to my other branch", "branch_transfer"),
+    # Round 5b: money
+    ('how do i record an expense', 'expenses'),
+    ('where do i add my expenses', 'expenses'),
+    ('how do i record money i spent on fuel', 'expenses'),
+    ('i entered wrong expense how do i change it', 'expense_edit'),
+    ('how do i delete an expense', 'expense_edit'),
+    ('how do i approve expense my staff sent', 'expenses'),
+    ('where do i see expenses waiting for review', 'expenses'),
+    ('how do i see my total expenses this month', 'expense_total'),
+    ('where can i see what i spent', 'expense_total'),
+    ('how do i add a supplier', 'supplier_add'),
+    ('how do i add new supplier', 'supplier_add'),
+    ('how do i record goods i bought from supplier', 'supplier_purchase'),
+    ('i bought goods on credit from my supplier how do i record it', 'supplier_purchase'),
+    ('how do i pay my supplier', 'supplier_owed'),
+    ('i paid my supplier how do i record it', 'supplier_owed'),
+    ('where do i see what i owe suppliers', 'supplier_owed'),
+    ('how do i check my supplier balance', 'supplier_owed'),
+    ('how do i download my records', 'export_csv'),
+    ('can i export my transactions to excel', 'export_csv'),
+    ('how do i download my customer list', 'export_csv'),
+    ('how do i get my loan statement', 'loan_statement'),
+    ('how do i download bank statement pdf', 'loan_statement'),
+    ('how do i get bought vs sold report', 'bought_vs_sold'),
+    ('how do i see my profit', 'profit_see'),
+    ('where can i see profit for each product', 'profit_see'),
+    ('my profit is showing zero', 'profit_wrong'),
+    ('why is my profit wrong', 'profit_wrong'),
+    ('how do i see sales for each branch', 'branch_sales'),
+    ('how do i compare my branches', 'branch_sales'),
 ]
 
 
@@ -379,3 +409,28 @@ def test_production_answers_use_the_page_words():
         assert label in page, label
     settings = src.joinpath("pages", "Settings.jsx").read_text(encoding="utf-8")
     assert "Show Production in the menu" in settings
+
+
+def test_money_answers_use_the_page_words():
+    import pathlib
+    src = pathlib.Path(__file__).with_name("frontend").joinpath("src", "pages")
+    read = lambda n: src.joinpath(n).read_text(encoding="utf-8")   # noqa: E731
+    exp = read("Expenses.jsx")
+    for label in ("Add expense", "Amount (₦)", "Type", "Date spent", "Note (optional)", "Save expense", "To review",
+                  "Approve", "Not an expense", "Total spent", "This week", "All time"):
+        assert label in exp, label
+    sup = read("Suppliers.jsx")
+    for label in ("+ Add supplier", "New purchase", "Cost/unit (₦)", "Payment due", "Save purchase", ">Pay<",
+                  "Record payment", "Total owed to suppliers", "Balance owed", "Suppliers with overdue"):
+        assert label in sup, label
+    tx = read("Transactions.jsx")
+    for label in ("Export", "Transactions CSV", "Unpaid Debtors CSV", "Customer List CSV", "Stock Inventory CSV",
+                  "All branches"):
+        assert label in tx, label
+    dash = read("Dashboard.jsx")
+    for label in ("Gross profit", "Net profit", "Add costs", "You owe suppliers", "Bought vs Sold Report",
+                  "Download Report PDF", "Download Statement PDF", "Branch:"):
+        assert label in dash, label
+    ins = read("Insights.jsx")
+    for label in ("Profit by product", "Margin snapshot", "No cost"):
+        assert label in ins, label

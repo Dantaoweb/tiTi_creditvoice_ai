@@ -15,7 +15,7 @@ Each entry:  key: (groups, answer[, without])
 
 Add a feature's exact answers here when it's built (rounds so far:
 1 selling & paperwork, 2 staff, 3 stock & categories, 4 customers,
-5a production & distributors).
+5a production & distributors, 5b money).
 """
 import re
 
@@ -815,7 +815,7 @@ HOWTO = {
         "🚚 *Customers waiting for goods*\n\n"
         "*Customers* → *To deliver* tab — who bought and is still waiting, and how much is left. "
         "Tap one → *Waybill* when you send the next part.",
-        ("supplier", "purchase order"),
+        ("supplier", "purchase order", "expense", "review", "approve"),
     ),
 
     # ── Production & distributors (round 5a) ─────────────────────────────────
@@ -937,6 +937,104 @@ HOWTO = {
         "It's in the other branch at once — or, if you chose so on *Branches* → *Branch settings*, it waits until "
         "that branch taps *Received* and says what came. See them all on *Inventory* → *Transfers*.",
         ("staff", "money", "pay", "bank", "customer", "invoice", "sale", "receipt"),
+    ),
+
+    # ── Money (round 5b) ─────────────────────────────────────────────────────
+    "expenses": (
+        [("expense", "spent", "spend", "spending", "running cost", "overhead"),
+         ("add", "record", "enter", "put", "log", "save", "new", "write", "where do i", "how do i", "review",
+          "approve", "share", "staff", "waiting", "pending")],
+        None,   # the full answer is the FAQ's "expenses" — short, and covers staff notes and To review
+        ("supplier", "delete", "edit", "change", "wrong", "mistake", "total", "how much", "report", "profit",
+         "remove", "cancel", "see my", "check", "list"),
+    ),
+    "expense_edit": (
+        [("expense",), ("edit", "change", "wrong", "mistake", "correct", "delete", "remove", "cancel", "fix")],
+        "✏️ *Changing or deleting an expense*\n\n"
+        "*Expenses* → find it → the ✏️ pencil to change it (then *Save expense*), or the 🗑 bin to delete it.",
+        ("review", "approve", "not an expense"),
+    ),
+    "expense_total": (
+        [("expense", "spent", "spending", "running cost"),
+         ("total", "see", "check", "view", "list", "this month", "this week", "this year", "today", "all my")],
+        "📊 *What you spent*\n\n"
+        "*Expenses* → *Today*, *This week*, *This month*, *This year* or *All time* → *Total spent* and the list.\n"
+        "The Dashboard takes them off your profit as *Net profit*.",
+        ("supplier", "review", "approve", "add", "record", "edit", "delete", "staff"),
+    ),
+    "supplier_add": (
+        [("supplier", "vendor"), ("add", "new", "create", "save", "register", "enter")],
+        "🏭 *Adding a supplier*\n\n"
+        "*Suppliers* → *+ Add supplier* → name and phone → *Add supplier*.\n"
+        "Or just type the supplier's name when you add stock — tiTi keeps them for you.",
+        ("purchase", "bought", "buy", "goods", "stock", "pay", "owe", "verified", "list my business", "directory",
+         "find", "rate", "product", "brought", "delivered", "carton", "bag", "came", "arrived", "supplied"),
+    ),
+    "supplier_purchase": (
+        [("supplier", "vendor"),
+         ("bought", "buy", "purchase", "goods from", "stock from", "on credit", "took goods", "collected goods",
+          "supplied")],
+        "📦 *Goods bought from a supplier*\n\n"
+        "*Suppliers* → tap the supplier → *New purchase* → *Product*, *Qty*, *Cost/unit (₦)*, *Payment due* → "
+        "*Save purchase*.\n"
+        "The goods go into your stock and what you haven't paid goes on what you owe them — don't also add them "
+        "with *Adjust stock*.",
+        ("pay", "paid", "owe", "purchase order", "order", "verified", "find", "directory", "customer"),
+    ),
+    "supplier_owed": (
+        [("supplier", "vendor"),
+         ("pay", "paid", "payment", "settle", "clear", "owe", "owing", "debt", "balance", "due", "overdue",
+          "outstanding")],
+        None,   # the FAQ's "supplier_owed": what you owe, and how to pay
+        ("owe me", "customer", "verified", "staff", "subscription", "plan", "bought", "purchase", "add"),
+    ),
+    "export_csv": (
+        [("download", "export", "csv", "excel", "spreadsheet", "backup", "copy of my", "back up"),
+         ("record", "transaction", "data", "customer", "stock", "debtor", "sale", "list", "inventory", "everything")],
+        "⬇️ *Downloading your records*\n\n"
+        "*Transactions* → *Export* → *Transactions CSV*, *Unpaid Debtors CSV*, *Customer List CSV* or "
+        "*Stock Inventory CSV*. They open in Excel or Google Sheets. (Go plan and above.)",
+        ("pdf", "statement", "report", "receipt", "invoice", "app", "install", "bought vs sold"),
+    ),
+    "loan_statement": (
+        [("statement",), ("download", "pdf", "get", "print", "bank", "show", "where", "loan")],
+        None,   # the full answer is the FAQ's "loan_statement"
+        ("customer", "supplier", "balance", "send", "vat"),
+    ),
+    "bought_vs_sold": (
+        [("bought vs sold", "bought and sold", "bought versus sold", "bought against", "what i bought and",
+          "purchases and sales", "purchases vs sales", "stock in and out")],
+        "📄 *Bought vs Sold Report*\n\n"
+        "*Dashboard* → *Bought vs Sold Report* → *Download Report PDF*. It shows, for each product, what came in "
+        "and what went out in the period.",
+    ),
+    "profit_see": (
+        [("profit", "gain", "margin", "made money", "making money", "how much i made", "how much did i make"),
+         ("see", "check", "view", "where", "show", "know", "calculate", "find", "each product", "by product")],
+        "📈 *Seeing your profit*\n\n"
+        "*Dashboard* → pick the period → *Gross profit* (sales less what the goods cost, and discounts) and "
+        "*Net profit* (after *Expenses*).\n"
+        "*Insights* → *Profit by product* and *Margin snapshot* — what each product really makes.\n"
+        "Only the owner and staff you allow see profit.",
+        ("wrong", "missing", "no cost", "not showing", "zero", "incorrect", "staff", "branch", "vat"),
+    ),
+    "profit_wrong": (
+        [("profit", "margin"),
+         ("wrong", "missing", "not showing", "zero", "incorrect", "too high", "too low", "not correct",
+          "not counted", "no cost", "doesn't show", "does not show", "not right", "empty")],
+        "🔧 *Profit looks wrong or empty*\n\n"
+        "Sales of products with no cost price aren't counted — the Dashboard says how much and gives *Add costs*.\n"
+        "Put the cost: *Inventory* → the product → *Edit details* → *Cost price (₦)* (or *Cost per unit* when you "
+        "*Adjust stock*). *Insights* marks the ones missing as *No cost*.\n"
+        "Staff who can't see profit see a note instead — the owner decides that on *Staff*.",
+    ),
+    "branch_sales": (
+        [("branch",), ("sales", "report", "performance", "dashboard", "profit", "compare", "how is", "doing",
+                       "transaction", "revenue")],
+        "🏬 *Each branch's sales*\n\n"
+        "*Dashboard* → *Branch:* → *All* or one branch — sales, profit and the rest for that branch.\n"
+        "*Transactions* → *All branches* → pick one to see its sales.",
+        ("staff", "move", "transfer", "send", "stock", "delete", "add branch", "new branch", "create"),
     ),
 }
 
