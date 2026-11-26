@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MapPin, Plus, Star, Trash2, Lock } from "lucide-react";
 import { apiFetch, apiPost, apiPut } from "../lib/api";
 import { useToast } from "../components/Toast";
+import { useAuth } from "../context/AuthContext";
 import { usePlan } from "../lib/usePlan";
 import { Link } from "react-router-dom";
 import { useSettings, saveBusiness } from "../lib/settings";
@@ -43,6 +44,8 @@ function BranchSettings() {
 export default function Branches() {
   const { allows } = usePlan();
   const canUseBranches = allows("BRANCHES");
+  const { user } = useAuth();
+  const isOwner = !user?.parent_id;            // only the owner manages branches (the server checks too)
 
   const [branches, setBranches] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -119,11 +122,21 @@ export default function Branches() {
   }
 
   async function handleDelete(id) {
-    if (!confirm("Delete this branch? Past transactions will keep their branch tag.")) return;
+    const gone = branches.find(b => b.id === id);
+    const rest = branches.filter(b => b.id !== id);
+    const target = gone?.is_default ? rest[0] : rest.find(b => b.is_default);
+    const msg = target
+      ? `Delete ${gone?.name}?\n\nEverything in it moves to ${target.name}: its stock, customers, staff, sales, `
+        + `invoices, waybills and expenses. Nothing is lost.`
+        + (gone?.is_default ? `\n\n${target.name} becomes your default branch.` : "")
+      : `Delete ${gone?.name}, your only branch?\n\nIts stock, customers, sales and staff stay, just without a branch.`;
+    if (!confirm(msg)) return;
     try {
-      await apiFetch(`branches/${id}`, {}, { method: "DELETE" });
+      const r = await apiFetch(`branches/${id}`, {}, { method: "DELETE" });
       await load();
-      toast("Branch deleted.", "success");
+      toast(r?.products_twice
+        ? `Branch deleted. ${r.products_twice} product${r.products_twice === 1 ? " is" : "s are"} now listed twice in ${target?.name} — join them with Inventory → Check duplicates.`
+        : "Branch deleted.", "success");
     } catch (e) {
       toast(e.message, "error");
     }
@@ -149,12 +162,17 @@ export default function Branches() {
           </span>
         </div>
         <div className="branches-intro">
-          Add named locations for your business (e.g. "Main Shop", "Oshodi Branch"). Each transaction
-          recorded from the web or WhatsApp will be tagged to the default branch automatically.
-          You can change which branch a transaction belongs to when recording it.
+          Each branch is one of your shops or locations (e.g. "Main Shop", "Oshodi Branch") and keeps its own
+          stock. A sale goes into the branch of whoever records it: staff you place in a branch (on the Staff
+          page) sell that branch's stock; you sell from the default branch, or pick another at the till.
+          Its address and phone print on its receipts. Move stock between branches from
+          Inventory → Transfer stock.
         </div>
 
-        <form className="branches-add-row" onSubmit={handleAdd} style={{ flexWrap: "wrap" }}>
+        {!isOwner && (
+          <div className="branches-empty" style={{ textAlign: "left" }}>Only the business owner adds, changes or deletes branches.</div>
+        )}
+        {isOwner && <form className="branches-add-row" onSubmit={handleAdd} style={{ flexWrap: "wrap" }}>
           <input
             className="branches-add-input"
             value={name}
@@ -181,12 +199,12 @@ export default function Branches() {
             <Plus size={14} />
             {saving ? "Adding…" : "Add Branch"}
           </button>
-        </form>
+        </form>}
 
         {loading ? (
           <div className="branches-empty">Loading…</div>
         ) : branches.length === 0 ? (
-          <div className="branches-empty">No branches yet. Add one above to start tagging transactions.</div>
+          <div className="branches-empty">No branches yet.{isOwner ? " Add your first one above — your current shop." : ""}</div>
         ) : (
           <ul className="branches-list">
             {branches.map(b => (
@@ -214,7 +232,7 @@ export default function Branches() {
                     {b.is_default && (
                       <span className="branch-default-chip"><Star size={11} /> Default</span>
                     )}
-                    <div className="branch-item-actions">
+                    {isOwner && <div className="branch-item-actions">
                       {!b.is_default && (
                         <button className="btn btn-ghost btn-sm" onClick={() => handleSetDefault(b.id)} title="Set as default">
                           <Star size={13} /> Set default
@@ -224,7 +242,7 @@ export default function Branches() {
                       <button className="btn btn-ghost btn-sm branch-delete-btn" onClick={() => handleDelete(b.id)} title="Delete branch">
                         <Trash2 size={13} />
                       </button>
-                    </div>
+                    </div>}
                   </>
                 )}
               </li>

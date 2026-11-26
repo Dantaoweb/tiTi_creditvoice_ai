@@ -220,7 +220,8 @@ def summary(db, tr, branches):
     lines = _lines(db, tr)
     return {
         "id": tr.id, "number": format_number(tr.number), "status": tr.status,
-        "from_branch": branches.get(tr.from_branch_id), "to_branch": branches.get(tr.to_branch_id),
+        "from_branch": branches.get(tr.from_branch_id) or "Deleted branch",
+        "to_branch": branches.get(tr.to_branch_id) or "Deleted branch",
         "from_branch_id": tr.from_branch_id, "to_branch_id": tr.to_branch_id,
         "items": len(lines),
         "created_at": tr.created_at.isoformat() if tr.created_at else None,

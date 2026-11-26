@@ -92,7 +92,7 @@ function buildNav(L, group) {
     { to: "/staff",        label: "Staff",            icon: UserCheck       },
     { to: "/partners",     label: "Partners",         icon: Handshake       },
     { to: "/notes",        label: "Notes",            icon: FileText        },
-    { to: "/branches",     label: "Branches",         icon: MapPin          },
+    { to: "/branches",     label: "Branches",         icon: MapPin, fullAccessOnly: true },
     { to: "/automation",    label: "Automation",       icon: Zap               },
     { to: "/opportunities", label: "Opportunities",   icon: Sparkles          },
     { to: "/scorecard",     label: "Business Score",  icon: Gauge             },

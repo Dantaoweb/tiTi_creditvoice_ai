@@ -31,6 +31,30 @@ def _clean_phone(text):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _tidy(name):
+    return " ".join((name or "").split())
+
+
+def _name_taken(db, owner_phone, name, except_id=None):
+    """Another branch already has this name — capitals and spaces ignored."""
+    from sqlalchemy import func
+    q = db.query(Branch).filter(Branch.owner_phone == owner_phone, func.lower(Branch.name) == name.lower())
+    if except_id is not None:
+        q = q.filter(Branch.id != except_id)
+    return q.first() is not None
+
+
+def _branch_columns():
+    """Every column, in every table, that points at a branch."""
+    from database import Base
+    out = []
+    for table in Base.metadata.sorted_tables:
+        for col in table.columns:
+            if any(fk.column.table.name == Branch.__tablename__ for fk in col.foreign_keys):
+                out.append((table, col))
+    return out
+
+
 def register_branch_routes(app):
 
     @app.get("/app/api/branches")
@@ -78,15 +102,11 @@ def register_branch_routes(app):
             if not within:
                 raise HTTPException(status_code=403, detail=limit_msg)
 
-            name = payload.name.strip()
+            name = _tidy(payload.name)
             if not name:
                 raise HTTPException(status_code=400, detail="Branch name is required.")
-            existing = db.query(Branch).filter(
-                Branch.owner_phone == owner_phone,
-                Branch.name == name,
-            ).first()
-            if existing:
-                raise HTTPException(status_code=400, detail="A branch with that name already exists.")
+            if _name_taken(db, owner_phone, name):
+                raise HTTPException(status_code=400, detail="You already have a branch with that name.")
             is_first = db.query(Branch).filter(Branch.owner_phone == owner_phone).count() == 0
             branch = Branch(owner_phone=owner_phone, name=name,
                             address=(payload.address or "").strip() or None,
@@ -122,17 +142,33 @@ def register_branch_routes(app):
             )
             new_default = target.id if target else None
 
-            # Re-home first, so nothing is left pointing at a branch that no
-            # longer exists (that data would become invisible under isolation,
-            # and the dangling FK would block the delete). Branch ids are unique
-            # across owners, so filtering on branch_id alone is safe.
-            for _model in (Customer, InventoryItem, Transaction):
-                db.query(_model).filter(_model.branch_id == branch_id).update(
-                    {"branch_id": new_default}, synchronize_session=False
-                )
-            db.query(User).filter(User.branch_id == branch_id).update(
-                {"branch_id": new_default}, synchronize_session=False
-            )
+            # Stock on its way to or from it: settle that first
+            from models import StockTransfer
+            if db.query(StockTransfer).filter(
+                    StockTransfer.status == "on_the_way",
+                    (StockTransfer.from_branch_id == branch_id) | (StockTransfer.to_branch_id == branch_id)).first():
+                raise HTTPException(status_code=400, detail=(
+                    "Stock is on its way to or from this branch. Receive or cancel that transfer first "
+                    "(Inventory → Transfers)."))
+
+            # Products both branches have will sit twice in the one kept — say so
+            from similar_products import squashed
+            kept_names = {squashed(i.name) for i in db.query(InventoryItem).filter(
+                InventoryItem.owner_phone == owner_phone, InventoryItem.branch_id == new_default,
+                InventoryItem.removed_at.is_(None)).all()} if new_default else set()
+            twice = sum(1 for i in db.query(InventoryItem).filter(
+                InventoryItem.branch_id == branch_id, InventoryItem.removed_at.is_(None)).all()
+                if squashed(i.name) in kept_names)
+
+            # Re-home EVERYTHING that points at it — customers, stock, sales,
+            # staff, invoices, waybills, expenses, held sales, counts… — so
+            # nothing becomes invisible under isolation and no link blocks the
+            # delete. Transfers keep their history: the gone branch shows as
+            # "Deleted branch". Branch ids are unique across owners, so
+            # filtering on the id alone is safe.
+            for table, col in _branch_columns():
+                value = None if table.name == "stock_transfers" else new_default
+                db.execute(table.update().where(col == branch_id).values({col.name: value}))
             db.commit()
 
             from audit import audit
@@ -142,7 +178,7 @@ def register_branch_routes(app):
             if was_default and target:
                 target.is_default = True
             db.commit()
-            return {"ok": True, "reassigned_to_branch_id": new_default}
+            return {"ok": True, "reassigned_to_branch_id": new_default, "products_twice": twice}
         finally:
             db.close()
 
@@ -177,8 +213,10 @@ def register_branch_routes(app):
             ).first()
             if not branch:
                 raise HTTPException(status_code=404, detail="Branch not found.")
-            if payload.name and payload.name.strip():
-                branch.name = payload.name.strip()
+            if payload.name and _tidy(payload.name):
+                if _name_taken(db, user.phone, _tidy(payload.name), except_id=branch.id):
+                    raise HTTPException(status_code=400, detail="You already have a branch with that name.")
+                branch.name = _tidy(payload.name)
             branch.address = (payload.address or "").strip() or None
             if payload.phone is not None:
                 branch.phone = _clean_phone(payload.phone)
