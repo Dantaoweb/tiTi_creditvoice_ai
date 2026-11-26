@@ -1,0 +1,1 @@
+import{C as e,S as t,x as n,yt as r}from"./index-PY4Mrs5Z.js";var i=`No internet — saved on this phone. It's sent by itself when the internet returns.`;async function a(i,a,o){let s=e();try{return await r(i,a,s)}catch(e){if(t(e))return n(i,a,o,s),{queued:!0};throw e}}export{a as n,i as t};

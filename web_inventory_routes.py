@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, or_
 
 from database import SessionLocal
-from models import User, InventoryItem, InventoryMovement, ItemPriceChange, utcnow
+from models import User, Branch, InventoryItem, InventoryMovement, ItemPriceChange, utcnow
 from web_auth import require_web_auth
 from web_common import (
     _session_owner_phone, _owner_filter, _scoped_read, _money, _iso,
@@ -93,6 +93,7 @@ class AddInventoryRequest(BaseModel):
     supplier: Optional[str] = Field(default=None, max_length=120)
     paid_now: Optional[int] = None    # None → paid in full; less → owed to the supplier
     category: Optional[str] = Field(default=None, max_length=60)
+    branch_id: Optional[int] = None   # which branch's stock (owner / whole-business admin); None → theirs/default
 
 
 class EditInventoryRequest(BaseModel):
@@ -112,6 +113,7 @@ class EditInventoryRequest(BaseModel):
     barcode: Optional[str] = Field(default=None, max_length=48)
     attributes: Optional[dict] = None
     category: Optional[str] = Field(default=None, max_length=60)   # "" clears it
+    branch_id: Optional[int] = None   # move the product (and its stock) to this branch
 
 
 class AdjustStockRequest(BaseModel):
@@ -151,6 +153,7 @@ class BulkAddInventoryRequest(BaseModel):
     owner_phone: str = Field(max_length=20)
     names: list[str] = Field(default_factory=list, max_length=100)   # plain product names
     items: list[BulkCatalogItem] = Field(default_factory=list, max_length=100)  # priced/service items
+    branch_id: Optional[int] = None   # which branch's stock (owner / whole-business admin)
 
 
 def _can_add_category(db, session):
@@ -158,6 +161,26 @@ def _can_add_category(db, session):
     chose "only categories from my list": the owner. Staff pick from the list."""
     u = _session_user(db, session)
     return bool(u and u.parent_id is None)
+
+
+def _stock_branch(db, session, owner_phone, requested):
+    """The branch a new product goes into. Someone kept to their branch: always
+    theirs. The owner or a whole-business admin may pick any of the business's
+    branches. Otherwise: the person's own branch, else the default."""
+    from transaction_save import _get_recording_branch_id
+    scope, rec = _scoped_read(db, session)
+    if scope is not None:
+        return scope
+    if requested is not None and rec is None:
+        b = db.query(Branch).filter(Branch.id == requested, Branch.owner_phone == owner_phone).first()
+        if not b:
+            raise HTTPException(status_code=400, detail="That branch isn't one of yours.")
+        return b.id
+    return _get_recording_branch_id(db, owner_phone, _session_user(db, session))
+
+
+def _branch_names(db, owner_phone):
+    return {b.id: b.name for b in db.query(Branch).filter(Branch.owner_phone == owner_phone).all()}
 
 
 def register_inventory_routes(app):
@@ -174,25 +197,26 @@ def register_inventory_routes(app):
         finally:
             db.close()
 
-    def _scoped_inventory_query(db, session):
+    def _scoped_inventory_query(db, session, branch_id=None):
         """Inventory rows this viewer may see. Branch staff see only their
         branch's stock; unassigned staff and owners see the full catalogue so
         they can still sell/manage."""
         owner_phone = _session_owner_phone(db, session)
         query = _owner_filter(db.query(InventoryItem), InventoryItem, owner_phone)
         query = query.filter(InventoryItem.removed_at.is_(None))     # removed products (stock_removal)
-        eff_branch, _rec = _scoped_read(db, session)
+        eff_branch, _rec = _scoped_read(db, session, branch_id)
         if eff_branch is not None:
             query = query.filter(InventoryItem.branch_id == eff_branch)
         return owner_phone, query
 
     @app.get("/app/api/inventory/summary")
-    def web_inventory_summary(session: dict = Depends(require_web_auth)):
+    def web_inventory_summary(session: dict = Depends(require_web_auth),
+                              branch_id: Optional[int] = Query(default=None)):
         """Whole-catalogue counts for the Inventory page header. Computed on the
         server so they stay correct however many pages the browser has loaded."""
         db = SessionLocal()
         try:
-            owner_phone, query = _scoped_inventory_query(db, session)
+            owner_phone, query = _scoped_inventory_query(db, session, branch_id)
             return {
                 "total": query.count(),
                 "low_stock": _low_stock(query).count(),
@@ -207,6 +231,7 @@ def register_inventory_routes(app):
         session: dict = Depends(require_web_auth),
         name: str = Query(default="", max_length=120),
         unit: str = Query(default="", max_length=30),
+        branch_id: Optional[int] = Query(default=None),   # the branch it's being added to
     ):
         """Before adding a product: is it already there under a close name?
         `exact` = the same product written differently (blocked on save),
@@ -217,6 +242,9 @@ def register_inventory_routes(app):
             if len(name.strip()) < 2:
                 return {"exact": [], "similar": []}
             owner_phone, scope = _scoped_inventory_query(db, session)
+            if branch_id is not None:   # the same product in ANOTHER branch is not a twin — it's that branch's stock
+                return check_new_product(db, owner_phone, name, unit, _stock_branch(db, session, owner_phone, branch_id),
+                                         visible=scope.all())
             return check_new_product(db, owner_phone, name, unit, visible=scope.all())
         finally:
             db.close()
@@ -242,13 +270,15 @@ def register_inventory_routes(app):
         limit: int = Query(default=50, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
         category: Optional[str] = Query(default=None, max_length=60),   # "__none__" = uncategorised
+        branch_id: Optional[int] = Query(default=None),                  # owner: one branch's stock
     ):
         """One page of stock. `q` searches name + custom fields across the WHOLE
         catalogue (not just the loaded page); `low` keeps only items at/below
         their low-stock alert."""
         db = SessionLocal()
         try:
-            _owner_phone, query = _scoped_inventory_query(db, session)
+            _owner_phone, query = _scoped_inventory_query(db, session, branch_id)
+            _bnames = _branch_names(db, _owner_phone)
             term = q.strip().lower()
             if term:
                 pat = _like_pattern(term)
@@ -330,6 +360,8 @@ def register_inventory_routes(app):
                         "category": item.category if item.category != "service" else None,
                         "attributes": _load_attributes(item),
                         "updated_at": _iso(item.updated_at),
+                        "branch_id": item.branch_id,
+                        "branch_name": _bnames.get(item.branch_id),
                     }
                     for item in rows
                 ]
@@ -363,7 +395,7 @@ def register_inventory_routes(app):
             # The same product written another way ("Peak Milk (tin)" vs "peak
             # milk tin") is a twin: two rows that each hold half the truth.
             from similar_products import check_new_product
-            _branch = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
+            _branch = _stock_branch(db, session, owner_phone, payload.branch_id)
             _twins = check_new_product(db, owner_phone, payload.name, payload.unit, _branch)["exact"]
             if _twins:
                 t = _twins[0]
@@ -381,7 +413,7 @@ def register_inventory_routes(app):
                 selling_price=payload.selling_price,
                 low_stock_alert=None if payload.is_service else payload.low_stock_alert,
                 is_available=True,
-                branch_id=_get_recording_branch_id(db, owner_phone, _session_user(db, session)),
+                branch_id=_branch,
                 category="service" if payload.is_service else None,
                 retail_unit=payload.retail_unit.strip().lower() if payload.retail_unit else None,
                 retail_per_base=payload.retail_per_base,
@@ -512,7 +544,7 @@ def register_inventory_routes(app):
             owner_phone = _session_owner_phone(db, session)
             saved, skipped = 0, 0
             from transaction_save import _get_recording_branch_id
-            _import_branch_id = _get_recording_branch_id(db, owner_phone, _session_user(db, session))
+            _import_branch_id = _stock_branch(db, session, owner_phone, payload.branch_id)
 
             # Enforce the active-product cap (Basic = 5). Extra priced items are
             # still saved, but as unlimited drafts (no price) rather than active
@@ -535,8 +567,11 @@ def register_inventory_routes(app):
             # Already there under another spelling ("Peak Milk (tin)" / "peak
             # milk tin") counts as already there — compared loosely.
             from similar_products import squashed
+            # Per branch: each branch keeps its own stock, so Lekki can have the rice Ikeja has
+            _in_branch = (InventoryItem.branch_id.is_(None) if _import_branch_id is None
+                          else InventoryItem.branch_id == _import_branch_id)
             have = {squashed(n) for (n,) in db.query(InventoryItem.name).filter(
-                InventoryItem.owner_phone == owner_phone).all()}
+                InventoryItem.owner_phone == owner_phone, _in_branch).all()}
             for row in rows:
                 name_clean = str(row.get("name", "")).strip().lower()
                 if not name_clean:
@@ -596,7 +631,8 @@ def register_inventory_routes(app):
                 InventoryItem.id == item_id,
                 InventoryItem.owner_phone == owner_phone,
             ).first()
-            if not item:
+            _scope, _rec = _scoped_read(db, session)
+            if not item or (_scope is not None and item.branch_id != _scope):   # another branch's: not yours to edit
                 raise HTTPException(status_code=404, detail="Item not found.")
             # Remember the pre-edit prices so we can log any change (old -> new).
             _old_cost = item.cost_price
@@ -666,6 +702,18 @@ def register_inventory_routes(app):
             if payload.attributes is not None:
                 owner_user = db.query(User).filter(User.phone == owner_phone).first()
                 item.attributes_json = _clean_attributes(owner_user, payload.attributes)
+            # Put in the wrong branch: move it (with its stock). Owner / whole-business admin only.
+            if payload.branch_id is not None and payload.branch_id != item.branch_id:
+                if _scope is not None or _rec is not None:
+                    raise HTTPException(status_code=403, detail="Only the owner or an admin who sees the whole business can move products between branches.")
+                target = _stock_branch(db, session, owner_phone, payload.branch_id)
+                from similar_products import check_new_product
+                twins = [t for t in check_new_product(db, owner_phone, item.name, item.unit, target)["exact"]
+                         if t["id"] != item.id]
+                if twins:
+                    raise HTTPException(status_code=409, detail=(
+                        f"That branch already has {twins[0]['name']}. Add this stock to it there with Adjust stock instead."))
+                item.branch_id = target
             # Log price changes (old -> new) so they can be tracked over time.
             if item.cost_price != _old_cost:
                 _price_logs.append(("cost_price", _old_cost, item.cost_price))

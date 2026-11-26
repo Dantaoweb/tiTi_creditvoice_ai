@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, PlusCircle, MinusCircle, ChevronRight, Camera } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -110,6 +110,25 @@ function BarcodeCameraButton({ onCode }) {
   );
 }
 
+/* Branches this person may put stock in: { branches, pick } — pick = the branch
+   the page is showing (or the default). Empty for one-location businesses and
+   for staff, whose stock always goes to their own branch. */
+const BranchCtx = createContext({ branches: [], pick: null });
+
+function useBranchChoice() {
+  const { branches, pick } = useContext(BranchCtx);
+  const [branchId, setBranchId] = useState(pick);
+  const field = branches.length > 1 ? (
+    <div className="form-group">
+      <label className="form-label">Branch</label>
+      <select value={branchId ?? ""} onChange={e => setBranchId(Number(e.target.value))}>
+        {branches.map(b => <option key={b.id} value={b.id}>{b.name}{b.is_default ? " (default)" : ""}</option>)}
+      </select>
+    </div>
+  ) : null;
+  return [branches.length > 1 ? branchId : null, field, setBranchId];
+}
+
 function ErrorNote({ msg }) {
   if (!msg) return null;
   const isLimit = /Basic plan limit|Upgrade to Go/i.test(msg);
@@ -145,6 +164,7 @@ function Modal({ title, onClose, children }) {
 
 // ── Catalog picker modal ─────────────────────────────────────────────────────
 function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
+  const [branchId, branchField] = useBranchChoice();
   const [catalog, setCatalog] = useState({});
   const [services, setServices] = useState([]);
   const [kind, setKind] = useState("product");
@@ -191,9 +211,9 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
         const items = services
           .filter(s => selected.has(s.name))
           .map(s => ({ name: s.name, selling_price: s.price, is_service: !s.is_goods }));
-        res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, items });
+        res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, items, branch_id: branchId });
       } else {
-        res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names: [...selected] });
+        res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names: [...selected], branch_id: branchId });
       }
       setResult(res);
       onSaved();
@@ -208,6 +228,7 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
   return (
     <Modal title={kind === "service" ? "Add from Price List" : "Add from Product Catalog"} onClose={onClose}>
       <div className="modal-body" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+        {!result && branchField}
         {loading ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>Loading catalog…</div>
         ) : result ? (
@@ -287,6 +308,7 @@ function CatalogPickerModal({ ownerPhone, onClose, onSaved }) {
 
 // ── Bulk name add modal ──────────────────────────────────────────────────────
 function BulkAddModal({ ownerPhone, onClose, onSaved }) {
+  const [branchId, branchField] = useBranchChoice();
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -300,7 +322,7 @@ function BulkAddModal({ ownerPhone, onClose, onSaved }) {
       .filter(s => s.length > 0);
     if (names.length === 0) { setErr("Enter at least one product name."); setSaving(false); return; }
     try {
-      const res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names });
+      const res = await apiPost("inventory/bulk", { owner_phone: ownerPhone, names, branch_id: branchId });
       setResult(res);
       onSaved();
     } catch (e) { setErr(e.message); }
@@ -310,6 +332,7 @@ function BulkAddModal({ ownerPhone, onClose, onSaved }) {
   return (
     <Modal title="Quick Add Product Names" onClose={onClose}>
       <div className="modal-body">
+        {!result && branchField}
         {result ? (
           <div>
             <div style={{ color: "var(--brand)", fontWeight: 600, marginBottom: 8 }}>
@@ -386,6 +409,7 @@ function SimilarWarning({ found, onUse }) {
 
 function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved, onUseExisting, categories = [], suggestCategory = false, allowNewCategory = true }) {
   const [itemType, setItemType] = useState(isServiceBiz ? "service" : "stock");
+  const [branchId, branchField] = useBranchChoice();
   const [form, setForm] = useState({
     name: "", unit: "", quantity: "",
     cost_price: "", selling_price: "", low_stock_alert: "",
@@ -404,7 +428,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
     const name = form.name.trim();
     if (name.length < 2) { setSimilar(null); return; }
     const t = setTimeout(() => {
-      apiFetch("inventory/similar", { name, unit: form.unit.trim() })
+      apiFetch("inventory/similar", { name, unit: form.unit.trim(), ...(branchId ? { branch_id: branchId } : {}) })
         .then(setSimilar).catch(() => setSimilar(null));
     }, 350);
     return () => clearTimeout(t);
@@ -442,6 +466,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
     try {
       const item = await apiPost("inventory", {
         owner_phone: ownerPhone,
+        branch_id: branchId,
         name: form.name.trim(),
         unit: form.unit.trim() || null,
         quantity: isService ? null : (parseAmt(form.quantity) || 0),
@@ -470,6 +495,7 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
   return (
     <Modal title={isService ? "Add Service / Price" : "Add Product"} onClose={onClose}>
       <div className="modal-body">
+        {branchField}
         <div className="item-type-toggle">
           <button
             className={`btn btn-sm ${itemType === "service" ? "btn-primary" : "btn-ghost"}`}
@@ -655,6 +681,8 @@ function AddItemModal({ ownerPhone, isServiceBiz, fields = [], onClose, onSaved,
 
 // ── Edit item modal ──────────────────────────────────────────────────────────
 function EditItemModal({ item, fields = [], onClose, onSaved, categories = [], allowNewCategory = true }) {
+  const [branchId, branchField, setBranchId] = useBranchChoice();
+  useEffect(() => { if (item.branch_id) setBranchId(item.branch_id); }, [item.branch_id]);
   const isService = item.is_service;
   const { business: bizSettings } = useSettings();       // VAT tick only when VAT is on
   const [form, setForm] = useState({
@@ -685,6 +713,7 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [], a
     setSaving(true); setErr("");
     try {
       await apiPut(`inventory/${item.id}`, {
+        ...(branchId && branchId !== item.branch_id ? { branch_id: branchId } : {}),
         name: form.name.trim() || null,
         unit: form.unit.trim() || null,
         cost_price: (!isService && form.cost_price !== "") ? parseAmt(form.cost_price) : null,
@@ -725,6 +754,12 @@ function EditItemModal({ item, fields = [], onClose, onSaved, categories = [], a
         </div>
         {!isService && (
           <CategoryField value={form.category} options={categories} allowNew={allowNewCategory} onChange={v => set("category", v)} />
+        )}
+        {branchField}
+        {branchField && branchId && branchId !== item.branch_id && (
+          <div className="form-hint" style={{ marginTop: -6 }}>
+            Moves this product and all its stock to that branch.
+          </div>
         )}
         {!isService && fields.length > 0 && (
           <div className="form-row" style={{ flexWrap: "wrap" }}>
@@ -1295,6 +1330,17 @@ export default function Inventory() {
   const isServiceBiz = user?.menu_group === "service";
   // Only the owner or a branch admin manages stock. Regular staff view only.
   const canManageStock = user?.full_access ?? !user?.parent_id;
+  // Owner / whole-business admin: see each branch's stock and choose where new stock goes
+  const canPickBranch = !user?.parent_id || (!!user?.full_access && !(user?.staff_limits || []).includes("own_branch"));
+  const [branches, setBranches] = useState([]);
+  const [branchView, setBranchView] = useState("");      // "" = all branches
+  useEffect(() => {
+    if (!canPickBranch) return;
+    apiFetch("branches").then(d => setBranches(d.branches || [])).catch(() => {});
+  }, [canPickBranch]);
+  const manyBranches = branches.length > 1;
+  const branchPick = manyBranches
+    ? (Number(branchView) || (branches.find(b => b.is_default) || branches[0]).id) : null;
 
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -1343,12 +1389,13 @@ export default function Inventory() {
     return {
       owner_phone: ownerPhone, q: query, low: lowOnly ? "true" : "",
       category: grouping && cat ? cat : "",
+      ...(branchView ? { branch_id: branchView } : {}),
       sort: sort?.col || "", dir: sort?.dir || "", offset, limit,
     };
   }
 
   function loadSummary() {
-    apiFetch("inventory/summary").then(setSummary).catch(() => {});
+    apiFetch("inventory/summary", branchView ? { branch_id: branchView } : {}).then(setSummary).catch(() => {});
   }
 
   // Reload from the top. `keep` = how many rows to re-fetch, so saving an item
@@ -1392,7 +1439,7 @@ export default function Inventory() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { load(); }, [ownerPhone, query, lowOnly, sort, cat, grouping]);
+  useEffect(() => { load(); }, [ownerPhone, query, lowOnly, sort, cat, grouping, branchView]);
 
   useEffect(() => {
     apiFetch("inventory/fields").then(d => setFields(d.fields || [])).catch(() => {});
@@ -1410,6 +1457,7 @@ export default function Inventory() {
   const canAddActive = withinLimit("active_inventory_items", activeCount);
 
   return (
+    <BranchCtx.Provider value={{ branches: canPickBranch ? branches : [], pick: branchPick }}>
     <>
       <StaleDataBanner isStale={isStale} />
       <WaitingHere pattern={/^inventory\//} what="stock changes" />
@@ -1513,6 +1561,18 @@ export default function Inventory() {
             />
           </div>
         )}
+        {manyBranches && (
+          <div className="cat-chips" title="Each branch keeps its own stock">
+            <span className="td-muted" style={{ fontSize: 13, alignSelf: "center" }}>Branch:</span>
+            {[{ id: "", name: "All" }, ...branches].map(b => (
+              <button key={b.id || "all"} type="button"
+                className={`cat-chip${String(branchView) === String(b.id) ? " on" : ""}`}
+                onClick={() => setBranchView(b.id ? String(b.id) : "")}>
+                {b.name}
+              </button>
+            ))}
+          </div>
+        )}
         {grouping && cats.length > 0 && (
           <div className="cat-chips">
             <button type="button" className={`cat-chip${!cat ? " on" : ""}`} onClick={() => setCat(null)}>
@@ -1572,6 +1632,9 @@ export default function Inventory() {
                       <ChevronRight size={14} className="name-chip__chev" />
                     </button>
                     {r.is_service && <span className="svc-chip">service</span>}
+                    {manyBranches && !branchView && r.branch_name && (
+                      <span className="td-muted" style={{ fontSize: 12, marginLeft: 6 }}>· {r.branch_name}</span>
+                    )}
                     {grouping && !cat && r.category && (
                       <span className="svc-chip" style={{ textTransform: "capitalize" }}>{r.category}</span>
                     )}
@@ -1725,5 +1788,6 @@ export default function Inventory() {
       )}
       {showRemoved && <RemovedStockModal onClose={() => setShowRemoved(false)} />}
     </>
+    </BranchCtx.Provider>
   );
 }
