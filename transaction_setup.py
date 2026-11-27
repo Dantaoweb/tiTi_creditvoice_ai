@@ -396,6 +396,28 @@ def handle_transaction_setup(
             )
             return {"status": "awaiting_stock_price"}
 
+    # Part delivery and goods kept aside for customers (whatsapp_delivery.py) —
+    # checked before anything is asked, like the web till
+    _delivered = None
+    if parsed.get("action") in ("BUY", "COMBINED", "SALE"):
+        from whatsapp_delivery import check_part_delivery, kept_aside_problem
+        _delivered, _pd_problem = check_part_delivery(parsed)
+        if _pd_problem:
+            send_message(phone, _pd_problem)
+            return {"status": "part_delivery_unclear"}
+        if _delivered is not None and parsed["action"] == "SALE":
+            send_message(phone, (
+                "Goods still to deliver must be kept against a customer — say who, e.g.:\n"
+                "_sold 100 cement to Ade 500000 delivered 60_"))
+            return {"status": "part_delivery_needs_customer"}
+        _items = parsed.get("sale_items") or (
+            [{"product": parsed["product"], "quantity": parsed.get("quantity") or 1,
+              "unit": parsed.get("unit"), "delivered_qty": _delivered}] if parsed.get("product") else [])
+        _kept = kept_aside_problem(db, business_owner_phone, _items)
+        if _kept:
+            send_message(phone, _kept)
+            return {"status": "kept_aside_for_customers"}
+
     if parsed["action"] == "SALE":
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "DIRECT_SALE", "Direct sales")
         if not allowed:
@@ -524,7 +546,7 @@ def handle_transaction_setup(
                     {"unit": v.unit, "price": v.selling_price, "name": v.name}
                     for v in variants
                 ]),
-                payload_json=json.dumps({"tx_action": parsed["action"]}),
+                payload_json=json.dumps({"tx_action": parsed["action"], "delivered_qty": _delivered}),
                 source_text=voice_transcript_text,
                 due_date=parsed["due_date"],
             ))
@@ -550,6 +572,7 @@ def handle_transaction_setup(
             unit=parsed.get("unit"),
             unit_price=parsed.get("unit_price"),
             items_json=json.dumps(parsed.get("sale_items") or []),
+            payload_json=json.dumps({"delivered_qty": _delivered}) if _delivered is not None else None,
             source_text=voice_transcript_text,
             due_date=parsed["due_date"],
         )
@@ -601,6 +624,9 @@ def handle_transaction_setup(
             db.commit()
         except Exception:
             db.rollback()
+    if _delivered is not None:
+        from whatsapp_delivery import confirm_line
+        balance_after_line += confirm_line(_delivered, parsed.get("quantity"), parsed.get("unit"), customer.name)
     confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}{no_details_hint}{loyalty_hint}"
     if parsed.get("artisan_note"):
         confirm_msg = (

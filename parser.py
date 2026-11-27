@@ -1911,7 +1911,28 @@ def _parse_message_inner(text):
     give 10% discount?" used to save a payment of N10 by someone called
     "can i"). A due date said in words ("due friday", "pay by next week") is
     read too — it used to be dropped silently, so no reminder ever came."""
+    # Part delivery (whatsapp_delivery.py): "who am I owing goods", a trip
+    # ("delivered 25 cement to Ade"), and "… delivered 60" on a sale — read
+    # before the sale parser, which took "delivered 60" for a ₦60 sale.
+    from whatsapp_delivery import is_goods_owed_question, parse_trip, split_delivered
+    if is_goods_owed_question(text):
+        return {"type": "GOODS_OWED"}
+    _trip = parse_trip(text)
+    if _trip:
+        return _trip
+    _rest, _delivered = split_delivered(text)
+    if _delivered is not None:
+        _sale = _parse_message_inner(_rest)
+        if _sale and _sale.get("type") == "TRANSACTION" and _sale.get("action") in ("BUY", "COMBINED"):
+            _sale["delivered_qty"] = _delivered
+            return _sale
+        return {"type": "PART_DELIVERY_HELP"}      # never guess: "delivered 60" was read as ₦60
     parsed = _parse_message(text)
+    # "Ade collected 35 cement paid 20000": 35 is how many, not the price
+    if parsed and parsed.get("type") == "TRANSACTION" and parsed.get("buy_amount"):
+        _qm = re.search(r"\b(?:collected|took|picked(?:\s+up)?|carried)\s+(\d+)\s+[a-z]", (text or "").lower())
+        if _qm and int(_qm.group(1)) == parsed.get("buy_amount"):
+            return {"type": "PART_DELIVERY_HELP"}
     if (parsed and parsed.get("type") == "SERVICE_JOB" and "?" in (text or "")
             and _HELP_QUESTION.search(text.lower())):
         from faq import detect_faq

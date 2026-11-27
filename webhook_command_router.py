@@ -57,6 +57,25 @@ def handle_parsed_command(
         send_whatsapp_message(phone, msg)
         return {"status": "formats"}
 
+    # Part delivery (whatsapp_delivery.py)
+    if parsed["type"] in ("DELIVER_GOODS", "GOODS_OWED", "PART_DELIVERY_HELP"):
+        import whatsapp_delivery as wd
+        if parsed["type"] == "PART_DELIVERY_HELP":
+            send_whatsapp_message(phone, (
+                "Put the price in, so the number isn't taken as money — e.g.:\n"
+                "_sold 100 cement to Ade 500000 delivered 60_\n"
+                "_Ade bought 35 cement 175000 paid 20000_\n\n"
+                "Already sold, and more goods went out now? _delivered 25 cement to Ade_"))
+            return {"status": "part_delivery_help"}
+        if not user:
+            send_whatsapp_message(phone, "Register first to record deliveries.")
+            return {"status": "deliver_no_user"}
+        if parsed["type"] == "GOODS_OWED":
+            send_whatsapp_message(phone, wd.goods_owed_message(db, business_owner_phone, visible_recorded_by_id))
+            return {"status": "goods_owed"}
+        return wd.handle_trip(db, phone, parsed, user, business_owner_phone, business_name,
+                              visible_recorded_by_id, send_whatsapp_message)
+
     if parsed["type"] == "PRODUCT_ALIAS":
         alias = parsed["alias"].lower().strip()
         canonical = parsed["canonical"].lower().strip()

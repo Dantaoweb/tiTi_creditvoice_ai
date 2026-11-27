@@ -889,7 +889,8 @@ def handle_pending_actions(
         pending.unit = chosen.get("unit")
         pending.action = tx_action
         pending.items_json = json.dumps([])
-        pending.payload_json = None
+        _delivered = payload.get("delivered_qty")          # part delivery travels on (whatsapp_delivery.py)
+        pending.payload_json = json.dumps({"delivered_qty": _delivered}) if _delivered is not None else None
         db.commit()
 
         from transaction_setup import (
@@ -922,6 +923,9 @@ def handle_pending_actions(
         price_alert = _price_deviation_alert(
             db, business_owner_phone, pending.product, pending.unit_price,
         )
+        if _delivered is not None:
+            from whatsapp_delivery import confirm_line
+            balance_line += confirm_line(_delivered, pending.quantity, pending.unit, customer.name)
         # build_customer_confirm_message already ends with "Reply YES…"
         send_message(phone, f"{confirm_msg}\n{balance_line}{price_alert}")
         return PendingRouteResult(response={"status": "tx_unit_selected_confirm"})

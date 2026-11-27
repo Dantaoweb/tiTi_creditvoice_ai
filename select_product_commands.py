@@ -769,6 +769,13 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
 
     # ── Capture fields before any write (pending is deleted inside try) ─────────
     cart = _load_cart(pending)
+    # Goods kept aside for customers waiting for delivery can't be sold again (whatsapp_delivery.py)
+    from whatsapp_delivery import kept_aside_problem
+    _kept = kept_aside_problem(db, business_owner_phone, [
+        {"product": i.get("product"), "quantity": i.get("quantity") or 1, "unit": i.get("unit")} for i in cart])
+    if _kept:
+        send_message(phone, _kept)
+        return {"status": "kept_aside_for_customers"}
     payload = _load_payload(pending)
     total = pending.buy_amount
     paid = pending.paid_amount

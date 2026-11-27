@@ -698,6 +698,11 @@ def build_inventory_list_message(db, owner_phone, product=None, return_ids=False
 
         name_display = f"{display_name} ({v.unit})" if (is_multi and v.unit) else display_name
         line = f"{idx}. {indicator}{name_display}: {_whole(qty):,}{unit_label}{_exp_suffix}"
+        try:   # goods kept aside for customers waiting for delivery (whatsapp_delivery.py)
+            from whatsapp_delivery import stock_note
+            line += stock_note(db, owner_phone, v)
+        except Exception:
+            pass
         prices = []
         if v.cost_price:
             prices.append(f"Cost N{v.cost_price:,}")

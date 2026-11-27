@@ -746,6 +746,11 @@ def handle_natural_language_query(
     if not t:
         return None
 
+    # Goods owed (not money): "who am I owing goods", "who is waiting for goods"
+    from whatsapp_delivery import goods_owed_message, is_goods_owed_question
+    if is_goods_owed_question(t):
+        return goods_owed_message(db, owner_phone, recorded_by_id)
+
     # ── 0a. Business score / financing ────────────────────────────────────────
     scored = _answer_scorecard(db, owner_phone, t)
     if scored:

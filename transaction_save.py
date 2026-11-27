@@ -102,6 +102,12 @@ def apply_sale_inventory(db, owner_phone, tx_id, user_id, pending, pending_items
     if not items:
         return [], [], []
 
+    # Part delivery (whatsapp_delivery.py): only what went out leaves stock
+    from whatsapp_delivery import apply_sale_with_part_delivery, delivered_from_payload
+    _delivered = delivered_from_payload(pending)
+    if _delivered is not None and len(items) == 1 and _delivered < float(items[0].get("quantity") or 1):
+        return apply_sale_with_part_delivery(db, owner_phone, tx_id, user_id, items[0], _delivered, source_type)
+
     add_transaction_items(db, tx_id, items)
     return deduct_inventory_for_items(
         db, owner_phone, items, source_type, tx_id, user_id,
@@ -173,6 +179,13 @@ def _notify_customer_receipt(db, customer, tx, balance, user, business_owner_pho
         cfg = receipt_config_for_user(owner) if owner else None
         business_name = business_display_name(owner or user)
         receipt = _build_reprint_receipt(db, business_name, business_owner_phone, customer, tx, balance, cfg)
+        try:   # goods sold but not all handed over yet (whatsapp_delivery.py)
+            from whatsapp_delivery import receipt_goods_line
+            _goods = receipt_goods_line(db, business_owner_phone, customer.id)
+            if _goods:
+                receipt = f"{receipt}\n\n{_goods}"
+        except Exception:
+            pass
         try:
             from loyalty import receipt_line
             _line = receipt_line(db, business_owner_phone, customer.id)
