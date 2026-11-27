@@ -1369,6 +1369,15 @@ def extract_supplier_transaction(text):
             rf"(?P<body>.+?)\s+(?P<price_marker>at|for)\s+(?P<price>{amount_pattern})(?:\s+each)?",
             clean
         ),
+        # "Ade supplied me cement 5000", "Ade supplied 10 bags cement 50000 paid 20000"
+        # — no "at"/"for": a bare amount is the total (it used to become a
+        # customer debt for an item called "ade supplied me cement")
+        re.search(
+            rf"^(?P<supplier>[a-zA-Z'\- ]+?)\s+(?:supply|supplied|supplies)(?:\s+me|\s+us)?\s+"
+            rf"(?!(?:me|us)\s+\d)(?P<body>[^\d]*?[a-z][^\d]*?|\d+(?:\.\d+)?\s+[^\d]*?[a-z][^\d]*?)\s+(?P<price>{amount_pattern})"
+            rf"(?:\s+each)?(?=\s+(?:paid|pay|sent|due|balance|selling|sell)\b|\s*$)",
+            clean
+        ),
     ]
     for purchase_match in purchase_patterns:
         if not purchase_match:
@@ -2005,6 +2014,12 @@ def _parse_message_inner(text):
     if parsed and parsed.get("type") == "TRANSACTION" and _QUESTION_NAME.match(
             str(parsed.get("name") or "").strip().lower()):
         return None
+    # "Ade supplied me 5000": a supplier, not a customer's debt for an item
+    # called "supplied me" — ask what was supplied
+    if (parsed and parsed.get("type") == "TRANSACTION"
+            and re.match(r"^(?:supply|supplied|supplies)\b", str(parsed.get("product") or "").strip().lower())):
+        return {"type": "SUPPLIER_ITEM_HELP", "name": str(parsed.get("name") or "").strip(),
+                "amount": parsed.get("buy_amount") or parsed.get("paid_amount")}
     if parsed and parsed.get("type") == "TRANSACTION":
         name = str(parsed.get("name") or "").strip().lower()
         if _CUSTOMER_PREFIX.match(name):

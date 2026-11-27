@@ -57,6 +57,17 @@ def handle_parsed_command(
         send_whatsapp_message(phone, msg)
         return {"status": "formats"}
 
+    # "Ade supplied me 5000" — a supplier, but what did they supply?
+    if parsed["type"] == "SUPPLIER_ITEM_HELP":
+        who = (parsed.get("name") or "the supplier").title()
+        amt = parsed.get("amount") or 5000
+        send_whatsapp_message(phone, (
+            f"What did {who} supply? Nothing was recorded yet. Send it with the item, e.g.:\n"
+            f"_{who} supplied me 10 bags cement {amt}_\n"
+            f"Paid part of it? Add _paid 2000_ at the end.\n\n"
+            f"Paying {who} for goods recorded before? _I paid {who} {amt}_"))
+        return {"status": "supplier_item_help"}
+
     # "I owe Ade 5000": money the business owes — not a customer's debt
     if parsed["type"] == "I_OWE_HELP":
         who, amt = parsed["name"].title(), parsed["amount"]
