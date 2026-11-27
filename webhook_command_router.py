@@ -282,6 +282,10 @@ def handle_parsed_command(
         return handle_my_phones(db, user, send_whatsapp_message, phone)
 
     if parsed["type"] == "VOID_TRANSACTION":
+        from staff_access import REFUSAL, may
+        if not may(user, "void"):                       # switched off on the Staff page
+            send_whatsapp_message(phone, REFUSAL["void"])
+            return {"status": "void_blocked_for_staff"}
         return handle_void_transaction(
             db, phone, parsed, user, business_owner_phone,
             visible_recorded_by_id, send_whatsapp_message,

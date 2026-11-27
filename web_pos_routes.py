@@ -332,6 +332,20 @@ def register_pos_routes(app):
                     reward_units = off
                 discount += off
 
+            # What the owner switched off for this staff member (Staff page tick-boxes).
+            # A loyalty reward is the owner's, not a staff discount.
+            from staff_access import sale_problem
+            _lines_total = sum(int(round(float(i.get("qty") or 1) * int(i.get("unit_price") or 0))) for i in items)
+            _problem = sale_problem(
+                db, _session_user(db, session), owner_phone,
+                [{"product": i.get("name"), "unit_price": i.get("unit_price"), "qty": i.get("qty") or 1,
+                  "unit": i.get("unit"), "sold_unit": i.get("sold_unit"), "item_id": i.get("inventory_item_id")}
+                 for i in items if float(i.get("fraction") or 1.0) == 1.0],
+                discount=int(payload.discount or 0),
+                paid=int(payload.payment_amount or 0), total=_lines_total - discount)
+            if _problem:
+                raise HTTPException(status_code=403, detail=_problem)
+
             result = save_pos_sale(
                 db,
                 owner_phone,
@@ -557,6 +571,16 @@ def register_pos_routes(app):
             items = [it.model_dump() for it in payload.items]
             eff_branch = _recording_branch(db, session, owner_phone, payload.branch_id)
             _require_items_in_branch(db, owner_phone, items, eff_branch)
+            # Staff tick-boxes: a discount or a price below the set price on an invoice too
+            from staff_access import sale_problem
+            _problem = sale_problem(
+                db, _session_user(db, session), owner_phone,
+                [{"product": i.get("name"), "unit_price": i.get("unit_price"), "qty": i.get("qty") or 1,
+                  "unit": i.get("unit"), "sold_unit": i.get("sold_unit"), "item_id": i.get("inventory_item_id")}
+                 for i in items if float(i.get("fraction") or 1.0) == 1.0],
+                discount=int(payload.discount or 0))
+            if _problem:
+                raise HTTPException(status_code=403, detail=_problem)
             from invoices import create_invoice, invoice_document
             if payload.is_quote:
                 from business_templates import can_quote

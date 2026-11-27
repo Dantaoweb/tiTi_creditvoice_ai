@@ -404,6 +404,11 @@ def handle_profile_command(
         return {"status": "onboarding_restarted"}
 
     if command_type == "SET_PHONE":
+        from models import User as _User
+        from staff_access import REFUSAL, may
+        if not may(db.query(_User).filter(_User.phone == phone).first(), "customers_edit"):   # Staff page
+            send_message(phone, REFUSAL["customers_edit"])
+            return {"status": "customers_edit_blocked_for_staff"}
         target_name = parsed["name"].lower().strip()
 
         # Guard: reject command words masquerading as customer names.

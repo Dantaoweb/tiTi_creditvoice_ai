@@ -79,6 +79,10 @@ def handle_supplier_command(
     command_type = parsed.get("type")
 
     if command_type in ["INVENTORY_LIST", "INVENTORY_ITEM"]:
+        from staff_access import REFUSAL, may
+        if not may(user, "see_stock"):                  # the owner keeps stock levels from them
+            send_message(phone, REFUSAL["see_stock"])
+            return {"status": "stock_hidden_for_staff"}
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "INVENTORY", "Inventory")
         is_basic = not allowed  # BASIC users get limited preview, not a hard block
 

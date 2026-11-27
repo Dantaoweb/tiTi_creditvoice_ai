@@ -328,6 +328,9 @@ def register_inventory_routes(app):
                     if i.id not in shown])
             # Cost prices only for those who may see profit (owner, admins not kept from it)
             _hide_cost = not __import__("web_common")._can_see_profit(db, session)
+            # Staff the owner keeps from stock levels (Staff page): no quantities
+            from staff_access import may as _may
+            _hide_qty = not _may(_session_user(db, session), "see_stock")
             return {
                 "close_matches": close_matches,
                 "total": total,
@@ -339,7 +342,8 @@ def register_inventory_routes(app):
                         "id": item.id,
                         "name": item.name,
                         "unit": item.unit,
-                        "quantity": item.quantity,
+                        "quantity": (None if _hide_qty and item.quantity is not None else item.quantity),
+                        "qty_hidden": bool(_hide_qty and item.quantity is not None),
                         "reserved": (owed.get(item.id) or {}).get("kept") or 0,
                         "waiting": (owed.get(item.id) or {}).get("waiting") or 0,
                         "waiting_customers": (owed.get(item.id) or {}).get("customers") or [],
@@ -843,6 +847,9 @@ def register_inventory_routes(app):
             ).first()
             if not item:
                 raise HTTPException(status_code=404, detail="Item not found.")
+            from staff_access import may as _may
+            if not _may(_session_user(db, session), "see_stock"):   # stock levels kept from this staff member
+                return {"movements": [], "qty_hidden": True}
             movs = db.query(InventoryMovement).filter(
                 InventoryMovement.item_id == item.id,
                 InventoryMovement.owner_phone == owner_phone,

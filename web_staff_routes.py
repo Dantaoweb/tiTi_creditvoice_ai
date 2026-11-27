@@ -37,6 +37,10 @@ class StaffLimitsRequest(BaseModel):
     limits: list[str] = Field(default_factory=list, max_length=20)   # staff_access.LIMITS keys
 
 
+class StaffBlockedRequest(BaseModel):
+    blocked: list[str] = Field(default_factory=list, max_length=20)  # staff_access.STAFF_RULES keys switched off
+
+
 def _runs_own_business(db, user):
     """Does this account already run a business of its own? Then it can't be
     made someone's staff — that would lock its owner out of their records."""
@@ -90,7 +94,7 @@ def register_staff_routes(app):
             if not owner or owner.parent_id is not None:   # any top-level owner
                 return {"members": []}
             from sqlalchemy import or_
-            from staff_access import limits_of
+            from staff_access import blocked_of, limits_of
             members = db.query(User).filter(or_(User.parent_id == owner.id, User.invite_owner_id == owner.id)).all()
             branch_names = {b.id: b.name for b in db.query(Branch).filter(Branch.owner_phone == owner.phone).all()}
             return {
@@ -104,6 +108,7 @@ def register_staff_routes(app):
                         "pending": m.role == "delegate_pending" or (m.invite_owner_id == owner.id and m.parent_id != owner.id),
                         "full_access": bool(m.can_view_all_transactions) if m.parent_id == owner.id else bool(m.invite_admin),
                         "limits": limits_of(m) if m.parent_id == owner.id else [],
+                        "blocked": blocked_of(m) if m.parent_id == owner.id else [],
                         "sees_customers": (m.staff_sees_customers is not False) if m.parent_id == owner.id
                                           else (m.invite_sees_customers is not False),
                         "branch_id": m.branch_id if m.parent_id == owner.id else m.invite_branch_id,
@@ -311,6 +316,7 @@ def register_staff_routes(app):
                 staff_user.branch_id = staff_user.invite_branch_id
                 staff_user.can_view_all_transactions = bool(staff_user.invite_admin)
                 staff_user.staff_limits = None
+                staff_user.staff_blocked = None
                 staff_user.staff_sees_customers = staff_user.invite_sees_customers is not False
                 staff_user.invite_owner_id = staff_user.invite_branch_id = staff_user.invite_admin = None
                 staff_user.invite_sees_customers = None
@@ -468,6 +474,26 @@ def register_staff_routes(app):
         finally:
             db.close()
 
+    @app.put("/app/api/staff/{user_id}/blocked")
+    def web_set_staff_blocked(user_id: str, payload: StaffBlockedRequest, session: dict = Depends(require_web_auth)):
+        """What an ordinary staff member may NOT do (staff_access.STAFF_RULES) — owner only."""
+        from staff_access import STAFF_RULES, set_blocked
+        db = SessionLocal()
+        try:
+            owner = _session_user(db, session)
+            if not owner or owner.parent_id is not None:
+                raise HTTPException(status_code=403, detail="Only business owners can change what staff may do.")
+            member = db.query(User).filter(User.id == user_id, User.parent_id == owner.id).first()
+            if not member:
+                raise HTTPException(status_code=404, detail="Staff member not found.")
+            if any(k not in STAFF_RULES for k in payload.blocked):
+                raise HTTPException(status_code=400, detail="Unknown choice.")
+            blocked = set_blocked(member, payload.blocked)
+            db.commit()
+            return {"ok": True, "blocked": blocked}
+        finally:
+            db.close()
+
     @app.post("/app/api/staff/{user_id}/customers")
     def web_set_staff_customers(user_id: str, payload: StaffCustomersRequest, session: dict = Depends(require_web_auth)):
         """Ordinary staff: see the business's customers to serve them, or only
@@ -508,6 +534,7 @@ def register_staff_routes(app):
                 member.can_view_all_transactions = False
                 member.branch_id = None
                 member.staff_limits = None
+                member.staff_blocked = None
                 member.staff_sees_customers = None
                 member.invite_code = None
                 member.token_version = (member.token_version or 0) + 1

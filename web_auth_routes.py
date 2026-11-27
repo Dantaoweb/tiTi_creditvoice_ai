@@ -440,6 +440,7 @@ def register_auth_routes(app):
                 "full_access": user.parent_id is None or bool(user.can_view_all_transactions),
                 # A staff admin: what the owner keeps from them (staff_access.py) — menu hides these
                 "staff_limits": __import__("staff_access").limits_of(user),
+                "staff_blocked": __import__("staff_access").blocked_of(user),   # ordinary staff: switched off
                 "branch_id": getattr(user, "branch_id", None),   # staff placed in a branch
             "can_quote": __import__("business_templates").can_quote(user, db),
             }

@@ -23,6 +23,9 @@ const PAGE_SIZE = 20;   // products shown at once; slide/arrow to reveal more
 function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
   // Settings → group stock by category (Inventory and POS): tap a category, then the product
   const { business } = useSettings();
+  // Staff page: the owner keeps stock levels from this staff member → "In stock", no number
+  const { user } = useAuth();
+  const hideStock = (user?.staff_blocked || []).includes("see_stock");
   const catTabs = business.group_by_category && business.group_on_pos;
   const [posCat, setPosCat] = useState(null);
   const [products, setProducts] = useState([]);
@@ -396,6 +399,7 @@ function ProductGrid({ ownerPhone, branchId, qtyFor, onSetQty }) {
               const stockLabel = p.is_service
                 ? "Service"
                 : outOfStock ? "Out of stock"
+                : hideStock ? "In stock"                 // the owner keeps stock levels from this staff member
                 : p.unit ? qty(p.quantity, p.unit) : `${qty(p.quantity)} in stock`;
               return (
                 <div key={p.id} className={`pos-pick-row${n > 0 ? " pos-pick-row--active" : ""}`}

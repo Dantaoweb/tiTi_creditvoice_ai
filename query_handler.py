@@ -746,6 +746,16 @@ def handle_natural_language_query(
     if not t:
         return None
 
+    # A staff member the owner keeps from stock levels (Staff page tick-boxes)
+    if recorded_by_id and re.search(
+            r"\b(?:stock|in store|remaining|left\s+in|how\s+many\s+.*\b(?:left|remain|do\s+(?:i|we)\s+have)|"
+            r"do\s+(?:i|we)\s+have|how\s+much\s+.*\bleft)\b", t.lower()):
+        from models import User as _User
+        from staff_access import REFUSAL, may
+        _staff = db.query(_User).filter(_User.id == recorded_by_id).first()
+        if _staff and not may(_staff, "see_stock"):
+            return REFUSAL["see_stock"]
+
     # Goods owed (not money): "who am I owing goods", "who is waiting for goods"
     from whatsapp_delivery import goods_owed_message, is_goods_owed_question
     if is_goods_owed_question(t):

@@ -1176,12 +1176,15 @@ function ItemDetailModal({ item, fields, canManage, onClose, onEdit, onAdjust, o
         {attrLine && <div className="td-attr-line" style={{ marginBottom: 10 }}>{attrLine}</div>}
 
         <div className="metrics-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 14 }}>
-          {!item.is_service && (
+          {!item.is_service && item.qty_hidden && (
+            <MetricCard label="In stock" value="—" />
+          )}
+          {!item.is_service && !item.qty_hidden && (
             <MetricCard label={item.waiting > 0 ? "In store" : "In stock"} value={`${(item.quantity ?? 0).toLocaleString()}${item.unit ? ` ${item.unit}` : ""}`}
               color={item.low_stock_alert !== null && (item.quantity ?? 0) <= item.low_stock_alert ? "amber" : undefined} />
           )}
           {/* Sold, still to deliver: kept aside in the store, or owed */}
-          {!item.is_service && item.waiting > 0 && (
+          {!item.is_service && !item.qty_hidden && item.waiting > 0 && (
             <>
               {item.reserved > 0 && (
                 <MetricCard label="Kept aside for customers" value={item.reserved.toLocaleString()} color="rose" />
@@ -1679,6 +1682,8 @@ export default function Inventory() {
               key: "qty_or_avail", label: "Stock / Status",
               render: r => <>{r.is_service
                 ? <span className="text-subtle">—</span>
+                : r.qty_hidden
+                  ? <span className="text-subtle" title="The owner keeps stock levels to themselves">—</span>
                 : r.waiting > 0
                   ? (
                     // Sold, still to deliver: in store − kept aside = what can be sold
@@ -1716,7 +1721,9 @@ export default function Inventory() {
               key: "status", label: "Status",
               render: r => r.is_service
                 ? <span className={`badge ${r.is_available ? "badge-green" : "badge-gray"}`}>{r.is_available ? "Active" : "Inactive"}</span>
-                : <StockBadge available={r.is_available} quantity={r.quantity ?? 0} alert={r.low_stock_alert} />,
+                : r.qty_hidden
+                  ? <span className={`badge ${r.is_available ? "badge-green" : "badge-gray"}`}>{r.is_available ? "Active" : "Inactive"}</span>
+                  : <StockBadge available={r.is_available} quantity={r.quantity ?? 0} alert={r.low_stock_alert} />,
             },
             { key: "updated_at", label: "Updated", render: r => <span className="td-muted">{dateStr(r.updated_at)}</span> },
             {

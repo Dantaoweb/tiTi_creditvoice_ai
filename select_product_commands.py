@@ -787,6 +787,18 @@ def _handle_confirm(db, phone, normalized, pending, user, business_owner_phone, 
     overall_discount = payload.get("overall_discount", 0)
     sale_note = payload.get("sale_note", "")
 
+    # What the owner switched off for this staff member (Staff page tick-boxes).
+    # A line under its set price is caught per line ("below_price"), not as a discount.
+    from staff_access import sale_problem
+    _staff_problem = sale_problem(
+        db, user, business_owner_phone,
+        [{"product": i.get("product"), "unit_price": i.get("unit_price"), "qty": i.get("quantity") or 1,
+          "unit": i.get("unit"), "item_id": i.get("inv_id")} for i in cart],
+        discount=int(overall_discount or 0), paid=paid or 0, total=total or 0)
+    if _staff_problem:
+        send_message(phone, _staff_problem)
+        return {"status": "blocked_for_staff"}
+
     # Customer lookup — pure read, outside try. Case-insensitive so a web-added
     # "Ade" matches the WhatsApp-lowercased "ade" instead of duplicating.
     from customer_merge import find_customer_named

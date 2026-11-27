@@ -303,6 +303,9 @@ def register_customer_routes(app):
     ):
         db = SessionLocal()
         try:
+            from staff_access import REFUSAL, may
+            if not may(_session_user(db, session), "customers_edit"):    # switched off on the Staff page
+                raise HTTPException(status_code=403, detail=REFUSAL["customers_edit"])
             owner_phone = _session_owner_phone(db, session)
             # "Mama Bola", "mama bola" and "Mama  Bola" are the same person
             from customer_merge import find_customer_named, tidy_name
@@ -339,6 +342,9 @@ def register_customer_routes(app):
         other customer mutations; blocks renaming onto another customer's name."""
         db = SessionLocal()
         try:
+            from staff_access import REFUSAL, may
+            if not may(_session_user(db, session), "customers_edit"):    # switched off on the Staff page
+                raise HTTPException(status_code=403, detail=REFUSAL["customers_edit"])
             owner_phone = _session_owner_phone(db, session)
             customer = db.query(Customer).filter(
                 Customer.id == customer_id,
@@ -559,6 +565,9 @@ def register_customer_routes(app):
         from business_templates import customer_profile_fields_for_user
         db = SessionLocal()
         try:
+            from staff_access import REFUSAL, may
+            if not may(_session_user(db, session), "customers_edit"):    # switched off on the Staff page
+                raise HTTPException(status_code=403, detail=REFUSAL["customers_edit"])
             owner_phone = _session_owner_phone(db, session)
             customer = db.query(Customer).filter(
                 Customer.id == customer_id,
@@ -1049,6 +1058,9 @@ def register_customer_routes(app):
             owner_phone = _session_owner_phone(db, session)
             if not user:
                 raise HTTPException(status_code=401, detail="Not authenticated.")
+            from staff_access import REFUSAL, may
+            if not may(user, "void"):                       # the owner switched it off (Staff page)
+                raise HTTPException(status_code=403, detail=REFUSAL["void"])
             is_owner = user.phone == owner_phone
             # Staff may only see/void their own records unless granted full view.
             staff_filter = None if (is_owner or user.can_view_all_transactions) else user.id

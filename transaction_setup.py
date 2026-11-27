@@ -412,13 +412,26 @@ def handle_transaction_setup(
             return {"status": "part_delivery_needs_customer"}
         _items = [dict(i) for i in (parsed.get("sale_items") or [])] or (
             [{"product": parsed["product"], "quantity": parsed.get("quantity") or 1,
-              "unit": parsed.get("unit")}] if parsed.get("product") else [])
+              "unit": parsed.get("unit"), "unit_price": parsed.get("unit_price")}] if parsed.get("product") else [])
         if _delivered is not None and len(_items) == 1:
             _items[0]["delivered_qty"] = _delivered
         _kept = kept_aside_problem(db, business_owner_phone, _items)
         if _kept:
             send_message(phone, _kept)
             return {"status": "kept_aside_for_customers"}
+        # What the owner switched off for this staff member (Staff page tick-boxes)
+        from staff_access import sale_problem
+        _total = parsed.get("buy_amount")
+        _paid = (parsed.get("paid_amount") or 0) if parsed["action"] in ("BUY", "COMBINED") else _total
+        _staff_problem = sale_problem(
+            db, user, business_owner_phone,
+            [{"product": i.get("product"), "unit_price": i.get("unit_price"), "qty": i.get("quantity") or 1,
+              "unit": i.get("unit")} for i in _items if i.get("unit_price") is not None],
+            discount=int(parsed.get("discount") or 0),
+            paid=_paid if _total else None, total=_total)
+        if _staff_problem:
+            send_message(phone, _staff_problem)
+            return {"status": "blocked_for_staff"}
 
     if parsed["action"] == "SALE":
         allowed, upgrade_msg = ensure_feature_allowed(db, user, "DIRECT_SALE", "Direct sales")

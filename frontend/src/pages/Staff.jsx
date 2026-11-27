@@ -37,6 +37,17 @@ const ADMIN_LIMITS = [
   ["own_branch", "Other branches (only their own branch)"],
 ];
 
+// What an ORDINARY staff member may do (staff_access.py STAFF_RULES). All ticked
+// (allowed) by default — the owner unticks what they shouldn't do.
+const STAFF_RULES = [
+  ["discount", "Give a discount"],
+  ["below_price", "Sell below the set price"],
+  ["credit", "Sell on credit (customer owes)"],
+  ["void", "Void a sale they recorded"],
+  ["customers_edit", "Add or change customers"],
+  ["see_stock", "See how much stock is left"],
+];
+
 // Renders an invite code with copy + a shareable link + WhatsApp share.
 function InviteShare({ code, phone }) {
   const link = `${window.location.origin}/app/login?invite=${encodeURIComponent(code)}`
@@ -399,6 +410,15 @@ export default function Staff() {
     try {
       const r = await apiPut(`staff/${id}/limits`, { limits });
       setMembers(ms => ms.map(m => (m.id === id ? { ...m, limits: r.limits } : m)));
+    } catch (e) { alert(e.message); }
+    finally { setAccessBusy(p => ({ ...p, [id]: false })); }
+  }
+
+  async function saveBlocked(id, blocked) {
+    setAccessBusy(p => ({ ...p, [id]: true }));
+    try {
+      const r = await apiPut(`staff/${id}/blocked`, { blocked });
+      setMembers(ms => ms.map(m => (m.id === id ? { ...m, blocked: r.blocked } : m)));
     } catch (e) { alert(e.message); }
     finally { setAccessBusy(p => ({ ...p, [id]: false })); }
   }
@@ -807,6 +827,26 @@ export default function Staff() {
                           Can see the business's customers, to serve them
                         </label>
                       )}
+                      {!full && (() => {
+                        const blocked = mem.blocked || [];
+                        return (
+                          <div className="staff-limits">
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{mem.name?.split(" ")[0] || "They"} can…</div>
+                            {STAFF_RULES.map(([k, label]) => (
+                              <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                                <input type="checkbox" style={{ width: "auto" }} disabled={accessBusy[member.id]}
+                                  checked={!blocked.includes(k)}
+                                  onChange={e => saveBlocked(member.id, e.target.checked
+                                    ? blocked.filter(x => x !== k) : [...blocked, k])} />
+                                {label}
+                              </label>
+                            ))}
+                            <div className="text-muted" style={{ fontSize: 12 }}>
+                              Untick to switch it off for them — the till and WhatsApp then refuse it and say to ask you.
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {full && (
                         <div className="staff-limits">
                           <div style={{ fontSize: 13, fontWeight: 600 }}>This admin can't see…</div>
