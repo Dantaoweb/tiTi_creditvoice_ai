@@ -1796,6 +1796,11 @@ _OWES_ME = re.compile(
     r"(?:(?:owes?|owing)(?:\s+(?:me|us))?|has\s+(?:a\s+)?(?:debt|balance)\s+of|has\s+an?\s+old\s+debt\s+of)\s+"
     r"(?:the\s+sum\s+of\s+|a\s+balance\s+of\s+)?(?:n|₦)?\s?(?P<amt>\d[\d,]*(?:\.\d+)?\s*[km]?)(?:\s*naira)?"
     r"(?P<rest>\s+.*)?$")
+_AMT = r"(?:n|₦)?\s?\d[\d,]*(?:\.\d+)?\s*[km]?"
+_PAID_BALANCE = re.compile(
+    r"^(?P<head>[a-z][a-z'\- ]*?\s+(?:bought|buy|took|collected|purchased|carried)\s+(?P<items>.+?))\s+"
+    r"(?:and\s+)?(?:paid|pay|gave|deposit(?:ed)?)\s+(?P<paid>" + _AMT + r")\s*(?:and\s+)?(?:the\s+)?"
+    r"(?:balance|bal|remaining|remain|owing|left|outstanding)(?:\s+is)?\s+(?P<bal>" + _AMT + r")$")
 # "I owe Ade 5000" — money the business owes: not a customer's debt
 _I_OWE = re.compile(r"^(?:i|we)\s+(?:am\s+|are\s+|still\s+|dey\s+)*(?:owe|owing)\s+(?P<name>[a-z][a-z' \-]{0,40}?)\s+"
                     r"(?:n|₦)?\s?(?P<amt>\d[\d,]*(?:\.\d+)?\s*[km]?)(?:\s*naira)?$")
@@ -1983,6 +1988,13 @@ def _parse_message_inner(text):
     _trip = parse_trip(text)
     if _trip:
         return _trip
+    # "Ade bought rice paid 2000 balance 3000" — no price, but paid + balance
+    # is the price (it made a customer called "ade bought rice")
+    _pb = _PAID_BALANCE.match(re.sub(r"\s+", " ", (text or "").lower().replace(",", "")).strip(" .!"))
+    if _pb and not re.search(r"\d", re.sub(r"^\s*\d+(?:\.\d+)?\s+", "", _pb.group("items"))):
+        _paid, _bal = parse_amount_token(_pb.group("paid")), parse_amount_token(_pb.group("bal"))
+        if _paid is not None and _bal is not None:
+            return _parse_message_inner(f"{_pb.group('head')} {_paid + _bal} paid {_paid}")
     _owes = _owes_me(text)
     if _owes:
         if _owes["type"] == "TRANSACTION":
@@ -4011,6 +4023,15 @@ def _parse_message(text):
                 unit = item_details.get("unit")
                 product = item_details.get("product")
                 unit_price = item_details.get("unit_price")
+            elif customer_sale_match:
+                # "Ade bought rice paid 2000" — no price, but keep the item so
+                # its stock price can settle the total (it used to be dropped)
+                _pre = re.split(r"\b(?:and\s+)?(?:paid|pay|gave|give|deposit(?:ed)?|sent|send|transfer(?:red|ed)?)\b",
+                                customer_sale_match.group("items"))[0].strip(" ,;")
+                if _pre and not re.search(r"\d{3,}", _pre):
+                    _it = parse_stock_item_body(_pre)
+                    if _it and _it.get("product") and not re.search(r"\d", _it["product"]):
+                        quantity, unit, product = _it.get("quantity"), _it.get("unit"), _it["product"]
         elif not amounts:
             return None
         else:

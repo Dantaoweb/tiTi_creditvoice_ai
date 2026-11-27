@@ -410,9 +410,11 @@ def handle_transaction_setup(
                 "Goods still to deliver must be kept against a customer — say who, e.g.:\n"
                 "_sold 100 cement to Ade 500000 delivered 60_"))
             return {"status": "part_delivery_needs_customer"}
-        _items = parsed.get("sale_items") or (
+        _items = [dict(i) for i in (parsed.get("sale_items") or [])] or (
             [{"product": parsed["product"], "quantity": parsed.get("quantity") or 1,
-              "unit": parsed.get("unit"), "delivered_qty": _delivered}] if parsed.get("product") else [])
+              "unit": parsed.get("unit")}] if parsed.get("product") else [])
+        if _delivered is not None and len(_items) == 1:
+            _items[0]["delivered_qty"] = _delivered
         _kept = kept_aside_problem(db, business_owner_phone, _items)
         if _kept:
             send_message(phone, _kept)
@@ -627,7 +629,8 @@ def handle_transaction_setup(
             db.rollback()
     if _delivered is not None:
         from whatsapp_delivery import confirm_line
-        balance_after_line += confirm_line(_delivered, parsed.get("quantity"), parsed.get("unit"), customer.name)
+        _line = (parsed.get("sale_items") or [parsed])[0]          # part-paid: the one-line list
+        balance_after_line += confirm_line(_delivered, _line.get("quantity"), _line.get("unit"), customer.name)
     confirm_msg = f"{confirm_msg}\n{balance_after_line}{below_cost}{phone_warning}{no_details_hint}{loyalty_hint}"
     if parsed.get("artisan_note"):
         confirm_msg = (

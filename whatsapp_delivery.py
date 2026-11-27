@@ -193,11 +193,14 @@ def check_part_delivery(parsed):
     d = parsed.get("delivered_qty")
     if d is None:
         return None, None
-    if parsed.get("sale_items"):
+    lines = parsed.get("sale_items") or []
+    if len(lines) > 1:
         return None, ("Part delivery works one product at a time on WhatsApp. Send the sale like:\n"
                       "_sold 100 cement to Ade 500000 delivered 60_")
-    qty = parsed.get("quantity")
-    if not parsed.get("product") or not qty:
+    # A part-paid sale ("… 500000 paid 200000") carries its one product as a one-line list
+    line = lines[0] if lines else parsed
+    qty = line.get("quantity")
+    if not line.get("product") or not qty:
         return None, ("Say what was sold and how many, then what went out, e.g.:\n"
                       "_sold 100 cement to Ade 500000 delivered 60_")
     if d >= float(qty):
