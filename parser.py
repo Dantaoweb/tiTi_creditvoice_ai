@@ -1778,6 +1778,50 @@ _DESCRIBED_NOT_NAMED = re.compile(
 # "my customer Ade paid 5000" names Ade
 _CUSTOMER_PREFIX = re.compile(r"^(?:my\s+)?(?:customer|client)\s+(?=[a-z])")
 
+# "Ade owes me 5000", "Ade is owing me 5k", "Ade dey owe me 5000", "Ade owes 5000",
+# "Ade has a debt of 5000" — a debt with no item (it used to make the words
+# "ade owes me" the product, and "ade dey" the customer)
+_OWES_ME = re.compile(
+    r"^(?:my\s+(?:customer|client)\s+)?(?P<name>[a-z][a-z'\-]*(?:\s+[a-z][a-z'\-]*){0,3}?)\s+"
+    r"(?:(?:is|dey|still|has\s+been|have\s+been)\s+)*"
+    r"(?:(?:owes?|owing)(?:\s+(?:me|us))?|has\s+(?:a\s+)?(?:debt|balance)\s+of|has\s+an?\s+old\s+debt\s+of)\s+"
+    r"(?:the\s+sum\s+of\s+|a\s+balance\s+of\s+)?(?:n|₦)?\s?(?P<amt>\d[\d,]*(?:\.\d+)?\s*[km]?)(?:\s*naira)?"
+    r"(?P<rest>\s+.*)?$")
+# "I owe Ade 5000" — money the business owes: not a customer's debt
+_I_OWE = re.compile(r"^(?:i|we)\s+(?:am\s+|are\s+|still\s+|dey\s+)*(?:owe|owing)\s+(?P<name>[a-z][a-z' \-]{0,40}?)\s+"
+                    r"(?:n|₦)?\s?(?P<amt>\d[\d,]*(?:\.\d+)?\s*[km]?)(?:\s*naira)?$")
+_NOT_A_DEBTOR = {"i", "we", "you", "he", "she", "they", "it", "who", "how", "what", "which", "somebody", "someone",
+               "my", "the", "customer", "nobody", "everybody", "everyone"}
+
+
+def _owes_me(text):
+    clean = re.sub(r"\s+", " ", (text or "").lower().replace(",", "")).strip(" .!")
+    if "?" in clean:
+        return None
+    m = _I_OWE.match(clean)
+    if m and m.group("name").strip() not in _NOT_A_DEBTOR:
+        amount = parse_amount_token(m.group("amt"))
+        if amount:
+            return {"type": "I_OWE_HELP", "name": m.group("name").strip(), "amount": amount}
+    m = _OWES_ME.match(clean)
+    if not m:
+        return None
+    name = m.group("name").strip()
+    if name in _NOT_A_DEBTOR or name.split()[0] in _NOT_A_DEBTOR:
+        return None
+    rest = (m.group("rest") or "").strip()
+    # Only the debt itself, optionally with when it's due — anything else
+    # (items, a payment) is left to the full sale parser
+    if rest and not _DUE_PHRASE.search(rest) and not re.match(r"^(?:since|from|for\s+(?:a\s+)?(?:long|last|some))", rest):
+        return None
+    amount = parse_amount_token(m.group("amt"))
+    if not amount:
+        return None
+    return {"type": "TRANSACTION", "name": name, "action": "BUY", "buy_amount": amount, "paid_amount": 0,
+            "quantity": None, "unit": None, "product": None, "unit_price": None, "sale_items": None,
+            "total": amount, "due_date": None, "debt_only": True}
+
+
 # "how much do i owe suppliers", "what am i owing my suppliers", "supplier debt",
 # "total i owe suppliers", "which supplier do i owe" — what the BUSINESS owes
 _OWE_SUPPLIERS = re.compile(
@@ -1930,6 +1974,12 @@ def _parse_message_inner(text):
     _trip = parse_trip(text)
     if _trip:
         return _trip
+    _owes = _owes_me(text)
+    if _owes:
+        if _owes["type"] == "TRANSACTION":
+            m = _DUE_PHRASE.search((text or "").strip().lower())
+            _owes["due_date"] = natural_date(m.group("when")) if m else None
+        return _owes
     _rest, _delivered = split_delivered(text)
     if _delivered is not None:
         _sale = _parse_message_inner(_rest)

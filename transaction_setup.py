@@ -606,7 +606,8 @@ def handle_transaction_setup(
     from biz_language import get_lang
     # Only a sale has products to capture — never a payment.
     if (get_lang(user)["show_product_tip"] and parsed.get("action") in ("BUY", "COMBINED")
-            and not parsed.get("product") and not parsed.get("sale_items")):
+            and not parsed.get("product") and not parsed.get("sale_items")
+            and not parsed.get("debt_only")):          # "Ade owes me 5000": a debt, no item to capture
         cname = customer.name.title()
         no_details_hint = (
             "\n\n⚠️ No product details captured.\n"

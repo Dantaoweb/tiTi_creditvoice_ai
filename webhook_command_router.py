@@ -57,6 +57,17 @@ def handle_parsed_command(
         send_whatsapp_message(phone, msg)
         return {"status": "formats"}
 
+    # "I owe Ade 5000": money the business owes — not a customer's debt
+    if parsed["type"] == "I_OWE_HELP":
+        who, amt = parsed["name"].title(), parsed["amount"]
+        send_whatsapp_message(phone, (
+            f"That's money *you* owe {who} — so nothing was recorded on {who} as a customer.\n\n"
+            f"If {who} supplied you goods, record it as a supplier:\n"
+            f"_{who} supplied me 10 bags cement for {amt}_\n"
+            f"When you pay: _I paid {who} {amt}_\n\n"
+            f"Did you mean {who} owes *you*? Send _{who} owes me {amt}_."))
+        return {"status": "i_owe_help"}
+
     # Part delivery (whatsapp_delivery.py)
     if parsed["type"] in ("DELIVER_GOODS", "GOODS_OWED", "PART_DELIVERY_HELP"):
         import whatsapp_delivery as wd
