@@ -306,6 +306,48 @@ CASES = [
     ('where do i see quotation requests from my page', 'page_requests'),
     ('how do i share my business page link', 'page_link'),
     ('where is my page link', 'page_link'),
+    # Round 5d: business types
+    ("i can't find school fees in the menu", 'vertical_menu'),
+    ('egg and feed is not showing in my menu', 'vertical_menu'),
+    ('how do i set up my school year', 'school_setup'),
+    ('how do i add a class', 'school_setup'),
+    ('how do i set fees for each class', 'school_setup'),
+    ('how do i start a new term', 'school_setup'),
+    ('how do i charge this term fees', 'school_charge_term'),
+    ('how do i register a new pupil', 'school_pupil_add'),
+    ('how do i add a student', 'school_pupil_add'),
+    ('how do i record school fees payment', 'school_payment'),
+    ('a parent paid part of the fees how do i record it', 'school_payment'),
+    ('how do i give a pupil scholarship', 'school_arrangement'),
+    ('staff child pays nothing how do i set it', 'school_arrangement'),
+    ('how do i charge a pupil for books', 'school_books'),
+    ('how do i add uniform for a student', 'school_books'),
+    ('how do i see pupils owing', 'school_owing'),
+    ('how do i record eggs collected today', 'egg_collection'),
+    ('how do i enter crates of eggs', 'egg_collection'),
+    ('how do i record feed used today', 'feed_usage'),
+    ('how do i log layer mash usage', 'feed_usage'),
+    ('how do i see egg report', 'egg_report'),
+    ('how do i see margin over feed', 'egg_report'),
+    ('how do i add a pump', 'fuel_setup'),
+    ('how do i set fuel price per litre', 'fuel_setup'),
+    ('how do i add a tank', 'fuel_setup'),
+    ('how do i open a shift', 'fuel_shift'),
+    ('how do i close shift and reconcile', 'fuel_shift'),
+    ('how do i record tanker delivery', 'fuel_delivery'),
+    ('how do i record a tank dip', 'fuel_dip'),
+    ('how do i start an ajo group', 'thrift_group_create'),
+    ('how do i create a thrift group', 'thrift_group_create'),
+    ('how do i invite people to my ajo group', 'thrift_invite'),
+    ('how do i approve someone who wants to join my group', 'thrift_invite'),
+    ('how do i record ajo contribution', 'thrift_contribution'),
+    ('how do i collect daily contribution', 'thrift_contribution'),
+    ('how do i pay out the pot', 'thrift_payout'),
+    ('whose turn is it to collect the pot', 'thrift_payout'),
+    ('how do i cash out a customer', 'thrift_payout'),
+    ('how do i add an approver to my group', 'thrift_approver'),
+    ('how do i record my personal savings', 'thrift_personal'),
+    ('how do i record school fees?', 'school_payment'),
 ]
 
 
@@ -493,3 +535,46 @@ def test_pin_and_upgrade_guides_tell_the_truth():
     assert "My Profile" not in pin and "change pin 1234 5678" in pin and "Forgot PIN or never set one?" in pin
     up = FAQ_ANSWERS["upgrade"]
     assert "Card payment is unavailable" in up and "Have a plan code?" in up and "on the Upgrade page" not in up
+
+
+def test_business_type_answers_use_the_page_words():
+    import pathlib
+    src = pathlib.Path(__file__).with_name("frontend").joinpath("src", "pages")
+    read = lambda n: src.joinpath(n).read_text(encoding="utf-8")   # noqa: E731
+    school = read("School.jsx")
+    for label in ("Collect fees", "Pupils", "This term", "Setup", "School year", "Start session", "Classes",
+                  "Add class", "What you charge for", "What each class owes this term", "Save fees",
+                  "Charge this term", "Register pupil", "Pupil's name *", "Parent / guardian", "Parent's phone",
+                  "Find a pupil", "Amount paid", "Pay all", "Record payment", "Fees", "Arrangement", "Pays nothing",
+                  "Percentage off", "Amount off the bill", "Pays an agreed amount", "Applies to", "For how long",
+                  "Every term", "This term only", "Books and extras", "Charge ticked items", "Outstanding",
+                  "Collection rate"):
+        assert label in school, label
+    egg = read("Poultry.jsx")
+    for label in ("Egg Collection", "Feed Usage", "Report", "Crates collected — by grade", "Save collection",
+                  "Feed used today", "Save feed used", "Eggs — collected vs sold", "Margin over feed"):
+        assert label in egg, label
+    fuel = read("FuelStation.jsx")
+    for label in ("Overview", "Shifts", "Deliveries", "Dips", "Add tank", "Save tank", "Add pump", "Save pump",
+                  "Set pump price", "Price per litre (₦)", "Save price", "Open shift", "Close shift", "Closing meter",
+                  "Close & reconcile", "Record delivery", "Litres delivered", "Save delivery", "Record tank dip",
+                  "Dipped litres (physical reading)", "Save dip"):
+        assert label in fuel, label
+    thrift = read("Thrift.jsx") + read("ThriftGroups.jsx")
+    for label in ("Group Thrift / Ajo", "Personal Savings", "Create Ajo / Thrift group", "Rotating (ajo)",
+                  "Daily collection", "Target (shared goal)", "Group name *", "Frequency", "Member limit *",
+                  "Who collects the pot?", "Create group", "Invite link — share it so people can join", "Copy",
+                  "Add participant", "Add customer", "Pending approvals", "Approve", "Decline", "Collect", "Record",
+                  "Add saving", "Pot collector:", "Choose member…", "Pay", "Record payout", "I received it",
+                  "Cash out", "Give approval power", "Your savings plan", "How often do you save?", "Save plan",
+                  "Record Saving"):
+        assert label in thrift, label
+
+
+def test_school_guide_uses_the_page_words():
+    from faq import FAQ_ANSWERS
+    a = FAQ_ANSWERS["school_fees"]
+    for gone in ("Record fee payment", "My students", "Add Student"):
+        assert gone not in a, gone
+    for word in ("Collect fees", "Register pupil", "Charge this term", "Start session", "Save fees"):
+        assert word in a, word

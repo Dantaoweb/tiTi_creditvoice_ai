@@ -1210,10 +1210,14 @@ FAQ_ANSWERS = {
     ),
     "school_fees": (
         "School fees (schools only): web app → Menu → *School fees*.\n\n"
-        "Set up classes and terms, add fee items per class, then *raise the term's fees* — "
-        "each pupil is charged and owes until they pay. Excuse any pupil from an item.\n\n"
-        "Record a payment: *Record fee payment*, or on WhatsApp: _Ade paid school fees 50000_.\n"
-        "Add a pupil: *My students* → *Add Student*."
+        "*Start:* *Setup* → *School year* (e.g. 2025/2026) → *Start session* (it makes three terms) → "
+        "*Classes* → *Add class* → *What you charge for* (Fee, Levy, Book, Uniform, Other) → *Add* → "
+        "*What each class owes this term* → *Save fees*.\n"
+        "*Each term:* *This term* → *Charge this term* — every pupil is charged and owes until they pay.\n"
+        "*Pupils:* *Pupils* → *Register pupil*. On a scholarship or discount? *Fees* beside them → "
+        "*Arrangement*.\n"
+        "*Payments:* *Collect fees* → find the pupil → *Amount paid* → *Record payment*, or on WhatsApp: "
+        "_Ade paid school fees 50000_."
     ),
     "poultry": (
         "Egg & Feed (poultry farms): web app → Menu → *Egg & Feed*.\n\n"

@@ -16,7 +16,7 @@ Each entry:  key: (groups, answer[, without])
 Add a feature's exact answers here when it's built (rounds so far:
 1 selling & paperwork, 2 staff, 3 stock & categories, 4 customers,
 5a production & distributors, 5b money,
-5c business set-up).
+5c business set-up, 5d business types).
 """
 import re
 
@@ -549,7 +549,7 @@ HOWTO = {
         f"{_EDIT_PRODUCT} → *Selling price* → *Save Changes*. New sales use it at once; old sales keep their price.\n"
         "The product's *Price changes* list shows every change and when.",
         ("wholesale", "bulk", "sub-unit", "sub unit", "sachet", "piece", "cost", "quotation", "invoice", "receipt",
-         "plan", "subscription", "paper", "vat") + _SELLER,
+         "plan", "subscription", "paper", "vat") + _SELLER + ('fuel', 'litre', 'pump', 'petrol', 'diesel'),
     ),
     "wholesale_price": (
         [("wholesale", "bulk price", "carton price", "price for many", "buy many", "buys many", "buy plenty",
@@ -723,7 +723,7 @@ HOWTO = {
         "📋 *Seeing who owes you*\n\n"
         "*Customers* → *Debtors* tab — everyone with a balance, *Total Outstanding*, *Next Due* and *Days Overdue*. "
         "Tap a name to see what they bought and record a payment.",
-        ("supplier", "i owe", "staff", "remind", "send") + _SELLER,
+        ("supplier", "i owe", "staff", "remind", "send") + _SELLER + ('pupil', 'student', 'school fees', 'parent'),
     ),
     "reminder_mode": (
         [("remind",), ("automatic", "auto", "review", "mode", "turn on", "turn off", "turn it", "switch", "stop",
@@ -770,7 +770,7 @@ HOWTO = {
         "*Appointments* → *Book* → customer, date, time, service(s), who does it → *Book*.\n"
         f"Don't see *Appointments* in the menu? {_SETTINGS_APPT} → *Show Appointments in the menu*.",
         ("link", "online", "customers book", "customer book", "themselves", "hours", "done", "finish", "arrived",
-         "no-show", "no show", "cancel"),
+         "no-show", "no show", "cancel") + ('pupil', 'student', 'school', 'uniform', 'textbook', 'exercise'),
     ),
     "booking_link": (
         [("appointment", "booking", "book"),
@@ -1018,7 +1018,7 @@ HOWTO = {
         "*Net profit* (after *Expenses*).\n"
         "*Insights* → *Profit by product* and *Margin snapshot* — what each product really makes.\n"
         "Only the owner and staff you allow see profit.",
-        ("wrong", "missing", "no cost", "not showing", "zero", "incorrect", "staff", "branch", "vat"),
+        ("wrong", "missing", "no cost", "not showing", "zero", "incorrect", "staff", "branch", "vat") + ('feed', 'egg'),
     ),
     "profit_wrong": (
         [("profit", "margin"),
@@ -1138,6 +1138,195 @@ HOWTO = {
         "*Business page* → *Your page* → *Copy link*, *Open* to see it, or *Share on WhatsApp*. Put it on your "
         "WhatsApp status, flyers and signboard.",
         ("booking", "appointment", "invite", "staff", "pay link", "payment link"),
+    ),
+
+    # ── Business types (round 5d) ────────────────────────────────────────────
+    "vertical_menu": (
+        [("school fees", "egg & feed", "egg and feed", "fuel station", "thrift", "ajo", "esusu"),
+         ("menu", "can't find", "cannot find", "can't see", "cannot see", "don't see", "missing", "not showing",
+          "where is", "turn on", "show")],
+        "🧭 *A page missing from the menu*\n\n"
+        "*School fees*, *Egg & Feed* and *Fuel Station* show for that kind of business. Set yours on "
+        "*My Profile* → *Business type* → *Save changes*, and the page appears.\n"
+        "*Thrift / Ajo* is in the menu for everyone.",
+    ),
+    "school_setup": (
+        [("school", "class", "term", "session", "school year", "fees"),
+         ("set up", "setup", "start", "begin", "new session", "new term", "new year", "add class", "create class",
+          "add a class", "what each class", "class fee", "fee item", "levy", "set the fees", "set fees")],
+        "🏫 *Setting up your school year*\n\n"
+        "*School fees* → *Setup*:\n"
+        "1. *School year* → e.g. 2025/2026 → *Start session* (it makes three terms).\n"
+        "2. *Classes* → class name → *Add class*.\n"
+        "3. *What you charge for* → name, kind (*Fee*, *Levy*, *Book*, *Uniform*, *Other*) → *Add*.\n"
+        "4. *What each class owes this term* → *Choose a class* → the amounts → *Save fees*.",
+        ("pupil", "student", "paid", "payment", "owe", "owing", "charge this term", "discount", "scholarship",
+         "staff", "teacher"),
+    ),
+    "school_charge_term": (
+        [("term", "school fees", "fees"),
+         ("charge", "bill", "raise", "invoice the", "send the fees", "start collecting", "new term")],
+        "🧾 *Charging the term's fees*\n\n"
+        "*School fees* → *This term* → *Charge this term*. Every pupil is charged their class's fees and owes "
+        "until they pay. Set the amounts first on *Setup* → *What each class owes this term*.",
+        ("pupil's", "one pupil", "books", "uniform", "payment", "paid", "set up", "setup", "class fee"),
+    ),
+    "school_pupil_add": (
+        [("pupil", "student", "child", "children", "ward", "admission"),
+         ("add", "register", "new", "enrol", "enroll", "admit", "enter", "edit", "change")],
+        "🧒 *Registering a pupil*\n\n"
+        "*School fees* → *Pupils* → *Register pupil* → *Pupil's name*, *Class*, *Parent / guardian*, "
+        "*Parent's phone* → *Register*. To change one: *Edit* beside them → *Save changes*.",
+        ("paid", "payment", "pay", "fee", "discount", "scholarship", "owe", "owing", "teacher", "staff") + ('uniform', 'book', 'textbook', 'extras'),
+    ),
+    "school_payment": (
+        [("school fees", "fees", "pupil", "student", "parent", "tuition"),
+         ("paid", "pay", "payment", "collect", "record", "brought money", "deposit", "part")],
+        "💰 *Recording a fee payment*\n\n"
+        "*School fees* → *Collect fees* → *Find a pupil* (name or admission number) → *Amount paid* (*Pay all* "
+        "fills the balance) → *Record payment*.\n"
+        "On WhatsApp: _Ade paid school fees 50000_.",
+        ("discount", "scholarship", "free", "staff", "teacher", "salary", "who owes", "owing", "set up", "setup",
+         "charge this term", "book"),
+    ),
+    "school_arrangement": (
+        [("pupil", "student", "child", "ward"),
+         ("discount", "scholarship", "free", "half", "reduce", "pays nothing", "agreed amount", "percent",
+          "staff child", "exempt", "excuse", "special")],
+        "🎓 *A pupil on a discount or scholarship*\n\n"
+        "*School fees* → *Pupils* → *Fees* beside them → *Arrangement*: *Pays nothing*, *Percentage off*, "
+        "*Amount off the bill* or *Pays an agreed amount* → *Applies to* → *For how long* (*Every term* or "
+        "*This term only*) → *Reason* → *Save*.",
+        ("teacher", "staff salary"),
+    ),
+    "school_books": (
+        [("book", "books", "textbook", "uniform", "extras", "exercise book"),
+         ("pupil", "student", "school", "charge", "sell", "buy", "buying", "add", "record", "fees")],
+        "📚 *Books, uniform and extras*\n\n"
+        "*School fees* → *Collect fees* → find the pupil → under *Books and extras*, untick what they aren't "
+        "buying (and set how many) → *Charge ticked items*. Books and uniforms come out of your stock.\n"
+        "Add them first on *Setup* → *What you charge for* (kind *Book* or *Uniform*).",
+        ("teacher", "staff", "receipt book", "book an appointment", "booking"),
+    ),
+    "school_owing": (
+        [("pupil", "student", "parent", "school fees", "fees"),
+         ("owe", "owing", "outstanding", "haven't paid", "have not paid", "not paid", "debt", "balance", "who")],
+        "📋 *Who still owes school fees*\n\n"
+        "*School fees* → *Collect fees* shows *Expected*, *Collected*, *Outstanding* and the *Collection rate*. "
+        "*Pupils* shows each pupil's *Balance*.",
+        ("discount", "scholarship", "teacher", "staff"),
+    ),
+    "egg_collection": (
+        [("egg", "eggs", "crate", "crates"),
+         ("collect", "collected", "picked", "record", "log", "enter", "add", "today", "lay", "laid", "gather")],
+        "🥚 *Recording today's eggs*\n\n"
+        "*Egg & Feed* → *Egg Collection* → *Date* → *Crates collected — by grade* (each grade's crates) → "
+        "*Save collection*. They go into stock, ready to sell by crate or loose.",
+        ("sell", "sold", "sale", "price", "feed", "report", "margin", "income"),
+    ),
+    "feed_usage": (
+        [("feed", "mash", "layer mash", "grower", "starter", "concentrate"),
+         ("used", "use", "usage", "record", "log", "enter", "today", "gave", "fed", "consume")],
+        "🌾 *Recording feed used*\n\n"
+        "*Egg & Feed* → *Feed Usage* → *Feed used today* → each feed's amount → *Save feed used*. It comes off "
+        "feed stock (it isn't a sale).\n"
+        "No feed listed? Add it first as stock: *Quick Record* → *Stock Received* (e.g. \"layer mash\").",
+        ("buy", "bought", "price", "sell"),
+    ),
+    "egg_report": (
+        [("egg", "eggs", "feed", "poultry", "farm"),
+         ("report", "margin", "income", "profit", "collected vs sold", "how many sold", "performance", "compare")],
+        "📊 *Egg & Feed report*\n\n"
+        "*Egg & Feed* → *Report* → the period → *Eggs — collected vs sold* by grade, *Egg income*, *Feed used* "
+        "and *Margin over feed*.",
+    ),
+    "fuel_setup": (
+        [("pump", "tank", "price per litre", "litre price", "pump price", "fuel price"),
+         ("add", "set", "new", "create", "change", "update", "set up", "setup", "enter")],
+        "⛽ *Pumps, tanks and prices*\n\n"
+        "*Fuel Station* → *Overview*:\n"
+        "• *Tanks* → *Add tank* → *Name*, *Product*, *Capacity (litres)*, *Current level (litres)* → *Save tank*.\n"
+        "• *Pumps* → *Add pump* → *Name*, *Product*, *Tank*, *Opening meter reading* → *Save pump*.\n"
+        "• *Pump prices (₦/litre)* → *Set pump price* → *Product*, *Price per litre (₦)* → *Save price*.",
+        ("shift", "dip", "deliver", "tanker"),
+    ),
+    "fuel_shift": (
+        [("shift", "attendant", "meter", "reconcile", "pump attendant", "shortfall"),
+         Loose(("open", "close", "start", "end", "record", "how", "check", "reading", "money", "cash", "short"))],
+        "🧑‍🔧 *Attendant shifts*\n\n"
+        "*Fuel Station* → *Shifts* → *Open shift* → *Pump* and *Shift (optional)* → *Open shift*.\n"
+        "At the end: *Close shift* → *Closing meter* and what was paid — *Cash*, *POS*, *Transfer*, *Credit* → "
+        "*Close & reconcile*. It works out litres sold and any *Shortfall*.",
+        ("staff invite", "pin", "salary"),
+    ),
+    "fuel_delivery": (
+        [("tanker", "delivery", "delivered", "supply", "truck", "depot", "discharge"),
+         ("fuel", "litre", "tank", "petrol", "diesel", "pms", "ago", "dpk", "kerosene", "depot", "tanker"),
+         Loose(("record", "how", "enter", "add", "log", "came", "arrived"))],
+        "🚛 *Recording a tanker delivery*\n\n"
+        "*Fuel Station* → *Deliveries* → *Record delivery* → *Tank*, *Litres delivered*, *Cost per litre* "
+        "(optional), *Supplier / depot*, *Waybill* → *Save delivery*.",
+        ("customer", "waybill for", "goods to"),
+    ),
+    "fuel_dip": (
+        [("dip", "dipping", "variance", "physical reading", "tank level", "stick"),
+         Loose(("record", "check", "how", "enter", "tank", "morning", "compare"))],
+        "📏 *Tank dips — checking for loss*\n\n"
+        "*Fuel Station* → *Dips* → *Record tank dip* → *Tank*, *Dipped litres (physical reading)*, *Note* → "
+        "*Save dip*. It's compared with what the tank should hold, so you see any variance.",
+    ),
+    "thrift_group_create": (
+        [("thrift", "ajo", "esusu", "adashe", "savings group", "contribution group", "alajo", "daily collection"),
+         ("create", "start", "new", "open", "set up", "setup", "make", "form")],
+        "🤝 *Starting a savings group*\n\n"
+        "*Thrift / Ajo* → *Group Thrift / Ajo* → *Create Ajo / Thrift group* → *Type*: *Rotating (ajo)*, "
+        "*Daily collection*, or *Target (shared goal)* (Pro) → *Group name*, the amount, *Frequency*, "
+        "*Member limit*, *Who collects the pot?* → *Create group*. Then share its invite link.",
+        ("join", "invite", "member", "personal", "my own", "pay", "collect from", "approver"),
+    ),
+    "thrift_invite": (
+        [("thrift", "ajo", "esusu", "group", "alajo"),
+         ("invite", "join", "add member", "add people", "link", "add participant", "add customer", "approve",
+          "pending")],
+        "📨 *Getting people into the group*\n\n"
+        "Open the group → *Invite link — share it so people can join* → *Copy* and send it. Or *Add participant* "
+        "(daily collection: *Add customer*) to add someone yourself.\n"
+        "Join requests wait under *Pending approvals* → *Approve* or *Decline*.",
+        ("staff", "business page", "booking", "pay link") + ('approver', 'approval power'),
+    ),
+    "thrift_contribution": (
+        [("thrift", "ajo", "esusu", "group", "alajo", "contribution", "daily collection"),
+         ("paid", "pay", "record", "collect", "contribute", "contributed", "saving", "brought", "money")],
+        "💵 *Recording a contribution*\n\n"
+        "Open the group → beside the member: *Record* (daily collection: *Collect*, or *Add saving*). "
+        "On WhatsApp: _Tunde paid ajo 2000_.",
+        ("payout", "pot", "cash out", "my own", "personal", "i saved", "invite", "join", "staff"),
+    ),
+    "thrift_payout": (
+        [("thrift", "ajo", "esusu", "group", "alajo", "pot", "daily collection", "cash out"),
+         ("payout", "pay out", "collect the pot", "whose turn", "turn", "cash out", "collected the pot",
+          "received", "give the money", "withdraw")],
+        "💰 *Paying out*\n\n"
+        "*Rotating ajo:* open the group → this round's *Pot collector:* (or *Choose member…* when the admin "
+        "picks) → *Pay* (or *Record payout*). The member taps *I received it*.\n"
+        "*Daily collection:* *Cash out* beside the customer — your commission comes off.",
+        ("staff", "invite", "join"),
+    ),
+    "thrift_approver": (
+        [("thrift", "ajo", "esusu", "group", "alajo"),
+         ("approver", "approval", "co-admin", "second person", "treasurer", "approve payout")],
+        "🛡️ *An approver for the group*\n\n"
+        "Open the group → beside the member → *Give approval power* (*Remove approval power* to take it back). "
+        "An approver helps check contributions and payouts.",
+        ("join", "pending"),
+    ),
+    "thrift_personal": (
+        [("personal savings", "my own savings", "my savings", "i saved", "save for myself", "savings plan"),
+         Loose(("how", "record", "where", "add", "track", "see", "start", "set"))],
+        "🐷 *Your own savings*\n\n"
+        "*Thrift / Ajo* → *Personal Savings* → *Your savings plan* (*How often do you save?*, *Goal amount*) → "
+        "*Save plan*. Record each one with *Record Saving*, or on WhatsApp: _I saved 5000_.",
+        ("group", "member", "customer"),
     ),
 }
 
