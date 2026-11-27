@@ -49,7 +49,7 @@ def test_a_question_is_never_recorded_as_a_sale():
     ("how do i pay my supplier?", "guide:supplier_owed"),
     ("how can i get a loan?", "guide:finance_scorecard"),
     ("how do i write a review?", "guide:site_review"),
-    ("how much do i owe my suppliers?", "faq:supplier_owed"),
+    ("how much do i owe my suppliers?", "SUPPLIER_LIST"),
     ("how do i record school fees?", "guide:howto:school_payment"),
     ("how do i record eggs collected?", "guide:howto:egg_collection"),
     ("how do i record fuel sales?", "faq:fuel_station"),

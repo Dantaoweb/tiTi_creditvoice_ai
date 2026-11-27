@@ -1777,6 +1777,16 @@ _DESCRIBED_NOT_NAMED = re.compile(
 )
 # "my customer Ade paid 5000" names Ade
 _CUSTOMER_PREFIX = re.compile(r"^(?:my\s+)?(?:customer|client)\s+(?=[a-z])")
+
+# "how much do i owe suppliers", "what am i owing my suppliers", "supplier debt",
+# "total i owe suppliers", "which supplier do i owe" — what the BUSINESS owes
+_OWE_SUPPLIERS = re.compile(
+    r"\b(?:i|we)\s+(?:still\s+)?(?:owe|owing|am\s+owing|are\s+owing|dey\s+owe)\b.*\bsuppliers?\b"
+    r"|\bsuppliers?\b.*\b(?:i|we)\s+(?:still\s+)?(?:owe|owing|am\s+owing|dey\s+owe)\b"
+    r"|\b(?:am|are)\s+(?:i|we)\s+owing\b.*\bsuppliers?\b"
+    r"|\bsuppliers?\s+(?:debts?|balances?|owed|outstanding)\b"
+    r"|\b(?:debts?|money|balance)\s+(?:i|we)\s+owe\b.*\bsuppliers?\b"
+    r"|\bowed\s+to\s+(?:my\s+|the\s+)?suppliers?\b")
 # A real question about using the app: "sales rep brought back unsold bread, what do I do?"
 # read like "<customer> brought <items>" — a job for a customer called "Sales Rep".
 _HELP_QUESTION = re.compile(r"\b(how (do|can|should|to|will)|what (do|should|can) (i|we) do|where (is|do|can|are)"
@@ -1965,6 +1975,11 @@ def _parse_message(text):
     clean_text = text.lower().strip()
     # One exact how-to task (howto.py) — before any command reads the words as
     # a name ("how do i change my bank account" is not a customer)
+    # "what am i owing my suppliers" / "which supplier do i owe" want the
+    # figures (the supplier list), not the how-to — unless they ask how to
+    if (_OWE_SUPPLIERS.search(clean_text) or re.search(r"\bwhich\s+suppliers?\s+(?:do|am)\s+(?:i|we)\s+(?:owe|owing)\b", clean_text)) \
+            and not re.match(r"^(?:how\s+(?:do|can|should)|where\s+(?:do|can))\b", clean_text):
+        return {"type": "SUPPLIER_LIST"}
     from howto import exact_for
     from faq import _is_question
     _exact = exact_for(text) if _is_question(text) else None
@@ -2091,6 +2106,11 @@ def _parse_message(text):
         "list suppliers", "my suppliers", "my supplier",
         "supplier debts", "suppliers i owe",
     ] or re.match(r"^(?:show|check|view|see|list)\s+(?:my\s+)?suppliers?$", clean_text):
+        return {"type": "SUPPLIER_LIST"}
+
+    # What I owe suppliers — the supplier list shows each one's debt and the
+    # total. ("how much do i owe suppliers" was read as "who supplies 'how much do i owe'")
+    if _OWE_SUPPLIERS.search(clean_text):
         return {"type": "SUPPLIER_LIST"}
 
     if clean_text in ["supplier due", "suppliers due", "supplier due today", "suppliers due today"]:
@@ -2414,7 +2434,8 @@ def _parse_message(text):
     )
     if _prod_sup_m:
         prod_name = next(g for g in _prod_sup_m.groups() if g)
-        return {"type": "PRODUCT_SUPPLIERS", "product": prod_name.strip()}
+        if not re.search(r"\b(?:owe|owes|owing|owed|debt|debts|balance|pay|paid|how\s+much|how\s+many)\b", prod_name):
+            return {"type": "PRODUCT_SUPPLIERS", "product": prod_name.strip()}
 
     if clean_text in [
         "daily transactions",

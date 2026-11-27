@@ -103,3 +103,25 @@ def test_a_trip_for_goods_not_waiting_records_nothing(shop):
     _, reply, _ = say("delivered 10 cement to ade")
     assert "isn't waiting for any goods" in reply and "bought 10 cement" in reply
     assert _cement(Session, phone) == 120
+
+
+def test_how_much_do_i_owe_suppliers(shop):
+    # It used to be read as "who supplies 'how much do i owe'"
+    from models import Supplier, SupplierPurchase
+    Session, say, phone = shop
+    db = Session()
+    ayo = Supplier(owner_phone=phone, name="ayo")
+    db.add(ayo); db.flush()
+    db.add(SupplierPurchase(supplier_id=ayo.id, owner_phone=phone, product="cement", quantity=10,
+                            total=50000, paid_amount=20000))
+    db.commit(); db.close()
+    for text in ("how much do i owe suppliers", "what am i owing my suppliers", "which supplier do i owe",
+                 "supplier debt"):
+        _, reply, _ = say(text)
+        assert "30,000" in reply and "Ayo" in reply, (text, reply)      # the total AND who
+    _, reply, _ = say("how do i pay my supplier")               # how-to still gets the steps
+    assert "Pay" in reply and "Ayo: Debt" not in reply
+    _, reply, _ = say("i paid ayo 20000")                       # the payment the answer suggests works
+    _, reply, _ = say("yes")
+    _, reply, _ = say("how much do i owe suppliers")
+    assert "10,000" in reply, reply

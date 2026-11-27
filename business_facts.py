@@ -406,9 +406,16 @@ def _fact_owed_to_suppliers(db, owner_phone, ask):
     owed = supplier_debt_total(db, owner_phone)
     if not owed:
         return "You don't owe any supplier right now. 🎉"
-    return (f"You owe your suppliers *{_money(owed)}* in total.\n\n"
-            "See who and for what: Menu → More → Suppliers (balances in red). "
-            "Open a supplier and tap *Pay* to record a payment.")
+    # Who, biggest first — on WhatsApp too, not only "see the web"
+    from inventory_suppliers import get_supplier_balance
+    from models import Supplier
+    owing = sorted(((s.name or "").title(), get_supplier_balance(db, s.id))
+                   for s in db.query(Supplier).filter(Supplier.owner_phone == owner_phone).all())
+    owing = sorted([o for o in owing if o[1] > 0], key=lambda o: -o[1])
+    lines = "\n".join(f"• {name} — {_money(amount)}" for name, amount in owing[:10])
+    more = f"\n…and {len(owing) - 10} more." if len(owing) > 10 else ""
+    return (f"You owe your suppliers *{_money(owed)}* in total:\n{lines}{more}\n\n"
+            f"Paid one? Send e.g. _I paid {owing[0][0]} 20000_ — or on the web open the supplier → *Pay*.")
 
 
 def _sells_services(db, owner_phone):
