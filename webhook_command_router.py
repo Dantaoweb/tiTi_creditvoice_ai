@@ -57,6 +57,18 @@ def handle_parsed_command(
         send_whatsapp_message(phone, msg)
         return {"status": "formats"}
 
+    # "Ade delivered cement 5000" — which way did the goods go? Ask; record nothing.
+    if parsed["type"] == "DELIVERED_WHICH_WAY":
+        who, goods = parsed["name"].title(), parsed["goods"]
+        amt = parsed.get("amount") or 5000
+        send_whatsapp_message(phone, (
+            f"Did {who} *bring* you the {goods}, or did *you* deliver it to {who}? Nothing was recorded yet.\n\n"
+            f"*{who} brought it (a supplier):*\n_{who} supplied me {goods} {amt}_\n\n"
+            f"*You sold it to {who}:*\n_{who} bought {goods} {amt}_\n\n"
+            f"*Already sold to {who} and more went out now:*\n"
+            f"_delivered {goods if goods[:1].isdigit() else '10 ' + goods} to {who}_"))
+        return {"status": "delivered_which_way"}
+
     # "Ade supplied me 5000" — a supplier, but what did they supply?
     if parsed["type"] == "SUPPLIER_ITEM_HELP":
         who = (parsed.get("name") or "the supplier").title()

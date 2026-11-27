@@ -1373,7 +1373,7 @@ def extract_supplier_transaction(text):
         # — no "at"/"for": a bare amount is the total (it used to become a
         # customer debt for an item called "ade supplied me cement")
         re.search(
-            rf"^(?P<supplier>[a-zA-Z'\- ]+?)\s+(?:supply|supplied|supplies)(?:\s+me|\s+us)?\s+"
+            rf"^(?P<supplier>[a-zA-Z'\- ]+?)\s+(?:(?:supply|supplied|supplies)(?:\s+me|\s+us)?|(?:deliver|delivered|delivers)\s+(?:me|us))\s+"
             rf"(?!(?:me|us)\s+\d)(?P<body>[^\d]*?[a-z][^\d]*?|\d+(?:\.\d+)?\s+[^\d]*?[a-z][^\d]*?)\s+(?P<price>{amount_pattern})"
             rf"(?:\s+each)?(?=\s+(?:paid|pay|sent|due|balance|selling|sell)\b|\s*$)",
             clean
@@ -1801,6 +1801,10 @@ _PAID_BALANCE = re.compile(
     r"^(?P<head>[a-z][a-z'\- ]*?\s+(?:bought|buy|took|collected|purchased|carried)\s+(?P<items>.+?))\s+"
     r"(?:and\s+)?(?:paid|pay|gave|deposit(?:ed)?)\s+(?P<paid>" + _AMT + r")\s*(?:and\s+)?(?:the\s+)?"
     r"(?:balance|bal|remaining|remain|owing|left|outstanding)(?:\s+is)?\s+(?P<bal>" + _AMT + r")$")
+_DELIVERED_WHICH_WAY = re.compile(
+    r"^(?P<name>[a-z][a-z'\-]*(?:\s+[a-z][a-z'\-]*){0,2}?)\s+(?:has\s+)?(?:delivered|delivers|deliver)\s+"
+    r"(?!me\b|us\b|to\b)(?P<goods>[a-z0-9][a-z0-9' \-]*?[a-z][a-z' \-]*?)\s+(?P<amt>" + _AMT + r")"
+    r"(?:\s+(?:paid|pay|balance|due)\b.*)?$")
 # "I owe Ade 5000" — money the business owes: not a customer's debt
 _I_OWE = re.compile(r"^(?:i|we)\s+(?:am\s+|are\s+|still\s+|dey\s+)*(?:owe|owing)\s+(?P<name>[a-z][a-z' \-]{0,40}?)\s+"
                     r"(?:n|₦)?\s?(?P<amt>\d[\d,]*(?:\.\d+)?\s*[km]?)(?:\s*naira)?$")
@@ -1988,6 +1992,14 @@ def _parse_message_inner(text):
     _trip = parse_trip(text)
     if _trip:
         return _trip
+    # "Ade delivered cement 5000" — which way did the goods go? Ade may be a
+    # supplier who brought it, or a customer it was delivered to. A wrong guess
+    # puts the money on the wrong side, so ask. ("Ade delivered ME …" is a
+    # supplier; "delivered 25 cement to Ade" is a trip; "… for 5000" as before.)
+    _dw = _DELIVERED_WHICH_WAY.match(re.sub(r"\s+", " ", (text or "").lower().replace(",", "")).strip(" .!"))
+    if _dw and _dw.group("name").strip() not in _NOT_A_DEBTOR and not re.search(r"\b(?:for|at)\s+(?:n|₦)?\d", _dw.group(0)):
+        return {"type": "DELIVERED_WHICH_WAY", "name": _dw.group("name").strip(),
+                "goods": _dw.group("goods").strip(), "amount": parse_amount_token(_dw.group("amt"))}
     # "Ade bought rice paid 2000 balance 3000" — no price, but paid + balance
     # is the price (it made a customer called "ade bought rice")
     _pb = _PAID_BALANCE.match(re.sub(r"\s+", " ", (text or "").lower().replace(",", "")).strip(" .!"))
